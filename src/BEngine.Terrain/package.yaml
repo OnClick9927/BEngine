@@ -1,0 +1,25 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.terrain
+packageVersion: 1.0.0
+displayName: Terrain
+description: YAML heightmaps, sampling, procedural mesh generation and terrain collision.
+enabledByDefault: true
+runtime:
+  assembly: BEngine
+  rootNamespace: BEngine.Terrain
+  dependencies:
+  - packageId: com.bengine.core
+    target: runtime
+  - packageId: com.bengine.serialization
+    target: runtime
+  - packageId: com.bengine.physics3d
+    target: runtime
+editor:
+  assembly: BEngine.Editor
+  rootNamespace: BEngine.Terrain.Editor
+  dependencies:
+  - packageId: com.bengine.terrain
+    target: runtime
+  - packageId: com.bengine.core
+    target: editor

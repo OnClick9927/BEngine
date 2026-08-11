@@ -1,0 +1,30 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.project-system
+packageVersion: 1.0.0
+displayName: Project System
+description: Project workspaces, asset database, package catalog and script compilation.
+enabledByDefault: true
+required: true
+runtime:
+  assembly: BEngine
+  rootNamespace: BEngine.ProjectSystem
+  dependencies:
+  - packageId: com.bengine.core
+    target: runtime
+  - packageId: com.bengine.serialization
+    target: runtime
+editor:
+  assembly: BEngine.Editor
+  rootNamespace: BEngine.ProjectSystem.Editor
+  dependencies:
+  - packageId: com.bengine.project-system
+    target: runtime
+  - packageId: com.bengine.core
+    target: runtime
+  - packageId: com.bengine.core
+    target: editor
+  - packageId: com.bengine.serialization
+    target: runtime
+  - packageId: com.bengine.serialization
+    target: editor

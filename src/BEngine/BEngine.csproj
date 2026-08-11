@@ -1,0 +1,85 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine</RootNamespace>
+    <AssemblyName>BEngine</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Properties/**/*.cs" />
+    <Compile Include="../BEngine.Core/**/*.cs"
+             Exclude="../BEngine.Core/bin/**/*;../BEngine.Core/obj/**/*;../BEngine.Core/Properties/AssemblyInfo.cs"
+             Link="Core/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Serialization/**/*.cs"
+             Exclude="../BEngine.Serialization/bin/**/*;../BEngine.Serialization/obj/**/*;../BEngine.Serialization/Properties/AssemblyInfo.cs"
+             Link="Serialization/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.ProjectSystem/**/*.cs"
+             Exclude="../BEngine.ProjectSystem/bin/**/*;../BEngine.ProjectSystem/obj/**/*"
+             Link="ProjectSystem/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Rendering/**/*.cs"
+             Exclude="../BEngine.Rendering/bin/**/*;../BEngine.Rendering/obj/**/*;../BEngine.Rendering/Properties/AssemblyInfo.cs"
+             Link="Rendering/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.UIElements/**/*.cs"
+             Exclude="../BEngine.UIElements/bin/**/*;../BEngine.UIElements/obj/**/*;../BEngine.UIElements/Properties/AssemblyInfo.cs"
+             Link="UIElements/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Physics3D/**/*.cs"
+             Exclude="../BEngine.Physics3D/bin/**/*;../BEngine.Physics3D/obj/**/*;../BEngine.Physics3D/Properties/AssemblyInfo.cs"
+             Link="Physics3D/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Terrain/**/*.cs"
+             Exclude="../BEngine.Terrain/bin/**/*;../BEngine.Terrain/obj/**/*;../BEngine.Terrain/Properties/AssemblyInfo.cs"
+             Link="Terrain/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Navigation/**/*.cs"
+             Exclude="../BEngine.Navigation/bin/**/*;../BEngine.Navigation/obj/**/*;../BEngine.Navigation/Properties/AssemblyInfo.cs"
+             Link="Navigation/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Animation/**/*.cs"
+             Exclude="../BEngine.Animation/bin/**/*;../BEngine.Animation/obj/**/*;../BEngine.Animation/Properties/AssemblyInfo.cs"
+             Link="Animation/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
+    <PackageReference Include="Silk.NET.OpenGL" />
+    <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Input" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="../BEngine.Icons/BEngine.64.rgba"
+                      Link="Icons/BEngine.64.rgba"
+                      LogicalName="BEngine.Icons.BEngine.64.rgba" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../BEngine.Animation/package.yaml" Link="Packages/BEngine.Animation/package.yaml"
+          TargetPath="Packages/BEngine.Animation/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../BEngine.Codex.Editor/package.yaml" Link="Packages/BEngine.Codex.Editor/package.yaml"
+          TargetPath="Packages/BEngine.Codex.Editor/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../BEngine.Core/package.yaml" Link="Packages/BEngine.Core/package.yaml"
+          TargetPath="Packages/BEngine.Core/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../BEngine.Navigation/package.yaml" Link="Packages/BEngine.Navigation/package.yaml"
+          TargetPath="Packages/BEngine.Navigation/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../BEngine.Physics3D/package.yaml" Link="Packages/BEngine.Physics3D/package.yaml"
+          TargetPath="Packages/BEngine.Physics3D/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../BEngine.ProjectSystem/package.yaml" Link="Packages/BEngine.ProjectSystem/package.yaml"
+          TargetPath="Packages/BEngine.ProjectSystem/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../BEngine.Rendering/package.yaml" Link="Packages/BEngine.Rendering/package.yaml"
+          TargetPath="Packages/BEngine.Rendering/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../BEngine.Serialization/package.yaml" Link="Packages/BEngine.Serialization/package.yaml"
+          TargetPath="Packages/BEngine.Serialization/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../BEngine.Terrain/package.yaml" Link="Packages/BEngine.Terrain/package.yaml"
+          TargetPath="Packages/BEngine.Terrain/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../BEngine.UIElements/package.yaml" Link="Packages/BEngine.UIElements/package.yaml"
+          TargetPath="Packages/BEngine.UIElements/package.yaml"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

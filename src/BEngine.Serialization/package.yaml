@@ -1,0 +1,22 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.serialization
+packageVersion: 1.0.0
+displayName: Serialization
+description: Unified YAML serialization and project document formats.
+enabledByDefault: true
+required: true
+runtime:
+  assembly: BEngine
+  rootNamespace: BEngine.Serialization
+  dependencies:
+  - packageId: com.bengine.core
+    target: runtime
+editor:
+  assembly: BEngine.Editor
+  rootNamespace: BEngine.Serialization.Editor
+  dependencies:
+  - packageId: com.bengine.serialization
+    target: runtime
+  - packageId: com.bengine.core
+    target: editor

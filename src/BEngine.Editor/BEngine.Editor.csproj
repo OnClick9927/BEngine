@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+    <AssemblyName>BEngine.Editor</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationIcon>../BEngine.Icons/BEngine.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine/BEngine.csproj" />
+    <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Input" />
+    <PackageReference Include="Silk.NET.OpenGL" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../BEngine.Core.Editor/**/*.cs"
+             Exclude="../BEngine.Core.Editor/bin/**/*;../BEngine.Core.Editor/obj/**/*;../BEngine.Core.Editor/Properties/AssemblyInfo.cs"
+             Link="Core/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Serialization.Editor/**/*.cs"
+             Exclude="../BEngine.Serialization.Editor/bin/**/*;../BEngine.Serialization.Editor/obj/**/*;../BEngine.Serialization.Editor/Properties/AssemblyInfo.cs"
+             Link="Serialization/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.ProjectSystem.Editor/**/*.cs"
+             Exclude="../BEngine.ProjectSystem.Editor/bin/**/*;../BEngine.ProjectSystem.Editor/obj/**/*;../BEngine.ProjectSystem.Editor/Properties/AssemblyInfo.cs"
+             Link="ProjectSystem/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Rendering.Editor/**/*.cs"
+             Exclude="../BEngine.Rendering.Editor/bin/**/*;../BEngine.Rendering.Editor/obj/**/*;../BEngine.Rendering.Editor/Properties/AssemblyInfo.cs"
+             Link="Rendering/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.UIElements.Editor/**/*.cs"
+             Exclude="../BEngine.UIElements.Editor/bin/**/*;../BEngine.UIElements.Editor/obj/**/*;../BEngine.UIElements.Editor/Properties/AssemblyInfo.cs"
+             Link="UIElements/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Physics3D.Editor/**/*.cs"
+             Exclude="../BEngine.Physics3D.Editor/bin/**/*;../BEngine.Physics3D.Editor/obj/**/*;../BEngine.Physics3D.Editor/Properties/AssemblyInfo.cs"
+             Link="Physics3D/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Terrain.Editor/**/*.cs"
+             Exclude="../BEngine.Terrain.Editor/bin/**/*;../BEngine.Terrain.Editor/obj/**/*;../BEngine.Terrain.Editor/Properties/AssemblyInfo.cs"
+             Link="Terrain/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Navigation.Editor/**/*.cs"
+             Exclude="../BEngine.Navigation.Editor/bin/**/*;../BEngine.Navigation.Editor/obj/**/*;../BEngine.Navigation.Editor/Properties/AssemblyInfo.cs"
+             Link="Navigation/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Animation.Editor/**/*.cs"
+             Exclude="../BEngine.Animation.Editor/bin/**/*;../BEngine.Animation.Editor/obj/**/*;../BEngine.Animation.Editor/Properties/AssemblyInfo.cs"
+             Link="Animation/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../BEngine.Codex.Editor/**/*.cs"
+             Exclude="../BEngine.Codex.Editor/bin/**/*;../BEngine.Codex.Editor/obj/**/*;../BEngine.Codex.Editor/Properties/AssemblyInfo.cs"
+             Link="Codex/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

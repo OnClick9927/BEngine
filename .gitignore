@@ -1,0 +1,16 @@
+.dotnet/
+.dotnet-cli/
+.packages/
+.vs/
+.vscode/
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+*.log
+artifacts/
+.artifacts/
+Examples/
+Temp/
+tests

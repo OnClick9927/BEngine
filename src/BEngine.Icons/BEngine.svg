@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">BEngine application icon</title>
+  <desc id="desc">A geometric teal letter B with a subtle three-dimensional offset on a graphite tile.</desc>
+  <rect x="64" y="64" width="896" height="896" rx="184" fill="#202427"/>
+  <rect x="76" y="76" width="872" height="872" rx="172" fill="none" stroke="#394044" stroke-width="24"/>
+
+  <path
+    d="M260 220H548C695 220 780 288 780 400C780 465 748 515 691 544C766 574 807 629 807 704C807 824 710 872 548 872H260V220ZM430 354V482H537C589 482 616 459 616 418C616 377 589 354 537 354H430ZM430 610V738H553C606 738 635 714 635 674C635 634 606 610 553 610H430Z"
+    fill="#147B73"
+    fill-rule="evenodd"
+    transform="translate(30 -30)"/>
+
+  <path
+    d="M260 220H548C695 220 780 288 780 400C780 465 748 515 691 544C766 574 807 629 807 704C807 824 710 872 548 872H260V220ZM430 354V482H537C589 482 616 459 616 418C616 377 589 354 537 354H430ZM430 610V738H553C606 738 635 714 635 674C635 634 606 610 553 610H430Z"
+    fill="#39C8AF"
+    fill-rule="evenodd"/>
+
+  <path d="M260 220H548C610 220 661 232 700 254L730 224C685 202 629 190 578 190H290L260 220Z" fill="#8BE4D2"/>
+  <path d="M260 220L290 190V842L260 872V220Z" fill="#238F83"/>
+</svg>
