@@ -1,0 +1,743 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Core", "Core", "{CD1B5D5A-B6D1-43FC-A25E-879FA641616B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{743F2933-655E-4B11-9BCA-5B27724B7DE2}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "EditorResources", "EditorResources", "{488E3C0A-547F-4B75-8CB1-B1C6F65961E9}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Readme.md = Core\EditorResources\Readme.md
+		Core\EditorResources\Web.config = Core\EditorResources\Web.config
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine", "Core\BEngine\BEngine.csproj", "{48794D92-E601-4812-8ADE-A6B9754E7949}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Editor", "Core\BEngine.Editor\BEngine.Editor.csproj", "{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Launcher", "Core\BEngine.Launcher\BEngine.Launcher.csproj", "{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Player", "Core\BEngine.Player\BEngine.Player.csproj", "{82F2CCA9-DC52-43C3-93D1-193C8640BA62}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Animation", "Animation", "{73E383BB-7761-DCB5-CCDD-E680A78A17C1}"
+	ProjectSection(SolutionItems) = preProject
+		Animation\package.yaml = Animation\package.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "EditorResources", "EditorResources", "{630D02F4-9D33-472F-B17B-72DE06B796C6}"
+	ProjectSection(SolutionItems) = preProject
+		Animation\EditorResources\Animation.png = Animation\EditorResources\Animation.png
+		Animation\EditorResources\Readme.md = Animation\EditorResources\Readme.md
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Animation", "Animation\BEngine.Animation\BEngine.Animation.csproj", "{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Animation.Editor", "Animation\BEngine.Animation.Editor\BEngine.Animation.Editor.csproj", "{D253D880-F9F4-43C9-BB36-735CA41CCB44}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Physics2D", "Physics2D", "{BAD34BFD-F3E4-1894-6299-B7234D1ED676}"
+	ProjectSection(SolutionItems) = preProject
+		Physics2D\package.yaml = Physics2D\package.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "EditorResources", "EditorResources", "{86DC3BFB-09B8-4649-80EC-66537826FA39}"
+	ProjectSection(SolutionItems) = preProject
+		Physics2D\EditorResources\Physics2D.png = Physics2D\EditorResources\Physics2D.png
+		Physics2D\EditorResources\Readme.md = Physics2D\EditorResources\Readme.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Navigation2D", "Navigation2D", "{0ECEAD53-1810-C10A-B502-49C453FB671F}"
+	ProjectSection(SolutionItems) = preProject
+		Navigation2D\package.yaml = Navigation2D\package.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "EditorResources", "EditorResources", "{1861E749-A6AC-4D3D-A13D-2917355CF8B8}"
+	ProjectSection(SolutionItems) = preProject
+		Navigation2D\EditorResources\Navigation2D.png = Navigation2D\EditorResources\Navigation2D.png
+		Navigation2D\EditorResources\Readme.md = Navigation2D\EditorResources\Readme.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PropertyAttributes", "PropertyAttributes", "{32EC4DB2-3A34-0368-ACBC-A8E649157066}"
+	ProjectSection(SolutionItems) = preProject
+		PropertyAttributes\package.yaml = PropertyAttributes\package.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "EditorResources", "EditorResources", "{C8CF4F19-EFE8-4EDD-B71C-7F95D37142E9}"
+	ProjectSection(SolutionItems) = preProject
+		PropertyAttributes\EditorResources\Readme.md = PropertyAttributes\EditorResources\Readme.md
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.PropertyAttributes", "PropertyAttributes\BEngine.PropertyAttributes\BEngine.PropertyAttributes.csproj", "{D6CAAE35-2CFF-40A6-861B-672913F96735}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.PropertyAttributes.Editor", "PropertyAttributes\BEngine.PropertyAttributes.Editor\BEngine.PropertyAttributes.Editor.csproj", "{F777EEB3-41D9-4500-96FF-312ED9A3E940}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UIElements", "UIElements", "{115EE151-9603-6535-D318-73D15B15E008}"
+	ProjectSection(SolutionItems) = preProject
+		UIElements\package.yaml = UIElements\package.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{A85FF4AC-334A-4AA4-B064-D98676FC7B35}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "EditorResources", "EditorResources", "{56DD6745-F632-48C3-953E-9B2880F1A52B}"
+	ProjectSection(SolutionItems) = preProject
+		UIElements\EditorResources\Readme.md = UIElements\EditorResources\Readme.md
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.UIElements", "UIElements\BEngine.UIElements\BEngine.UIElements.csproj", "{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.UIElements.Editor", "UIElements\BEngine.UIElements.Editor\BEngine.UIElements.Editor.csproj", "{66B17977-3C35-4CEC-8C0B-03E54DED2B56}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Physics2D", "Physics2D\BEngine.Physics2D\BEngine.Physics2D.csproj", "{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Physics2D.Editor", "Physics2D\BEngine.Physics2D.Editor\BEngine.Physics2D.Editor.csproj", "{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Navigation2D", "Navigation2D\BEngine.Navigation2D\BEngine.Navigation2D.csproj", "{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Navigation2D.Editor", "Navigation2D\BEngine.Navigation2D.Editor\BEngine.Navigation2D.Editor.csproj", "{3EC67D67-DF56-473E-AF25-690F609E78BA}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{89A51FA3-106F-320F-C40B-FECCB34E7EB1}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{E3B66917-3241-3F00-5415-339B2A1F8A24}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{99D82B8E-E023-D6B7-A0BE-76A541408A33}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{BBC9ACF3-7518-A543-D9C1-10654DD99716}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TiledMap", "TiledMap", "{37285921-62E0-A76E-2F56-4E3B8E4BFBEC}"
+	ProjectSection(SolutionItems) = preProject
+		TiledMap\package.yaml = TiledMap\package.yaml
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.TiledMap", "TiledMap\BEngine.TiledMap\BEngine.TiledMap.csproj", "{9BE17F9D-0605-4FEA-B800-B71D73907315}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.TiledMap.Editor", "TiledMap\BEngine.TiledMap.Editor\BEngine.TiledMap.Editor.csproj", "{CF5E9187-CF07-443D-AC63-6A45ED2713F8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{B2EBBFD2-9AA9-9B9E-A8D3-450ACF6131FE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "EditorResources", "EditorResources", "{30A04AB9-384A-1436-2B1E-D432033FBDDF}"
+	ProjectSection(SolutionItems) = preProject
+		TiledMap\EditorResources\Readme.md = TiledMap\EditorResources\Readme.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Icons", "Core\Resources\Icons", "{C6823955-164D-FD45-1CB4-28C4BDA69813}"
+	ProjectSection(SolutionItems) = preProject
+		Core\Resources\Icons\BEngine.64.rgba = Core\Resources\Icons\BEngine.64.rgba
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "Core\Resources\Shaders", "{1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "IMGUI", "Core\Resources\Shaders\IMGUI", "{78CEB72C-CB5D-D808-C09B-F95EF2E01053}"
+	ProjectSection(SolutionItems) = preProject
+		Core\Resources\Shaders\IMGUI\Solid.direct3d.frag.hlsl = Core\Resources\Shaders\IMGUI\Solid.direct3d.frag.hlsl
+		Core\Resources\Shaders\IMGUI\Solid.direct3d.vert.hlsl = Core\Resources\Shaders\IMGUI\Solid.direct3d.vert.hlsl
+		Core\Resources\Shaders\IMGUI\Solid.opengl.frag.glsl = Core\Resources\Shaders\IMGUI\Solid.opengl.frag.glsl
+		Core\Resources\Shaders\IMGUI\Solid.opengl.vert.glsl = Core\Resources\Shaders\IMGUI\Solid.opengl.vert.glsl
+		Core\Resources\Shaders\IMGUI\Solid.vulkan.frag.glsl = Core\Resources\Shaders\IMGUI\Solid.vulkan.frag.glsl
+		Core\Resources\Shaders\IMGUI\Solid.vulkan.vert.glsl = Core\Resources\Shaders\IMGUI\Solid.vulkan.vert.glsl
+		Core\Resources\Shaders\IMGUI\Solid.webgpu.wgsl = Core\Resources\Shaders\IMGUI\Solid.webgpu.wgsl
+		Core\Resources\Shaders\IMGUI\Textured.direct3d.frag.hlsl = Core\Resources\Shaders\IMGUI\Textured.direct3d.frag.hlsl
+		Core\Resources\Shaders\IMGUI\Textured.direct3d.vert.hlsl = Core\Resources\Shaders\IMGUI\Textured.direct3d.vert.hlsl
+		Core\Resources\Shaders\IMGUI\Textured.opengl.frag.glsl = Core\Resources\Shaders\IMGUI\Textured.opengl.frag.glsl
+		Core\Resources\Shaders\IMGUI\Textured.opengl.vert.glsl = Core\Resources\Shaders\IMGUI\Textured.opengl.vert.glsl
+		Core\Resources\Shaders\IMGUI\Textured.vulkan.frag.glsl = Core\Resources\Shaders\IMGUI\Textured.vulkan.frag.glsl
+		Core\Resources\Shaders\IMGUI\Textured.vulkan.vert.glsl = Core\Resources\Shaders\IMGUI\Textured.vulkan.vert.glsl
+		Core\Resources\Shaders\IMGUI\Textured.webgpu.wgsl = Core\Resources\Shaders\IMGUI\Textured.webgpu.wgsl
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PortableScene", "Core\Resources\Shaders\PortableScene", "{5470AC1D-5254-4BD6-4AD6-FA21F229A052}"
+	ProjectSection(SolutionItems) = preProject
+		Core\Resources\Shaders\PortableScene\Solid.opengl.frag.glsl = Core\Resources\Shaders\PortableScene\Solid.opengl.frag.glsl
+		Core\Resources\Shaders\PortableScene\Solid.opengl.vert.glsl = Core\Resources\Shaders\PortableScene\Solid.opengl.vert.glsl
+		Core\Resources\Shaders\PortableScene\Solid.vulkan.frag.glsl = Core\Resources\Shaders\PortableScene\Solid.vulkan.frag.glsl
+		Core\Resources\Shaders\PortableScene\Solid.vulkan.vert.glsl = Core\Resources\Shaders\PortableScene\Solid.vulkan.vert.glsl
+		Core\Resources\Shaders\PortableScene\Textured.direct3d.frag.hlsl = Core\Resources\Shaders\PortableScene\Textured.direct3d.frag.hlsl
+		Core\Resources\Shaders\PortableScene\Textured.direct3d.vert.hlsl = Core\Resources\Shaders\PortableScene\Textured.direct3d.vert.hlsl
+		Core\Resources\Shaders\PortableScene\Textured.opengl.frag.glsl = Core\Resources\Shaders\PortableScene\Textured.opengl.frag.glsl
+		Core\Resources\Shaders\PortableScene\Textured.opengl.vert.glsl = Core\Resources\Shaders\PortableScene\Textured.opengl.vert.glsl
+		Core\Resources\Shaders\PortableScene\Textured.vulkan.frag.glsl = Core\Resources\Shaders\PortableScene\Textured.vulkan.frag.glsl
+		Core\Resources\Shaders\PortableScene\Textured.vulkan.vert.glsl = Core\Resources\Shaders\PortableScene\Textured.vulkan.vert.glsl
+		Core\Resources\Shaders\PortableScene\Textured.webgpu.wgsl = Core\Resources\Shaders\PortableScene\Textured.webgpu.wgsl
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Scene", "Core\Resources\Shaders\Scene", "{51A648AF-6DE1-94E6-3D40-19F9320D3D91}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Core\EditorResources\Doc", "{BF341920-9682-1D7A-C885-89CA8B6A107F}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Doc\index.html = Core\EditorResources\Doc\index.html
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Core\EditorResources\Examples", "{E1C460E6-8867-557E-8674-56163A66A153}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Examples\CoreGettingStarted.bpackage = Core\EditorResources\Examples\CoreGettingStarted.bpackage
+		Core\EditorResources\Examples\EcsSystems.bpackage = Core\EditorResources\Examples\EcsSystems.bpackage
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Icons", "Core\EditorResources\Icons", "{91B5755B-1E62-2531-191D-48DBD8E2E9BA}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Icons\BEngine.ico = Core\EditorResources\Icons\BEngine.ico
+		Core\EditorResources\Icons\BEngine.png = Core\EditorResources\Icons\BEngine.png
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Assets", "Core\EditorResources\Icons\Assets", "{BC9B6BBC-0299-C4FB-E46E-82706909670D}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Icons\Assets\AssetAnimation.png = Core\EditorResources\Icons\Assets\AssetAnimation.png
+		Core\EditorResources\Icons\Assets\AssetAssembly.png = Core\EditorResources\Icons\Assets\AssetAssembly.png
+		Core\EditorResources\Icons\Assets\AssetAudio.png = Core\EditorResources\Icons\Assets\AssetAudio.png
+		Core\EditorResources\Icons\Assets\AssetData.png = Core\EditorResources\Icons\Assets\AssetData.png
+		Core\EditorResources\Icons\Assets\AssetDefault.png = Core\EditorResources\Icons\Assets\AssetDefault.png
+		Core\EditorResources\Icons\Assets\AssetFont.png = Core\EditorResources\Icons\Assets\AssetFont.png
+		Core\EditorResources\Icons\Assets\AssetImage.png = Core\EditorResources\Icons\Assets\AssetImage.png
+		Core\EditorResources\Icons\Assets\AssetMarkup.png = Core\EditorResources\Icons\Assets\AssetMarkup.png
+		Core\EditorResources\Icons\Assets\AssetMaterial.png = Core\EditorResources\Icons\Assets\AssetMaterial.png
+		Core\EditorResources\Icons\Assets\AssetModel.png = Core\EditorResources\Icons\Assets\AssetModel.png
+		Core\EditorResources\Icons\Assets\AssetPrefab.png = Core\EditorResources\Icons\Assets\AssetPrefab.png
+		Core\EditorResources\Icons\Assets\AssetScene.png = Core\EditorResources\Icons\Assets\AssetScene.png
+		Core\EditorResources\Icons\Assets\AssetScript.png = Core\EditorResources\Icons\Assets\AssetScript.png
+		Core\EditorResources\Icons\Assets\AssetShader.png = Core\EditorResources\Icons\Assets\AssetShader.png
+		Core\EditorResources\Icons\Assets\AssetStyle.png = Core\EditorResources\Icons\Assets\AssetStyle.png
+		Core\EditorResources\Icons\Assets\AssetText.png = Core\EditorResources\Icons\Assets\AssetText.png
+		Core\EditorResources\Icons\Assets\FolderClosed.png = Core\EditorResources\Icons\Assets\FolderClosed.png
+		Core\EditorResources\Icons\Assets\FolderEmpty.png = Core\EditorResources\Icons\Assets\FolderEmpty.png
+		Core\EditorResources\Icons\Assets\FolderOpen.png = Core\EditorResources\Icons\Assets\FolderOpen.png
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Components", "Core\EditorResources\Icons\Components", "{3C667749-5C97-A565-51E9-FF52D1AC0BE7}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Icons\Components\Camera.png = Core\EditorResources\Icons\Components\Camera.png
+		Core\EditorResources\Icons\Components\Component.png = Core\EditorResources\Icons\Components\Component.png
+		Core\EditorResources\Icons\Components\GameObject.png = Core\EditorResources\Icons\Components\GameObject.png
+		Core\EditorResources\Icons\Components\Script.png = Core\EditorResources\Icons\Components\Script.png
+		Core\EditorResources\Icons\Components\Transform.png = Core\EditorResources\Icons\Components\Transform.png
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Toolbar", "Core\EditorResources\Icons\Toolbar", "{1B39EA01-71A1-9067-7B1A-1D793607A5BF}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Icons\Toolbar\Add.png = Core\EditorResources\Icons\Toolbar\Add.png
+		Core\EditorResources\Icons\Toolbar\Browse.png = Core\EditorResources\Icons\Toolbar\Browse.png
+		Core\EditorResources\Icons\Toolbar\Button.png = Core\EditorResources\Icons\Toolbar\Button.png
+		Core\EditorResources\Icons\Toolbar\Check.png = Core\EditorResources\Icons\Toolbar\Check.png
+		Core\EditorResources\Icons\Toolbar\Clear.png = Core\EditorResources\Icons\Toolbar\Clear.png
+		Core\EditorResources\Icons\Toolbar\Container.png = Core\EditorResources\Icons\Toolbar\Container.png
+		Core\EditorResources\Icons\Toolbar\Delete.png = Core\EditorResources\Icons\Toolbar\Delete.png
+		Core\EditorResources\Icons\Toolbar\Error.png = Core\EditorResources\Icons\Toolbar\Error.png
+		Core\EditorResources\Icons\Toolbar\Field.png = Core\EditorResources\Icons\Toolbar\Field.png
+		Core\EditorResources\Icons\Toolbar\FoldoutClosed.png = Core\EditorResources\Icons\Toolbar\FoldoutClosed.png
+		Core\EditorResources\Icons\Toolbar\FoldoutOpen.png = Core\EditorResources\Icons\Toolbar\FoldoutOpen.png
+		Core\EditorResources\Icons\Toolbar\Hidden.png = Core\EditorResources\Icons\Toolbar\Hidden.png
+		Core\EditorResources\Icons\Toolbar\Html.png = Core\EditorResources\Icons\Toolbar\Html.png
+		Core\EditorResources\Icons\Toolbar\Info.png = Core\EditorResources\Icons\Toolbar\Info.png
+		Core\EditorResources\Icons\Toolbar\Label.png = Core\EditorResources\Icons\Toolbar\Label.png
+		Core\EditorResources\Icons\Toolbar\Lock.png = Core\EditorResources\Icons\Toolbar\Lock.png
+		Core\EditorResources\Icons\Toolbar\More.png = Core\EditorResources\Icons\Toolbar\More.png
+		Core\EditorResources\Icons\Toolbar\Move.png = Core\EditorResources\Icons\Toolbar\Move.png
+		Core\EditorResources\Icons\Toolbar\New.png = Core\EditorResources\Icons\Toolbar\New.png
+		Core\EditorResources\Icons\Toolbar\OpenFolder.png = Core\EditorResources\Icons\Toolbar\OpenFolder.png
+		Core\EditorResources\Icons\Toolbar\Pause.png = Core\EditorResources\Icons\Toolbar\Pause.png
+		Core\EditorResources\Icons\Toolbar\Play.png = Core\EditorResources\Icons\Toolbar\Play.png
+		Core\EditorResources\Icons\Toolbar\Rect.png = Core\EditorResources\Icons\Toolbar\Rect.png
+		Core\EditorResources\Icons\Toolbar\Refresh.png = Core\EditorResources\Icons\Toolbar\Refresh.png
+		Core\EditorResources\Icons\Toolbar\Rotate.png = Core\EditorResources\Icons\Toolbar\Rotate.png
+		Core\EditorResources\Icons\Toolbar\Save.png = Core\EditorResources\Icons\Toolbar\Save.png
+		Core\EditorResources\Icons\Toolbar\Scale.png = Core\EditorResources\Icons\Toolbar\Scale.png
+		Core\EditorResources\Icons\Toolbar\Search.png = Core\EditorResources\Icons\Toolbar\Search.png
+		Core\EditorResources\Icons\Toolbar\Send.png = Core\EditorResources\Icons\Toolbar\Send.png
+		Core\EditorResources\Icons\Toolbar\Settings.png = Core\EditorResources\Icons\Toolbar\Settings.png
+		Core\EditorResources\Icons\Toolbar\Step.png = Core\EditorResources\Icons\Toolbar\Step.png
+		Core\EditorResources\Icons\Toolbar\Stop.png = Core\EditorResources\Icons\Toolbar\Stop.png
+		Core\EditorResources\Icons\Toolbar\Unlock.png = Core\EditorResources\Icons\Toolbar\Unlock.png
+		Core\EditorResources\Icons\Toolbar\Up.png = Core\EditorResources\Icons\Toolbar\Up.png
+		Core\EditorResources\Icons\Toolbar\View.png = Core\EditorResources\Icons\Toolbar\View.png
+		Core\EditorResources\Icons\Toolbar\Visible.png = Core\EditorResources\Icons\Toolbar\Visible.png
+		Core\EditorResources\Icons\Toolbar\Warning.png = Core\EditorResources\Icons\Toolbar\Warning.png
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Windows", "Core\EditorResources\Icons\Windows", "{EDF9D61F-1FAA-1756-31B8-5BA4B68A6585}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Icons\Windows\Codex.png = Core\EditorResources\Icons\Windows\Codex.png
+		Core\EditorResources\Icons\Windows\Console.png = Core\EditorResources\Icons\Windows\Console.png
+		Core\EditorResources\Icons\Windows\EditorStatus.png = Core\EditorResources\Icons\Windows\EditorStatus.png
+		Core\EditorResources\Icons\Windows\Game.png = Core\EditorResources\Icons\Windows\Game.png
+		Core\EditorResources\Icons\Windows\Hierarchy.png = Core\EditorResources\Icons\Windows\Hierarchy.png
+		Core\EditorResources\Icons\Windows\HtmlConverter.png = Core\EditorResources\Icons\Windows\HtmlConverter.png
+		Core\EditorResources\Icons\Windows\Inspector.png = Core\EditorResources\Icons\Windows\Inspector.png
+		Core\EditorResources\Icons\Windows\PackageManager.png = Core\EditorResources\Icons\Windows\PackageManager.png
+		Core\EditorResources\Icons\Windows\Preferences.png = Core\EditorResources\Icons\Windows\Preferences.png
+		Core\EditorResources\Icons\Windows\Project.png = Core\EditorResources\Icons\Windows\Project.png
+		Core\EditorResources\Icons\Windows\ProjectSettings.png = Core\EditorResources\Icons\Windows\ProjectSettings.png
+		Core\EditorResources\Icons\Windows\Scene.png = Core\EditorResources\Icons\Windows\Scene.png
+		Core\EditorResources\Icons\Windows\UIBuilder.png = Core\EditorResources\Icons\Windows\UIBuilder.png
+		Core\EditorResources\Icons\Windows\Window.png = Core\EditorResources\Icons\Windows\Window.png
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Core\EditorResources\Skills", "{E8DA83EF-CE5B-5FAB-B7EF-AE38D8A05EE8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-core", "Core\EditorResources\Skills\bengine-core", "{90C8C335-44DF-1842-2A32-39318C179058}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Skills\bengine-core\SKILL.md = Core\EditorResources\Skills\bengine-core\SKILL.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Core\EditorResources\Skills\bengine-core\agents", "{4690D2DF-08C4-5B48-8C7C-959E0AF28DA1}"
+	ProjectSection(SolutionItems) = preProject
+		Core\EditorResources\Skills\bengine-core\agents\openai.yaml = Core\EditorResources\Skills\bengine-core\agents\openai.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Animation\EditorResources\Doc", "{EA12BDB4-C8F4-857B-D5A1-22FD3B0CF976}"
+	ProjectSection(SolutionItems) = preProject
+		Animation\EditorResources\Doc\index.html = Animation\EditorResources\Doc\index.html
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Animation\EditorResources\Examples", "{B1159C21-EDB1-67C5-7454-C9F82E9049E4}"
+	ProjectSection(SolutionItems) = preProject
+		Animation\EditorResources\Examples\AnimationGettingStarted.bpackage = Animation\EditorResources\Examples\AnimationGettingStarted.bpackage
+		Animation\EditorResources\Examples\StateMachine.bpackage = Animation\EditorResources\Examples\StateMachine.bpackage
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Animation\EditorResources\Skills", "{0AF8C36B-D80D-1362-E6EB-418DEB735AB2}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-animation", "Animation\EditorResources\Skills\bengine-animation", "{E94882F7-261A-C01A-C80D-A73C7A1D275A}"
+	ProjectSection(SolutionItems) = preProject
+		Animation\EditorResources\Skills\bengine-animation\SKILL.md = Animation\EditorResources\Skills\bengine-animation\SKILL.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Animation\EditorResources\Skills\bengine-animation\agents", "{AE4D78BA-24AF-A67A-881B-D3EA2BB8184B}"
+	ProjectSection(SolutionItems) = preProject
+		Animation\EditorResources\Skills\bengine-animation\agents\openai.yaml = Animation\EditorResources\Skills\bengine-animation\agents\openai.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Navigation2D\EditorResources\Doc", "{4C18CCA8-8CBC-2F99-F0C9-491E2CA6D024}"
+	ProjectSection(SolutionItems) = preProject
+		Navigation2D\EditorResources\Doc\index.html = Navigation2D\EditorResources\Doc\index.html
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Navigation2D\EditorResources\Examples", "{9ACD91B5-761C-1A84-0857-EA51A07AA6E7}"
+	ProjectSection(SolutionItems) = preProject
+		Navigation2D\EditorResources\Examples\DynamicRebake.bpackage = Navigation2D\EditorResources\Examples\DynamicRebake.bpackage
+		Navigation2D\EditorResources\Examples\NavigationSurfaceAndAgent.bpackage = Navigation2D\EditorResources\Examples\NavigationSurfaceAndAgent.bpackage
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Navigation2D\EditorResources\Skills", "{F1B7BFF6-A7E6-F954-F524-61141E159798}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-navigation2d", "Navigation2D\EditorResources\Skills\bengine-navigation2d", "{D2B23D8D-9D37-2BC7-4CFA-4FDC361561E8}"
+	ProjectSection(SolutionItems) = preProject
+		Navigation2D\EditorResources\Skills\bengine-navigation2d\SKILL.md = Navigation2D\EditorResources\Skills\bengine-navigation2d\SKILL.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Navigation2D\EditorResources\Skills\bengine-navigation2d\agents", "{FA1E00E1-E5EA-5382-AA4B-334F27A48AB3}"
+	ProjectSection(SolutionItems) = preProject
+		Navigation2D\EditorResources\Skills\bengine-navigation2d\agents\openai.yaml = Navigation2D\EditorResources\Skills\bengine-navigation2d\agents\openai.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Physics2D\EditorResources\Doc", "{97BAC3A6-4847-9D33-C8C6-98BE1AEB5802}"
+	ProjectSection(SolutionItems) = preProject
+		Physics2D\EditorResources\Doc\index.html = Physics2D\EditorResources\Doc\index.html
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Physics2D\EditorResources\Examples", "{BF66E9E2-8407-44A8-CC3D-3DE13611CC40}"
+	ProjectSection(SolutionItems) = preProject
+		Physics2D\EditorResources\Examples\RigidbodyAndQueries.bpackage = Physics2D\EditorResources\Examples\RigidbodyAndQueries.bpackage
+		Physics2D\EditorResources\Examples\TriggersAndQueries.bpackage = Physics2D\EditorResources\Examples\TriggersAndQueries.bpackage
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Physics2D\EditorResources\Skills", "{B793F960-F541-8610-F2DD-750E0E3F0F01}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-physics2d", "Physics2D\EditorResources\Skills\bengine-physics2d", "{F1D11422-A196-1ABE-219D-D855273E81F6}"
+	ProjectSection(SolutionItems) = preProject
+		Physics2D\EditorResources\Skills\bengine-physics2d\SKILL.md = Physics2D\EditorResources\Skills\bengine-physics2d\SKILL.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Physics2D\EditorResources\Skills\bengine-physics2d\agents", "{5806F2AA-E552-29CA-3AF6-A5C2AF0D93B3}"
+	ProjectSection(SolutionItems) = preProject
+		Physics2D\EditorResources\Skills\bengine-physics2d\agents\openai.yaml = Physics2D\EditorResources\Skills\bengine-physics2d\agents\openai.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "PropertyAttributes\EditorResources\Doc", "{7D8955D5-78C4-62ED-2BD6-32D09A66B1CC}"
+	ProjectSection(SolutionItems) = preProject
+		PropertyAttributes\EditorResources\Doc\index.html = PropertyAttributes\EditorResources\Doc\index.html
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "PropertyAttributes\EditorResources\Examples", "{07111066-40DF-C787-452E-21672780933C}"
+	ProjectSection(SolutionItems) = preProject
+		PropertyAttributes\EditorResources\Examples\AttributesGallery.bpackage = PropertyAttributes\EditorResources\Examples\AttributesGallery.bpackage
+		PropertyAttributes\EditorResources\Examples\InspectorAttributesAndDrawer.bpackage = PropertyAttributes\EditorResources\Examples\InspectorAttributesAndDrawer.bpackage
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "PropertyAttributes\EditorResources\Skills", "{E2399144-8884-DF03-C8F2-5DE8B5E37FCB}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-property-attributes", "PropertyAttributes\EditorResources\Skills\bengine-property-attributes", "{82BB85AC-E4AF-8DC7-61A4-DADA2D8865A5}"
+	ProjectSection(SolutionItems) = preProject
+		PropertyAttributes\EditorResources\Skills\bengine-property-attributes\SKILL.md = PropertyAttributes\EditorResources\Skills\bengine-property-attributes\SKILL.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "PropertyAttributes\EditorResources\Skills\bengine-property-attributes\agents", "{F9AF8BC0-D9A4-C3FE-1369-EC153EAAEC16}"
+	ProjectSection(SolutionItems) = preProject
+		PropertyAttributes\EditorResources\Skills\bengine-property-attributes\agents\openai.yaml = PropertyAttributes\EditorResources\Skills\bengine-property-attributes\agents\openai.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "TiledMap\Resources\Shaders", "{08894D00-0203-5825-AD73-B7493669E0E7}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TiledMap", "TiledMap\Resources\Shaders\TiledMap", "{57133FD0-5934-28C7-E6FF-5015DDD89B12}"
+	ProjectSection(SolutionItems) = preProject
+		TiledMap\Resources\Shaders\TiledMap\Textured.direct3d.frag.hlsl = TiledMap\Resources\Shaders\TiledMap\Textured.direct3d.frag.hlsl
+		TiledMap\Resources\Shaders\TiledMap\Textured.direct3d.vert.hlsl = TiledMap\Resources\Shaders\TiledMap\Textured.direct3d.vert.hlsl
+		TiledMap\Resources\Shaders\TiledMap\Textured.opengl.frag.glsl = TiledMap\Resources\Shaders\TiledMap\Textured.opengl.frag.glsl
+		TiledMap\Resources\Shaders\TiledMap\Textured.opengl.vert.glsl = TiledMap\Resources\Shaders\TiledMap\Textured.opengl.vert.glsl
+		TiledMap\Resources\Shaders\TiledMap\Textured.vulkan.frag.glsl = TiledMap\Resources\Shaders\TiledMap\Textured.vulkan.frag.glsl
+		TiledMap\Resources\Shaders\TiledMap\Textured.vulkan.vert.glsl = TiledMap\Resources\Shaders\TiledMap\Textured.vulkan.vert.glsl
+		TiledMap\Resources\Shaders\TiledMap\Textured.webgpu.wgsl = TiledMap\Resources\Shaders\TiledMap\Textured.webgpu.wgsl
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "TiledMap\EditorResources\Doc", "{85014579-F50E-8D07-543F-577167E20058}"
+	ProjectSection(SolutionItems) = preProject
+		TiledMap\EditorResources\Doc\index.html = TiledMap\EditorResources\Doc\index.html
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "TiledMap\EditorResources\Examples", "{6DFD7979-F68E-E729-D6D6-8474BAB1AB62}"
+	ProjectSection(SolutionItems) = preProject
+		TiledMap\EditorResources\Examples\AtlasPalette.bpackage = TiledMap\EditorResources\Examples\AtlasPalette.bpackage
+		TiledMap\EditorResources\Examples\RuntimePainting.bpackage = TiledMap\EditorResources\Examples\RuntimePainting.bpackage
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "TiledMap\EditorResources\Skills", "{9ACC0993-7302-F41C-3AAC-62EC81464061}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-tiledmap", "TiledMap\EditorResources\Skills\bengine-tiledmap", "{52105A07-BCC0-37D1-4FFD-69FED0261A50}"
+	ProjectSection(SolutionItems) = preProject
+		TiledMap\EditorResources\Skills\bengine-tiledmap\SKILL.md = TiledMap\EditorResources\Skills\bengine-tiledmap\SKILL.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "TiledMap\EditorResources\Skills\bengine-tiledmap\agents", "{BCA4267A-2131-412B-38F1-B1F2F8CAB9AF}"
+	ProjectSection(SolutionItems) = preProject
+		TiledMap\EditorResources\Skills\bengine-tiledmap\agents\openai.yaml = TiledMap\EditorResources\Skills\bengine-tiledmap\agents\openai.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "UIElements\Resources\Shaders", "{549A9100-1F3A-158B-EDE2-1092AC79DD8F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UIElements", "UIElements\Resources\Shaders\UIElements", "{51BB34FD-DF13-ECC9-97FC-40C929ADA090}"
+	ProjectSection(SolutionItems) = preProject
+		UIElements\Resources\Shaders\UIElements\Solid.direct3d.frag.hlsl = UIElements\Resources\Shaders\UIElements\Solid.direct3d.frag.hlsl
+		UIElements\Resources\Shaders\UIElements\Solid.direct3d.vert.hlsl = UIElements\Resources\Shaders\UIElements\Solid.direct3d.vert.hlsl
+		UIElements\Resources\Shaders\UIElements\Solid.opengl.frag.glsl = UIElements\Resources\Shaders\UIElements\Solid.opengl.frag.glsl
+		UIElements\Resources\Shaders\UIElements\Solid.opengl.vert.glsl = UIElements\Resources\Shaders\UIElements\Solid.opengl.vert.glsl
+		UIElements\Resources\Shaders\UIElements\Solid.vulkan.frag.glsl = UIElements\Resources\Shaders\UIElements\Solid.vulkan.frag.glsl
+		UIElements\Resources\Shaders\UIElements\Solid.vulkan.vert.glsl = UIElements\Resources\Shaders\UIElements\Solid.vulkan.vert.glsl
+		UIElements\Resources\Shaders\UIElements\Solid.webgpu.wgsl = UIElements\Resources\Shaders\UIElements\Solid.webgpu.wgsl
+		UIElements\Resources\Shaders\UIElements\Textured.direct3d.frag.hlsl = UIElements\Resources\Shaders\UIElements\Textured.direct3d.frag.hlsl
+		UIElements\Resources\Shaders\UIElements\Textured.direct3d.vert.hlsl = UIElements\Resources\Shaders\UIElements\Textured.direct3d.vert.hlsl
+		UIElements\Resources\Shaders\UIElements\Textured.opengl.frag.glsl = UIElements\Resources\Shaders\UIElements\Textured.opengl.frag.glsl
+		UIElements\Resources\Shaders\UIElements\Textured.opengl.vert.glsl = UIElements\Resources\Shaders\UIElements\Textured.opengl.vert.glsl
+		UIElements\Resources\Shaders\UIElements\Textured.vulkan.frag.glsl = UIElements\Resources\Shaders\UIElements\Textured.vulkan.frag.glsl
+		UIElements\Resources\Shaders\UIElements\Textured.vulkan.vert.glsl = UIElements\Resources\Shaders\UIElements\Textured.vulkan.vert.glsl
+		UIElements\Resources\Shaders\UIElements\Textured.webgpu.wgsl = UIElements\Resources\Shaders\UIElements\Textured.webgpu.wgsl
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "UIElements\EditorResources\Doc", "{A1F21BF6-46A7-01E0-4A41-521D5A6E0575}"
+	ProjectSection(SolutionItems) = preProject
+		UIElements\EditorResources\Doc\index.html = UIElements\EditorResources\Doc\index.html
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "UIElements\EditorResources\Examples", "{856616D4-0165-56DB-31AD-72471F895201}"
+	ProjectSection(SolutionItems) = preProject
+		UIElements\EditorResources\Examples\ControlsGallery.bpackage = UIElements\EditorResources\Examples\ControlsGallery.bpackage
+		UIElements\EditorResources\Examples\RuntimeHud.bpackage = UIElements\EditorResources\Examples\RuntimeHud.bpackage
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "UIElements\EditorResources\Skills", "{C0039F38-0C42-46DB-4202-F33F12E680AB}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-ui-elements", "UIElements\EditorResources\Skills\bengine-ui-elements", "{C4F2AB69-5228-58A9-1E09-F06160CBDD8C}"
+	ProjectSection(SolutionItems) = preProject
+		UIElements\EditorResources\Skills\bengine-ui-elements\SKILL.md = UIElements\EditorResources\Skills\bengine-ui-elements\SKILL.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "UIElements\EditorResources\Skills\bengine-ui-elements\agents", "{87426153-4225-8378-F10C-6CF8BD0B6743}"
+	ProjectSection(SolutionItems) = preProject
+		UIElements\EditorResources\Skills\bengine-ui-elements\agents\openai.yaml = UIElements\EditorResources\Skills\bengine-ui-elements\agents\openai.yaml
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Debug|x64.Build.0 = Debug|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Debug|x86.Build.0 = Debug|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Release|Any CPU.Build.0 = Release|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Release|x64.ActiveCfg = Release|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Release|x64.Build.0 = Release|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Release|x86.ActiveCfg = Release|Any CPU
+		{48794D92-E601-4812-8ADE-A6B9754E7949}.Release|x86.Build.0 = Release|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Debug|x64.Build.0 = Debug|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Debug|x86.Build.0 = Debug|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Release|x64.ActiveCfg = Release|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Release|x64.Build.0 = Release|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Release|x86.ActiveCfg = Release|Any CPU
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6}.Release|x86.Build.0 = Release|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Debug|x64.Build.0 = Debug|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Debug|x86.Build.0 = Debug|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Release|x64.ActiveCfg = Release|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Release|x64.Build.0 = Release|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Release|x86.ActiveCfg = Release|Any CPU
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286}.Release|x86.Build.0 = Release|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Debug|x64.Build.0 = Debug|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Debug|x86.Build.0 = Debug|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Release|Any CPU.Build.0 = Release|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Release|x64.ActiveCfg = Release|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Release|x64.Build.0 = Release|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Release|x86.ActiveCfg = Release|Any CPU
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62}.Release|x86.Build.0 = Release|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Debug|x64.Build.0 = Debug|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Debug|x86.Build.0 = Debug|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Release|x64.ActiveCfg = Release|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Release|x64.Build.0 = Release|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Release|x86.ActiveCfg = Release|Any CPU
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85}.Release|x86.Build.0 = Release|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Debug|x64.Build.0 = Debug|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Debug|x86.Build.0 = Debug|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Release|x64.ActiveCfg = Release|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Release|x64.Build.0 = Release|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Release|x86.ActiveCfg = Release|Any CPU
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44}.Release|x86.Build.0 = Release|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Debug|x64.Build.0 = Debug|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Debug|x86.Build.0 = Debug|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Release|x64.ActiveCfg = Release|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Release|x64.Build.0 = Release|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Release|x86.ActiveCfg = Release|Any CPU
+		{D6CAAE35-2CFF-40A6-861B-672913F96735}.Release|x86.Build.0 = Release|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Debug|x64.Build.0 = Debug|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Debug|x86.Build.0 = Debug|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Release|x64.ActiveCfg = Release|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Release|x64.Build.0 = Release|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Release|x86.ActiveCfg = Release|Any CPU
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940}.Release|x86.Build.0 = Release|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Debug|x64.Build.0 = Debug|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Debug|x86.Build.0 = Debug|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Release|x64.ActiveCfg = Release|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Release|x64.Build.0 = Release|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Release|x86.ActiveCfg = Release|Any CPU
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE}.Release|x86.Build.0 = Release|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Debug|x64.Build.0 = Debug|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Debug|x86.Build.0 = Debug|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Release|Any CPU.Build.0 = Release|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Release|x64.ActiveCfg = Release|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Release|x64.Build.0 = Release|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Release|x86.ActiveCfg = Release|Any CPU
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56}.Release|x86.Build.0 = Release|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Debug|x64.Build.0 = Debug|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Debug|x86.Build.0 = Debug|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Release|x64.ActiveCfg = Release|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Release|x64.Build.0 = Release|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Release|x86.ActiveCfg = Release|Any CPU
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB}.Release|x86.Build.0 = Release|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Debug|x64.Build.0 = Debug|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Debug|x86.Build.0 = Debug|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Release|x64.ActiveCfg = Release|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Release|x64.Build.0 = Release|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Release|x86.ActiveCfg = Release|Any CPU
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476}.Release|x86.Build.0 = Release|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Debug|x64.Build.0 = Debug|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Debug|x86.Build.0 = Debug|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Release|x64.ActiveCfg = Release|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Release|x64.Build.0 = Release|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Release|x86.ActiveCfg = Release|Any CPU
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C}.Release|x86.Build.0 = Release|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Debug|x64.Build.0 = Debug|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Debug|x86.Build.0 = Debug|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Release|x64.ActiveCfg = Release|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Release|x64.Build.0 = Release|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Release|x86.ActiveCfg = Release|Any CPU
+		{3EC67D67-DF56-473E-AF25-690F609E78BA}.Release|x86.Build.0 = Release|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Debug|x64.Build.0 = Debug|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Debug|x86.Build.0 = Debug|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Release|x64.ActiveCfg = Release|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Release|x64.Build.0 = Release|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Release|x86.ActiveCfg = Release|Any CPU
+		{9BE17F9D-0605-4FEA-B800-B71D73907315}.Release|x86.Build.0 = Release|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Debug|x64.Build.0 = Debug|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Debug|x86.Build.0 = Debug|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Release|x64.ActiveCfg = Release|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Release|x64.Build.0 = Release|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Release|x86.ActiveCfg = Release|Any CPU
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{07111066-40DF-C787-452E-21672780933C} = {C8CF4F19-EFE8-4EDD-B71C-7F95D37142E9}
+		{08894D00-0203-5825-AD73-B7493669E0E7} = {B2EBBFD2-9AA9-9B9E-A8D3-450ACF6131FE}
+		{0AF8C36B-D80D-1362-E6EB-418DEB735AB2} = {630D02F4-9D33-472F-B17B-72DE06B796C6}
+		{1861E749-A6AC-4D3D-A13D-2917355CF8B8} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
+		{1B39EA01-71A1-9067-7B1A-1D793607A5BF} = {91B5755B-1E62-2531-191D-48DBD8E2E9BA}
+		{1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8} = {743F2933-655E-4B11-9BCA-5B27724B7DE2}
+		{30A04AB9-384A-1436-2B1E-D432033FBDDF} = {37285921-62E0-A76E-2F56-4E3B8E4BFBEC}
+		{3C667749-5C97-A565-51E9-FF52D1AC0BE7} = {91B5755B-1E62-2531-191D-48DBD8E2E9BA}
+		{3EC67D67-DF56-473E-AF25-690F609E78BA} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
+		{4690D2DF-08C4-5B48-8C7C-959E0AF28DA1} = {90C8C335-44DF-1842-2A32-39318C179058}
+		{48794D92-E601-4812-8ADE-A6B9754E7949} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{488E3C0A-547F-4B75-8CB1-B1C6F65961E9} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{4C18CCA8-8CBC-2F99-F0C9-491E2CA6D024} = {1861E749-A6AC-4D3D-A13D-2917355CF8B8}
+		{51A648AF-6DE1-94E6-3D40-19F9320D3D91} = {1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}
+		{51BB34FD-DF13-ECC9-97FC-40C929ADA090} = {549A9100-1F3A-158B-EDE2-1092AC79DD8F}
+		{52105A07-BCC0-37D1-4FFD-69FED0261A50} = {9ACC0993-7302-F41C-3AAC-62EC81464061}
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{5470AC1D-5254-4BD6-4AD6-FA21F229A052} = {1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}
+		{549A9100-1F3A-158B-EDE2-1092AC79DD8F} = {A85FF4AC-334A-4AA4-B064-D98676FC7B35}
+		{56DD6745-F632-48C3-953E-9B2880F1A52B} = {115EE151-9603-6535-D318-73D15B15E008}
+		{57133FD0-5934-28C7-E6FF-5015DDD89B12} = {08894D00-0203-5825-AD73-B7493669E0E7}
+		{5806F2AA-E552-29CA-3AF6-A5C2AF0D93B3} = {F1D11422-A196-1ABE-219D-D855273E81F6}
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{630D02F4-9D33-472F-B17B-72DE06B796C6} = {73E383BB-7761-DCB5-CCDD-E680A78A17C1}
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE} = {115EE151-9603-6535-D318-73D15B15E008}
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56} = {115EE151-9603-6535-D318-73D15B15E008}
+		{6DFD7979-F68E-E729-D6D6-8474BAB1AB62} = {30A04AB9-384A-1436-2B1E-D432033FBDDF}
+		{743F2933-655E-4B11-9BCA-5B27724B7DE2} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
+		{78CEB72C-CB5D-D808-C09B-F95EF2E01053} = {1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}
+		{7D8955D5-78C4-62ED-2BD6-32D09A66B1CC} = {C8CF4F19-EFE8-4EDD-B71C-7F95D37142E9}
+		{82BB85AC-E4AF-8DC7-61A4-DADA2D8865A5} = {E2399144-8884-DF03-C8F2-5DE8B5E37FCB}
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{85014579-F50E-8D07-543F-577167E20058} = {30A04AB9-384A-1436-2B1E-D432033FBDDF}
+		{856616D4-0165-56DB-31AD-72471F895201} = {56DD6745-F632-48C3-953E-9B2880F1A52B}
+		{86DC3BFB-09B8-4649-80EC-66537826FA39} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
+		{87426153-4225-8378-F10C-6CF8BD0B6743} = {C4F2AB69-5228-58A9-1E09-F06160CBDD8C}
+		{89A51FA3-106F-320F-C40B-FECCB34E7EB1} = {73E383BB-7761-DCB5-CCDD-E680A78A17C1}
+		{90C8C335-44DF-1842-2A32-39318C179058} = {E8DA83EF-CE5B-5FAB-B7EF-AE38D8A05EE8}
+		{91B5755B-1E62-2531-191D-48DBD8E2E9BA} = {488E3C0A-547F-4B75-8CB1-B1C6F65961E9}
+		{97BAC3A6-4847-9D33-C8C6-98BE1AEB5802} = {86DC3BFB-09B8-4649-80EC-66537826FA39}
+		{99D82B8E-E023-D6B7-A0BE-76A541408A33} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
+		{9ACC0993-7302-F41C-3AAC-62EC81464061} = {30A04AB9-384A-1436-2B1E-D432033FBDDF}
+		{9ACD91B5-761C-1A84-0857-EA51A07AA6E7} = {1861E749-A6AC-4D3D-A13D-2917355CF8B8}
+		{9BE17F9D-0605-4FEA-B800-B71D73907315} = {37285921-62E0-A76E-2F56-4E3B8E4BFBEC}
+		{A1F21BF6-46A7-01E0-4A41-521D5A6E0575} = {56DD6745-F632-48C3-953E-9B2880F1A52B}
+		{A85FF4AC-334A-4AA4-B064-D98676FC7B35} = {115EE151-9603-6535-D318-73D15B15E008}
+		{AE4D78BA-24AF-A67A-881B-D3EA2BB8184B} = {E94882F7-261A-C01A-C80D-A73C7A1D275A}
+		{B1159C21-EDB1-67C5-7454-C9F82E9049E4} = {630D02F4-9D33-472F-B17B-72DE06B796C6}
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
+		{B2EBBFD2-9AA9-9B9E-A8D3-450ACF6131FE} = {37285921-62E0-A76E-2F56-4E3B8E4BFBEC}
+		{B793F960-F541-8610-F2DD-750E0E3F0F01} = {86DC3BFB-09B8-4649-80EC-66537826FA39}
+		{BBC9ACF3-7518-A543-D9C1-10654DD99716} = {32EC4DB2-3A34-0368-ACBC-A8E649157066}
+		{BC9B6BBC-0299-C4FB-E46E-82706909670D} = {91B5755B-1E62-2531-191D-48DBD8E2E9BA}
+		{BCA4267A-2131-412B-38F1-B1F2F8CAB9AF} = {52105A07-BCC0-37D1-4FFD-69FED0261A50}
+		{BF341920-9682-1D7A-C885-89CA8B6A107F} = {488E3C0A-547F-4B75-8CB1-B1C6F65961E9}
+		{BF66E9E2-8407-44A8-CC3D-3DE13611CC40} = {86DC3BFB-09B8-4649-80EC-66537826FA39}
+		{C0039F38-0C42-46DB-4202-F33F12E680AB} = {56DD6745-F632-48C3-953E-9B2880F1A52B}
+		{C4F2AB69-5228-58A9-1E09-F06160CBDD8C} = {C0039F38-0C42-46DB-4202-F33F12E680AB}
+		{C6823955-164D-FD45-1CB4-28C4BDA69813} = {743F2933-655E-4B11-9BCA-5B27724B7DE2}
+		{C8CF4F19-EFE8-4EDD-B71C-7F95D37142E9} = {32EC4DB2-3A34-0368-ACBC-A8E649157066}
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8} = {37285921-62E0-A76E-2F56-4E3B8E4BFBEC}
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44} = {73E383BB-7761-DCB5-CCDD-E680A78A17C1}
+		{D2B23D8D-9D37-2BC7-4CFA-4FDC361561E8} = {F1B7BFF6-A7E6-F954-F524-61141E159798}
+		{D6CAAE35-2CFF-40A6-861B-672913F96735} = {32EC4DB2-3A34-0368-ACBC-A8E649157066}
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85} = {73E383BB-7761-DCB5-CCDD-E680A78A17C1}
+		{E1C460E6-8867-557E-8674-56163A66A153} = {488E3C0A-547F-4B75-8CB1-B1C6F65961E9}
+		{E2399144-8884-DF03-C8F2-5DE8B5E37FCB} = {C8CF4F19-EFE8-4EDD-B71C-7F95D37142E9}
+		{E3B66917-3241-3F00-5415-339B2A1F8A24} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
+		{E8DA83EF-CE5B-5FAB-B7EF-AE38D8A05EE8} = {488E3C0A-547F-4B75-8CB1-B1C6F65961E9}
+		{E94882F7-261A-C01A-C80D-A73C7A1D275A} = {0AF8C36B-D80D-1362-E6EB-418DEB735AB2}
+		{EA12BDB4-C8F4-857B-D5A1-22FD3B0CF976} = {630D02F4-9D33-472F-B17B-72DE06B796C6}
+		{EDF9D61F-1FAA-1756-31B8-5BA4B68A6585} = {91B5755B-1E62-2531-191D-48DBD8E2E9BA}
+		{F1B7BFF6-A7E6-F954-F524-61141E159798} = {1861E749-A6AC-4D3D-A13D-2917355CF8B8}
+		{F1D11422-A196-1ABE-219D-D855273E81F6} = {B793F960-F541-8610-F2DD-750E0E3F0F01}
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940} = {32EC4DB2-3A34-0368-ACBC-A8E649157066}
+		{F9AF8BC0-D9A4-C3FE-1369-EC153EAAEC16} = {82BB85AC-E4AF-8DC7-61A4-DADA2D8865A5}
+		{FA1E00E1-E5EA-5382-AA4B-334F27A48AB3} = {D2B23D8D-9D37-2BC7-4CFA-4FDC361561E8}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,17 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.tiledmap
+packageVersion: 1.0.0
+displayName: Tiled Map
+description: Sparse 2D tilemaps, atlas palettes, deterministic editing APIs, batched rendering and editor painting tools.
+enabledByDefault: false
+runtime:
+  assembly: BEngine.TiledMap
+  rootNamespace: BEngine.TiledMap
+  dependencies: []
+editor:
+  assembly: BEngine.TiledMap.Editor
+  rootNamespace: BEngine.TiledMap.Editor
+  dependencies:
+  - packageId: com.bengine.tiledmap
+    target: runtime

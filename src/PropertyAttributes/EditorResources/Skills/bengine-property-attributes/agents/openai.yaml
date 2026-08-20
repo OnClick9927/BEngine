@@ -1,0 +1,4 @@
+interface:
+  display_name: "BEngine Property Attributes"
+  short_description: "Create attribute-driven Inspector behavior"
+  default_prompt: "Use $bengine-property-attributes to annotate a serialized field or extend its GPU Inspector drawer safely."

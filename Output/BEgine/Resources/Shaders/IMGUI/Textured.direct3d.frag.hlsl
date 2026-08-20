@@ -1,0 +1,3 @@
+Texture2D CanvasTexture : register(t0); SamplerState CanvasSampler : register(s0);
+struct I { float4 Position : SV_Position; float4 Color : COLOR0; float2 TexCoord : TEXCOORD0; };
+float4 main(I i) : SV_Target0 { return CanvasTexture.Sample(CanvasSampler, i.TexCoord) * i.Color; }

@@ -1,0 +1,170 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine</RootNamespace>
+    <AssemblyName>BEngine</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Properties/**/*.cs" />
+    <Compile Include="Documents/**/*.cs" />
+    <Compile Include="DependencyInjection/**/*.cs" />
+    <Compile Include="Entities/**/*.cs" />
+    <Compile Include="ProjectSystem/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Core\Assets\BAsset.cs" />
+    <Compile Include="Core\Coroutines\Coroutine.cs" />
+    <Compile Include="Core\Coroutines\CoroutineScheduler.cs" />
+    <Compile Include="Core\Coroutines\CustomYieldInstruction.cs" />
+    <Compile Include="Core\Coroutines\WaitForEndOfFrame.cs" />
+    <Compile Include="Core\Coroutines\WaitForFixedUpdate.cs" />
+    <Compile Include="Core\Coroutines\WaitForSeconds.cs" />
+    <Compile Include="Core\Coroutines\WaitForSecondsRealtime.cs" />
+    <Compile Include="Core\Coroutines\WaitUntil.cs" />
+    <Compile Include="Core\Coroutines\WaitWhile.cs" />
+    <Compile Include="Core\Coroutines\YieldInstruction.cs" />
+    <Compile Include="Core\Debug.cs" />
+    <Compile Include="Core\Cursor.cs" />
+    <Compile Include="Core\CursorLockMode.cs" />
+    <Compile Include="Core\CursorMode.cs" />
+    <Compile Include="Core\FullScreenMode.cs" />
+    <Compile Include="Core\LogEntry.cs" />
+    <Compile Include="Core\LogType.cs" />
+    <Compile Include="Core\Input.cs" />
+    <Compile Include="Core\Lifecycle\ISceneRuntimeSystem.cs" />
+    <Compile Include="Core\Lifecycle\LegacySceneRuntimeSystemAdapter.cs" />
+    <Compile Include="Core\Lifecycle\RuntimeInitializationEntry.cs" />
+    <Compile Include="Core\Lifecycle\RuntimeLifecycle.cs" />
+    <Compile Include="Core\Lifecycle\RuntimePackageState.cs" />
+    <Compile Include="Core\Lifecycle\RuntimeSystemRegistry.cs" />
+    <Compile Include="Core\Lifecycle\SceneRuntime.cs" />
+    <Compile Include="Core\Math\Color.cs" />
+    <Compile Include="Core\Math\Fix64.cs" />
+    <Compile Include="Core\Math\Hash128.cs" />
+    <Compile Include="Core\Math\LayerMask.cs" />
+    <Compile Include="Core\Math\Mathf.cs" />
+    <Compile Include="Core\Math\Rect.cs" />
+    <Compile Include="Core\Math\Resolution.cs" />
+    <Compile Include="Core\Math\Vector2.cs" />
+    <Compile Include="Core\Math\Vector4.cs" />
+    <Compile Include="Core\Assets\Material.cs" />
+    <Compile Include="Core\Assets\PrefabAsset.cs" />
+    <Compile Include="Core\Assets\ScriptableObject.cs" />
+    <Compile Include="Core\Assets\Shader.cs" />
+    <Compile Include="Attributes\AddComponentMenuAttribute.cs" />
+    <Compile Include="Attributes\ColorUsageAttribute.cs" />
+    <Compile Include="Attributes\ContextMenuAttribute.cs" />
+    <Compile Include="Attributes\ContextMenuItemAttribute.cs" />
+    <Compile Include="Attributes\CreateAssetMenuAttribute.cs" />
+    <Compile Include="Attributes\DefaultExecutionOrderAttribute.cs" />
+    <Compile Include="Attributes\DisallowMultipleComponentAttribute.cs" />
+    <Compile Include="Attributes\ExecuteAlwaysAttribute.cs" />
+    <Compile Include="Attributes\ExecuteInEditModeAttribute.cs" />
+    <Compile Include="Attributes\HeaderAttribute.cs" />
+    <Compile Include="Attributes\HelpURLAttribute.cs" />
+    <Compile Include="Attributes\HideInInspectorAttribute.cs" />
+    <Compile Include="Attributes\InspectorNameAttribute.cs" />
+    <Compile Include="Attributes\MinAttribute.cs" />
+    <Compile Include="Attributes\MultilineAttribute.cs" />
+    <Compile Include="Attributes\PropertyAttribute.cs" />
+    <Compile Include="Attributes\RangeAttribute.cs" />
+    <Compile Include="Attributes\RequireComponentAttribute.cs" />
+    <Compile Include="Attributes\RuntimeInitializeLoadType.cs" />
+    <Compile Include="Attributes\RuntimeInitializeOnLoadMethodAttribute.cs" />
+    <Compile Include="Attributes\SelectionBaseAttribute.cs" />
+    <Compile Include="Attributes\SerializeFieldAttribute.cs" />
+    <Compile Include="Attributes\SerializeReferenceAttribute.cs" />
+    <Compile Include="Attributes\SpaceAttribute.cs" />
+    <Compile Include="Attributes\TextAreaAttribute.cs" />
+    <Compile Include="Attributes\TooltipAttribute.cs" />
+    <Compile Include="Core\BObject.cs" />
+    <Compile Include="Core\Components\Base\Behaviour.cs" />
+    <Compile Include="Core\Components\Base\Component.cs" />
+    <Compile Include="Core\Components\Base\MissingComponent.cs" />
+    <Compile Include="Core\Components\Base\MonoBehaviour.cs" />
+    <Compile Include="Core\Components\Base\Transform.cs" />
+    <Compile Include="Core\GameObject.cs" />
+    <Compile Include="Core\Assets\Scene.cs" />
+    <Compile Include="Core\Serialization\ISerializationCallbackReceiver.cs" />
+    <Compile Include="Core\Serialization\SerializationCallbackUtility.cs" />
+    <Compile Include="Core\Application.cs" />
+    <Compile Include="Core\Screen.cs" />
+    <Compile Include="Core\Misc\SystemInfo.cs" />
+    <Compile Include="Core\Time.cs" />
+    <Compile Include="Core\Misc\RuntimeTypeCache.cs" />
+    <Compile Include="Rendering\Rhi\Abstractions\IGraphicsDevice.cs" />
+    <Compile Include="Rendering\Rhi\Abstractions\IGraphicsDeviceProvider.cs" />
+    <Compile Include="Rendering\Rhi\Abstractions\IGraphicsMesh.cs" />
+    <Compile Include="Rendering\Rhi\Abstractions\IGraphicsPresentationDevice.cs" />
+    <Compile Include="Rendering\Rhi\Abstractions\IGraphicsProgram.cs" />
+    <Compile Include="Rendering\Rhi\Abstractions\IGraphicsRenderTarget.cs" />
+    <Compile Include="Rendering\Rhi\Abstractions\IGraphicsResource.cs" />
+    <Compile Include="Rendering\Rhi\Abstractions\IGraphicsTexture2D.cs" />
+    <Compile Include="Rendering\Rhi\Backends\GraphicsBackend.cs" />
+    <Compile Include="Rendering\Rhi\Backends\GraphicsBackendAvailability.cs" />
+    <Compile Include="Rendering\Rhi\Backends\GraphicsBackendCatalog.cs" />
+    <Compile Include="Rendering\Rhi\Backends\GraphicsBackendDefaults.cs" />
+    <Compile Include="Rendering\Rhi\Backends\GraphicsBackendDescriptor.cs" />
+    <Compile Include="Rendering\Rhi\Backends\GraphicsBackendSettings.cs" />
+    <Compile Include="Rendering\Rhi\Backends\GraphicsBackendSupport.cs" />
+    <Compile Include="Rendering\Rhi\Backends\GraphicsDeviceFactory.cs" />
+    <Compile Include="Rendering\Rhi\OpenGL\OpenGlGraphicsDevice.cs" />
+    <Compile Include="Rendering\Rhi\OpenGL\OpenGlGraphicsDeviceProvider.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsBlendMode.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsBufferUsage.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsClearFlags.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsDepthState.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsDeviceCapabilities.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsDeviceFeatures.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsMeshDescription.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsPrimitiveTopology.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsRasterizerState.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsRect.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsRenderTargetDescription.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsTextureAddressMode.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsTextureDescription.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsTextureFilter.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsTextureFormat.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsTextureUsage.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsVertexAttribute.cs" />
+    <Compile Include="Rendering\Rhi\Resources\GraphicsVertexLayout.cs" />
+    <Compile Include="Rendering\Rhi\Shaders\GraphicsShaderLanguage.cs" />
+    <Compile Include="Rendering\Rhi\Shaders\GraphicsShaderProgramDescription.cs" />
+    <Compile Include="Rendering\Rhi\Shaders\GraphicsShaderSource.cs" />
+    <Compile Include="Rendering\Rhi\Shaders\GraphicsShaderStage.cs" />
+    <Compile Include="Rendering\Rhi\Shaders\DefaultShaderResources.cs" />
+    <Compile Include="Rendering\Rhi\Vulkan\VulkanGraphicsDevice.cs" />
+    <Compile Include="Rendering\Rhi\Vulkan\VulkanGraphicsDeviceProvider.cs" />
+    <Compile Include="Rendering\Scene\EngineRenderer.cs" />
+    <Compile Include="Rendering\Scene\Numerics.cs" />
+    <Compile Include="Rendering\Scene\PortableSceneRenderer.cs" />
+    <Compile Include="Rendering\Scene\RenderCamera.cs" />
+    <Compile Include="Rendering\Scene\SceneFramebuffer.cs" />
+    <Compile Include="Rendering\Scene\WindowIcon.cs" />
+    <Compile Include="Core\Resources.cs" />
+    <Compile Include="Core\Assets\TextAsset.cs" />
+    <Compile Include="Core\Serialization\Yaml\YamlUtility.cs" />
+    <Compile Include="Core\Misc\PlayerPrefs.cs" />
+    <Compile Include="Rendering\Settings\QualitySettings.cs" />
+    <Compile Include="Core\Math\Random.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="YamlDotNet" />
+    <PackageReference Include="Silk.NET.OpenGL" />
+    <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Input" />
+    <PackageReference Include="Veldrid" />
+    <PackageReference Include="Veldrid.SPIRV" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Replace the legacy hand-maintained list with a recursive source view. -->
+    <Compile Remove="**/*.cs" />
+    <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs" />
+  </ItemGroup>
+</Project>

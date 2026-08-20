@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.TiledMap.Editor
+rootNamespace: BEngine.TiledMap.Editor
+references:
+- BEngine.TiledMap
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

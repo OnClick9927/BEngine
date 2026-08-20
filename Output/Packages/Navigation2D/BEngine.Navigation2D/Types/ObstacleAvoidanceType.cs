@@ -1,0 +1,2 @@
+namespace BEngine.Navigation2D;
+public enum ObstacleAvoidanceType { NoObstacleAvoidance, LowQualityObstacleAvoidance, MedQualityObstacleAvoidance, GoodQualityObstacleAvoidance, HighQualityObstacleAvoidance }

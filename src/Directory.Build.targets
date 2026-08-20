@@ -1,0 +1,139 @@
+<Project>
+  <PropertyGroup Condition="'$(BEnginePackageExportOwner)' == 'true'">
+    <_BEnginePackageRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..'))</_BEnginePackageRoot>
+    <_BEnginePackageName>$([System.IO.Path]::GetFileName('$(_BEnginePackageRoot)'))</_BEnginePackageName>
+    <_BEnginePackageOutputRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Output\Packages'))</_BEnginePackageOutputRoot>
+    <_BEnginePackageOutput>$(_BEnginePackageOutputRoot)\$(_BEnginePackageName)</_BEnginePackageOutput>
+    <_BEnginePackageStage>$(_BEnginePackageOutputRoot)\.$(_BEnginePackageName).staging</_BEnginePackageStage>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(BEngineEngineExportOwner)' == 'true'">
+    <_BEngineEngineRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..'))</_BEngineEngineRoot>
+    <_BEngineEngineResourcesOutput>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Output\BEgine\Resources'))</_BEngineEngineResourcesOutput>
+    <_BEngineEngineEditorResourcesOutput>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Output\BEgine\EditorResources'))</_BEngineEngineEditorResourcesOutput>
+    <_BEngineEngineResourcesStage>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Output\BEgine\.Resources.staging'))</_BEngineEngineResourcesStage>
+    <_BEngineEngineEditorResourcesStage>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Output\BEgine\.EditorResources.staging'))</_BEngineEngineEditorResourcesStage>
+    <_BEngineLegacyEngineExamplesOutput>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Output\BEgine\Examples'))</_BEngineLegacyEngineExamplesOutput>
+    <_BEngineLegacyEnginePackagesOutput>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Output\BEgine\Packages'))</_BEngineLegacyEnginePackagesOutput>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)\..\package.yaml')">
+    <_BEngineIsPackageAssembly>true</_BEngineIsPackageAssembly>
+    <_BEngineExpectedAssemblyDefinition>$(MSBuildProjectDirectory)\$(AssemblyName).asmdef.yaml</_BEngineExpectedAssemblyDefinition>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <_BEngineNonCodeAssemblyFile Include="$(MSBuildProjectDirectory)/**/*"
+                                 Exclude="$(MSBuildProjectDirectory)/**/*.cs;$(MSBuildProjectDirectory)/**/*.csproj;$(MSBuildProjectDirectory)/**/*.csproj.user;$(MSBuildProjectDirectory)/*.asmdef.yaml;$(MSBuildProjectDirectory)/bin/**/*;$(MSBuildProjectDirectory)/obj/**/*" />
+    <_BEngineUnexpectedAssemblyDefinition Include="$(MSBuildProjectDirectory)/*.asmdef.yaml"
+                                          Exclude="$(_BEngineExpectedAssemblyDefinition)"
+                                          Condition="'$(_BEngineIsPackageAssembly)' == 'true'" />
+  </ItemGroup>
+
+  <Target Name="ValidateCodeOnlyAssemblyDirectory" BeforeTargets="BeforeBuild"
+          Condition="'@(_BEngineNonCodeAssemblyFile)' != ''">
+    <Error Text="Assembly project directories may contain only C# source, the project file, and the root assembly definition. Move these files to the package-level Resources or EditorResources directory: @(_BEngineNonCodeAssemblyFile, ', ')" />
+  </Target>
+
+  <Target Name="ValidatePackageAssemblyDefinition" BeforeTargets="BeforeBuild"
+          Condition="'$(_BEngineIsPackageAssembly)' == 'true'">
+    <Error Condition="!Exists('$(_BEngineExpectedAssemblyDefinition)')"
+           Text="Package assembly '$(AssemblyName)' is missing '$(_BEngineExpectedAssemblyDefinition)'." />
+    <Error Condition="'@(_BEngineUnexpectedAssemblyDefinition)' != ''"
+           Text="Package assembly '$(AssemblyName)' contains unexpected assembly definitions: @(_BEngineUnexpectedAssemblyDefinition, ', ')" />
+  </Target>
+
+  <Target Name="ExportBEngineSourcePackage" AfterTargets="Build"
+          Condition="'$(BEnginePackageExportOwner)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
+    <Error Condition="'$(_BEnginePackageName)' == '' or !Exists('$(_BEnginePackageRoot)\package.yaml')"
+           Text="BEngine package export owner '$(MSBuildProjectName)' must be directly below a package root containing package.yaml." />
+    <Error Condition="!Exists('$(_BEnginePackageRoot)\EditorResources\Readme.md')"
+           Text="BEngine package '$(_BEnginePackageName)' is missing EditorResources/Readme.md." />
+    <Error Condition="!Exists('$(_BEnginePackageRoot)\Resources') or !Exists('$(_BEnginePackageRoot)\EditorResources')"
+           Text="BEngine package '$(_BEnginePackageName)' must contain Resources and EditorResources directories." />
+    <Error Condition="!Exists('$(_BEnginePackageRoot)\EditorResources\Examples')"
+           Text="BEngine package '$(_BEnginePackageName)' must contain EditorResources/Examples." />
+    <Error Condition="!Exists('$(_BEnginePackageRoot)\EditorResources\Doc\index.html')"
+           Text="BEngine package '$(_BEnginePackageName)' must contain EditorResources/Doc/index.html." />
+
+    <ItemGroup>
+      <_BEnginePackageExportFile Include="$(_BEnginePackageRoot)\BEngine.*\**\*.cs"
+                                 Exclude="$(_BEnginePackageRoot)\BEngine.*\bin\**\*;$(_BEnginePackageRoot)\BEngine.*\obj\**\*" />
+      <_BEnginePackageExportFile Include="$(_BEnginePackageRoot)\BEngine.*\*.asmdef.yaml" />
+      <_BEnginePackageExportFile Include="$(_BEnginePackageRoot)\Resources\**\*;$(_BEnginePackageRoot)\EditorResources\**\*" />
+      <_BEnginePackageExportFile Include="$(_BEnginePackageRoot)\package.yaml" />
+      <_BEngineUnexpectedExampleFile Include="$(_BEnginePackageRoot)\EditorResources\Examples\**\*"
+                                     Exclude="$(_BEnginePackageRoot)\EditorResources\Examples\**\*.bpackage" />
+      <_BEnginePackageExportFile Update="@(_BEnginePackageExportFile)">
+        <PackageRelativePath>$([MSBuild]::MakeRelative('$(_BEnginePackageRoot)', '%(FullPath)'))</PackageRelativePath>
+      </_BEnginePackageExportFile>
+    </ItemGroup>
+    <Error Condition="'@(_BEngineUnexpectedExampleFile)' != ''"
+           Text="BEngine package '$(_BEnginePackageName)' EditorResources/Examples may contain only .bpackage archives: @(_BEngineUnexpectedExampleFile, ', ')" />
+
+    <MakeDir Directories="$(_BEnginePackageOutputRoot)" />
+    <RemoveDir Directories="$(_BEnginePackageStage)" Condition="Exists('$(_BEnginePackageStage)')" />
+    <MakeDir Directories="$(_BEnginePackageStage);$(_BEnginePackageStage)\Resources;$(_BEnginePackageStage)\EditorResources;$(_BEnginePackageStage)\EditorResources\Examples" />
+    <Copy SourceFiles="@(_BEnginePackageExportFile)"
+          DestinationFiles="@(_BEnginePackageExportFile->'$(_BEnginePackageStage)\%(PackageRelativePath)')"
+          SkipUnchangedFiles="true" />
+
+    <ItemGroup>
+      <_BEngineForbiddenExport Include="$(_BEnginePackageStage)\**\*.dll;$(_BEnginePackageStage)\**\*.pdb;$(_BEnginePackageStage)\**\*.deps.json;$(_BEnginePackageStage)\**\*.csproj" />
+      <_BEngineForbiddenDirectory Include="$(_BEnginePackageStage)\**\bin;$(_BEnginePackageStage)\**\obj" />
+      <_BEngineStagedPackageFile Include="$(_BEnginePackageStage)\**\*" />
+    </ItemGroup>
+    <Error Condition="'@(_BEngineForbiddenExport)' != '' or '@(_BEngineForbiddenDirectory)' != ''"
+           Text="BEngine source package '$(_BEnginePackageName)' contains forbidden build artifacts: @(_BEngineForbiddenExport, ', ') @(_BEngineForbiddenDirectory, ', ')" />
+
+    <RemoveDir Directories="$(_BEnginePackageOutput)" Condition="Exists('$(_BEnginePackageOutput)')" />
+    <MakeDir Directories="$(_BEnginePackageOutput);$(_BEnginePackageOutput)\Resources;$(_BEnginePackageOutput)\EditorResources;$(_BEnginePackageOutput)\EditorResources\Examples" />
+    <Copy SourceFiles="@(_BEngineStagedPackageFile)"
+          DestinationFiles="@(_BEngineStagedPackageFile->'$(_BEnginePackageOutput)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <RemoveDir Directories="$(_BEnginePackageStage)" />
+  </Target>
+
+  <Target Name="ExportBEngineCoreExamples" AfterTargets="Build"
+          Condition="'$(BEngineEngineExportOwner)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
+    <Error Condition="!Exists('$(_BEngineEngineRoot)\EditorResources\Examples')"
+           Text="BEngine Core must contain EditorResources/Examples." />
+    <Error Condition="!Exists('$(_BEngineEngineRoot)\EditorResources\Readme.md')"
+           Text="BEngine Core must contain EditorResources/Readme.md." />
+    <Error Condition="!Exists('$(_BEngineEngineRoot)\EditorResources\Doc\index.html')"
+           Text="BEngine Core must contain EditorResources/Doc/index.html." />
+    <ItemGroup>
+      <_BEngineCoreResource Include="$(_BEngineEngineRoot)\Resources\**\*" />
+      <_BEngineCoreEditorResource Include="$(_BEngineEngineRoot)\EditorResources\**\*" />
+      <_BEngineUnexpectedCoreExample Include="$(_BEngineEngineRoot)\EditorResources\Examples\**\*"
+                                     Exclude="$(_BEngineEngineRoot)\EditorResources\Examples\**\*.bpackage" />
+    </ItemGroup>
+    <Error Condition="'@(_BEngineUnexpectedCoreExample)' != ''"
+           Text="BEngine Core EditorResources/Examples may contain only .bpackage archives: @(_BEngineUnexpectedCoreExample, ', ')" />
+    <RemoveDir Directories="$(_BEngineEngineResourcesStage);$(_BEngineEngineEditorResourcesStage)"
+               Condition="Exists('$(_BEngineEngineResourcesStage)') or Exists('$(_BEngineEngineEditorResourcesStage)')" />
+    <MakeDir Directories="$(_BEngineEngineResourcesStage);$(_BEngineEngineEditorResourcesStage)" />
+    <Copy SourceFiles="@(_BEngineCoreResource)"
+          DestinationFiles="@(_BEngineCoreResource->'$(_BEngineEngineResourcesStage)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_BEngineCoreEditorResource)"
+          DestinationFiles="@(_BEngineCoreEditorResource->'$(_BEngineEngineEditorResourcesStage)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <_BEngineStagedCoreResource Include="$(_BEngineEngineResourcesStage)\**\*" />
+      <_BEngineStagedCoreEditorResource Include="$(_BEngineEngineEditorResourcesStage)\**\*" />
+    </ItemGroup>
+    <RemoveDir Directories="$(_BEngineEngineResourcesOutput);$(_BEngineEngineEditorResourcesOutput)"
+               Condition="Exists('$(_BEngineEngineResourcesOutput)') or Exists('$(_BEngineEngineEditorResourcesOutput)')" />
+    <RemoveDir Directories="$(_BEngineLegacyEngineExamplesOutput)" Condition="Exists('$(_BEngineLegacyEngineExamplesOutput)')" />
+    <RemoveDir Directories="$(_BEngineLegacyEnginePackagesOutput)" Condition="Exists('$(_BEngineLegacyEnginePackagesOutput)')" />
+    <MakeDir Directories="$(_BEngineEngineResourcesOutput);$(_BEngineEngineEditorResourcesOutput)" />
+    <Copy SourceFiles="@(_BEngineStagedCoreResource)"
+          DestinationFiles="@(_BEngineStagedCoreResource->'$(_BEngineEngineResourcesOutput)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_BEngineStagedCoreEditorResource)"
+          DestinationFiles="@(_BEngineStagedCoreEditorResource->'$(_BEngineEngineEditorResourcesOutput)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <RemoveDir Directories="$(_BEngineEngineResourcesStage);$(_BEngineEngineEditorResourcesStage)" />
+  </Target>
+</Project>

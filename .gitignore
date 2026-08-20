@@ -6,11 +6,16 @@
 bin/
 obj/
 TestResults/
+Output/EditorData/
 *.user
 *.suo
 *.log
 artifacts/
 .artifacts/
 Examples/
+!Example/Assets/Examples/
+!Example/Assets/Examples/**
+!src/**/Examples/
+!src/**/Examples/**
 Temp/
-tests
+/tests/

@@ -1,0 +1,7 @@
+format: BEngine.CodexSettings
+version: 1
+executablePath: ''
+model: ''
+effort: medium
+approvalPolicy: untrusted
+networkAccess: true

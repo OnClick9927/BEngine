@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Animation.Editor
+rootNamespace: BEngine.Animation.Editor
+references:
+- BEngine.Animation
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

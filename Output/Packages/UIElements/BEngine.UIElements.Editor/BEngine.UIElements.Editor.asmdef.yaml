@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.UIElements.Editor
+rootNamespace: BEngine.UIElements.Editor
+references:
+- BEngine.UIElements
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

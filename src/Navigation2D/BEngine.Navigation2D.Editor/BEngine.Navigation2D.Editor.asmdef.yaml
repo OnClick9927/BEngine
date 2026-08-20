@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Navigation2D.Editor
+rootNamespace: BEngine.Navigation2D.Editor
+references:
+- BEngine.Navigation2D
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

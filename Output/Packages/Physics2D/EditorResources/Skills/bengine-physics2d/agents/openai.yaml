@@ -1,0 +1,4 @@
+interface:
+  display_name: "BEngine Physics2D"
+  short_description: "Build deterministic 2D physics and queries"
+  default_prompt: "Use $bengine-physics2d to implement deterministic 2D rigidbody, collider, or physics-query behavior."

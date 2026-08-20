@@ -1,0 +1,9 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: Game
+rootNamespace: Game
+references: []
+includePlatforms: []
+excludePlatforms: []
+autoReferenced: true
+editorOnly: false

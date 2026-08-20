@@ -1,0 +1,36 @@
+namespace BEngine.Editor;
+
+internal enum MainMenuCommand
+{
+    NewScene,
+    OpenScene,
+    OpenSceneAdditive,
+    SaveScene,
+    SaveAllScenes,
+    ShowProjectInExplorer,
+    Exit,
+    Undo,
+    Redo,
+    Copy,
+    Paste,
+    Duplicate,
+    Rename,
+    Delete,
+    SelectAll,
+    DeselectAll,
+    FrameSelected,
+    Play,
+    Pause,
+    Step,
+    RecompileScripts,
+    CloseFocusedWindow,
+    ToggleLockFocusedWindow,
+    ToggleMaximizeFocusedWindow,
+    NextWindow,
+    PreviousWindow,
+    Documentation,
+    ViewEditorLog,
+    RevealLogsFolder,
+    CopySystemInfo,
+    About
+}

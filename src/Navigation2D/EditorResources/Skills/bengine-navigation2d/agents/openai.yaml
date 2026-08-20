@@ -1,0 +1,4 @@
+interface:
+  display_name: "BEngine Navigation2D"
+  short_description: "Build deterministic 2D paths and agents"
+  default_prompt: "Use $bengine-navigation2d to implement deterministic occupancy-grid pathfinding or agent behavior in BEngine."

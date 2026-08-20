@@ -1,0 +1,145 @@
+format: BEngine.ProjectSettings
+version: 2
+locale: zh-CN
+companyName: DefaultCompany
+productName: Example
+defaultScreenWidth: 1280
+defaultScreenHeight: 720
+fullScreen: false
+graphicsBackend: Vulkan
+scriptingDefineSymbols: []
+tags:
+- Untagged
+- Respawn
+- Finish
+- EditorOnly
+- MainCamera
+- Player
+- GameController
+sortingLayers:
+- value: 2
+  name: Default
+- value: 4
+  name: Foreground
+- value: 8
+  name: World 3
+- value: 16
+  name: World 4
+- value: 32
+  name: World 5
+- value: 64
+  name: World 6
+- value: 128
+  name: World 7
+- value: 256
+  name: World 8
+- value: 512
+  name: World 9
+- value: 1024
+  name: World 10
+- value: 2048
+  name: World 11
+- value: 4096
+  name: World 12
+- value: 8192
+  name: World 13
+- value: 16384
+  name: World 14
+- value: 32768
+  name: World 15
+- value: 65536
+  name: World 16
+- value: 131072
+  name: World 17
+- value: 262144
+  name: World 18
+- value: 524288
+  name: World 19
+- value: 1048576
+  name: World 20
+- value: 2097152
+  name: World 21
+- value: 4194304
+  name: World 22
+- value: 8388608
+  name: World 23
+- value: 16777216
+  name: World 24
+- value: 33554432
+  name: World 25
+- value: 67108864
+  name: World 26
+- value: 134217728
+  name: World 27
+- value: 268435456
+  name: World 28
+- value: 536870912
+  name: World 29
+- value: 1073741824
+  name: World 30
+- value: 2147483648
+  name: World 31
+- value: 4294967296
+  name: World 32
+- value: 8589934592
+  name: World 33
+- value: 17179869184
+  name: World 34
+- value: 34359738368
+  name: World 35
+- value: 68719476736
+  name: World 36
+- value: 137438953472
+  name: World 37
+- value: 274877906944
+  name: World 38
+- value: 549755813888
+  name: World 39
+- value: 1099511627776
+  name: World 40
+- value: 2199023255552
+  name: World 41
+- value: 4398046511104
+  name: World 42
+- value: 8796093022208
+  name: World 43
+- value: 17592186044416
+  name: World 44
+- value: 35184372088832
+  name: World 45
+- value: 70368744177664
+  name: World 46
+- value: 140737488355328
+  name: World 47
+- value: 281474976710656
+  name: World 48
+- value: 562949953421312
+  name: World 49
+- value: 1125899906842624
+  name: World 50
+- value: 2251799813685248
+  name: World 51
+- value: 4503599627370496
+  name: World 52
+- value: 9007199254740992
+  name: World 53
+- value: 18014398509481984
+  name: World 54
+- value: 36028797018963968
+  name: World 55
+- value: 72057594037927936
+  name: World 56
+- value: 144115188075855872
+  name: World 57
+- value: 288230376151711744
+  name: World 58
+- value: 576460752303423488
+  name: UI
+- value: 1152921504606846976
+  name: UI Overlay 1
+- value: 2305843009213693952
+  name: UI Overlay 2
+- value: 4611686018427387904
+  name: UI Overlay 3
+- value: 9223372036854775808
+  name: UI Overlay 4

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RootNamespace>BEngine.ExampleTests.DocumentArchitecture</RootNamespace>
+    <AssemblyName>BEngine.ExampleTests.DocumentArchitecture</AssemblyName>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../../src/Animation/BEngine.Animation/BEngine.Animation.csproj" />
+    <ProjectReference Include="../../../src/UIElements/BEngine.UIElements/BEngine.UIElements.csproj" />
+  </ItemGroup>
+</Project>

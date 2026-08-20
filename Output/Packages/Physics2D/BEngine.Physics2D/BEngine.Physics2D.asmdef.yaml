@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Physics2D
+rootNamespace: BEngine.Physics2D
+references: []
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false
+allowUnsafeCode: false

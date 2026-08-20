@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BEngine Tiled Map 文档</title>
+  <style>body{max-width:900px;margin:40px auto;padding:0 20px;background:#181a1d;color:#eef0f2;font:16px/1.7 "Segoe UI","Microsoft YaHei UI",sans-serif}h1,h2{letter-spacing:0}code,pre{font-family:Consolas,monospace}code{color:#f2cb78}pre{padding:14px;background:#111315;border:1px solid #373c42;overflow:auto}</style>
+</head>
+<body>
+  <h1>Tiled Map</h1>
+  <p><code>com.bengine.tiledmap</code> 提供稀疏 2D Tilemap、Atlas Palette、运行时修改 API、视锥裁剪和合批渲染。</p>
+  <h2>编辑流程</h2>
+  <ol>
+    <li>使用 <code>Assets/Create/2D/Tile Palette</code> 创建 <code>.tilepalette.yaml</code>。</li>
+    <li>在 <code>Window/2D/Tile Palette</code> 设置 PNG、行列数并执行 Slice Atlas；也可填写 Core <code>.atlas.yaml</code> 并执行 Import Texture Atlas。</li>
+    <li>使用 <code>GameObject/2D Object/Tilemap</code> 创建对象，选择 Palette 后绘制。</li>
+  </ol>
+  <h2>运行时 API</h2>
+  <pre><code>var map = GetComponent&lt;Tilemap&gt;();
+map.SetTile(new TileCoordinate(4, 2), 7);
+map.BoxFill(new TileCoordinate(0, 0), new TileCoordinate(3, 1), 2);
+var cell = map.WorldToCell(worldPosition);</code></pre>
+  <p>单元格数据按坐标确定性排序后保存在场景 YAML 中。Tile ID 0 表示空单元格。</p>
+  <h2>渲染</h2>
+  <p><code>TilemapRenderer</code> 参与统一的 Layer、Order、Hierarchy、Transparency 排序。Material、Shader、Atlas 三项相同且排序后相邻的瓦片会合批。Atlas 使用归一化 UV，支持水平/垂直翻转和 90/180 度组合旋转。</p>
+</body>
+</html>

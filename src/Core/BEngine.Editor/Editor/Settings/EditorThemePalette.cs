@@ -1,0 +1,28 @@
+namespace BEngine.Editor;
+
+public readonly record struct EditorThemePalette(
+    Color Window,
+    Color Panel,
+    Color Toolbar,
+    Color Field,
+    Color Button,
+    Color Hover,
+    Color Active,
+    Color Text,
+    Color MutedText,
+    Color Accent,
+    Color Border,
+    Color PanelRaised,
+    Color TitleBar,
+    Color FieldHover,
+    Color FieldFocused,
+    Color ButtonHover,
+    Color ButtonPressed,
+    Color DisabledText,
+    Color FocusBorder,
+    Color Selection,
+    Color SelectionInactive,
+    Color ScrollTrack,
+    Color ScrollThumb,
+    Color ScrollThumbHover,
+    Color Shadow);

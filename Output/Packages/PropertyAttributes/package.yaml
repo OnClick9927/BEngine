@@ -1,0 +1,17 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.property-attributes
+packageVersion: 1.0.0
+displayName: Property Attributes
+description: Advanced Unity-style inspector property attributes and GPU IMGUI drawers.
+enabledByDefault: false
+runtime:
+  assembly: BEngine.PropertyAttributes
+  rootNamespace: BEngine.PropertyAttributes
+  dependencies: []
+editor:
+  assembly: BEngine.PropertyAttributes.Editor
+  rootNamespace: BEngine.PropertyAttributes.Editor
+  dependencies:
+  - packageId: com.bengine.property-attributes
+    target: runtime

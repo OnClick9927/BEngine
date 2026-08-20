@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+    <AssemblyName>BEngine.Editor</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <BEngineEngineExportOwner>true</BEngineEngineExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine/BEngine.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Input" />
+    <PackageReference Include="Silk.NET.OpenGL" />
+    <PackageReference Include="Veldrid" />
+    <PackageReference Include="Veldrid.SPIRV" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="*.cs" />
+    <Compile Include="Properties/**/*.cs" />
+    <Compile Include="Editor/**/*.cs" Exclude="Editor/**/Properties/AssemblyInfo.cs" />
+  </ItemGroup>
+</Project>

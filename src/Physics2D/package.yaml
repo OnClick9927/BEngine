@@ -1,0 +1,17 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.physics2d
+packageVersion: 1.0.0
+displayName: 2D Physics
+description: Deterministic fixed-point 2D rigidbodies, colliders, queries and collision callbacks.
+enabledByDefault: false
+runtime:
+  assembly: BEngine.Physics2D
+  rootNamespace: BEngine.Physics2D
+  dependencies: []
+editor:
+  assembly: BEngine.Physics2D.Editor
+  rootNamespace: BEngine.Physics2D.Editor
+  dependencies:
+  - packageId: com.bengine.physics2d
+    target: runtime

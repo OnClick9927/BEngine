@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Animation
+rootNamespace: BEngine.Animation
+references: []
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false
+allowUnsafeCode: false

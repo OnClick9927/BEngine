@@ -1,0 +1,145 @@
+format: BEngine.Scene
+version: 1
+id: 8af53b8d-8b27-44d2-aa7d-f2e6007aa101
+name: 2D Example
+gameObjects:
+- id: 8af53b8d-8b27-44d2-aa7d-f2e6007aa102
+  name: Background Sprite
+  active: true
+  tag: Untagged
+  layer: 2
+  isStatic: false
+  transform:
+    id: 8af53b8d-8b27-44d2-aa7d-f2e6007aa103
+    type: BEngine.Transform
+    localPosition:
+      x: -4.4470999999903142452239990234375
+      y: 1.45389999984763562679290771484375
+    localRotation: -1
+    localScale:
+      x: 7.3999999999068677425384521484375
+      y: 5
+    fields: {}
+  components:
+  - id: 35d902dd-9e6e-4aca-8ae8-b3e65bd2a60c
+    type: BEngine.SpriteRenderer
+    enabled: true
+    fields:
+      atlas: ''
+      color: 0.11999999987892806529998779296875,0.15999999991618096828460693359375,0.21999999997206032276153564453125,1
+      flipX: false
+      flipY: false
+      opacity: 1
+      orderInLayer: 0
+      pivot: 0.5,0.5
+      runInEditMode: false
+      size: 1,1
+      sortingLayer: 2
+      sprite: ''
+      useAtlasPivot: true
+- id: f6fba9e7-150d-4952-93de-5ef54bced706
+  name: Rotating Sprite
+  active: true
+  tag: Untagged
+  layer: 2
+  isStatic: false
+  transform:
+    id: fde85a4a-70b3-4147-a0d6-802198f92fd4
+    type: BEngine.Transform
+    localPosition:
+      x: 0.29929999983869493007659912109375
+      y: 0
+    localRotation: -51.121392524801194667816162109375
+    localScale:
+      x: 2
+      y: 2
+    fields: {}
+  components:
+  - id: fd5d2fdc-2187-489c-b3d0-e5ff25e049c2
+    type: BEngine.SpriteRenderer
+    enabled: true
+    fields:
+      atlas: ''
+      color: 0.1499999999068677425384521484375,0.71999999997206032276153564453125,0.629999999888241291046142578125,1
+      flipX: false
+      flipY: false
+      opacity: 1
+      orderInLayer: 10
+      pivot: 0.5,0.5
+      runInEditMode: false
+      size: 1,1
+      sortingLayer: 2
+      sprite: ''
+      useAtlasPivot: true
+  - id: 433a597f-9dd2-489e-8731-f29023059c22
+    type: Game.Rotator
+    enabled: true
+    fields:
+      degreesPerSecond: 45
+      runInEditMode: false
+- id: 45733fb3-01f0-4e78-bdb9-4e578a3c0003
+  name: Foreground Particles
+  active: true
+  tag: Untagged
+  layer: 4
+  isStatic: false
+  transform:
+    id: 3e336072-0ce8-40b5-9a7a-a83a56a28b5f
+    type: BEngine.Transform
+    localPosition:
+      x: 0
+      y: -1
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components:
+  - id: 66104f60-e753-4da9-9c82-f69a801d952f
+    type: BEngine.ParticleSystem2D
+    enabled: true
+    fields:
+      atlas: ''
+      duration: 5
+      emissionRate: 12
+      loop: true
+      maxParticles: 128
+      opacity: 1
+      orderInLayer: 0
+      playOnAwake: true
+      runInEditMode: false
+      sortingLayer: 4
+      sprite: ''
+      startAngularVelocity: 0
+      startColor: 0.94999999995343387126922607421875,0.75,0.25,0.799999999813735485076904296875
+      startDirection: 0,1
+      startLifetime: 2
+      startRotation: 0
+      startSize: 0.17999999993480741977691650390625,0.17999999993480741977691650390625
+      startSpeed: 1.5
+- id: 9de43558-128e-42d1-b1ca-4dddf40623d3
+  name: Main Camera 2D
+  active: true
+  tag: MainCamera
+  layer: 2
+  isStatic: false
+  transform:
+    id: 2196b880-7a1a-4d39-888f-733801457ab0
+    type: BEngine.Transform
+    localPosition:
+      x: 0
+      y: 0
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components:
+  - id: 87c2ea36-b638-44b5-b7d5-28cfeea41f60
+    type: BEngine.Camera2D
+    enabled: true
+    fields:
+      backgroundColor: 0.05499999993480741977691650390625,0.0709999999962747097015380859375,0.0899999998509883880615234375,1
+      depth: 0
+      isMain: true
+      size: 5

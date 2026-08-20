@@ -1,0 +1,17 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.animation
+packageVersion: 1.0.0
+displayName: Animation
+description: Fixed-point animation curves, YAML clips and controller-driven Animator state machines.
+enabledByDefault: false
+runtime:
+  assembly: BEngine.Animation
+  rootNamespace: BEngine.Animation
+  dependencies: []
+editor:
+  assembly: BEngine.Animation.Editor
+  rootNamespace: BEngine.Animation.Editor
+  dependencies:
+  - packageId: com.bengine.animation
+    target: runtime

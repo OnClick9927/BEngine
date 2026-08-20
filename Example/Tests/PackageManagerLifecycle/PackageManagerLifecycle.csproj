@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RootNamespace>BEngine.ExampleTests.PackageManagerLifecycle</RootNamespace>
+    <AssemblyName>BEngine.ExampleTests.PackageManagerLifecycle</AssemblyName>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../../src/Animation/BEngine.Animation/BEngine.Animation.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../src/Animation/BEngine.Animation.Editor/BEngine.Animation.Editor.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../src/Navigation2D/BEngine.Navigation2D/BEngine.Navigation2D.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../src/Navigation2D/BEngine.Navigation2D.Editor/BEngine.Navigation2D.Editor.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../src/Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../src/Physics2D/BEngine.Physics2D.Editor/BEngine.Physics2D.Editor.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../src/PropertyAttributes/BEngine.PropertyAttributes/BEngine.PropertyAttributes.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../src/PropertyAttributes/BEngine.PropertyAttributes.Editor/BEngine.PropertyAttributes.Editor.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

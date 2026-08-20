@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine.PropertyAttributes</RootNamespace>
+    <AssemblyName>BEngine.PropertyAttributes</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>

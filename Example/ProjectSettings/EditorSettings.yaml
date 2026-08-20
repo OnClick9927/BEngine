@@ -1,0 +1,4 @@
+format: BEngine.EditorSettings
+version: 1
+layout: Unity
+lastScene: Assets/Scenes/Main.scene.yaml

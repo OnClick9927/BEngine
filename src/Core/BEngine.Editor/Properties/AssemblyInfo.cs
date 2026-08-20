@@ -1,0 +1,11 @@
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("BEngine.Tests")]
+[assembly: InternalsVisibleTo("BEngine.UIElements.Editor.Tests")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.GpuImGui")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.GpuDockWindowStates")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.EditorLayoutPersistence")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.ProjectPackageTree")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.TreeViewDragRename")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.ProjectPackageCache")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.ThreadingArchitecture")]
