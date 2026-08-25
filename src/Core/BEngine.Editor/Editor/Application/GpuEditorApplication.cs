@@ -62,8 +62,12 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private string? _selectedAssetPath;
     private bool _playing;
     private bool _paused;
+    private bool _enteringPlayMode;
+    private bool _exitingPlayMode;
+    private bool _registeringPlayModeScenes;
     private bool _dirty;
     private bool _mainSceneDirty;
+    private EditorPlayModeSession? _playModeSession;
     private bool _scriptCompilationFailed;
     private bool _consoleClearedForPackageReload;
     private int _errorPauseRequested;
@@ -82,6 +86,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private bool _pendingRefreshShaders;
     private bool _disposed;
     private bool _closing;
+    private bool _closePendingAfterPlayModeTransition;
     private Tool _tool = Tool.Move;
     private PortableSceneRenderer? _sceneRenderer;
     private int _lastWidth;
@@ -94,6 +99,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private Rect _openMenuAnchor;
     private readonly ImGuiPopupMenu _mainMenuPopup = new();
     private readonly ImGuiPopupMenu _genericMenuPopup = new();
+    private readonly ImGuiAdvancedDropdown _advancedDropdown = new();
+    private Rect? _genericMenuAnchor;
     private EditorProgressInfo _progress;
     private Rect _dockBounds;
     private string _activeLayoutName = "Last Session";
@@ -238,10 +245,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _windowLayer.WindowClosed += CloseEditorWindow;
         _windowLayer.DockRequested += DockFloatingWindow;
         _mainWindow.renderBackground = RenderSceneBackground;
-        GenericMenuDispatcher.Handler = items =>
-        {
-            _genericMenuPopup.Open(items, GUI.GUIToRootPoint(Event.current.mousePosition));
-        };
+        GenericMenuDispatcher.Handler = OpenDispatchedMenu;
 
         EditorBridge.Attach(this);
         EditorUtility.progressChanged += OnProgressChanged;
@@ -249,6 +253,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         Undo.undoRedoPerformed += OnUndoRedo;
         _runtimeSceneManager.SceneLoaded += OnRuntimeSceneLoaded;
         _runtimeSceneManager.SceneUnloaded += OnRuntimeSceneUnloaded;
+        _runtimeSceneManager.ActiveSceneChanged += OnRuntimeActiveSceneChanged;
         EditorFeatureGuard.Invoke("EditorInitialization.Run", () => EditorInitialization.Run());
         AssemblyReloadEvents.RaiseAfterAssemblyReload();
         RestoreLastLayout();
@@ -274,12 +279,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     public void Dispose()
     {
         if (_disposed) return;
+        if (_playing || _playModeSession is not null)
+            ExitPlayMode(raiseStateEvents: false, processDeferredCompilation: false);
+        CloseTransientMenus();
         _disposed = true;
         SaveLastLayout();
         Debug.MessageLogged -= OnLog;
         Undo.undoRedoPerformed -= OnUndoRedo;
         _runtimeSceneManager.SceneLoaded -= OnRuntimeSceneLoaded;
         _runtimeSceneManager.SceneUnloaded -= OnRuntimeSceneUnloaded;
+        _runtimeSceneManager.ActiveSceneChanged -= OnRuntimeActiveSceneChanged;
         _packages.packagesChanged -= OnPackagesChanged;
         _packages.packagesReloading -= OnPackagesReloading;
         _packages.packagesUnloading -= OnPackagesUnloading;
@@ -305,7 +314,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         StopAllRuntimes();
         foreach (var scene in _openScenes.Select(item => item.Scene)
                      .Append(_scene).Distinct().ToArray())
-            if (scene.world.IsCreated) scene.world.Dispose();
+            if (scene.isCreated) scene.Dispose();
         _scriptSourceCache.Clear();
         ComponentClipboard.Clear();
         Undo.ClearAll();
@@ -350,6 +359,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         window.docked = true;
         _editorPanels[window] = _dock.Add(window.PersistentId, window, area, true);
         window.FocusInternal();
+    }
+
+    private void FocusGameViewIfOpen()
+    {
+        if (_editorPanels.TryGetValue(_gameView, out var panel))
+        {
+            _dock.Show(panel.Id);
+            return;
+        }
+        _windowLayer.Focus(_gameView);
     }
 
     private static string HumanizeIdentifier(string value)
@@ -469,10 +488,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         var registeredEmitted = false;
         if (root.Equals("Component", StringComparison.OrdinalIgnoreCase))
         {
-            foreach (var node in FlattenMenu(_menuItems.GetRoot(root)))
-                yield return new(MenuDisplayLabel(root, node.Label), node.Enabled, node.Action, node.Checked);
+            foreach (var item in ComponentRootMenuItems())
+                yield return new(MenuDisplayLabel(root, item.Label), item.Enabled, item.Action, item.Checked);
             registeredEmitted = true;
-            foreach (var item in ComponentMenuItems()) yield return item;
         }
         else if (root.Equals("Window", StringComparison.OrdinalIgnoreCase))
         {
@@ -569,6 +587,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
     }
 
+    private IEnumerable<MenuEntry> ComponentRootMenuItems(BObject? context = null)
+    {
+        foreach (var node in FlattenMenu(_menuItems.GetRoot("Component", context)))
+            yield return new MenuEntry(node.Label, node.Enabled, node.Action, node.Checked);
+        foreach (var item in ComponentMenuItems()) yield return item;
+    }
+
     private static string ComponentMenuPath(Type componentType, AddComponentMenuAttribute? attribute)
     {
         if (!string.IsNullOrWhiteSpace(attribute?.componentMenu))
@@ -596,14 +621,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private void ShowAddComponentMenu()
     {
         var menu = new GenericMenu();
-        foreach (var entry in ComponentMenuItems())
+        foreach (var entry in ComponentRootMenuItems(_selected))
         {
             if (entry.Enabled && entry.Action is not null)
                 menu.AddItem(new GUIContent(entry.Label), entry.Checked, entry.Action.Invoke);
             else
                 menu.AddDisabledItem(new GUIContent(entry.Label), entry.Checked);
         }
-        menu.ShowAsContext();
+        menu.ShowAsAdvancedDropdown();
     }
 
     private void DrawToolbar(Rect rect)
@@ -679,7 +704,49 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void DrawGenericPopup()
     {
-        _genericMenuPopup.Draw();
+        if (_advancedDropdown.isOpen) _advancedDropdown.Draw();
+        else if (!_genericMenuPopup.Draw(_genericMenuAnchor)) _genericMenuAnchor = null;
+    }
+
+    private void OpenDispatchedMenu(IReadOnlyList<GenericMenuItem> items)
+    {
+        var presentation = GenericMenuDispatcher.CurrentPresentation;
+        Rect? rootAnchor = null;
+        Vector2 position;
+        if (presentation.HasAnchor)
+        {
+            var topLeft = GUI.GUIToRootPoint(presentation.Anchor.position);
+            var bottomRight = GUI.GUIToRootPoint(new Vector2(
+                presentation.Anchor.xMax, presentation.Anchor.yMax));
+            rootAnchor = new Rect(topLeft.x, topLeft.y,
+                Fix64.Max(0, bottomRight.x - topLeft.x),
+                Fix64.Max(0, bottomRight.y - topLeft.y));
+            position = new Vector2(rootAnchor.Value.x, rootAnchor.Value.yMax);
+        }
+        else
+            position = GUI.GUIToRootPoint(Event.current.mousePosition);
+
+        if (presentation.IsAdvanced)
+        {
+            _genericMenuPopup.Close();
+            _genericMenuAnchor = null;
+            _advancedDropdown.Open(items, position, rootAnchor);
+        }
+        else
+        {
+            _advancedDropdown.Close();
+            _genericMenuAnchor = rootAnchor;
+            _genericMenuPopup.Open(items, position);
+        }
+    }
+
+    private void CloseTransientMenus()
+    {
+        _openMenu = null;
+        _mainMenuPopup.Close();
+        _genericMenuPopup.Close();
+        _genericMenuAnchor = null;
+        _advancedDropdown.Close();
     }
 
     private void OnUpdate(double deltaSeconds)
@@ -703,6 +770,20 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         if (_closing) return;
         _closing = true;
+        if (_enteringPlayMode || _exitingPlayMode)
+        {
+            _closePendingAfterPlayModeTransition = true;
+            return;
+        }
+        CompleteClose();
+    }
+
+    private void CompleteClose()
+    {
+        _closePendingAfterPlayModeTransition = false;
+        CloseTransientMenus();
+        if (_playing || _playModeSession is not null)
+            ExitPlayMode(processDeferredCompilation: false);
         EditorFeatureGuard.Invoke("EditorLayout.SaveLastLayout", SaveLastLayout);
         if (_prefabStage is not null)
             EditorFeatureGuard.Invoke("PrefabStage.Close", ClosePrefabStage);
@@ -734,26 +815,26 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (!TryGetRenderViewport(_sceneView, device, frameWidth, frameHeight, out var viewport)) return;
         _lastWidth = viewport.Width;
         _lastHeight = viewport.Height;
-        _sceneRenderer!.RenderViewport(LoadedScenes(), _scene, EditorCamera(), viewport,
-            initializeColor: true, drawGrid: true, drawUi: false, drawGizmos: false);
+        var scenes = LoadedScenes();
+        var editorCamera = EditorCamera();
+        _sceneRenderer!.RenderViewport(scenes, _scene, editorCamera, viewport,
+            initializeColor: true, drawGrid: true, drawUi: false, drawGizmos: false,
+            objectFilter: SceneVisibilityManager.instance.IsVisible);
+        if (!SceneGizmoVisibility.Enabled) return;
+        var gizmos = SceneGizmoPass.Collect(scenes, _selected, viewport.Width, viewport.Height);
+        _sceneRenderer.DrawGizmos(gizmos.Lines, editorCamera, viewport);
     }
 
     private void RenderGameViewport(IGraphicsDevice device, int frameWidth, int frameHeight)
     {
-        if (!TryGetRenderViewport(_gameView, device, frameWidth, frameHeight, out var viewport)) return;
+        if (!TryGetRenderViewport(_gameView, device, frameWidth, frameHeight, out var availableViewport)) return;
+        var viewport = _gameView.FitRenderViewport(availableViewport);
+        if (viewport != availableViewport)
+            _sceneRenderer!.FillViewport(availableViewport, new NVector4(0.025f, 0.028f, 0.032f, 1));
+        var targetSize = _gameView.ApplyTargetSize(viewport);
         var cameras = EngineRenderer.ResolveGameCameras(LoadedScenes());
-        if (cameras.Count == 0)
-        {
-            _sceneRenderer!.FillViewport(viewport, new NVector4(0.055f, 0.071f, 0.09f, 1));
-            return;
-        }
-
-        for (var index = 0; index < cameras.Count; index++)
-        {
-            _sceneRenderer!.RenderViewport(LoadedScenes(), _scene, RenderCamera.From(cameras[index]), viewport,
-                initializeColor: index == 0, drawUi: index == cameras.Count - 1,
-                drawGrid: false, drawGizmos: false);
-        }
+        _sceneRenderer!.RenderCameras(LoadedScenes(), _scene, cameras, viewport,
+            targetSize.Width, targetSize.Height, drawUi: true);
     }
 
     private bool TryGetRenderViewport(EditorWindow window, IGraphicsDevice device,
@@ -845,14 +926,45 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         Trace($"[{entry.Type}] {entry.Message}{(string.IsNullOrWhiteSpace(entry.StackTrace) ? string.Empty :
             $"{Environment.NewLine}{entry.StackTrace}")}");
     }
-    private void OnAssetsChanged(IReadOnlyList<AssetChange> _)
+    private void OnAssetsChanged(IReadOnlyList<AssetChange> changes)
     {
+        AssetPreview.ClearTemporaryAssetPreviews();
+        ReloadChangedAssetSelection(changes);
         _scriptSourceCache.Clear();
         _project?.Invalidate();
+    }
+
+    private void ReloadChangedAssetSelection(IReadOnlyList<AssetChange> changes)
+    {
+        if (_selected is not null || string.IsNullOrWhiteSpace(_selectedAssetPath)) return;
+        var change = changes.LastOrDefault(candidate =>
+            PathsEqual(candidate.AssetPath, _selectedAssetPath) ||
+            PathsEqual(candidate.PreviousPath, _selectedAssetPath));
+        if (change is null) return;
+
+        var previous = _selectedAsset;
+        if (change.Kind == AssetChangeKind.Deleted)
+        {
+            _selectedAsset = null;
+            _selectedAssetPath = null;
+        }
+        else
+        {
+            _selectedAssetPath = change.AssetPath;
+            _selectedAsset = AssetDatabase.LoadMainAssetAtPath(change.AssetPath);
+        }
+
+        if (previous is not null && ReferenceEquals(_inspector.LockedTarget, previous))
+            _inspector.RemapLockedTarget(target => ReferenceEquals(target, previous) ? _selectedAsset : target);
+        else
+            _inspector.RebuildEditor();
+        Selection.NotifyHostSelectionChanged(_selectedAsset);
     }
     private void OnUndoRedo() { MarkDirty(_selected?.scene ?? _scene); _inspector.RebuildEditor(); }
     private void OnPackagesReloading()
     {
+        CloseTransientMenus();
+        if (_playing || _playModeSession is not null) ExitPlayMode();
         _consoleClearedForPackageReload = ConsoleLogController.ClearIfEnabled(ConsoleClearTrigger.Recompile);
         _scriptSourceCache.Clear();
         ComponentClipboard.Clear();
@@ -861,12 +973,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     }
     private void OnPackagesUnloading(IReadOnlyList<BPackageDefinition> _)
     {
-        if (!_playing) return;
-        StopAllRuntimes();
-        _playing = false;
-        _paused = false;
-        Application.isPlaying = false;
-        EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.EnteredEditMode);
+        if (!_playing && _playModeSession is null) return;
+        ExitPlayMode();
     }
     private void OnPackagesChanged()
     {
@@ -877,6 +985,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private void OnRuntimeSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         if (!_playing) return;
+        scene.MarkRuntimeOnly();
+        _playModeSession?.RuntimeScenes.Add(scene);
+        if (_exitingPlayMode) return;
         try
         {
             scene.path = Path.GetFullPath(scene.path);
@@ -888,11 +999,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
             entry.IsLoaded = true;
             if (_runtimes.All(item => !ReferenceEquals(item.Scene, scene)))
-            {
-                var runtime = _sceneRuntimeFactory.Create(scene);
-                runtime.Start();
-                _runtimes.Add(runtime);
-            }
+                StartRuntime(scene);
             SetActiveEditorScene(scene);
             SelectInitialSceneObject(scene);
             RefreshLoadedSceneSnapshot();
@@ -907,17 +1014,41 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private void OnRuntimeSceneUnloaded(Scene scene)
     {
         if (!_playing) return;
+        if (_exitingPlayMode) return;
         try
         {
             _runtimes.RemoveAll(item => ReferenceEquals(item.Scene, scene));
             if (FindSceneEntry(scene) is { } entry) _openScenes.Remove(entry);
-            if (ReferenceEquals(_selected?.scene, scene)) _selected = null;
+            if (_selected is not null &&
+                (_selected.scene is null || ReferenceEquals(_selected.scene, scene)))
+            {
+                _selected = null;
+                Selection.NotifyHostSelectionChanged(null);
+                _inspector.RebuildEditor();
+            }
             RefreshLoadedSceneSnapshot();
             EditorApplication.RaiseHierarchyChanged();
         }
         catch (Exception exception)
         {
             EditorFeatureGuard.Report("Runtime Scene unloaded", exception);
+        }
+    }
+
+    private void OnRuntimeActiveSceneChanged(Scene? _, Scene? current)
+    {
+        if (!_playing || _registeringPlayModeScenes || _exitingPlayMode ||
+            current is null || !current.isCreated) return;
+        try
+        {
+            if (FindSceneEntry(current) is not { IsLoaded: true }) return;
+            SetActiveEditorScene(current);
+            RefreshLoadedSceneSnapshot();
+            EditorApplication.RaiseHierarchyChanged();
+        }
+        catch (Exception exception)
+        {
+            EditorFeatureGuard.Report("Runtime active Scene changed", exception);
         }
     }
 
@@ -936,6 +1067,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         ArgumentNullException.ThrowIfNull(gameObject);
         _selected = gameObject; _selectedAsset = null; _selectedAssetPath = null;
         Selection.NotifyHostSelectionChanged(gameObject); _inspector.RebuildEditor();
+    }
+
+    internal void ClearSelection()
+    {
+        if (_selected is null && _selectedAsset is null && _selectedAssetPath is null) return;
+        _selected = null;
+        _selectedAsset = null;
+        _selectedAssetPath = null;
+        Selection.NotifyHostSelectionChanged(null);
+        _inspector.RebuildEditor();
     }
 
     internal void Select(AssetRecord record)
@@ -1100,8 +1241,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private bool CanExecuteGameObjectCommand(GameObjectCommand command, GameObject? target)
     {
-        var activeSceneReady = _scene.isLoaded && _scene.world.IsCreated;
-        var targetExists = target?.scene is { isLoaded: true } && target.scene.world.IsCreated;
+        var activeSceneReady = _scene.isLoaded && _scene.isCreated;
+        var targetExists = target?.scene is { isLoaded: true } && target.scene.isCreated;
         var editable = targetExists && (target!.hideFlags & HideFlags.NotEditable) == 0;
         var siblingIndex = target?.transform.GetSiblingIndex() ?? -1;
         var siblingCount = target is null ? 0 : SiblingCount(target);
@@ -1130,20 +1271,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private bool CanExecuteComponentCommand(ComponentCommand command)
     {
         var target = _selected;
-        if (target?.scene is not { isLoaded: true } scene || !scene.world.IsCreated ||
+        if (target?.scene is not { isLoaded: true } scene || !scene.isCreated ||
             (target.hideFlags & HideFlags.NotEditable) != 0 ||
             target.components.Any(component => (component.hideFlags & HideFlags.NotEditable) != 0))
             return false;
 
         return command switch
         {
-            ComponentCommand.EnableAllComponents =>
-                target.components.Any(component => component is not Transform && !component.enabled),
-            ComponentCommand.DisableAllComponents =>
-                target.components.Any(component => component is not Transform && component.enabled),
-            ComponentCommand.ResetAllComponents =>
-                target.components.Any(component => component is not MissingComponent),
-            ComponentCommand.RemoveMissingScripts =>
+            ComponentCommand.RemoveMissingComponents =>
                 target.components.Any(component => component is MissingComponent &&
                                                    target.CanRemoveComponent(component)),
             _ => false
@@ -1156,17 +1291,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         switch (command)
         {
-            case ComponentCommand.EnableAllComponents:
-                SetAllComponentsEnabled(target, enabled: true);
-                break;
-            case ComponentCommand.DisableAllComponents:
-                SetAllComponentsEnabled(target, enabled: false);
-                break;
-            case ComponentCommand.ResetAllComponents:
-                ResetAllComponents(target);
-                break;
-            case ComponentCommand.RemoveMissingScripts:
-                RemoveMissingScripts(target);
+            case ComponentCommand.RemoveMissingComponents:
+                RemoveMissingComponents(target);
                 break;
             default:
                 return false;
@@ -1177,35 +1303,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         return true;
     }
 
-    private static void SetAllComponentsEnabled(GameObject target, bool enabled)
-    {
-        var components = target.components
-            .Where(component => component is not Transform && component.enabled != enabled)
-            .ToArray();
-        Undo.RecordObjects(components.Cast<BObject>().ToArray(),
-            enabled ? "Enable All Components" : "Disable All Components");
-        foreach (var component in components)
-        {
-            component.enabled = enabled;
-            EditorUtility.SetDirty(component);
-        }
-    }
-
-    private static void ResetAllComponents(GameObject target)
-    {
-        var components = target.components.Where(component => component is not MissingComponent).ToArray();
-        Undo.RecordObjects(components.Cast<BObject>().ToArray(), "Reset All Components");
-        foreach (var component in components) ComponentClipboard.Reset(component, recordUndo: false);
-    }
-
-    private static void RemoveMissingScripts(GameObject target)
+    private static void RemoveMissingComponents(GameObject target)
     {
         var states = target.components
             .Where(component => component is MissingComponent && target.CanRemoveComponent(component))
             .Select(component => StructuralObjectState.Capture(component))
             .ToArray();
         for (var index = states.Length - 1; index >= 0; index--) states[index].Remove();
-        Undo.RegisterOperation("Remove Missing Scripts",
+        Undo.RegisterOperation("Remove Missing Components",
             () =>
             {
                 foreach (var state in states) state.Restore();
@@ -1222,7 +1327,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         if (command is not (CameraViewCommand.AlignWithView or CameraViewCommand.MoveToView)) return false;
         var gameObject = camera.gameObject;
-        return gameObject.scene is { isLoaded: true } scene && scene.world.IsCreated &&
+        return gameObject.scene is { isLoaded: true } scene && scene.isCreated &&
                gameObject.components.Any(component => ReferenceEquals(component, camera)) &&
                (gameObject.hideFlags & HideFlags.NotEditable) == 0 &&
                (camera.hideFlags & HideFlags.NotEditable) == 0 &&
@@ -1263,10 +1368,10 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         return command switch
         {
             MainMenuCommand.NewScene or MainMenuCommand.OpenScene or MainMenuCommand.OpenSceneAdditive =>
-                !_closing && !_playing,
-            MainMenuCommand.SaveScene => !_playing &&
+                !_closing && !_playing && !_enteringPlayMode && !_exitingPlayMode,
+            MainMenuCommand.SaveScene => !_playing && !_enteringPlayMode && !_exitingPlayMode &&
                 (_prefabStage is not null || FindSceneEntry(_scene) is { IsLoaded: true }),
-            MainMenuCommand.SaveAllScenes => !_playing &&
+            MainMenuCommand.SaveAllScenes => !_playing && !_enteringPlayMode && !_exitingPlayMode &&
                 (_prefabStage is not null || _openScenes.Any(item => item.IsLoaded)),
             MainMenuCommand.ShowProjectInExplorer => Directory.Exists(_workspace.RootPath),
             MainMenuCommand.Exit => !_closing,
@@ -1789,7 +1894,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private bool SaveEditorScene(Scene scene)
     {
-        if (_playing) return false;
+        if (_playing || _enteringPlayMode || _exitingPlayMode) return false;
         var entry = FindSceneEntry(scene);
         if (entry is null || !entry.IsLoaded) return false;
         if (!entry.IsDirty) return true;
@@ -1813,32 +1918,241 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void TogglePlay()
     {
-        if (_playing)
+        if (_enteringPlayMode || _exitingPlayMode) return;
+        if (_playing || _playModeSession is not null) ExitPlayMode();
+        else EnterPlayMode();
+    }
+
+    private void EnterPlayMode()
+    {
+        if (_enteringPlayMode || _exitingPlayMode || _playing || _playModeSession is not null) return;
+        if (_prefabStage is not null)
         {
-            EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.ExitingPlayMode);
-            StopAllRuntimes(); _playing = false; _paused = false; Application.isPlaying = false;
+            Debug.LogWarning("Play Mode is unavailable while editing Prefab contents. Close the Prefab Stage first.");
+            return;
+        }
+        _enteringPlayMode = true;
+        try { EnterPlayModeCore(); }
+        finally
+        {
+            _enteringPlayMode = false;
+            if (_closePendingAfterPlayModeTransition) CompleteClose();
+        }
+    }
+
+    private void EnterPlayModeCore()
+    {
+        EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.ExitingEditMode);
+        ConsoleLogController.ClearIfEnabled(ConsoleClearTrigger.Play);
+
+        var undoHistory = Undo.CaptureAndClear();
+        var componentClipboard = ComponentClipboard.CaptureAndClear();
+        var dirtyState = EditorUtility.CaptureDirtyState();
+        var runtimeState = EditorRuntimeStateSnapshot.Capture();
+        var copiedGameObject = _copiedGameObject;
+        _copiedGameObject = null;
+        EditorPlayModeSession? session = null;
+        try
+        {
+            session = EditorPlayModeSession.Create(
+                _services,
+                _openScenes,
+                _scene,
+                _scenePath,
+                _mainScene,
+                _mainSelection,
+                _prefabStage,
+                _selected,
+                _selectedAsset,
+                _selectedAssetPath,
+                _inspector.LockedTarget,
+                _dirty,
+                _mainSceneDirty,
+                Selection.objects,
+                Selection.activeContext,
+                undoHistory,
+                componentClipboard,
+                dirtyState,
+                copiedGameObject,
+                runtimeState);
+            _playModeSession = session;
+            ApplyPlayModeSession(session);
+            _playing = true;
+            _paused = false;
+            Application.isPlaying = true;
+
+            var playScenes = LoadedScenes().ToArray();
+            _registeringPlayModeScenes = true;
+            try
+            {
+                foreach (var scene in playScenes)
+                    _runtimeSceneManager.RegisterScene(scene);
+            }
+            finally { _registeringPlayModeScenes = false; }
+            _runtimeSceneManager.SetActiveScene(_scene);
+            session.InvokeAfterDeserializeCallbacks();
+            foreach (var scene in playScenes)
+            {
+                if (!scene.isCreated || !_runtimeSceneManager.LoadedScenes.Contains(scene)) continue;
+                StartRuntime(scene);
+            }
+            FocusGameViewIfOpen();
+            EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.EnteredPlayMode);
+        }
+        catch (Exception exception)
+        {
+            if (session is not null)
+            {
+                _exitingPlayMode = true;
+                try { RestoreEditModeSession(session); }
+                finally { _exitingPlayMode = false; }
+            }
+            else
+            {
+                Undo.Restore(undoHistory);
+                ComponentClipboard.Restore(componentClipboard);
+                EditorUtility.RestoreDirtyState(dirtyState);
+                runtimeState.Restore();
+                _copiedGameObject = copiedGameObject;
+                _playing = false;
+                _paused = false;
+                Application.isPlaying = false;
+            }
+            EditorFeatureGuard.Report("Enter Play Mode", exception);
             EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.EnteredEditMode);
-            if (_scriptCompilationDeferred)
+        }
+    }
+
+    private bool ExitPlayMode(
+        bool raiseStateEvents = true,
+        bool processDeferredCompilation = true)
+    {
+        if (_enteringPlayMode || _exitingPlayMode) return false;
+        if (!_playing && _playModeSession is null) return false;
+        _exitingPlayMode = true;
+        try
+        {
+            if (raiseStateEvents)
+                EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.ExitingPlayMode);
+            if (_playModeSession is { } session)
+                RestoreEditModeSession(session);
+            else
+            {
+                StopAllRuntimes();
+                _playing = false;
+                _paused = false;
+                Application.isPlaying = false;
+            }
+
+            if (raiseStateEvents)
+                EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.EnteredEditMode);
+            if (processDeferredCompilation && _scriptCompilationDeferred)
             {
                 _scriptCompilationDeferred = false;
                 QueueScriptCompilation();
             }
+            return true;
         }
-        else
+        finally
         {
-            EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.ExitingEditMode);
-            ConsoleLogController.ClearIfEnabled(ConsoleClearTrigger.Play);
-            _playing = true;
-            Application.isPlaying = true;
-            foreach (var scene in LoadedScenes())
+            _exitingPlayMode = false;
+            if (_closePendingAfterPlayModeTransition) CompleteClose();
+        }
+    }
+
+    private void ApplyPlayModeSession(EditorPlayModeSession session)
+    {
+        _openScenes.Clear();
+        _openScenes.AddRange(session.RuntimeOpenScenes);
+        _scene = session.RuntimeScene;
+        _mainScene = session.RuntimeMainScene;
+        _mainSelection = session.RuntimeMainSelection;
+        _prefabStage = session.RuntimePrefabStage;
+        _selected = session.RuntimeSelected;
+        _selectedAsset = session.RuntimeSelectedAsset;
+        _selectedAssetPath = session.EditSelectedAssetPath;
+        _dirty = session.EditDirty;
+        _mainSceneDirty = session.EditMainSceneDirty;
+        RefreshLoadedSceneSnapshot();
+        Selection.RestoreHostSelection(
+            session.RuntimeSelectionObjects,
+            session.RuntimeSelectionContext,
+            _selected ?? _selectedAsset);
+        _inspector.RemapLockedTarget(session.ToRuntime);
+        EditorApplication.RaiseHierarchyChanged();
+        _mainWindow.SetTitle(BuildTitle());
+    }
+
+    private void RestoreEditModeSession(EditorPlayModeSession session)
+    {
+        var editScenes = session.EditOpenScenes.Select(item => item.Scene)
+            .Append(session.EditScene)
+            .Concat(session.EditMainScene is null ? [] : [session.EditMainScene])
+            .Distinct()
+            .ToArray();
+        foreach (var scene in _openScenes.Select(item => item.Scene)
+                     .Append(_scene)
+                     .Concat(_runtimeSceneManager.LoadedScenes)
+                     .Where(scene => !editScenes.Any(editScene => ReferenceEquals(editScene, scene))))
+            session.RuntimeScenes.Add(scene);
+
+        try
+        {
+            StopAllRuntimes(unregisterScenes: false);
+            var disposedRuntimeScenes = new HashSet<Scene>(ReferenceEqualityComparer.Instance);
+            while (true)
             {
-                var runtime = _sceneRuntimeFactory.Create(scene);
-                runtime.Start();
-                _runtimes.Add(runtime);
+                var runtimeScenes = session.RuntimeScenes
+                    .Concat(_runtimeSceneManager.LoadedScenes)
+                    .Where(runtimeScene =>
+                        !editScenes.Any(editScene => ReferenceEquals(editScene, runtimeScene)) &&
+                        runtimeScene.isCreated && disposedRuntimeScenes.Add(runtimeScene))
+                    .ToArray();
+                if (runtimeScenes.Length == 0) break;
+                foreach (var runtimeScene in runtimeScenes)
+                    EditorFeatureGuard.Invoke(runtimeScene, "Dispose Play Mode Scene", runtimeScene.Dispose);
             }
-            if (_services.GetService<IRuntimeSceneManager>() is { } sceneManager)
-                sceneManager.SetActiveScene(_scene);
-            EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.EnteredPlayMode);
+
+            foreach (var scene in _runtimeSceneManager.LoadedScenes.ToArray())
+                if (!editScenes.Any(editScene => ReferenceEquals(editScene, scene)))
+                    EditorFeatureGuard.Invoke(scene, "Unregister Play Mode Scene",
+                        () => _runtimeSceneManager.UnregisterScene(scene));
+
+            _playing = false;
+            _paused = false;
+            Application.isPlaying = false;
+        }
+        finally
+        {
+            _openScenes.Clear();
+            _openScenes.AddRange(session.EditOpenScenes);
+            _scene = session.EditScene;
+            _scenePath = session.EditScenePath;
+            _mainScene = session.EditMainScene;
+            _mainSelection = session.EditMainSelection;
+            _prefabStage = session.EditPrefabStage;
+            _selected = session.EditSelected;
+            _selectedAsset = session.EditSelectedAsset;
+            _selectedAssetPath = session.EditSelectedAssetPath;
+            _dirty = session.EditDirty;
+            _mainSceneDirty = session.EditMainSceneDirty;
+            _playing = false;
+            _paused = false;
+            Application.isPlaying = false;
+            _playModeSession = null;
+            RefreshLoadedSceneSnapshot();
+            Undo.Restore(session.UndoHistory);
+            ComponentClipboard.Restore(session.ComponentClipboard);
+            EditorUtility.RestoreDirtyState(session.DirtyState);
+            _copiedGameObject = session.CopiedGameObject;
+            session.RuntimeState.Restore();
+            Selection.RestoreHostSelection(
+                session.EditSelectionObjects,
+                session.EditSelectionContext,
+                _selected ?? _selectedAsset);
+            _inspector.RemapLockedTarget(session.ToEdit);
+            EditorApplication.RaiseHierarchyChanged();
+            _mainWindow.SetTitle(BuildTitle());
         }
     }
 
@@ -1863,41 +2177,43 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(scenePath);
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        if (_enteringPlayMode || _exitingPlayMode) return null;
         var fullPath = Path.GetFullPath(scenePath);
         if (!File.Exists(fullPath)) return null;
         if (_prefabStage is not null) ClosePrefabStage();
 
         var existing = _openScenes.FirstOrDefault(item =>
             item.SourcePath.Equals(fullPath, StringComparison.OrdinalIgnoreCase));
-        if (mode == OpenSceneMode.Additive && existing is { IsLoaded: true })
-        {
-            SetActiveEditorScene(existing.Scene);
-            return existing.Scene;
-        }
-
         if (mode == OpenSceneMode.Single)
         {
             StopPlayingForSceneChange();
+            existing = _openScenes.FirstOrDefault(item =>
+                item.SourcePath.Equals(fullPath, StringComparison.OrdinalIgnoreCase));
             SaveAllOpenScenes();
             ClearSceneObjectHistory();
             foreach (var previousEntry in _openScenes.Where(item => !ReferenceEquals(item, existing)).ToArray())
             {
                 _openScenes.Remove(previousEntry);
                 previousEntry.Scene.isLoaded = false;
-                if (previousEntry.Scene.world.IsCreated) previousEntry.Scene.world.Dispose();
+                if (previousEntry.Scene.isCreated) previousEntry.Scene.Dispose();
                 EditorSceneManager.RaiseSceneClosed(previousEntry.Scene);
             }
             if (existing is not null && !existing.IsLoaded)
             {
-                if (existing.Scene.world.IsCreated) existing.Scene.world.Dispose();
+                if (existing.Scene.isCreated) existing.Scene.Dispose();
                 _openScenes.Remove(existing);
                 existing = null;
             }
         }
+        else if (mode == OpenSceneMode.Additive && existing is { IsLoaded: true })
+        {
+            SetActiveEditorScene(existing.Scene);
+            return existing.Scene;
+        }
 
         if (existing is { IsLoaded: false })
         {
-            if (existing.Scene.world.IsCreated) existing.Scene.world.Dispose();
+            if (existing.Scene.isCreated) existing.Scene.Dispose();
             _openScenes.Remove(existing);
             existing = null;
         }
@@ -1935,9 +2251,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         RefreshLoadedSceneSnapshot();
         if (_playing)
         {
-            var runtime = _sceneRuntimeFactory.Create(scene);
-            runtime.Start();
-            _runtimes.Add(runtime);
+            StartRuntime(scene);
             _runtimeSceneManager.SetActiveScene(scene);
         }
         EditorSceneManager.RaiseSceneOpened(scene, mode);
@@ -1956,6 +2270,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private bool CloseEditorScene(Scene scene, bool removeScene)
     {
+        if (_enteringPlayMode || _exitingPlayMode) return false;
         if (_prefabStage is not null || FindSceneEntry(scene) is not { } entry) return false;
         var otherLoaded = _openScenes.FirstOrDefault(item => !ReferenceEquals(item, entry) && item.IsLoaded);
         if (entry.IsLoaded && otherLoaded is null) return false;
@@ -1968,7 +2283,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         else
             entry.IsLoaded = false;
         scene.isLoaded = false;
-        if (scene.world.IsCreated) scene.world.Dispose();
+        if (scene.isCreated) scene.Dispose();
 
         if (ReferenceEquals(_scene, scene) && otherLoaded is not null)
             SetActiveEditorScene(otherLoaded.Scene);
@@ -2000,12 +2315,23 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void StopPlayingForSceneChange()
     {
-        if (!_playing) return;
-        StopAllRuntimes();
-        _playing = false;
-        _paused = false;
-        Application.isPlaying = false;
-        EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.EnteredEditMode);
+        ExitPlayMode();
+    }
+
+    private SceneRuntime StartRuntime(Scene scene)
+    {
+        var runtime = _sceneRuntimeFactory.Create(scene);
+        _runtimes.Add(runtime);
+        try
+        {
+            runtime.Start();
+            return runtime;
+        }
+        catch
+        {
+            _runtimes.Remove(runtime);
+            throw;
+        }
     }
 
     private void StopRuntime(Scene scene)
@@ -2018,14 +2344,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             sceneManager.UnregisterScene(scene);
     }
 
-    private void StopAllRuntimes()
+    private void StopAllRuntimes(bool unregisterScenes = true)
     {
-        var scenes = _runtimes.Select(item => item.Scene).ToArray();
-        for (var index = _runtimes.Count - 1; index >= 0; index--)
-            EditorFeatureGuard.Invoke(_runtimes[index], "SceneRuntime.Stop", _runtimes[index].Stop);
+        var runtimes = _runtimes.ToArray();
         _runtimes.Clear();
-        if (_services.GetService<IRuntimeSceneManager>() is { } sceneManager)
-            foreach (var scene in scenes) sceneManager.UnregisterScene(scene);
+        for (var index = runtimes.Length - 1; index >= 0; index--)
+            EditorFeatureGuard.Invoke(runtimes[index], "SceneRuntime.Stop", runtimes[index].Stop);
+        if (!unregisterScenes) return;
+        foreach (var scene in runtimes.Select(item => item.Scene).Distinct())
+            EditorFeatureGuard.Invoke(scene, "Unregister Runtime Scene",
+                () => _runtimeSceneManager.UnregisterScene(scene));
     }
 
     private void PingSceneAsset(EditorOpenScene entry)
@@ -2248,7 +2576,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         else
             ConsoleLogController.ClearIfEnabled(ConsoleClearTrigger.Recompile);
         var reloading = EditorBridge.Host is not null;
-        if (reloading) AssemblyReloadEvents.RaiseBeforeAssemblyReload();
+        if (reloading)
+        {
+            CloseTransientMenus();
+            AssemblyReloadEvents.RaiseBeforeAssemblyReload();
+        }
         _scriptSourceCache.Clear();
         ComponentClipboard.Clear();
         Undo.ClearAll();
@@ -2416,6 +2748,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
             if (reloading)
             {
+                CloseTransientMenus();
                 AssemblyReloadEvents.RaiseBeforeAssemblyReload();
                 reloadStarted = true;
             }
@@ -2429,7 +2762,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 TypeCache.Refresh();
                 EditorFeatureGuard.Invoke("EditorInitialization.Run", () => EditorInitialization.Run());
                 _menuItems = DiscoverMenuItems(_menuItems);
-                _inspector.RebuildEditor();
+                ReloadSelectionAfterScriptReload();
                 _project.Invalidate();
             }
             Debug.Log($"Compiled {build.Runtime.CompiledAssemblies.Count} runtime and " +
@@ -2445,6 +2778,41 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (reloadStarted) AssemblyReloadEvents.RaiseAfterAssemblyReload();
         }
     }
+
+    private void ReloadSelectionAfterScriptReload()
+    {
+        var previousSelectedAsset = _selectedAsset;
+        if (_selected is null && !string.IsNullOrWhiteSpace(_selectedAssetPath))
+            _selectedAsset = AssetDatabase.LoadMainAssetAtPath(_selectedAssetPath);
+
+        var lockedTarget = _inspector.LockedTarget;
+        if (lockedTarget is not null)
+        {
+            BObject? reloadedLockedTarget = lockedTarget;
+            if (lockedTarget is not GameObject)
+            {
+                var lockedPath = AssetDatabase.GetAssetPath(lockedTarget);
+                if (!string.IsNullOrWhiteSpace(lockedPath))
+                    reloadedLockedTarget = previousSelectedAsset is not null &&
+                                           ReferenceEquals(lockedTarget, previousSelectedAsset) &&
+                                           PathsEqual(lockedPath, _selectedAssetPath)
+                        ? _selectedAsset
+                        : AssetDatabase.LoadMainAssetAtPath(lockedPath);
+            }
+            _inspector.RemapLockedTarget(target => ReferenceEquals(target, lockedTarget)
+                ? reloadedLockedTarget
+                : target);
+        }
+        else
+            _inspector.RebuildEditor(force: true);
+
+        if (_selected is null && !ReferenceEquals(previousSelectedAsset, _selectedAsset))
+            Selection.NotifyHostSelectionChanged(_selectedAsset);
+    }
+
+    private static bool PathsEqual(string? left, string? right) =>
+        !string.IsNullOrWhiteSpace(left) && !string.IsNullOrWhiteSpace(right) &&
+        left.Replace('\\', '/').Equals(right.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
     private void CancelScriptCompilation(bool endTransaction = true)
     {
@@ -2597,6 +2965,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     bool IEditorHost.CloseScene(Scene scene, bool removeScene) => CloseEditorScene(scene, removeScene);
     bool IEditorHost.SetActiveScene(Scene scene) => SetActiveEditorScene(scene);
     bool IEditorHost.IsPlaying { get => _playing; set { if (_playing != value) TogglePlay(); } }
+    bool IEditorHost.IsChangingPlayMode => _enteringPlayMode || _exitingPlayMode;
     bool IEditorHost.IsPaused { get => _paused; set => _paused = _playing && value; }
     void IEditorHost.ShowWindow(EditorWindow window) => ShowEditorWindow(window);
     void IEditorHost.CloseWindow(EditorWindow window) => CloseEditorWindow(window);
@@ -2645,12 +3014,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     void IEditorHost.RequestScriptCompilation() => QueueScriptCompilation();
     string IEditorHost.CreateAssetFolder(string parentFolder, string newFolderName)
     {
+        EditorAssetWritePolicy.EnsureCanWrite("Creating project folders");
         var path = Path.Combine(ResolveAssetPath(parentFolder), newFolderName); Directory.CreateDirectory(path);
         CancelAssetRefresh();
         _assets.ImportAsset(path); return Path.GetRelativePath(_workspace.RootPath, path).Replace('\\', '/');
     }
     bool IEditorHost.DeleteAsset(string assetPath)
     {
+        EditorAssetWritePolicy.EnsureCanWrite("Deleting project assets");
         var path = ResolveAssetPath(assetPath);
         if (File.Exists(path)) File.Delete(path); else if (Directory.Exists(path)) Directory.Delete(path, true); else return false;
         var metadataPath = path + ".meta";
@@ -2659,6 +3030,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     }
     string IEditorHost.MoveAsset(string oldPath, string newPath)
     {
+        EditorAssetWritePolicy.EnsureCanWrite("Moving project assets");
         var result = AssetFileOperations.Move(ResolveAssetPath(oldPath), ResolveAssetPath(newPath));
         if (result.Length == 0) RefreshAssets();
         return result;
@@ -2670,6 +3042,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private bool OpenPrefabStage(string assetPath)
     {
+        if (_playing || _enteringPlayMode || _exitingPlayMode) return false;
         var record = _assets.GetRecord(assetPath);
         if (record is null || record.AssetType != "Prefab") return false;
         if (_prefabStage is not null) ClosePrefabStage();
@@ -2699,7 +3072,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private bool SavePrefabStage()
     {
-        if (_prefabStage is null) return false;
+        if (_playing || _enteringPlayMode || _exitingPlayMode || _prefabStage is null) return false;
         var record = _assets.GetRecord(_prefabStage.assetPath);
         if (record is null) return false;
         var assetId = record.Guid;
@@ -2717,7 +3090,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void ClosePrefabStage()
     {
-        if (_prefabStage is null || _mainScene is null) return;
+        if (_playing || _enteringPlayMode || _exitingPlayMode ||
+            _prefabStage is null || _mainScene is null) return;
         if (_dirty) SavePrefabStage();
         ClearSceneObjectHistory();
         var stageScene = _scene;
@@ -2729,7 +3103,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _dirty = _mainSceneDirty;
         _mainSceneDirty = false;
         RefreshLoadedSceneSnapshot();
-        if (stageScene.world.IsCreated) stageScene.world.Dispose();
+        if (stageScene.isCreated) stageScene.Dispose();
         Selection.NotifyHostSelectionChanged(_selected);
         _inspector.RebuildEditor();
         EditorApplication.RaiseHierarchyChanged();
@@ -3034,11 +3408,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private void ShowFloating(EditorWindow window, EditorWindowState state)
     {
         if (state == EditorWindowState.Modal)
-        {
-            _openMenu = null;
-            _mainMenuPopup.Close();
-            _genericMenuPopup.Close();
-        }
+            CloseTransientMenus();
         _windowLayer.Show(window, state);
         _windowLayer.Focus(window);
     }
@@ -3134,9 +3504,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private Guid? _dropTargetId;
         private Vector2 _dragStart;
         private bool _showRowActions = true;
+        private bool _showSceneStateActions = true;
         public ImGuiHierarchyWindow() : this(null!) { }
         protected override void OnGUI()
         {
+            if (_draggedId is not null && !DragAndDrop.isDragging) ClearDrag();
             HandleKeyboard();
             UpdateResponsiveState();
             var toolbarHeight = EditorStyles.toolbar.fixedHeight;
@@ -3175,7 +3547,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 }
             }
             finally { _scroll.End(); }
-            if (Event.current.type == EventType.MouseUp && _draggedId is not null) ClearDrag();
+            if ((Event.current.type is EventType.MouseUp or EventType.DragPerform or EventType.DragExited) &&
+                _draggedId is not null) ClearDrag();
         }
 
         private void DrawScene(Scene scene, EditorOpenScene? entry, string displayName, bool loaded, bool dirty)
@@ -3294,8 +3667,10 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
             var itemIcon = PrefabUtility.IsPartOfPrefabInstance(item)
                 ? EditorBuiltinIcons.Assets.Prefab : EditorBuiltinIcons.Components.GameObject;
+            var stateActionWidth = _showSceneStateActions ? (Fix64)44 : Fix64.Zero;
+            var actionWidth = stateActionWidth + (_showRowActions ? 22 : 0);
             var itemLabelRect = new Rect(foldoutRect.xMax, rowRect.y,
-                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax - (_showRowActions ? 22 : 0)), rowHeight);
+                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax - actionWidth), rowHeight);
             var itemLabelWidth = itemLabelRect.width;
             var visibleItemIcon = itemLabelWidth >= 28 ? itemIcon : string.Empty;
             var morePressed = false;
@@ -3313,9 +3688,12 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             {
                 var doubleClick = Event.current.rawType == EventType.MouseUp && Event.current.button == 0 &&
                                   Event.current.clickCount >= 2;
+                var sceneHidden = SceneVisibilityManager.instance.IsHidden(item);
                 var rowStyle = selected
                     ? EditorStyles.hierarchyRowSelected
-                    : item.activeInHierarchy ? EditorStyles.hierarchyRow : EditorStyles.hierarchyRowInactive;
+                    : item.activeInHierarchy && !sceneHidden
+                        ? EditorStyles.hierarchyRow
+                        : EditorStyles.hierarchyRowInactive;
                 if (GUI.Button(itemLabelRect, new GUIContent(item.name, visibleItemIcon,
                         PrefabUtility.IsPartOfPrefabInstance(item) ? "Prefab instance" : "GameObject"),
                         rowStyle))
@@ -3323,6 +3701,27 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     app.Select(item);
                     if (doubleClick) app.FrameSelectedInScene();
                 }
+            }
+
+            if (_showSceneStateActions)
+            {
+                var sceneVisibility = SceneVisibilityManager.instance;
+                var hidden = sceneVisibility.IsHidden(item);
+                var visibilityRect = new Rect(rowRect.xMax - actionWidth, rowRect.y, 22, rowHeight);
+                if (GUI.Button(visibilityRect, new GUIContent(string.Empty,
+                        hidden ? EditorBuiltinIcons.Toolbar.Hidden : EditorBuiltinIcons.Toolbar.Visible,
+                        hidden ? $"Show {item.name} in Scene view" : $"Hide {item.name} in Scene view"),
+                        EditorStyles.hierarchyAction))
+                    sceneVisibility.ToggleVisibility(item, includeDescendants: true);
+
+                var pickingDisabled = sceneVisibility.IsPickingDisabled(item);
+                var pickingRect = new Rect(visibilityRect.xMax, rowRect.y, 22, rowHeight);
+                if (GUI.Button(pickingRect, new GUIContent(string.Empty,
+                        pickingDisabled ? EditorBuiltinIcons.Toolbar.Lock : EditorBuiltinIcons.Toolbar.Unlock,
+                        pickingDisabled
+                            ? $"Enable Scene picking for {item.name}"
+                            : $"Disable Scene picking for {item.name}"), EditorStyles.hierarchyAction))
+                    sceneVisibility.TogglePicking(item, includeDescendants: true);
             }
             if (_showRowActions)
             {
@@ -3415,6 +3814,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var width = GUI.visibleViewWidth;
             if (_showRowActions && width < 128) _showRowActions = false;
             else if (!_showRowActions && width > 144) _showRowActions = true;
+            if (_showSceneStateActions && width < 112) _showSceneStateActions = false;
+            else if (!_showSceneStateActions && width > 128) _showSceneStateActions = true;
         }
 
         private void HandleKeyboard()
@@ -3438,6 +3839,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _renamingId = item.Id;
             _renameValue = item.name;
             app.Select(item);
+            GUI.FocusControl("HierarchyRename");
             Repaint();
         }
 
@@ -3464,6 +3866,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private void HandleDrag(GameObject item, Rect rowRect)
         {
             var current = Event.current;
+            var updating = current.type is EventType.MouseDrag or EventType.DragUpdated;
+            var performing = current.type is EventType.MouseUp or EventType.DragPerform;
             if (current.type == EventType.MouseDown && current.button == 0 && rowRect.Contains(current.mousePosition))
             {
                 _dragCandidateId = item.Id;
@@ -3472,15 +3876,28 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
             if (current.type == EventType.MouseDrag && _dragCandidateId is { } candidate &&
                 _draggedId is null && (current.mousePosition - _dragStart).sqrMagnitude >= 16)
+            {
+                if (app.FindGameObject(candidate) is not { } draggedItem)
+                {
+                    ClearDrag();
+                    return;
+                }
                 _draggedId = candidate;
-            if (current.type == EventType.MouseDrag && _draggedId is { } dragged &&
+                DragAndDrop.PrepareStartDrag();
+                DragAndDrop.objectReferences = [draggedItem];
+                DragAndDrop.paths = [];
+                DragAndDrop.SetGenericData("BEngine.Hierarchy.GameObjectId", candidate);
+                DragAndDrop.StartDrag(draggedItem.name);
+            }
+            if (updating && _draggedId is { } dragged &&
                 dragged != item.Id && rowRect.Contains(current.mousePosition) && CanDrop(dragged, item))
             {
                 _dropTargetId = item.Id;
+                DragAndDrop.visualMode = DragAndDropVisualMode.Move;
                 Repaint();
                 return;
             }
-            if (current.type != EventType.MouseUp || _draggedId is not { } sourceId ||
+            if (!performing || _draggedId is not { } sourceId ||
                 _dropTargetId != item.Id || !rowRect.Contains(current.mousePosition)) return;
             if (app.FindGameObject(sourceId) is { } source && CanDrop(sourceId, item))
             {
@@ -3488,6 +3905,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 _expanded.Add(item.Id);
                 app.Select(source);
                 if (source.scene is { } scene) app.MarkDirty(scene);
+                DragAndDrop.AcceptDrag();
             }
             ClearDrag();
             current.Use();
@@ -3500,14 +3918,17 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private void HandleSceneDrop(EditorOpenScene entry, Rect rowRect)
         {
             var current = Event.current;
-            if (current.type == EventType.MouseDrag && _draggedId is { } dragged &&
+            var updating = current.type is EventType.MouseDrag or EventType.DragUpdated;
+            var performing = current.type is EventType.MouseUp or EventType.DragPerform;
+            if (updating && _draggedId is { } dragged &&
                 rowRect.Contains(current.mousePosition) && CanDropOnScene(dragged, entry.Scene))
             {
                 _dropTargetId = entry.Scene.Id;
+                DragAndDrop.visualMode = DragAndDropVisualMode.Move;
                 Repaint();
                 return;
             }
-            if (current.type != EventType.MouseUp || _draggedId is not { } sourceId ||
+            if (!performing || _draggedId is not { } sourceId ||
                 _dropTargetId != entry.Scene.Id || !rowRect.Contains(current.mousePosition)) return;
             if (app.FindGameObject(sourceId) is { } source && CanDropOnScene(sourceId, entry.Scene))
             {
@@ -3521,6 +3942,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 }
                 app.MarkDirty(entry.Scene);
                 app.Select(source);
+                DragAndDrop.AcceptDrag();
             }
             ClearDrag();
             current.Use();
@@ -3541,6 +3963,18 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private sealed class ImGuiSceneWindow(GpuEditorApplication app) : EditorWindow
     {
+        private const float AxisHandleLength = 72;
+        private const float RotationHandleRadius = 56;
+        private const float RotationHandleHitWidth = 8;
+        private static readonly (string Icon, string Tooltip, Tool Tool)[] ToolbarTools =
+        [
+            (EditorBuiltinIcons.Toolbar.View, "View Tool (Q)", Tool.View),
+            (EditorBuiltinIcons.Toolbar.Move, "Move Tool (W)", Tool.Move),
+            (EditorBuiltinIcons.Toolbar.Rotate, "Rotate Tool (E)", Tool.Rotate),
+            (EditorBuiltinIcons.Toolbar.Scale, "Scale Tool (R)", Tool.Scale),
+            (EditorBuiltinIcons.Toolbar.Rect, "Rect Tool (T)", Tool.Rect)
+        ];
+
         private int _navigationButton = -1;
         private SceneHandleAxis _handleAxis;
         private Tool _handleTool;
@@ -3551,9 +3985,26 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private NVector2 _handleWorldAxis;
         private NVector2 _handleScreenDirection;
         private float _handleWorldPerPixel;
+        private Vector2 _handleStartScreenOrigin;
+        private Vector2 _handleStartWorldCenter;
+        private float _handleLastScreenAngle;
+        private float _handleAccumulatedRotation;
         private Transform? _handleTarget;
+        private SceneGizmoToolbarMode _gizmoToolbarMode = SceneGizmoToolbarMode.Wide;
+        private bool _gizmoToolbarLayoutInitialized;
+        private GameObject[] _lastPickCandidates = [];
+        private GameObject? _lastPickedObject;
+        private Vector2 _lastPickPosition;
+        private int _lastPickIndex = -1;
 
         public ImGuiSceneWindow() : this(null!) { }
+        protected override void OnLostFocus()
+        {
+            if (_handleTarget is null) return;
+            GUIUtility.hotControl = 0;
+            ResetHandleInteraction();
+        }
+
         protected override void OnGUI()
         {
             var toolbarHeight = EditorStyles.toolbar.fixedHeight;
@@ -3561,28 +4012,134 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 Fix64.Max(0, GUIUtility.currentViewHeight - toolbarHeight));
             HandleNavigation(viewport);
             DrawWindowToolbarBackground();
-            GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.toolbar.fixedHeight));
-            foreach (var (icon, label, tool) in new[]
-                     {
-                         (EditorBuiltinIcons.Toolbar.View, "View Tool (Q)", Tool.View),
-                         (EditorBuiltinIcons.Toolbar.Move, "Move Tool (W)", Tool.Move),
-                         (EditorBuiltinIcons.Toolbar.Rotate, "Rotate Tool (E)", Tool.Rotate),
-                         (EditorBuiltinIcons.Toolbar.Scale, "Scale Tool (R)", Tool.Scale),
-                         (EditorBuiltinIcons.Toolbar.Rect, "Rect Tool (T)", Tool.Rect)
-                     })
-                if (EditorToolbar.Toggle(app._tool == tool, new GUIContent(string.Empty, icon, label),
-                        GUILayout.Width(26))) app._tool = tool;
-            GUILayout.Space(8);
-            GUILayout.Label("2D", EditorStyles.miniLabel, GUILayout.Width(22));
-            GUILayout.Space(4);
-            var selectionWidth = Fix64.Max(0, GUIUtility.currentViewWidth - 210);
-            if (selectionWidth >= 24)
-                GUILayout.Label(app.Selected is null ? "No selection" : app.Selected.name,
-                    EditorStyles.miniLabel, GUILayout.Width(selectionWidth));
-            else
-                GUILayout.Space(selectionWidth);
-            GUILayout.EndHorizontal();
-            DrawSelectionHandles(viewport);
+            DrawToolbar(toolbarHeight);
+            GUI.BeginClip(viewport);
+            try
+            {
+                DrawSelectionHandles(viewport);
+                HandleObjectPicking(viewport);
+            }
+            finally
+            {
+                GUI.EndClip();
+            }
+        }
+
+        private void DrawToolbar(Fix64 toolbarHeight)
+        {
+            var width = GUIUtility.currentViewWidth;
+            if (Event.current.type == EventType.Layout || !_gizmoToolbarLayoutInitialized)
+            {
+                _gizmoToolbarMode = ResolveGizmoToolbarMode(
+                    _gizmoToolbarMode, width, _gizmoToolbarLayoutInitialized);
+                _gizmoToolbarLayoutInitialized = true;
+            }
+
+            const int margin = 3;
+            const int toolWidth = 26;
+            var gizmoWidth = _gizmoToolbarMode switch
+            {
+                SceneGizmoToolbarMode.Wide => (Fix64)94,
+                SceneGizmoToolbarMode.Compact => 48,
+                _ => 26
+            };
+            var gizmoLeft = Fix64.Max(margin, width - gizmoWidth - margin);
+            var x = (Fix64)margin;
+            foreach (var (icon, tooltip, tool) in ToolbarTools)
+            {
+                if (x + toolWidth > gizmoLeft - 2) break;
+                var rect = new Rect(x, 0, toolWidth, toolbarHeight);
+                if (EditorToolbar.Toggle(rect, app._tool == tool,
+                        new GUIContent(string.Empty, icon, tooltip))) app._tool = tool;
+                x += toolWidth;
+            }
+
+            if (_gizmoToolbarMode == SceneGizmoToolbarMode.Wide && x + 34 < gizmoLeft)
+            {
+                x += 8;
+                GUI.Label(new Rect(x, 0, 22, toolbarHeight), "2D", EditorStyles.miniLabel);
+                x += 26;
+                var selectionWidth = Fix64.Max(0, gizmoLeft - x - 4);
+                if (selectionWidth >= 24)
+                    GUI.Label(new Rect(x, 0, selectionWidth, toolbarHeight),
+                        app.Selected is null ? "No selection" : app.Selected.name, EditorStyles.miniLabel);
+            }
+
+            DrawGizmoControls(gizmoLeft, toolbarHeight);
+        }
+
+        private void DrawGizmoControls(Fix64 left, Fix64 height)
+        {
+            var enabled = SceneGizmoVisibility.Enabled;
+            var icon = enabled ? EditorBuiltinIcons.Toolbar.Visible : EditorBuiltinIcons.Toolbar.Hidden;
+            if (_gizmoToolbarMode == SceneGizmoToolbarMode.MenuOnly)
+            {
+                if (EditorToolbar.Button(new Rect(left, 0, 26, height),
+                        new GUIContent(string.Empty, icon, "Gizmos"))) ShowGizmoMenu();
+                return;
+            }
+
+            var toggleWidth = _gizmoToolbarMode == SceneGizmoToolbarMode.Wide ? (Fix64)74 : 28;
+            var content = _gizmoToolbarMode == SceneGizmoToolbarMode.Wide
+                ? new GUIContent("Gizmos", icon, "Toggle Scene Gizmos")
+                : new GUIContent(string.Empty, icon, "Toggle Scene Gizmos");
+            var toggled = EditorToolbar.Toggle(new Rect(left, 0, toggleWidth, height), enabled, content);
+            if (toggled != enabled) SceneGizmoVisibility.Enabled = toggled;
+            if (EditorToolbar.Button(new Rect(left + toggleWidth, 0, 20, height),
+                    new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.FoldoutOpen,
+                        "Choose visible Gizmos"))) ShowGizmoMenu();
+        }
+
+        private static void ShowGizmoMenu()
+        {
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Gizmos"), SceneGizmoVisibility.Enabled,
+                () => SceneGizmoVisibility.Enabled = !SceneGizmoVisibility.Enabled);
+
+            var drawableTypes = GizmoDrawerRegistry.DrawableTypes;
+            if (drawableTypes.Count == 0)
+            {
+                menu.AddSeparator(string.Empty);
+                menu.AddDisabledItem(new GUIContent("Components/No Gizmos"));
+                menu.ShowAsAdvancedDropdown();
+                return;
+            }
+
+            var componentTypes = drawableTypes.Select(item => item.ComponentType).ToArray();
+            menu.AddSeparator(string.Empty);
+            menu.AddItem(new GUIContent("All"), componentTypes.All(SceneGizmoVisibility.IsVisible),
+                () => SceneGizmoVisibility.SetAll(componentTypes, true));
+            menu.AddItem(new GUIContent("None"), componentTypes.All(type => !SceneGizmoVisibility.IsVisible(type)),
+                () => SceneGizmoVisibility.SetAll(componentTypes, false));
+            menu.AddSeparator(string.Empty);
+            foreach (var item in drawableTypes)
+            {
+                var componentType = item.ComponentType;
+                var displayName = string.IsNullOrWhiteSpace(item.DisplayName)
+                    ? ObjectNames.NicifyVariableName(componentType.Name)
+                    : item.DisplayName.Replace('\\', '/').Trim('/');
+                menu.AddItem(new GUIContent($"Components/{displayName}"),
+                    SceneGizmoVisibility.IsVisible(componentType),
+                    () => SceneGizmoVisibility.SetVisible(
+                        componentType, !SceneGizmoVisibility.IsVisible(componentType)));
+            }
+            menu.ShowAsAdvancedDropdown();
+        }
+
+        private static SceneGizmoToolbarMode ResolveGizmoToolbarMode(
+            SceneGizmoToolbarMode current, Fix64 width, bool initialized)
+        {
+            if (!initialized)
+                return width >= 300 ? SceneGizmoToolbarMode.Wide :
+                    width >= 180 ? SceneGizmoToolbarMode.Compact : SceneGizmoToolbarMode.MenuOnly;
+            return current switch
+            {
+                SceneGizmoToolbarMode.Wide when width < 288 => SceneGizmoToolbarMode.Compact,
+                SceneGizmoToolbarMode.Compact when width >= 312 => SceneGizmoToolbarMode.Wide,
+                SceneGizmoToolbarMode.Compact when width < 168 => SceneGizmoToolbarMode.MenuOnly,
+                SceneGizmoToolbarMode.MenuOnly when width >= 192 => SceneGizmoToolbarMode.Compact,
+                _ => current
+            };
         }
 
         private void DrawSelectionHandles(Rect viewport)
@@ -3590,13 +4147,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var id = GUIUtility.GetControlID("SceneSelectionHandles".GetHashCode(StringComparison.Ordinal),
                 FocusType.Passive, viewport);
             var selected = app.Selected;
-            if (selected is null || Tools.hidden || app._tool is Tool.View or Tool.None)
+            if (selected is null || Tools.hidden || SceneVisibilityManager.instance.IsHidden(selected) ||
+                app._tool is Tool.View or Tool.None)
             {
                 CancelHandleInteraction(id);
                 return;
             }
             var transform = selected.transform;
-            var originWorld = Numerics.ToNumerics(transform.position);
+            var originWorld = Numerics.ToNumerics(SceneHandleUtility.GetHandlePosition(selected));
             if (!app.TryProjectEditorPoint(originWorld, viewport, out var origin))
             {
                 CancelHandleInteraction(id);
@@ -3604,7 +4162,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
 
             var worldPerPixel = app.EditorWorldUnitsPerPixel((float)viewport.height);
-            var localAngle = Tools.pivotRotation == PivotRotation.Local
+            var localAngle = app._tool == Tool.Scale || Tools.pivotRotation == PivotRotation.Local
                 ? (float)(transform.rotation * Fix64.Deg2Rad)
                 : 0f;
             var localX = new NVector2(MathF.Cos(localAngle), MathF.Sin(localAngle));
@@ -3623,7 +4181,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 var screenDirection = new NVector2(
                     axes[index].X * cameraCos - axes[index].Y * cameraSin,
                     -(axes[index].X * cameraSin + axes[index].Y * cameraCos));
-                screenDirection = NVector2.Normalize(screenDirection) * 72;
+                screenDirection = NVector2.Normalize(screenDirection) * AxisHandleLength;
                 endpoints[index] = origin + new Vector2(
                     (Fix64)screenDirection.X, (Fix64)screenDirection.Y);
             }
@@ -3632,42 +4190,118 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
             if (Event.current.type != EventType.Repaint) return;
             var colors = new[] { C(0.95f, 0.24f, 0.22f), C(0.32f, 0.86f, 0.32f) };
-            if (app._tool == Tool.Rect)
+            switch (app._tool)
             {
-                var rect = new Rect(origin.x - 14, origin.y - 14, 28, 28);
-                DrawHandleLine(new Vector2(rect.x, rect.y), new Vector2(rect.xMax, rect.y), C(1f, 0.78f, 0.15f), 2);
-                DrawHandleLine(new Vector2(rect.xMax, rect.y), new Vector2(rect.xMax, rect.yMax), C(1f, 0.78f, 0.15f), 2);
-                DrawHandleLine(new Vector2(rect.xMax, rect.yMax), new Vector2(rect.x, rect.yMax), C(1f, 0.78f, 0.15f), 2);
-                DrawHandleLine(new Vector2(rect.x, rect.yMax), new Vector2(rect.x, rect.y), C(1f, 0.78f, 0.15f), 2);
-            }
-            else
-            {
-                for (var index = 0; index < endpoints.Length; index++)
-                {
-                    if (!visible[index]) continue;
-                    var color = _handleAxis == (SceneHandleAxis)(index + 1) ? Color.white : colors[index];
-                    DrawHandleLine(origin, endpoints[index], color, app._tool == Tool.Rotate ? 3 : 2);
-                    GUI.DrawRect(new Rect(endpoints[index].x - 4, endpoints[index].y - 4, 8, 8), color);
-                    GUI.Label(new Rect(endpoints[index].x + 5, endpoints[index].y - 9, 16, 18),
-                        index == 0 ? "X" : "Y", EditorStyles.boldLabel);
-                }
-            }
-            GUI.DrawRect(new Rect(origin.x - 4, origin.y - 4, 8, 8), Color.white);
-            var shortcut = app._tool switch
-            {
-                Tool.Move => "W",
-                Tool.Rotate => "E",
-                Tool.Scale => "R",
-                Tool.Rect => "T",
-                _ => string.Empty
-            };
-            if (shortcut.Length > 0)
-            {
-                var badge = new Rect(origin.x + 9, origin.y + 9, 20, 20);
-                GUI.DrawRect(badge, EditorAppearance.palette.Selection);
-                GUI.Label(badge, shortcut, EditorStyles.boldLabel);
+                case Tool.Rotate:
+                    DrawRotationHandle(origin,
+                        _handleAxis == SceneHandleAxis.Screen ? Color.white : C(1f, 0.72f, 0.16f));
+                    break;
+                case Tool.Scale:
+                    DrawScaleHandles(origin, endpoints, visible, colors);
+                    break;
+                case Tool.Rect:
+                    DrawRectHandle(origin);
+                    break;
+                default:
+                    DrawMoveHandles(origin, endpoints, visible, colors);
+                    break;
             }
         }
+
+        private void DrawMoveHandles(Vector2 origin, IReadOnlyList<Vector2> endpoints,
+            IReadOnlyList<bool> visible, IReadOnlyList<Color> colors)
+        {
+            for (var index = 0; index < endpoints.Count; index++)
+            {
+                if (!visible[index]) continue;
+                var color = _handleAxis == (SceneHandleAxis)(index + 1) ? Color.white : colors[index];
+                DrawHandleLine(origin, endpoints[index], color, 2);
+                DrawArrowHead(origin, endpoints[index], color);
+                DrawAxisLabel(endpoints[index], index);
+            }
+
+            var centerColor = _handleAxis == SceneHandleAxis.Screen
+                ? Color.white
+                : C(0.98f, 0.82f, 0.22f);
+            var top = origin + new Vector2(0, -6);
+            var right = origin + new Vector2(6, 0);
+            var bottom = origin + new Vector2(0, 6);
+            var left = origin + new Vector2(-6, 0);
+            DrawHandleLine(top, right, centerColor, 2);
+            DrawHandleLine(right, bottom, centerColor, 2);
+            DrawHandleLine(bottom, left, centerColor, 2);
+            DrawHandleLine(left, top, centerColor, 2);
+            GUI.DrawRect(new Rect(origin.x - 2, origin.y - 2, 4, 4), centerColor);
+        }
+
+        private void DrawScaleHandles(Vector2 origin, IReadOnlyList<Vector2> endpoints,
+            IReadOnlyList<bool> visible, IReadOnlyList<Color> colors)
+        {
+            for (var index = 0; index < endpoints.Count; index++)
+            {
+                if (!visible[index]) continue;
+                var color = _handleAxis == (SceneHandleAxis)(index + 1) ? Color.white : colors[index];
+                DrawHandleLine(origin, endpoints[index], color, 2);
+                GUI.DrawRect(new Rect(endpoints[index].x - 5, endpoints[index].y - 5, 10, 10), color);
+                DrawAxisLabel(endpoints[index], index);
+            }
+            var centerColor = _handleAxis == SceneHandleAxis.Screen
+                ? Color.white
+                : C(0.98f, 0.82f, 0.22f);
+            GUI.DrawRect(new Rect(origin.x - 3, origin.y - 3, 6, 6), centerColor);
+        }
+
+        private static void DrawRotationHandle(Vector2 origin, Color color)
+        {
+            const int segments = 64;
+            var previous = origin + new Vector2((Fix64)RotationHandleRadius, 0);
+            for (var index = 1; index <= segments; index++)
+            {
+                var angle = MathF.Tau * index / segments;
+                var next = origin + new Vector2(
+                    (Fix64)(MathF.Cos(angle) * RotationHandleRadius),
+                    (Fix64)(MathF.Sin(angle) * RotationHandleRadius));
+                DrawHandleLine(previous, next, color, 2);
+                previous = next;
+            }
+
+            var arrowAngle = -MathF.PI / 4;
+            var tip = origin + new Vector2(
+                (Fix64)(MathF.Cos(arrowAngle) * RotationHandleRadius),
+                (Fix64)(MathF.Sin(arrowAngle) * RotationHandleRadius));
+            var tangent = new Vector2(
+                (Fix64)(-MathF.Sin(arrowAngle)), (Fix64)MathF.Cos(arrowAngle));
+            DrawArrowHead(tip - tangent * 14, tip, color);
+            DrawHandleLine(origin + new Vector2(-5, 0), origin + new Vector2(5, 0), color, 1);
+            DrawHandleLine(origin + new Vector2(0, -5), origin + new Vector2(0, 5), color, 1);
+        }
+
+        private static void DrawRectHandle(Vector2 origin)
+        {
+            var color = C(1f, 0.78f, 0.15f);
+            var rect = new Rect(origin.x - 14, origin.y - 14, 28, 28);
+            DrawHandleLine(new Vector2(rect.x, rect.y), new Vector2(rect.xMax, rect.y), color, 2);
+            DrawHandleLine(new Vector2(rect.xMax, rect.y), new Vector2(rect.xMax, rect.yMax), color, 2);
+            DrawHandleLine(new Vector2(rect.xMax, rect.yMax), new Vector2(rect.x, rect.yMax), color, 2);
+            DrawHandleLine(new Vector2(rect.x, rect.yMax), new Vector2(rect.x, rect.y), color, 2);
+            GUI.DrawRect(new Rect(origin.x - 3, origin.y - 3, 6, 6), Color.white);
+        }
+
+        private static void DrawArrowHead(Vector2 start, Vector2 tip, Color color)
+        {
+            var direction = Normalize(tip - start);
+            if (direction == NVector2.Zero) return;
+            var perpendicular = new NVector2(-direction.Y, direction.X);
+            var basePoint = tip - new Vector2((Fix64)(direction.X * 12), (Fix64)(direction.Y * 12));
+            var left = basePoint + new Vector2((Fix64)(perpendicular.X * 5), (Fix64)(perpendicular.Y * 5));
+            var right = basePoint - new Vector2((Fix64)(perpendicular.X * 5), (Fix64)(perpendicular.Y * 5));
+            DrawHandleLine(tip, left, color, 2);
+            DrawHandleLine(tip, right, color, 2);
+        }
+
+        private static void DrawAxisLabel(Vector2 endpoint, int index) =>
+            GUI.Label(new Rect(endpoint.x + 6, endpoint.y - 9, 16, 18),
+                index == 0 ? "X" : "Y", EditorStyles.boldLabel);
 
         private void HandleTransformInput(
             int id,
@@ -3680,14 +4314,19 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             float worldPerPixel)
         {
             var current = Event.current;
-            if (_handleTarget is not null && !ReferenceEquals(_handleTarget, transform))
+            if (_handleTarget is not null &&
+                (GUIUtility.hotControl != id || !ReferenceEquals(_handleTarget, transform) ||
+                 _handleTool != app._tool))
                 CancelHandleInteraction(id);
+            if (current.type == EventType.MouseLeaveWindow)
+            {
+                CancelHandleInteraction(id);
+                return;
+            }
             if (current.type == EventType.MouseDown && current.button == 0 &&
                 viewport.Contains(current.mousePosition))
             {
-                var axis = app._tool == Tool.Rect && Distance(current.mousePosition, origin) <= 18
-                    ? SceneHandleAxis.Screen
-                    : HitAxis(current.mousePosition, origin, endpoints, visible);
+                var axis = HitHandle(app._tool, current.mousePosition, origin, endpoints, visible);
                 if (axis != SceneHandleAxis.None)
                 {
                     _handleAxis = axis;
@@ -3703,6 +4342,10 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                         ? Normalize(endpoints[(int)axis - 1] - origin)
                         : NVector2.Zero;
                     _handleWorldPerPixel = worldPerPixel;
+                    _handleStartScreenOrigin = origin;
+                    _handleStartWorldCenter = SceneHandleUtility.GetHandlePosition(transform.gameObject);
+                    _handleLastScreenAngle = ScreenAngle(origin, current.mousePosition);
+                    _handleAccumulatedRotation = 0;
                     _handleTarget = transform;
                     Undo.RecordObject(transform, $"{_handleTool} {transform.gameObject.name}");
                     GUIUtility.hotControl = id;
@@ -3719,7 +4362,23 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 var deltaX = (float)delta.x;
                 var deltaY = (float)delta.y;
                 var along = deltaX * _handleScreenDirection.X + deltaY * _handleScreenDirection.Y;
-                if (_handleAxis == SceneHandleAxis.Screen)
+                if (_handleTool == Tool.Rotate)
+                {
+                    var angle = ScreenAngle(_handleStartScreenOrigin, current.mousePosition);
+                    _handleAccumulatedRotation += NormalizeAngle(angle - _handleLastScreenAngle);
+                    _handleLastScreenAngle = angle;
+                    transform.localRotation = _handleStartRotation + (Fix64)_handleAccumulatedRotation;
+                    transform.position += _handleStartWorldCenter -
+                                          SceneHandleUtility.GetHandlePosition(transform.gameObject);
+                }
+                else if (_handleTool == Tool.Scale && _handleAxis == SceneHandleAxis.Screen)
+                {
+                    var factor = Fix64.One + (Fix64)((deltaX - deltaY) / 160f);
+                    transform.localScale = new Vector2(
+                        _handleStartScale.x * factor,
+                        _handleStartScale.y * factor);
+                }
+                else if (_handleAxis == SceneHandleAxis.Screen)
                 {
                     var angle = app._editorCameraRotation * MathF.PI / 180f;
                     var right = new NVector2(MathF.Cos(angle), MathF.Sin(angle));
@@ -3731,11 +4390,6 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 {
                     var movement = _handleWorldAxis * (along * _handleWorldPerPixel);
                     transform.position = _handleStartWorldPosition + ToVector2(movement);
-                }
-                else if (_handleTool == Tool.Rotate)
-                {
-                    var amount = (Fix64)(along * 0.5f);
-                    transform.localRotation = _handleStartRotation + amount;
                 }
                 else if (_handleTool == Tool.Scale)
                 {
@@ -3753,8 +4407,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (current.type == EventType.MouseUp && current.button == 0 && GUIUtility.hotControl == id)
             {
                 GUIUtility.hotControl = 0;
-                _handleAxis = SceneHandleAxis.None;
-                _handleTarget = null;
+                ResetHandleInteraction();
                 current.Use();
             }
         }
@@ -3762,7 +4415,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private void CancelHandleInteraction(int id)
         {
             if (GUIUtility.hotControl == id) GUIUtility.hotControl = 0;
+            ResetHandleInteraction();
+        }
+
+        private void ResetHandleInteraction()
+        {
             _handleAxis = SceneHandleAxis.None;
+            _handleTool = Tool.None;
             _handleTarget = null;
         }
 
@@ -3780,6 +4439,34 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 result = (SceneHandleAxis)(index + 1);
             }
             return result;
+        }
+
+        private static SceneHandleAxis HitHandle(Tool tool, Vector2 point, Vector2 origin,
+            IReadOnlyList<Vector2> endpoints, IReadOnlyList<bool> visible)
+        {
+            var distance = Distance(point, origin);
+            if (tool == Tool.Rotate)
+                return MathF.Abs(distance - RotationHandleRadius) <= RotationHandleHitWidth
+                    ? SceneHandleAxis.Screen
+                    : SceneHandleAxis.None;
+            if (tool == Tool.Rect)
+                return distance <= 18 ? SceneHandleAxis.Screen : SceneHandleAxis.None;
+            if (tool == Tool.Scale && distance <= 8)
+                return SceneHandleAxis.Screen;
+            if (tool is Tool.Move or Tool.Transform && distance <= 8)
+                return SceneHandleAxis.Screen;
+            return HitAxis(point, origin, endpoints, visible);
+        }
+
+        private static float ScreenAngle(Vector2 center, Vector2 point) =>
+            MathF.Atan2((float)(center.y - point.y), (float)(point.x - center.x)) *
+            180f / MathF.PI;
+
+        private static float NormalizeAngle(float angle)
+        {
+            while (angle > 180) angle -= 360;
+            while (angle < -180) angle += 360;
+            return angle;
         }
 
         private static Vector2 AddAxis(Vector2 value, SceneHandleAxis axis, Fix64 amount) => axis switch
@@ -3886,6 +4573,48 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     _navigationButton == 2 ? MouseCursor.Pan : MouseCursor.Orbit);
         }
 
+        private void HandleObjectPicking(Rect viewport)
+        {
+            var current = Event.current;
+            if (current.type != EventType.MouseDown || current.button != 0 ||
+                !viewport.Contains(current.mousePosition)) return;
+
+            var viewportPoint = current.mousePosition - new Vector2(viewport.x, viewport.y);
+            var candidates = ScenePickingUtility.PickAll(
+                app.LoadedScenes(), app.EditorCamera(), viewportPoint,
+                Math.Max(1, (int)viewport.width), Math.Max(1, (int)viewport.height)).ToArray();
+            if (candidates.Length == 0)
+            {
+                app.ClearSelection();
+                ResetPickCycle();
+                Focus();
+                current.Use();
+                return;
+            }
+
+            var samePoint = (current.mousePosition - _lastPickPosition).sqrMagnitude <= 16;
+            var sameCandidates = candidates.Length == _lastPickCandidates.Length &&
+                                 candidates.SequenceEqual(_lastPickCandidates,
+                                     ReferenceEqualityComparer.Instance);
+            _lastPickIndex = samePoint && sameCandidates &&
+                             ReferenceEquals(app.Selected, _lastPickedObject)
+                ? (_lastPickIndex + 1) % candidates.Length
+                : 0;
+            _lastPickCandidates = candidates;
+            _lastPickPosition = current.mousePosition;
+            _lastPickedObject = candidates[_lastPickIndex];
+            app.Select(_lastPickedObject);
+            Focus();
+            current.Use();
+        }
+
+        private void ResetPickCycle()
+        {
+            _lastPickCandidates = [];
+            _lastPickedObject = null;
+            _lastPickIndex = -1;
+        }
+
     }
 
     private enum SceneHandleAxis
@@ -3896,18 +4625,110 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         Screen
     }
 
+    private enum SceneGizmoToolbarMode
+    {
+        Wide,
+        Compact,
+        MenuOnly
+    }
+
     private sealed class ImGuiGameWindow(GpuEditorApplication app) : EditorWindow
     {
+        private readonly GameViewResolutionSettings _resolutions = new();
+        private GraphicsRect _lastFittedViewport;
+
         public ImGuiGameWindow() : this(null!) { }
+
+        internal GameViewResolution selectedResolution => _resolutions.selected;
+        internal GraphicsRect FitRenderViewport(GraphicsRect available)
+        {
+            _lastFittedViewport = _resolutions.FitViewport(available);
+            return _lastFittedViewport;
+        }
+        internal (int Width, int Height) ApplyTargetSize(GraphicsRect fittedViewport)
+        {
+            _resolutions.ApplyScreenSize(fittedViewport);
+            return _resolutions.ResolveTargetSize(fittedViewport);
+        }
+
         protected override void OnGUI()
         {
             DrawWindowToolbarBackground();
             GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.toolbar.fixedHeight));
             GUILayout.Label("Display 1", EditorStyles.toolbarButton, GUILayout.Width(76));
-            GUILayout.Label("Free Aspect", EditorStyles.toolbarButton, GUILayout.Width(92));
+            if (GUILayout.Button(new GUIContent(_resolutions.selected.SizeLabel,
+                    _resolutions.selected.MenuLabel), EditorStyles.toolbarButton, GUILayout.Width(132)))
+            {
+                var anchor = GUILayout.LastRect;
+                var topLeft = GUI.GUIToRootPoint(anchor.position);
+                var bottomRight = GUI.GUIToRootPoint(new Vector2(anchor.xMax, anchor.yMax));
+                ShowResolutionMenu(anchor, new Rect(topLeft.x, topLeft.y,
+                    bottomRight.x - topLeft.x, bottomRight.y - topLeft.y));
+            }
             GUILayout.Label(app._playing ? "Playing" : "Preview", EditorStyles.miniLabel,
                 GUILayout.ExpandWidth(true));
             GUILayout.EndHorizontal();
+        }
+
+        private void ShowResolutionMenu(Rect anchor, Rect rootAnchor)
+        {
+            var menu = new GenericMenu();
+            foreach (var option in _resolutions.builtInOptions)
+            {
+                var path = option.IsFreeAspect
+                    ? option.MenuLabel
+                    : $"{option.Category}/{option.MenuLabel}";
+                menu.AddItem(new GUIContent(path), option.Id == _resolutions.selected.Id,
+                    () => SelectResolution(option));
+            }
+
+            if (_resolutions.customOptions.Count > 0)
+            {
+                menu.AddSeparator(string.Empty);
+                foreach (var option in _resolutions.customOptions)
+                {
+                    menu.AddItem(new GUIContent($"Custom/{option.MenuLabel}"),
+                        option.Id == _resolutions.selected.Id,
+                        () => SelectResolution(option));
+                }
+            }
+
+            menu.AddSeparator(string.Empty);
+            menu.AddItem(new GUIContent("Add Custom Resolution..."), false,
+                () => GameViewResolutionWindow.Open(rootAnchor, AddCustomResolution));
+            foreach (var option in _resolutions.customOptions)
+            {
+                menu.AddItem(new GUIContent($"Delete Custom/{option.MenuLabel}"), false,
+                    () => DeleteCustomResolution(option.Id));
+            }
+            menu.ShowAsAdvancedDropdown(anchor);
+        }
+
+        private void SelectResolution(GameViewResolution option)
+        {
+            _resolutions.Select(option);
+            ApplyFreeAspectScreenSize();
+            Repaint();
+        }
+
+        private void AddCustomResolution(string name, int width, int height)
+        {
+            _resolutions.AddCustom(name, width, height);
+            Repaint();
+        }
+
+        private void DeleteCustomResolution(string id)
+        {
+            _resolutions.RemoveCustom(id);
+            ApplyFreeAspectScreenSize();
+            Repaint();
+        }
+
+        private void ApplyFreeAspectScreenSize()
+        {
+            if (_resolutions.selected.IsFreeAspect &&
+                _lastFittedViewport.Width > 0 && _lastFittedViewport.Height > 0)
+                _resolutions.ApplyScreenSize(_lastFittedViewport);
         }
     }
 
@@ -3924,22 +4745,68 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private string[] _tagLabels = [];
         private (string Name, ulong Value)[] _layerOptions = [];
         private string[] _layerLabels = [];
+        private bool _previewExpanded = true;
         public ImGuiInspectorWindow() : this(null!) { }
-        internal void RebuildEditor()
+        internal BObject? LockedTarget => isLocked ? _lastTarget : null;
+        internal void RebuildEditor(bool force = false)
         {
-            if (isLocked && _lastTarget is not null) return;
-            DisposeEditors(); _lastTarget = null;
+            if (!force && isLocked && _lastTarget is not null) return;
+            var lockedTarget = force && isLocked ? _lastTarget : null;
+            DisposeEditors();
+            _lastTarget = lockedTarget;
+            if (lockedTarget is not null && lockedTarget is not GameObject)
+                _editor = Editor.CreateEditor(lockedTarget);
+        }
+        internal void RemapLockedTarget(Func<BObject?, BObject?> mapper)
+        {
+            ArgumentNullException.ThrowIfNull(mapper);
+            if (!isLocked || _lastTarget is null)
+            {
+                RebuildEditor(force: true);
+                return;
+            }
+
+            var mapped = mapper(_lastTarget);
+            DisposeEditors();
+            _lastTarget = mapped;
+            if (mapped is not null && mapped is not GameObject)
+                _editor = Editor.CreateEditor(mapped);
         }
         protected override void OnGUI()
         {
-            _scroll.Begin();
-            try { DrawInspector(); }
-            finally { _scroll.End(); }
+            var target = ResolveTarget();
+            SynchronizeTarget(target);
+            var hasPreview = target is not null && target is not GameObject &&
+                             _editor?.HasPreviewGUIInternal() is true;
+            var previewHeight = PreviewPaneHeight(hasPreview);
+            var inspectorHeight = Fix64.Max(0, GUIUtility.currentViewHeight - previewHeight);
+
+            using (GUILayout.Area(new Rect(0, 0, GUIUtility.currentViewWidth, inspectorHeight)))
+            {
+                _scroll.Begin();
+                try { DrawInspector(target); }
+                finally { _scroll.End(); }
+            }
+
+            if (!hasPreview || _editor is null) return;
+            using (GUILayout.Area(new Rect(0, inspectorHeight, GUIUtility.currentViewWidth, previewHeight)))
+                DrawPreviewPane(_editor, target!, previewHeight);
         }
-        private void DrawInspector()
+        private BObject? ResolveTarget()
         {
             var selected = app.Selected is not null ? (BObject)app.Selected : app.SelectedAsset;
-            var target = isLocked && _lastTarget is not null ? _lastTarget : selected;
+            return isLocked && _lastTarget is not null ? _lastTarget : selected;
+        }
+        private void SynchronizeTarget(BObject? target)
+        {
+            if (ReferenceEquals(_lastTarget, target) &&
+                (target is GameObject || target is null || _editor is not null)) return;
+            DisposeEditors();
+            _lastTarget = target;
+            if (target is not null && target is not GameObject) _editor = Editor.CreateEditor(target);
+        }
+        private void DrawInspector(BObject? target)
+        {
             if (target is null)
             {
                 GUILayout.Space(8);
@@ -3950,11 +4817,6 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 }
                 else GUILayout.Label("No object selected", EditorStyles.miniLabel);
                 return;
-            }
-            if (!ReferenceEquals(_lastTarget, target))
-            {
-                DisposeEditors(); _lastTarget = target;
-                if (target is not GameObject) _editor = Editor.CreateEditor(target);
             }
             var readOnly = (target.hideFlags & HideFlags.NotEditable) != 0;
             if (target is GameObject inspectedGameObject)
@@ -3980,7 +4842,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabObject)), GUILayout.ExpandWidth(true));
                 if (GUILayout.Button("Open", GUILayout.Width(62)))
                     PrefabStageUtility.OpenPrefab(PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabObject));
-                using (new EditorGUI.DisabledScope(readOnly))
+                using (new EditorGUI.DisabledScope(readOnly || app._playing))
                 {
                     if (GUILayout.Button("Apply", GUILayout.Width(62)))
                         PrefabUtility.ApplyPrefabInstance(prefabObject);
@@ -4117,6 +4979,65 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
         }
 
+        private Fix64 PreviewPaneHeight(bool hasPreview)
+        {
+            if (!hasPreview) return 0;
+            var header = Fix64.Max(22, EditorStyles.inspectorTitlebar.fixedHeight);
+            if (!_previewExpanded) return header + 2;
+            var desired = Fix64.Clamp(GUIUtility.currentViewHeight * Fix64.FromDecimal(0.36m),
+                header + 96, 260);
+            var maximum = Fix64.Max(header + 36, GUIUtility.currentViewHeight - 72);
+            return Fix64.Min(GUIUtility.currentViewHeight, Fix64.Min(desired, maximum));
+        }
+
+        private void DrawPreviewPane(Editor editor, BObject target, Fix64 paneHeight)
+        {
+            var width = GUIUtility.currentViewWidth;
+            var headerHeight = Fix64.Max(22, EditorStyles.inspectorTitlebar.fixedHeight);
+            var header = new Rect(0, 0, width, Fix64.Min(headerHeight, paneHeight));
+            GUI.DrawRect(header, EditorAppearance.palette.PanelRaised);
+            GUI.DrawRect(new Rect(header.x, header.y, header.width, 1), EditorAppearance.palette.Border);
+            GUI.DrawRect(new Rect(header.x, header.yMax - 1, header.width, 1),
+                EditorAppearance.palette.Border);
+            var foldout = new Rect(header.x + 3, header.y + 1, 20, Fix64.Max(18, header.height - 2));
+            if (GUI.Button(foldout, new GUIContent(string.Empty,
+                    _previewExpanded ? EditorBuiltinIcons.Toolbar.FoldoutOpen :
+                        EditorBuiltinIcons.Toolbar.FoldoutClosed,
+                    _previewExpanded ? "Collapse preview" : "Expand preview"), EditorStyles.foldout))
+                _previewExpanded = !_previewExpanded;
+            var thumbnail = AssetPreview.GetMiniThumbnail(target);
+            var iconRect = new Rect(foldout.xMax + 2, header.y + 2, Fix64.Max(16, header.height - 4),
+                Fix64.Max(16, header.height - 4));
+            GUI.DrawTexture(iconRect, thumbnail);
+            GUI.Label(new Rect(iconRect.xMax + 5, header.y,
+                    Fix64.Max(0, header.xMax - iconRect.xMax - 9), header.height),
+                "Preview", EditorStyles.boldLabel);
+            if (!_previewExpanded || paneHeight <= headerHeight + 8) return;
+
+            var information = editor.GetInfoStringInternal();
+            var informationHeight = string.IsNullOrWhiteSpace(information) ? Fix64.Zero : (Fix64)22;
+            var body = new Rect(4, header.yMax + 4, Fix64.Max(0, width - 8),
+                Fix64.Max(0, paneHeight - header.height - informationHeight - 8));
+            GUI.DrawRect(body, EditorAppearance.palette.Panel);
+            GUI.BeginClip(body);
+            try
+            {
+                editor.OnPreviewGUIInternal(new Rect(body.x + 2, body.y + 2,
+                    Fix64.Max(0, body.width - 4), Fix64.Max(0, body.height - 4)));
+            }
+            finally { GUI.EndClip(); }
+            GUI.DrawRect(new Rect(body.x, body.y, body.width, 1), EditorAppearance.palette.Border);
+            GUI.DrawRect(new Rect(body.x, body.yMax - 1, body.width, 1), EditorAppearance.palette.Border);
+            GUI.DrawRect(new Rect(body.x, body.y + 1, 1, Fix64.Max(0, body.height - 2)),
+                EditorAppearance.palette.Border);
+            GUI.DrawRect(new Rect(body.xMax - 1, body.y + 1, 1, Fix64.Max(0, body.height - 2)),
+                EditorAppearance.palette.Border);
+            if (informationHeight > 0)
+                GUI.Label(new Rect(7, body.yMax + 1, Fix64.Max(0, width - 14), informationHeight),
+                    information, EditorStyles.miniLabel);
+            if (editor.RequiresConstantRepaintInternal()) Repaint();
+        }
+
         private void DrawTransformInspector(Transform transform)
         {
             var position = TransformVectorField("Position", transform.localPosition, Vector2.zero);
@@ -4209,6 +5130,10 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 layerLabels = [.. layerLabels, $"2^{SortingLayer.IndexOf(gameObject.layer)}"];
                 layerIndex = layers.Length - 1;
             }
+            tagLabels = [.. tagLabels, "Add Tag..."];
+            layerLabels = [.. layerLabels, "Edit Layers..."];
+            var tagSettingsIndex = tagLabels.Length - 1;
+            var layerSettingsIndex = layerLabels.Length - 1;
             var oldLabelWidth = EditorGUI.labelWidth;
             EditorGUI.labelWidth = 44;
             int nextTag;
@@ -4218,17 +5143,28 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 var row = GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight,
                     GUILayout.ExpandWidth(true));
                 var half = Fix64.Max(1, row.width / 2 - 3);
-                nextTag = EditorGUI.Popup(new Rect(row.x, row.y, half, row.height), "Tag", tagIndex,
+                nextTag = EditorGUI.AdvancedPopup(new Rect(row.x, row.y, half, row.height), "Tag", tagIndex,
                     tagLabels);
-                nextLayer = EditorGUI.Popup(new Rect(row.x + half + 6, row.y, half, row.height), "Layer",
+                nextLayer = EditorGUI.AdvancedPopup(new Rect(row.x + half + 6, row.y, half, row.height), "Layer",
                     layerIndex, layerLabels);
             }
             else
             {
-                nextTag = EditorGUILayout.Popup("Tag", tagIndex, tagLabels);
-                nextLayer = EditorGUILayout.Popup("Layer", layerIndex, layerLabels);
+                nextTag = EditorGUILayout.AdvancedPopup("Tag", tagIndex, tagLabels);
+                nextLayer = EditorGUILayout.AdvancedPopup("Layer", layerIndex, layerLabels);
             }
             EditorGUI.labelWidth = oldLabelWidth;
+
+            if (nextTag == tagSettingsIndex)
+            {
+                TagLayerSettingsProvider.OpenTags();
+                nextTag = tagIndex;
+            }
+            if (nextLayer == layerSettingsIndex)
+            {
+                TagLayerSettingsProvider.OpenLayers();
+                nextLayer = layerIndex;
+            }
 
             var changed = name != gameObject.name || active != gameObject.activeSelf ||
                           isStatic != gameObject.isStatic || nextTag != tagIndex || nextLayer != layerIndex;
@@ -4289,7 +5225,20 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                         () => app.SelectScript(behaviour, open: true));
                 else menu.AddDisabledItem(new GUIContent("Edit Script"));
             }
-            if (!readOnly) app._menuItems.PopulateContext(menu, component);
+            if (!readOnly)
+            {
+                var beforeContextCommands = menu.GetItemCount();
+                app._menuItems.PopulateContext(menu, component);
+                var componentCommands = ComponentContextMenuRegistry.GetCommands(component.GetType());
+                if (componentCommands.Length > 0 && menu.GetItemCount() == beforeContextCommands)
+                    menu.AddSeparator(string.Empty);
+                foreach (var command in componentCommands)
+                {
+                    var captured = command;
+                    menu.AddItem(new GUIContent(command.Name), false,
+                        () => InvokeComponentContextMenu(component, captured));
+                }
+            }
             if (component is not Transform)
             {
                 menu.AddSeparator(string.Empty);
@@ -4300,7 +5249,20 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
             menu.ShowAsContext();
         }
-        protected override void OnDisable() => DisposeEditors();
+
+        private void InvokeComponentContextMenu(Component component, ComponentContextMenuCommand command)
+        {
+            var scene = component.gameObject.scene;
+            Undo.RecordObject(component, command.Name);
+            if (!EditorFeatureGuard.Invoke(component, command.MethodName, () => command.Callback(component))) return;
+            EditorUtility.SetDirty(component);
+            if (scene is not null) app.MarkDirty(scene);
+            RebuildEditor();
+        }
+        protected override void OnDisable()
+        {
+            DisposeEditors();
+        }
         private void DisposeEditors()
         {
             _editor?.Dispose(); _editor = null;
@@ -4351,6 +5313,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
         protected override void OnGUI()
         {
+            if (_draggedPath is not null && !DragAndDrop.isDragging) ClearDrag();
             DrawWindowToolbarBackground();
             GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.toolbar.fixedHeight));
             var createClicked = EditorToolbar.IconButton(EditorBuiltinIcons.Toolbar.Add, "Create asset",
@@ -4372,14 +5335,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var footerRect = new Rect(0, contentY + listHeight, GUIUtility.currentViewWidth, footerHeight);
             if (IsFooterPointerEvent(footerRect))
             {
-                if (Event.current.type == EventType.MouseUp && _draggedPath is not null) ClearDrag();
+                if ((Event.current.type is EventType.MouseUp or EventType.DragPerform or EventType.DragExited) &&
+                    _draggedPath is not null) ClearDrag();
                 DrawFooter(footerRect, items);
                 if (Event.current.type != EventType.Used) Event.current.Use();
                 return;
             }
             if (IsTwoColumn) DrawTwoColumn(items, contentRect);
             else DrawOneColumn(items, contentRect);
-            if (Event.current.type == EventType.MouseUp && _draggedPath is not null) ClearDrag();
+            if ((Event.current.type is EventType.MouseUp or EventType.DragPerform or EventType.DragExited) &&
+                _draggedPath is not null) ClearDrag();
             DrawFooter(footerRect, items);
         }
 
@@ -4387,7 +5352,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             var current = Event.current;
             return (current.type is EventType.MouseDown or EventType.MouseUp or EventType.MouseDrag or
-                EventType.ContextClick or EventType.ScrollWheel) && rect.Contains(current.mousePosition);
+                EventType.ContextClick or EventType.ScrollWheel or EventType.DragUpdated or EventType.DragPerform or
+                EventType.DragExited) && rect.Contains(current.mousePosition);
         }
 
         private bool IsTwoColumn => _projectBrowserMode.Equals("TwoColumn", StringComparison.OrdinalIgnoreCase);
@@ -4703,21 +5669,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             _selectedPath = item.NormalizedPath;
             var menu = new GenericMenu();
-            AssetMenuCommands.PopulateContextMenu(menu);
-            if (item.Asset is { } sceneAsset && sceneAsset.AssetPath.EndsWith(
-                    ".scene.yaml", StringComparison.OrdinalIgnoreCase))
-            {
-                menu.AddSeparator(string.Empty);
-                menu.AddItem(new GUIContent("Open Scene/Additive"), false,
-                    () => app.OpenEditorScene(sceneAsset.SourcePath, OpenSceneMode.Additive));
-                menu.AddItem(new GUIContent("Open Scene/Additive Without Loading"), false,
-                    () => app.OpenEditorScene(sceneAsset.SourcePath, OpenSceneMode.AdditiveWithoutLoading));
-            }
-            if (!item.IsPackage && item.IsDirectory)
-            {
-                menu.AddSeparator(string.Empty);
-                PopulateCreateMenu(menu, item.VirtualPath, "Create/");
-            }
+            (app._menuItems ?? MenuItemRegistry.Discover()).PopulateRoot(menu, "Assets", app.SelectedAsset);
             menu.ShowAsContext();
         }
 
@@ -4758,6 +5710,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             for (var parent = item.ParentPath; !string.IsNullOrWhiteSpace(parent);
                  parent = ProjectBrowserPath.Parent(parent))
                 _expanded.Add(parent);
+            GUI.FocusControl("ProjectRename");
             Repaint();
         }
 
@@ -4787,7 +5740,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var folder = SelectedAssetsFolder();
             var menu = new GenericMenu();
             PopulateCreateMenu(menu, folder);
-            menu.DropDown(anchor);
+            menu.ShowAsAdvancedDropdown(anchor);
         }
 
         private void PopulateCreateMenu(GenericMenu menu, string? folder, string prefix = "")
@@ -4838,6 +5791,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         internal bool CanExecuteCommand(ProjectAssetCommand command)
         {
+            if (!EditorAssetWritePolicy.CanWrite)
+            {
+                return command is ProjectAssetCommand.Open or ProjectAssetCommand.ShowInExplorer or
+                    ProjectAssetCommand.CopyPath or ProjectAssetCommand.CopyFullPath;
+            }
             if (command == ProjectAssetCommand.Refresh) return true;
             if (command == ProjectAssetCommand.ImportNewAsset) return SelectedAssetsFolder() is not null;
             var item = SelectedItem();
@@ -5001,6 +5959,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private void HandleDrag(ProjectBrowserItem item, Rect rowRect)
         {
             var current = Event.current;
+            var updating = current.type is EventType.MouseDrag or EventType.DragUpdated;
+            var performing = current.type is EventType.MouseUp or EventType.DragPerform;
             if (current.type == EventType.MouseDown && current.button == 0 && rowRect.Contains(current.mousePosition) &&
                 CanEdit(item))
             {
@@ -5010,26 +5970,42 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
             if (current.type == EventType.MouseDrag && _dragCandidatePath is { } candidate &&
                 _draggedPath is null && (current.mousePosition - _dragStart).sqrMagnitude >= 16)
+            {
                 _draggedPath = candidate;
-            if (current.type == EventType.MouseDrag && _draggedPath is { } dragged &&
+                DragAndDrop.PrepareStartDrag();
+                DragAndDrop.paths = [candidate];
+                DragAndDrop.objectReferences = AssetDatabase.LoadMainAssetAtPath(candidate) is { } asset
+                    ? [asset]
+                    : [];
+                DragAndDrop.SetGenericData("BEngine.Project.AssetPath", candidate);
+                DragAndDrop.StartDrag(Path.GetFileName(candidate));
+            }
+            if (updating && _draggedPath is { } dragged &&
                 CanDrop(dragged, item) && rowRect.Contains(current.mousePosition))
             {
                 _dropTargetPath = item.VirtualPath;
+                DragAndDrop.visualMode = DragAndDropVisualMode.Move;
                 Repaint();
                 return;
             }
-            if (current.type != EventType.MouseUp || _draggedPath is not { } source ||
+            if (!performing || _draggedPath is not { } source ||
                 _dropTargetPath?.Equals(item.VirtualPath, StringComparison.OrdinalIgnoreCase) != true ||
                 !rowRect.Contains(current.mousePosition)) return;
             var destination = $"{item.VirtualPath.TrimEnd('/')}/{Path.GetFileName(source)}";
             if (destination.Equals(source, StringComparison.OrdinalIgnoreCase))
             {
+                DragAndDrop.AcceptDrag();
                 ClearDrag();
+                current.Use();
                 return;
             }
             var error = AssetDatabase.MoveAsset(source, destination);
             if (!string.IsNullOrWhiteSpace(error)) Debug.LogError(error);
-            else _selectedPath = destination;
+            else
+            {
+                _selectedPath = destination;
+                DragAndDrop.AcceptDrag();
+            }
             ClearDrag();
             current.Use();
         }
@@ -5791,7 +6767,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     if (_coreSelected)
                     {
                         GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.toolbarButton.fixedHeight));
-                        GUILayout.Label("BEngine Core", EditorStyles.largeLabel, GUILayout.ExpandWidth(true));
+                        var titleWidth = Fix64.Max(24, GUILayout.CurrentGroupWidth - 240);
+                        GUILayout.Label("BEngine Core", EditorStyles.largeLabel, GUILayout.Width(titleWidth));
                         DrawDocumentationButton(PackageDocumentationCatalog.FindCoreDocumentation());
                         var oldEnabled = GUI.enabled;
                         GUI.enabled = false;
@@ -5806,7 +6783,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                         switch (_selectedTab)
                         {
                             case PackageDetailTab.Description:
-                                DrawDescription("Built-in engine APIs for scenes, lifecycle, ECS, input, transforms, " +
+                                DrawDescription("Built-in engine APIs for scenes, lifecycle, input, transforms, " +
                                                 "rendering and editor extension development.");
                                 break;
                             case PackageDetailTab.Dependencies:
@@ -5820,8 +6797,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     else if (_selected is { } package)
                     {
                         GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.toolbarButton.fixedHeight));
+                        var titleWidth = Fix64.Max(24, GUILayout.CurrentGroupWidth - 240);
                         GUILayout.Label(package.Document.DisplayName, EditorStyles.largeLabel,
-                            GUILayout.ExpandWidth(true));
+                            GUILayout.Width(titleWidth));
                         DrawDocumentationButton(PackageDocumentationCatalog.FindForPackage(package));
                         var enabled = app.Packages.IsEnabled(package.Document.Id);
                         var old = GUI.enabled;
@@ -5927,9 +6905,10 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             {
                 var imported = app.Packages.IsEnabled(dependency.Document.Id);
                 GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.treeViewRow.fixedHeight));
+                var dependencyNameWidth = Fix64.Max(24, GUILayout.CurrentGroupWidth - 84);
                 GUILayout.Label(new GUIContent(dependency.Document.DisplayName,
                     imported ? EditorBuiltinIcons.Toolbar.Check : EditorBuiltinIcons.Components.Default,
-                    dependency.Document.Id), GUILayout.ExpandWidth(true));
+                    dependency.Document.Id), GUILayout.Width(dependencyNameWidth));
                 GUILayout.Label(imported ? "Imported" : "Required", EditorStyles.miniLabel,
                     GUILayout.Width(72));
                 GUILayout.EndHorizontal();
@@ -5963,12 +6942,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             {
                 GUILayout.Space(4);
                 GUILayout.BeginHorizontal();
+                var exampleNameWidth = Fix64.Max(24, GUILayout.CurrentGroupWidth - 104);
                 GUILayout.Label(new GUIContent(example.DisplayName, EditorBuiltinIcons.Assets.Default,
-                    example.ArchivePath), EditorStyles.boldLabel, GUILayout.ExpandWidth(true));
+                    example.ArchivePath), EditorStyles.boldLabel, GUILayout.Width(exampleNameWidth));
                 var importState = GetImportState(example);
                 var installationId = GetExampleInstallationId(example);
                 _exampleImportStatusErrors.TryGetValue(installationId, out var statusError);
-                var canImport = packageEnabled && example.Manifest is not null &&
+                var canImport = packageEnabled && EditorAssetWritePolicy.CanWrite &&
+                                example.Manifest is not null &&
                                 string.IsNullOrWhiteSpace(statusError);
                 var oldEnabled = GUI.enabled;
                 GUI.enabled = canImport;
@@ -5978,6 +6959,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     ? $"This example archive is invalid: {example.Error}"
                     : !packageEnabled
                         ? "Import the package before importing this example."
+                        : !EditorAssetWritePolicy.CanWrite
+                            ? "Examples cannot be imported while entering, running, or exiting Play Mode."
                         : !string.IsNullOrWhiteSpace(statusError)
                             ? $"The example import state could not be read: {statusError}"
                         : importState switch
@@ -6016,7 +6999,6 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 }
             }
         }
-
         private PackageExampleInfo[] GetExamples(string? sourceDirectory)
         {
             var fullPath = string.IsNullOrWhiteSpace(sourceDirectory) ? null : Path.GetFullPath(sourceDirectory);
@@ -6116,6 +7098,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             try
             {
+                EditorAssetWritePolicy.EnsureCanWrite("Importing package examples");
                 if (example.Manifest is not { } manifest) return;
                 PackageExampleLayout.Validate(manifest, Path.GetFileNameWithoutExtension(example.ArchivePath));
                 var installationId = GetExampleInstallationId(example);

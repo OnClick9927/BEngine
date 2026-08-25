@@ -11,7 +11,6 @@ public abstract class Component : BObject
     {
         get
         {
-            MainThreadGuard.Ensure();
             return GameObjectUnchecked;
         }
     }
@@ -19,16 +18,14 @@ public abstract class Component : BObject
     {
         get
         {
-            MainThreadGuard.Ensure();
             return GameObjectUnchecked.TransformUnchecked;
         }
     }
     public bool enabled
     {
-        get { MainThreadGuard.Ensure(); return _enabled; }
+        get { return _enabled; }
         set
         {
-            MainThreadGuard.Ensure();
             if (_enabled == value) return;
             _enabled = value;
             SceneRuntime.NotifyComponentStateChanged(this);
@@ -41,26 +38,22 @@ public abstract class Component : BObject
 
     public T? GetComponent<T>() where T : Component
     {
-        MainThreadGuard.Ensure();
         return GameObjectUnchecked.GetComponentUnchecked<T>();
     }
 
     public Component? GetComponent(Type type)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(type);
         return GameObjectUnchecked.GetComponentUnchecked(type);
     }
 
     public T[] GetComponents<T>() where T : Component
     {
-        MainThreadGuard.Ensure();
-        return GameObjectUnchecked.GetComponentsUnchecked<T>().ToArray();
+        return GameObjectUnchecked.GetComponentsUnchecked<T>();
     }
 
     public T? GetComponentInParent<T>() where T : Component
     {
-        MainThreadGuard.Ensure();
         for (var current = GameObjectUnchecked.TransformUnchecked; current is not null;
              current = current.ParentUnchecked)
         {
@@ -70,34 +63,33 @@ public abstract class Component : BObject
     }
     public T[] GetComponentsInParent<T>(bool includeInactive = false) where T : Component
     {
-        MainThreadGuard.Ensure();
         return GameObjectUnchecked.GetComponentsInParentUnchecked<T>(includeInactive).ToArray();
     }
 
     public T? GetComponentInChildren<T>(bool includeInactive = false) where T : Component
     {
-        MainThreadGuard.Ensure();
         return GameObjectUnchecked.GetComponentInChildrenUnchecked<T>(includeInactive);
     }
 
     public T[] GetComponentsInChildren<T>(bool includeInactive = false) where T : Component
     {
-        MainThreadGuard.Ensure();
         return GameObjectUnchecked.GetComponentsInChildrenUnchecked<T>(includeInactive).ToArray();
     }
 
     public bool TryGetComponent<T>(out T? component) where T : Component
     {
-        MainThreadGuard.Ensure();
         component = GameObjectUnchecked.GetComponentUnchecked<T>();
         return component is not null;
     }
 
     public bool CompareTag(string value)
     {
-        MainThreadGuard.Ensure();
         return GameObjectUnchecked.CompareTagUnchecked(value);
     }
+
+    public virtual void OnReset() { }
+    public virtual void OnDrawGizmos() { }
+    public virtual void OnDrawGizmosSelected() { }
 
     internal void Attach(GameObject owner)
     {

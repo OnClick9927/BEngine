@@ -25,12 +25,14 @@ public static class ObjectFactory
         ArgumentNullException.ThrowIfNull(componentType);
         var existing = gameObject.components.ToHashSet(ReferenceEqualityComparer.Instance);
         var component = gameObject.AddComponent(componentType);
-        if (component is MonoBehaviour behaviour)
+        var addedComponents = gameObject.components.Where(item => !existing.Contains(item)).ToArray();
+        foreach (var addedComponent in addedComponents)
         {
-            Invoke(behaviour.Reset, behaviour, nameof(MonoBehaviour.Reset));
-            Invoke(behaviour.OnValidate, behaviour, nameof(MonoBehaviour.OnValidate));
+            Invoke(addedComponent.OnReset, addedComponent, nameof(Component.OnReset));
+            if (addedComponent is MonoBehaviour behaviour)
+                Invoke(behaviour.OnValidate, behaviour, nameof(MonoBehaviour.OnValidate));
         }
-        var added = gameObject.components.Where(item => !existing.Contains(item)).Cast<BObject>().ToArray();
+        var added = addedComponents.Cast<BObject>().ToArray();
         Undo.RegisterCreatedObjectsUndo(added, $"Add {componentType.Name}");
         EditorCallbackDispatcher.Invoke(componentWasAdded, component, nameof(componentWasAdded));
         EditorUtility.SetDirty(component);
@@ -38,6 +40,6 @@ public static class ObjectFactory
         return component;
     }
 
-    private static void Invoke(Action callback, MonoBehaviour behaviour, string callbackName)
-        => EditorFeatureGuard.Invoke(behaviour, callbackName, callback);
+    private static void Invoke(Action callback, Component component, string callbackName)
+        => EditorFeatureGuard.Invoke(component, callbackName, callback);
 }

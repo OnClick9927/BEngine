@@ -1,8 +1,8 @@
 format: BEngine.ProjectSettings
 version: 2
 locale: zh-CN
-companyName: DefaultCompany
-productName: Example
+companyName: BEngine
+productName: BEngine 2D Showcase
 defaultScreenWidth: 1280
 defaultScreenHeight: 720
 fullScreen: false
@@ -18,13 +18,13 @@ tags:
 - GameController
 sortingLayers:
 - value: 2
-  name: Default
+  name: Background
 - value: 4
-  name: Foreground
+  name: Gameplay
 - value: 8
-  name: World 3
+  name: Foreground
 - value: 16
-  name: World 4
+  name: Inset Only
 - value: 32
   name: World 5
 - value: 64

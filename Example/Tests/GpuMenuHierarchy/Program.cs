@@ -105,6 +105,29 @@ internal static class Program
                 "Popup menus do not render the Unity-style shadow layer.");
             popupType.GetMethod("Close")!.Invoke(popup, null);
 
+            var enumMenu = new GenericMenu();
+            enumMenu.AddItem(new GUIContent("Alpha"), true, () => { });
+            enumMenu.AddItem(new GUIContent("Beta"), false, () => { });
+            var enumAnchor = new Rect(100, 90, 120, 20);
+            open.Invoke(popup, [Items(enumMenu), new Vector2(100, enumAnchor.yMax)]);
+            var anchorHover = new Event(EventType.MouseMove)
+            {
+                mousePosition = new Vector2(110, 100)
+            };
+            Dispatch(draw, popup, anchorHover, [], enumAnchor);
+            Require(anchorHover.type == EventType.Used && (bool)isOpen.GetValue(popup)!,
+                "A short popup closed while the pointer was still over its source field anchor.");
+            var menuHover = new Event(EventType.MouseMove)
+            {
+                mousePosition = new Vector2(110, 130)
+            };
+            Dispatch(draw, popup, menuHover, [], enumAnchor);
+            Require(menuHover.type == EventType.Used && (bool)isOpen.GetValue(popup)!,
+                "A short popup closed while moving from its source field into the menu.");
+            popupType.GetMethod("Close")!.Invoke(popup, null);
+
+            VerifyAdvancedDropdown();
+
             Menu.SetChecked("Window/Test", true);
             Menu.SetEnabled("Window/Test", false);
             Require(Menu.GetChecked("Window/Test") && !Menu.GetEnabled("Window/Test"),
@@ -112,7 +135,8 @@ internal static class Program
             Menu.SetChecked("Window/Test", false);
             Menu.SetEnabled("Window/Test", true);
 
-            Console.WriteLine("GPU_MENU_HIERARCHY_OK|component-root,submenus,checked,disabled,input-blocking");
+            Console.WriteLine(
+                "GPU_MENU_HIERARCHY_OK|component-root,submenus,checked,disabled,input-blocking,popup-anchor,advanced-search,advanced-mouse-reset,advanced-keyboard,advanced-scroll");
             return 0;
         }
         catch (Exception exception)
@@ -122,15 +146,169 @@ internal static class Program
         }
     }
 
-    private static void Dispatch(MethodInfo draw, object popup, Event evt, List<GpuCanvasCommand> commands)
+    private static void VerifyAdvancedDropdown()
+    {
+        var popupType = typeof(EditorWindow).Assembly.GetType(
+            "BEngine.Editor.ImGuiAdvancedDropdown", true)!;
+        var popup = Activator.CreateInstance(popupType, nonPublic: true)!;
+        var open = popupType.GetMethod("Open")!;
+        var draw = popupType.GetMethod("Draw")!;
+        var close = popupType.GetMethod("Close")!;
+
+        var filteredInvoked = false;
+        var searchMenu = new GenericMenu();
+        searchMenu.AddItem(new GUIContent("Rendering/Sprite"), false, () => { });
+        searchMenu.AddItem(new GUIContent("Rendering/UI/Panel"), false,
+            () => filteredInvoked = true);
+        searchMenu.AddItem(new GUIContent("Physics/Body"), false, () => { });
+        open.Invoke(popup, [Items(searchMenu), new Vector2(20, 20), null]);
+
+        DispatchAdvanced(draw, popup, new Event(EventType.Repaint), []);
+        var focusedControl = (string?)typeof(GUI).GetField("_focusedControlName",
+            BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null);
+        Require(focusedControl == "BEngine.AdvancedDropdown.Search",
+            "Advanced dropdown did not focus its search field when opened.");
+
+        TypeText(draw, popup, "rEnDeRiNg/uI");
+        var enteredSearch = Get<string>(popup, "search");
+        Require(enteredSearch == "rEnDeRiNg/uI",
+            $"Advanced dropdown search did not accept keyboard input (actual: '{enteredSearch}').");
+        var visiblePaths = Get<IReadOnlyList<string>>(popup, "visiblePaths");
+        Require(visiblePaths.SequenceEqual(["Rendering/UI/Panel"], StringComparer.Ordinal),
+            "Advanced dropdown search is not case-insensitive across the complete menu path.");
+
+        var filteredCommands = new List<GpuCanvasCommand>();
+        DispatchAdvanced(draw, popup, new Event(EventType.Repaint), filteredCommands);
+        var filteredResult = filteredCommands.Single(command =>
+            command.Type == GpuCanvasCommandType.Text &&
+            command.Content == "Rendering/UI/Panel");
+        var filteredPoint = new Vector2((Fix64)(filteredResult.Rect.X + 8),
+            (Fix64)(filteredResult.Rect.Y + filteredResult.Rect.Height / 2));
+        var filteredDown = new Event(EventType.MouseDown)
+        {
+            mousePosition = filteredPoint,
+            button = 0
+        };
+        DispatchAdvanced(draw, popup, filteredDown, []);
+        var filteredUp = new Event(EventType.MouseUp)
+        {
+            mousePosition = filteredPoint,
+            button = 0
+        };
+        DispatchAdvanced(draw, popup, filteredUp, []);
+        Require(filteredDown.type == EventType.Used && filteredUp.type == EventType.Used &&
+                filteredInvoked && !Get<bool>(popup, "isOpen"),
+            "Clicking a filtered advanced-dropdown result did not invoke it and close the popup.");
+
+        open.Invoke(popup, [Items(searchMenu), new Vector2(20, 20), null]);
+        DispatchAdvanced(draw, popup, new Event(EventType.Repaint), []);
+        Require(Get<string>(popup, "search").Length == 0 &&
+                Get<IReadOnlyList<string>>(popup, "visiblePaths").Count == 3,
+            "Reopening an advanced dropdown restored stale text from the previous search.");
+
+        var escape = Event.KeyboardEvent("escape");
+        DispatchAdvanced(draw, popup, escape, []);
+        Require(escape.type == EventType.Used && !Get<bool>(popup, "isOpen"),
+            "Escape did not consume the key event and close the advanced dropdown.");
+
+        var firstInvoked = false;
+        var targetInvoked = false;
+        var keyboardMenu = new GenericMenu();
+        keyboardMenu.AddItem(new GUIContent("First"), false, () => firstInvoked = true);
+        keyboardMenu.AddDisabledItem(new GUIContent("Disabled"));
+        keyboardMenu.AddItem(new GUIContent("Target"), false, () => targetInvoked = true);
+        open.Invoke(popup, [Items(keyboardMenu), new Vector2(20, 20), null]);
+        Require(Get<IReadOnlyList<string>>(popup, "visiblePaths").Count == 3 &&
+                GetField<int>(popup, "_selectedIndex") == 0,
+            $"Advanced dropdown did not initialize keyboard selection " +
+            $"(items: {Get<IReadOnlyList<string>>(popup, "visiblePaths").Count}, " +
+            $"selected: {GetField<int>(popup, "_selectedIndex")}).");
+        DispatchAdvanced(draw, popup, new Event(EventType.Repaint), []);
+        var down = Event.KeyboardEvent("down");
+        DispatchAdvanced(draw, popup, down, []);
+        Require(down.type == EventType.Used,
+            "Advanced dropdown leaked a keyboard navigation event.");
+        Require(GetField<int>(popup, "_selectedIndex") == 2,
+            $"Advanced dropdown did not skip its disabled row (selected: " +
+            $"{GetField<int>(popup, "_selectedIndex")}).");
+        var enter = Event.KeyboardEvent("enter");
+        DispatchAdvanced(draw, popup, enter, []);
+        Require(enter.type == EventType.Used && targetInvoked && !firstInvoked &&
+                !Get<bool>(popup, "isOpen"),
+            $"Down/Enter did not skip the disabled row, execute the next item, and close " +
+            $"(event: {enter.type}, first: {firstInvoked}, target: {targetInvoked}, " +
+            $"open: {Get<bool>(popup, "isOpen")}).");
+
+        var longMenu = new GenericMenu();
+        for (var index = 0; index < 63; index++)
+        {
+            var captured = index;
+            longMenu.AddItem(new GUIContent($"Layers/Layer {index:00}"), false, () => _ = captured);
+        }
+
+        var anchor = new Rect(750, 570, 40, 20);
+        open.Invoke(popup, [Items(longMenu), new Vector2(790, 590), anchor]);
+        var commands = new List<GpuCanvasCommand>();
+        DispatchAdvanced(draw, popup,
+            new Event(EventType.Repaint) { mousePosition = new Vector2(790, 590) }, commands);
+        var panel = commands
+            .Where(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                              command.Color == GpuCanvasColor.FromColor(
+                                  EditorAppearance.palette.PanelRaised))
+            .OrderByDescending(command => command.Rect.Width * command.Rect.Height)
+            .First();
+        Require(panel.Rect.X >= 0 && panel.Rect.Y >= 0 &&
+                panel.Rect.X + panel.Rect.Width <= 800 &&
+                panel.Rect.Y + panel.Rect.Height <= 600,
+            "Advanced dropdown was not clamped inside the editor window.");
+        Require(panel.Rect.Height < 400 && panel.Rect.Y + panel.Rect.Height <= (float)anchor.y,
+            "A long advanced dropdown was not height-limited or placed above its bottom-edge anchor.");
+
+        var scroll = new Event(EventType.ScrollWheel)
+        {
+            mousePosition = new Vector2((Fix64)(panel.Rect.X + 20), (Fix64)(panel.Rect.Y + 70)),
+            delta = new Vector2(0, 5)
+        };
+        DispatchAdvanced(draw, popup, scroll, []);
+        Require(scroll.type == EventType.Used && GetField<Vector2>(popup, "_scrollPosition").y > 0 &&
+                Get<bool>(popup, "isOpen"),
+            "A long advanced dropdown did not consume wheel input and scroll its bounded list.");
+        close.Invoke(popup, null);
+    }
+
+    private static void Dispatch(MethodInfo draw, object popup, Event evt,
+        List<GpuCanvasCommand> commands, Rect? anchor = null)
     {
         BeginFrame.Invoke(null, [evt, 800, 600, commands]);
-        try { draw.Invoke(popup, [null]); }
+        try { draw.Invoke(popup, [anchor]); }
         finally { EndFrame.Invoke(null, null); }
     }
 
+    private static void DispatchAdvanced(MethodInfo draw, object popup, Event evt,
+        List<GpuCanvasCommand> commands)
+    {
+        BeginFrame.Invoke(null, [evt, 800, 600, commands]);
+        try { draw.Invoke(popup, null); }
+        finally { EndFrame.Invoke(null, null); }
+    }
+
+    private static void TypeText(MethodInfo draw, object popup, string text)
+    {
+        foreach (var character in text)
+            DispatchAdvanced(draw, popup, new Event(EventType.KeyDown) { character = character }, []);
+    }
+
+    private static object Items(GenericMenu menu) =>
+        typeof(GenericMenu).GetProperty("Items", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(menu)!;
+
     private static T Get<T>(object instance, string property) =>
-        (T)instance.GetType().GetProperty(property)!.GetValue(instance)!;
+        (T)instance.GetType().GetProperty(property,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(instance)!;
+
+    private static T GetField<T>(object instance, string field) =>
+        (T)instance.GetType().GetField(field,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(instance)!;
 
     private static void Require(bool condition, string message)
     {

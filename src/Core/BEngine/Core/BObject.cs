@@ -1,10 +1,13 @@
 using BEngine.Documents;
+using YamlDotNet.Serialization;
 
 namespace BEngine;
 
 public abstract class BObject
 {
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, WeakReference<BObject>> Objects = [];
+    private static readonly Dictionary<int, WeakReference<BObject>> Objects = [];
+    private static int _nextInstanceId;
+    private readonly int _instanceId;
     private Guid _id = Guid.NewGuid();
     private string _name = string.Empty;
     private HideFlags _hideFlags;
@@ -15,12 +18,10 @@ public abstract class BObject
     {
         get
         {
-            MainThreadGuard.Ensure();
             return _id;
         }
         internal set
         {
-            MainThreadGuard.Ensure();
             _id = value;
         }
     }
@@ -28,12 +29,10 @@ public abstract class BObject
     {
         get
         {
-            MainThreadGuard.Ensure();
             return _name;
         }
         set
         {
-            MainThreadGuard.Ensure();
             _name = value;
         }
     }
@@ -41,12 +40,10 @@ public abstract class BObject
     {
         get
         {
-            MainThreadGuard.Ensure();
             return _hideFlags;
         }
         set
         {
-            MainThreadGuard.Ensure();
             _hideFlags = value;
         }
     }
@@ -56,12 +53,10 @@ public abstract class BObject
     {
         get
         {
-            MainThreadGuard.Ensure();
             return _prefabAssetId;
         }
         set
         {
-            MainThreadGuard.Ensure();
             _prefabAssetId = value;
         }
     }
@@ -69,59 +64,109 @@ public abstract class BObject
     {
         get
         {
-            MainThreadGuard.Ensure();
             return _prefabSourceId;
         }
         set
         {
-            MainThreadGuard.Ensure();
             _prefabSourceId = value;
         }
     }
 
+    [YamlIgnore]
+    internal bool IsRuntimeOnly { get; set; }
+
     protected BObject()
     {
-        MainThreadGuard.Ensure("Create BObject");
-        Objects[GetInstanceID()] = new WeakReference<BObject>(this);
+        _instanceId = NextInstanceId();
+        IsRuntimeOnly = Application.isPlaying && SceneRuntime.currentScene is not null;
+        Objects[_instanceId] = new WeakReference<BObject>(this);
     }
 
-    public int GetInstanceID()
-    {
-        MainThreadGuard.Ensure();
-        return _id.GetHashCode();
-    }
+    public int GetInstanceID() => _instanceId;
 
     public static BObject? FindObjectFromInstanceID(int instanceId)
     {
-        MainThreadGuard.Ensure();
         if (!Objects.TryGetValue(instanceId, out var reference)) return null;
-        if (reference.TryGetTarget(out var target)) return target;
-        Objects.TryRemove(instanceId, out _);
+        if (reference.TryGetTarget(out var target))
+            return IsVisibleInCurrentRuntimeDomain(target) ? target : null;
+        Objects.Remove(instanceId);
         return null;
     }
 
-    public static T? FindFirstObjectByType<T>() where T : BObject => FindObjectsByType<T>().FirstOrDefault();
+    public static T? FindFirstObjectByType<T>() where T : BObject
+    {
+        T? result = null;
+        List<int>? staleIds = null;
+        foreach (var pair in Objects)
+        {
+            if (!pair.Value.TryGetTarget(out var target))
+            {
+                (staleIds ??= []).Add(pair.Key);
+                continue;
+            }
+            if (result is null && target is T typed && IsVisibleInCurrentRuntimeDomain(target)) result = typed;
+        }
+        RemoveStaleObjects(staleIds);
+        return result;
+    }
+
     public static T? FindAnyObjectByType<T>() where T : BObject => FindFirstObjectByType<T>();
 
     public static T[] FindObjectsByType<T>() where T : BObject
     {
-        MainThreadGuard.Ensure();
         var results = new List<T>();
-        foreach (var pair in Objects.ToArray())
+        List<int>? staleIds = null;
+        foreach (var pair in Objects)
         {
             if (!pair.Value.TryGetTarget(out var target))
             {
-                Objects.TryRemove(pair.Key, out _);
+                (staleIds ??= []).Add(pair.Key);
                 continue;
             }
-            if (target is T typed) results.Add(typed);
+            if (target is T typed && IsVisibleInCurrentRuntimeDomain(target)) results.Add(typed);
         }
+        RemoveStaleObjects(staleIds);
         return [.. results];
+    }
+
+    private static void RemoveStaleObjects(List<int>? staleIds)
+    {
+        if (staleIds is null) return;
+        foreach (var instanceId in staleIds) Objects.Remove(instanceId);
+    }
+
+    private static bool IsVisibleInCurrentRuntimeDomain(BObject target)
+    {
+        if (SceneRuntime.currentScene is null) return true;
+
+        Scene? scene;
+        switch (target)
+        {
+            case Scene value:
+                scene = value;
+                break;
+            case GameObject gameObject:
+                scene = gameObject.SceneUnchecked;
+                break;
+            case Component component:
+                try { scene = component.GameObjectUnchecked.SceneUnchecked; }
+                catch (InvalidOperationException) { return false; }
+                break;
+            default:
+                return true;
+        }
+
+        return scene is not null && SceneRuntime.IsSceneVisibleInCurrentRuntimeDomain(scene);
+    }
+
+    private static int NextInstanceId()
+    {
+        var id = ++_nextInstanceId;
+        return id != 0 ? id : ++_nextInstanceId;
     }
 
     public static void Destroy(BObject target)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(target);
         switch (target)
         {
@@ -136,7 +181,6 @@ public abstract class BObject
 
     public static void Destroy(BObject target, Fix64 delay)
     {
-        MainThreadGuard.Ensure();
         if (delay <= Fix64.Zero) Destroy(target);
         else DelayedDestroy.Schedule(target, delay);
     }
@@ -145,7 +189,6 @@ public abstract class BObject
 
     public static void DontDestroyOnLoad(BObject target)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(target);
         var gameObject = target switch
         {
@@ -169,7 +212,6 @@ public abstract class BObject
 
     public static BObject Instantiate(BObject original)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(original);
         return original switch
         {

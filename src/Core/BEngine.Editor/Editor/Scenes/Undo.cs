@@ -148,6 +148,25 @@ public static class Undo
         _groupName = "Edit";
     }
 
+    internal static HistorySnapshot CaptureAndClear()
+    {
+        var snapshot = new HistorySnapshot(
+            UndoStack.ToArray(), RedoStack.ToArray(), _group, _groupName);
+        ClearAll();
+        return snapshot;
+    }
+
+    internal static void Restore(HistorySnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        UndoStack.Clear();
+        foreach (var operation in snapshot.UndoOperations.Reverse()) UndoStack.Push(operation);
+        RedoStack.Clear();
+        foreach (var operation in snapshot.RedoOperations.Reverse()) RedoStack.Push(operation);
+        _group = snapshot.Group;
+        _groupName = snapshot.GroupName;
+    }
+
     internal static void RegisterSnapshot(ObjectState state, string name)
     {
         _groupName = string.IsNullOrWhiteSpace(name) ? "Edit" : name;
@@ -208,6 +227,29 @@ public static class Undo
         EditorApplication.RaiseHierarchyChanged();
     }
 
-    private sealed record UndoOperation(int Group, string Name, ObjectState[] States,
+    internal sealed record UndoOperation(int Group, string Name, ObjectState[] States,
         Action? UndoAction, Action? RedoAction);
+
+    internal sealed class HistorySnapshot
+    {
+        private readonly UndoOperation[] _undoOperations;
+        private readonly UndoOperation[] _redoOperations;
+
+        internal IEnumerable<UndoOperation> UndoOperations => _undoOperations;
+        internal IEnumerable<UndoOperation> RedoOperations => _redoOperations;
+        internal int Group { get; }
+        internal string GroupName { get; }
+
+        internal HistorySnapshot(
+            UndoOperation[] undoOperations,
+            UndoOperation[] redoOperations,
+            int group,
+            string groupName)
+        {
+            _undoOperations = undoOperations;
+            _redoOperations = redoOperations;
+            Group = group;
+            GroupName = groupName;
+        }
+    }
 }

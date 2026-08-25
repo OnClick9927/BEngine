@@ -611,7 +611,8 @@ internal sealed class EditorWindowLayer
 
     private static bool IsPointerInput(EventType type) => type is EventType.MouseDown or EventType.MouseUp or
         EventType.MouseMove or EventType.MouseDrag or EventType.ContextClick or EventType.ScrollWheel or
-        EventType.TouchDown or EventType.TouchUp or EventType.TouchMove;
+        EventType.TouchDown or EventType.TouchUp or EventType.TouchMove or EventType.DragUpdated or
+        EventType.DragPerform or EventType.DragExited;
 
     private static bool IsKeyboardInput(EventType type) => type is EventType.KeyDown or EventType.KeyUp or
         EventType.ValidateCommand or EventType.ExecuteCommand;

@@ -45,8 +45,6 @@ internal static class AssetBundleSettingsProvider
         GUILayout.Label("Download", EditorStyles.boldLabel);
         DrawToggle("Require HTTPS", _draft.RequireHttps, value => _draft.RequireHttps = value);
         DrawIntField("Max Retries", _draft.MaxRetries, value => _draft.MaxRetries = value);
-        DrawIntField("Max Concurrent Downloads", _draft.MaxConcurrentDownloads,
-            value => _draft.MaxConcurrentDownloads = value);
 
         if (_loadError.Length > 0) EditorGUILayout.HelpBox(_loadError, MessageType.Error);
         if (_operationError.Length > 0) EditorGUILayout.HelpBox(_operationError, MessageType.Error);
@@ -299,8 +297,6 @@ internal static class AssetBundleSettingsProvider
                     return "Remote Base URL must use HTTPS while Require HTTPS is enabled.";
             }
             if (candidate.MaxRetries < 0) return "Max Retries must be zero or greater.";
-            if (candidate.MaxConcurrentDownloads <= 0)
-                return "Max Concurrent Downloads must be greater than zero.";
             _ = candidate.ToYaml();
             return string.Empty;
         }
@@ -335,8 +331,7 @@ internal static class AssetBundleSettingsProvider
         ApplyUpdatesOnStartup = value.ApplyUpdatesOnStartup,
         FailStartupWhenUpdateFails = value.FailStartupWhenUpdateFails,
         RequireHttps = value.RequireHttps,
-        MaxRetries = value.MaxRetries,
-        MaxConcurrentDownloads = value.MaxConcurrentDownloads
+        MaxRetries = value.MaxRetries
     };
 
     private static string NormalizeRelativePath(string? value) =>

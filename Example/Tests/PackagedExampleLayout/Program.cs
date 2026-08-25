@@ -8,13 +8,19 @@ internal static class Program
 {
     private static readonly Module[] Modules =
     [
-        new("Core", "Core", true),
-        new("Animation", "Animation", false),
-        new("Navigation2D", "Navigation2D", false),
-        new("Physics2D", "Physics2D", false),
-        new("PropertyAttributes", "PropertyAttributes", false),
-        new("TiledMap", "TiledMap", false),
-        new("UIElements", "UIElements", false)
+        new("Core", "Core", true, ["CoreGettingStarted.bpackage"]),
+        new("Animation", "Animation", false,
+            ["AnimationGettingStarted.bpackage", "StateMachine.bpackage"]),
+        new("Navigation2D", "Navigation2D", false,
+            ["DynamicRebake.bpackage", "NavigationSurfaceAndAgent.bpackage"]),
+        new("Physics2D", "Physics2D", false,
+            ["RigidbodyAndQueries.bpackage", "TriggersAndQueries.bpackage"]),
+        new("PropertyAttributes", "PropertyAttributes", false,
+            ["AttributesGallery.bpackage", "InspectorAttributesAndDrawer.bpackage"]),
+        new("TiledMap", "TiledMap", false,
+            ["AtlasPalette.bpackage", "RuntimePainting.bpackage"]),
+        new("UIElements", "UIElements", false,
+            ["ControlsGallery.bpackage", "RuntimeHud.bpackage"])
     ];
 
     private static int Main()
@@ -25,7 +31,7 @@ internal static class Program
             foreach (var module in Modules) VerifyModule(repositoryRoot, module);
 
             Console.WriteLine(
-                "PACKAGED_EXAMPLE_LAYOUT_OK|core,6-packages,editor-resources-only,2-per-module," +
+                "PACKAGED_EXAMPLE_LAYOUT_OK|core,6-packages,editor-resources-only,expected-archives," +
                 "yaml-manifest,release-mirror,package-manager-discovery");
             return 0;
         }
@@ -58,8 +64,10 @@ internal static class Program
 
         var sourceArchives = ReadArchives(sourceExamples, module.Name, "source");
         var releasedArchives = ReadArchives(releasedExamples, module.Name, "release");
-        Require(sourceArchives.Count >= 2,
-            $"{module.Name} must provide at least two source .bpackage examples.");
+        Require(sourceArchives.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                .SetEquals(module.ExpectedArchives),
+            $"{module.Name} source examples do not match the expected package examples: " +
+            string.Join(", ", module.ExpectedArchives));
         Require(sourceArchives.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 .SetEquals(releasedArchives.Keys),
             $"{module.Name} released example names do not match source examples.");
@@ -158,6 +166,10 @@ internal static class Program
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private sealed record Module(string Name, string SourceDirectory, bool IsCore);
+    private sealed record Module(
+        string Name,
+        string SourceDirectory,
+        bool IsCore,
+        string[] ExpectedArchives);
     private sealed record Archive(BPackageManifest Manifest, string Hash);
 }

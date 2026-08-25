@@ -20,6 +20,18 @@ internal static class ComponentClipboard
         _snapshot = null;
     }
 
+    internal static ComponentValueSnapshot? CaptureAndClear()
+    {
+        var snapshot = _snapshot;
+        _snapshot = null;
+        return snapshot;
+    }
+
+    internal static void Restore(ComponentValueSnapshot? snapshot)
+    {
+        _snapshot = snapshot;
+    }
+
     internal static bool Paste(Component component)
     {
         if (!CanPaste(component) || _snapshot is null) return false;
@@ -43,8 +55,7 @@ internal static class ComponentClipboard
         var defaultsSnapshot = ComponentValueSnapshot.Capture(defaults);
         if (recordUndo) Undo.RecordObject(component, $"Reset {component.GetType().Name}");
         defaultsSnapshot.ApplyTo(component);
-        if (component is MonoBehaviour behaviour)
-            EditorFeatureGuard.Invoke(behaviour, nameof(MonoBehaviour.Reset), behaviour.Reset);
+        EditorFeatureGuard.Invoke(component, nameof(Component.OnReset), component.OnReset);
         Validate(component);
         EditorUtility.SetDirty(component);
         return true;

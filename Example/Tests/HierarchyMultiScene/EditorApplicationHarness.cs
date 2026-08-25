@@ -1,11 +1,13 @@
 using System.Collections;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using BEngine.DependencyInjection;
 using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Editor.Documents;
 using BEngine.Editor.Rendering;
 using BEngine.ProjectSystem;
+using BEngine.SceneManagement;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
 
 namespace BEngine.ExampleTests.HierarchyMultiScene;
@@ -27,6 +29,17 @@ internal sealed class EditorApplicationHarness : IDisposable
     public object InspectorWindow { get; }
     public object DockWorkspace { get; }
     public Scene InitialScene { get; }
+    public Scene ActiveScene => EditorSceneManager.activeScene ??
+                                throw new InvalidOperationException("The editor has no active Scene.");
+    public IReadOnlyList<Scene> OpenScenes => Enumerable.Range(0, EditorSceneManager.sceneCount)
+        .Select(EditorSceneManager.GetSceneAt).ToArray();
+    public bool IsPlaying => EditorApplication.isPlaying;
+    public IRuntimeSceneManager RuntimeSceneManager =>
+        (IRuntimeSceneManager)(GetField(Application, "_runtimeSceneManager") ??
+                               throw new InvalidOperationException("The editor has no runtime Scene manager."));
+    public int RuntimeCount => ((ICollection)(GetField(Application, "_runtimes") ??
+                                              throw new InvalidOperationException(
+                                                  "The editor has no runtime collection."))).Count;
 
     public EditorApplicationHarness(SceneFixture fixture)
     {
@@ -63,6 +76,8 @@ internal sealed class EditorApplicationHarness : IDisposable
 
         SetField("_workspace", fixture.Workspace);
         SetField("_services", services);
+        SetField("_sceneRuntimeFactory", new SceneRuntimeFactory());
+        SetField("_runtimeSceneManager", services.SceneManager);
         SetField("_assets", assets);
         SetField("_packages", _packages);
         SetField("_scene", InitialScene);
@@ -106,13 +121,65 @@ internal sealed class EditorApplicationHarness : IDisposable
 
     public void SetPlaying(bool value) => SetField("_playing", value);
 
+    public void EnterPlay()
+    {
+        EditorApplication.isPlaying = true;
+        if (!EditorApplication.isPlaying)
+            throw new InvalidOperationException("The editor did not enter Play Mode.");
+    }
+
+    public void ExitPlay()
+    {
+        EditorApplication.isPlaying = false;
+        if (EditorApplication.isPlaying)
+            throw new InvalidOperationException("The editor did not exit Play Mode.");
+    }
+
+    public bool IsSceneDirty(Scene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        var entries = (IEnumerable)(GetField(Application, "_openScenes") ?? Array.Empty<object>());
+        foreach (var entry in entries.Cast<object>())
+        {
+            var entryScene = entry.GetType().GetProperty("Scene")?.GetValue(entry) as Scene;
+            if (!ReferenceEquals(entryScene, scene)) continue;
+            return (bool)(entry.GetType().GetProperty("IsDirty")?.GetValue(entry) ?? false);
+        }
+        return false;
+    }
+
     public void FocusHierarchy() => typeof(EditorWindow).GetMethod("FocusInternal",
         BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(HierarchyWindow, null);
 
     public void FocusWindow(object window) => typeof(EditorWindow).GetMethod("FocusInternal",
         BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
 
+    public void SelectDockedWindow(object window)
+    {
+        var panels = (IDictionary)(GetField(Application, "_editorPanels") ??
+                                   throw new InvalidOperationException("The editor has no panel registry."));
+        var panel = panels[window] ??
+                    throw new InvalidOperationException("The requested window is not docked.");
+        var id = (string)(panel.GetType().GetProperty("Id")?.GetValue(panel) ??
+                          throw new InvalidOperationException("The dock panel has no persistent id."));
+        DockWorkspace.GetType().GetMethod("Show", BindingFlags.Instance | BindingFlags.Public)!
+            .Invoke(DockWorkspace, [id]);
+    }
+
+    public bool IsWindowSelected(object window) => (bool)(DockWorkspace.GetType()
+        .GetMethod("IsSelected", BindingFlags.Instance | BindingFlags.Public)!
+        .Invoke(DockWorkspace, [window]) ?? false);
+
+    public bool IsWindowOpen(object window) => (bool)(typeof(EditorWindow)
+        .GetProperty("IsOpen", BindingFlags.Instance | BindingFlags.NonPublic)!
+        .GetValue(window) ?? false);
+
+    public void FloatWindow(object window) => ((EditorWindow)window).ShowAuxWindow();
+
+    public void CloseWindow(object window) => RequireMethod("CloseEditorWindow").Invoke(Application, [window]);
+
     public void SetCameraPosition(System.Numerics.Vector2 value) => SetField("_editorCameraPosition", value);
+    public void SetCameraSize(float value) => SetField("_editorCameraSize", value);
 
     public System.Numerics.Vector2 CameraPosition =>
         (System.Numerics.Vector2)(GetField(Application, "_editorCameraPosition") ?? default(System.Numerics.Vector2));
@@ -138,6 +205,32 @@ internal sealed class EditorApplicationHarness : IDisposable
 
     public GameObject? SelectedGameObject => GetField(Application, "_selected") as GameObject;
 
+    public BObject? SelectedAsset => GetField(Application, "_selectedAsset") as BObject;
+
+    public BObject? InspectorTarget => GetField(InspectorWindow, "_lastTarget") as BObject;
+
+    public void LockInspector(BObject target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ((EditorWindow)InspectorWindow).isLocked = true;
+        RequireField(InspectorWindow.GetType(), "_lastTarget").SetValue(InspectorWindow, target);
+    }
+
+    public IDisposable AttachRuntimeSceneCallbacks()
+    {
+        var loaded = (Action<Scene, LoadSceneMode>)RequireMethod("OnRuntimeSceneLoaded")
+            .CreateDelegate(typeof(Action<Scene, LoadSceneMode>), Application);
+        var unloaded = (Action<Scene>)RequireMethod("OnRuntimeSceneUnloaded")
+            .CreateDelegate(typeof(Action<Scene>), Application);
+        var activeChanged = (Action<Scene?, Scene?>)RequireMethod("OnRuntimeActiveSceneChanged")
+            .CreateDelegate(typeof(Action<Scene?, Scene?>), Application);
+        RuntimeSceneManager.SceneLoaded += loaded;
+        RuntimeSceneManager.SceneUnloaded += unloaded;
+        RuntimeSceneManager.ActiveSceneChanged += activeChanged;
+        return new RuntimeSceneCallbackSubscription(
+            RuntimeSceneManager, loaded, unloaded, activeChanged);
+    }
+
     public bool IsSceneWindowSelected() => (bool)(DockWorkspace.GetType()
         .GetMethod("IsSelected", BindingFlags.Instance | BindingFlags.Public)!
         .Invoke(DockWorkspace, [SceneWindow]) ?? false);
@@ -150,6 +243,23 @@ internal sealed class EditorApplicationHarness : IDisposable
 
     public void SetHierarchyRenameValue(string value) =>
         RequireField(HierarchyWindow.GetType(), "_renameValue").SetValue(HierarchyWindow, value);
+
+    public string HierarchyRenameValue =>
+        (string)(RequireField(HierarchyWindow.GetType(), "_renameValue").GetValue(HierarchyWindow) ??
+                 string.Empty);
+
+    public string GuiFocusState
+    {
+        get
+        {
+            var gui = typeof(GUI);
+            var members = BindingFlags.Static | BindingFlags.NonPublic;
+            return $"focused='{gui.GetField("_focusedControlName", members)!.GetValue(null)}'," +
+                   $"pending='{gui.GetField("_pendingFocusControlName", members)!.GetValue(null)}'," +
+                   $"active={gui.GetField("_activeTextControl", members)!.GetValue(null)}," +
+                   $"keyboard={GUIUtility.keyboardControl}";
+        }
+    }
 
     public IReadOnlyList<GpuCanvasCommand> RenderHierarchy(Event evt, int width = 520, int height = 640)
         => RenderWindow(HierarchyWindow, evt, width, height);
@@ -204,7 +314,7 @@ internal sealed class EditorApplicationHarness : IDisposable
             catch (TargetInvocationException) { }
         }
         foreach (var scene in scenes)
-            if (scene.world.IsCreated) scene.world.Dispose();
+            if (scene.isCreated) scene.Dispose();
         _packages.Dispose();
         try { ((IDisposable)_nativeWindow).Dispose(); }
         catch (InvalidOperationException) { }
@@ -261,6 +371,10 @@ internal sealed class EditorApplicationHarness : IDisposable
         type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ??
         throw new MissingFieldException(type.FullName, name);
 
+    private MethodInfo RequireMethod(string name) =>
+        _applicationType.GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic) ??
+        throw new MissingMethodException(_applicationType.FullName, name);
+
     private static void SetProperty(object target, string name, object value)
     {
         var property = target.GetType().GetProperty(name,
@@ -282,5 +396,23 @@ internal sealed class EditorApplicationHarness : IDisposable
     {
         var bridge = TestAssert.RequireType(_editorAssembly, "BEngine.Editor.EditorBridge");
         bridge.GetMethod("Detach", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [Application]);
+    }
+
+    private sealed class RuntimeSceneCallbackSubscription(
+        IRuntimeSceneManager manager,
+        Action<Scene, LoadSceneMode> loaded,
+        Action<Scene> unloaded,
+        Action<Scene?, Scene?> activeChanged) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            manager.SceneLoaded -= loaded;
+            manager.SceneUnloaded -= unloaded;
+            manager.ActiveSceneChanged -= activeChanged;
+        }
     }
 }

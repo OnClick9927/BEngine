@@ -9,5 +9,5 @@ public static class SettingsService
         PreferencesWindow.Open(settingsPath);
 
     public static void OpenProjectSettings(string settingsPath = "") =>
-        ProjectSettingsWindow.Open(settingsPath);
+        ProjectSettingsWindow.Open(TagLayerSettingsProvider.ResolveSettingsPath(settingsPath));
 }

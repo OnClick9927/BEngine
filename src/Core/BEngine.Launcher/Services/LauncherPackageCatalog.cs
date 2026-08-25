@@ -45,8 +45,7 @@ internal sealed class LauncherPackageCatalog
         }
 
         return packages
-            .GroupBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
+            .DistinctBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
             .OrderBy(package => package.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }

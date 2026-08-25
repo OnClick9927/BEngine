@@ -4,7 +4,6 @@ namespace BEngine;
 
 public static class RuntimeSystemRegistry
 {
-    private static readonly object Sync = new();
     private static readonly Dictionary<string, RuntimeSystemFactoryRegistration> Factories =
         new(StringComparer.Ordinal);
 
@@ -19,7 +18,7 @@ public static class RuntimeSystemRegistry
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentNullException.ThrowIfNull(factory);
-        lock (Sync) Factories[id] = new RuntimeSystemFactoryRegistration(null, factory);
+        Factories[id] = new RuntimeSystemFactoryRegistration(null, factory);
     }
 
     public static void RegisterScoped(
@@ -47,24 +46,21 @@ public static class RuntimeSystemRegistry
                 throw;
             }
         }
-        lock (Sync) Factories[id] = new RuntimeSystemFactoryRegistration(systemType, Create);
+        Factories[id] = new RuntimeSystemFactoryRegistration(systemType, Create);
     }
 
     public static bool Unregister(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        lock (Sync) return Factories.Remove(id);
+        return Factories.Remove(id);
     }
 
     internal static void UnregisterAssembly(System.Reflection.Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
-        lock (Sync)
-        {
-            foreach (var id in Factories.Where(pair => IsOwnedBy(pair.Value, assembly))
-                         .Select(pair => pair.Key).ToArray())
-                Factories.Remove(id);
-        }
+        foreach (var id in Factories.Where(pair => IsOwnedBy(pair.Value, assembly))
+                     .Select(pair => pair.Key).ToArray())
+            Factories.Remove(id);
     }
 
     private static bool IsOwnedBy(
@@ -77,28 +73,44 @@ public static class RuntimeSystemRegistry
     internal static ISceneRuntimeSystem[] CreateSystems(IServiceProvider services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        KeyValuePair<string, RuntimeSystemFactoryRegistration>[] factories;
-        lock (Sync) factories = Factories.OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray();
-
-        var registered = factories.Select(pair => pair.Value.Factory(services)).ToList();
-        if (services.GetService(typeof(IEnumerable<ISceneRuntimeSystem>)) is
-            IEnumerable<ISceneRuntimeSystem> resolved)
-            registered.AddRange(resolved);
-        var registeredTypes = factories.Select(pair => pair.Value.SystemType)
-            .Where(type => type is not null).Cast<Type>()
-            .Concat(registered.Select(SystemTypeOf)).ToHashSet();
-        foreach (var type in RuntimeTypeCache.GetRuntimeSystemTypes())
+        var factories = Factories.OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray();
+        var registered = new List<ISceneRuntimeSystem>();
+        try
         {
-            if (!registeredTypes.Add(type)) continue;
-            registered.Add((ISceneRuntimeSystem)(services.GetService(type) ??
-                ActivatorUtilities.CreateInstance(services, type)));
-        }
+            foreach (var factory in factories)
+                registered.Add(factory.Value.Factory(services));
+            if (services.GetService(typeof(IEnumerable<ISceneRuntimeSystem>)) is
+                IEnumerable<ISceneRuntimeSystem> resolved)
+                registered.AddRange(resolved);
+            var registeredTypes = factories.Select(pair => pair.Value.SystemType)
+                .Where(type => type is not null).Cast<Type>()
+                .Concat(registered.Select(SystemTypeOf)).ToHashSet();
+            foreach (var type in RuntimeTypeCache.GetRuntimeSystemTypes())
+            {
+                if (!registeredTypes.Add(type)) continue;
+                registered.Add((ISceneRuntimeSystem)(services.GetService(type) ??
+                    ActivatorUtilities.CreateInstance(services, type)));
+            }
 
-        return registered.DistinctBy(SystemTypeOf)
-            .Where(system => RuntimePackageState.IsEnabled(system.packageId))
-            .OrderBy(system => system.order)
-            .ThenBy(system => system.GetType().FullName, StringComparer.Ordinal)
-            .ToArray();
+            var selected = registered.DistinctBy(SystemTypeOf)
+                .Where(system => RuntimePackageState.IsEnabled(system.packageId))
+                .OrderBy(system => system.order)
+                .ThenBy(system => system.GetType().FullName, StringComparer.Ordinal)
+                .ToArray();
+            foreach (var scoped in registered.OfType<ScopedSceneRuntimeSystem>()
+                         .Where(scoped => !selected.Contains(scoped)))
+                scoped.DisposeScope();
+            return selected;
+        }
+        catch
+        {
+            foreach (var scoped in registered.OfType<ScopedSceneRuntimeSystem>())
+            {
+                try { scoped.DisposeScope(); }
+                catch { }
+            }
+            throw;
+        }
     }
 
     private static Type SystemTypeOf(ISceneRuntimeSystem system) =>

@@ -11,7 +11,7 @@ namespace BEngine.ProjectSystem;
 
 public static class ProjectScriptCompiler
 {
-    private static readonly object LoadContextGate = new();
+    private static readonly Lock LoadContextGate = new();
     private static readonly List<ProjectScriptLoadContext> ActiveLoadContexts = [];
 
     internal static ScriptBuildConfiguration RuntimeBuildConfiguration { get; } =
@@ -128,8 +128,6 @@ public static class ProjectScriptCompiler
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentNullException.ThrowIfNull(editor);
-        EngineThreadContext.AssertMainThread("Apply project script assemblies");
-
         ProjectScriptLoadContext[] previous;
         lock (LoadContextGate) previous = ActiveLoadContexts.ToArray();
         try
@@ -200,7 +198,7 @@ public static class ProjectScriptCompiler
         }
         AddBuiltInSymbols(symbols, editor);
         return new ScriptBuildConfiguration(
-            editor ? "net9.0-windows" : "net9.0",
+            editor ? "net10.0-windows" : "net10.0",
             ResolvePlatform(editor),
             symbols.OrderBy(symbol => symbol, StringComparer.Ordinal).ToArray(),
             editor);
@@ -215,7 +213,7 @@ public static class ProjectScriptCompiler
     {
         var propertyGroup = new XElement("PropertyGroup",
             new XElement("TargetFramework", configuration.TargetFramework),
-            new XElement("LangVersion", "13.0"),
+            new XElement("LangVersion", "14.0"),
             new XElement("Nullable", "enable"),
             new XElement("ImplicitUsings", "enable"),
             new XElement("EnableDefaultCompileItems", "false"),
@@ -323,24 +321,24 @@ public static class ProjectScriptCompiler
         var scriptAssembliesRoot = instance?.scriptAssembliesPath ?? workspace.ScriptAssembliesPath;
         var logsRoot = instance?.logsPath ?? workspace.LogsPath;
         var outputDirectory = Path.Combine(
-            ScriptAssemblyStore.GetAssemblyRoot(scriptAssembliesRoot, node.Name), buildId);
+            ScriptAssemblyStore.GetAssemblyRoot(scriptAssembliesRoot, node.Name), PhysicalBuildId(buildId));
         var assemblyPath = Path.Combine(outputDirectory, $"{node.Name}.dll");
 
         if (!File.Exists(assemblyPath) && instance is not null)
         {
             var sharedDirectory = Path.Combine(
-                ScriptAssemblyStore.GetAssemblyRoot(workspace, node.Name), buildId);
+                ScriptAssemblyStore.GetAssemblyRoot(workspace, node.Name), PhysicalBuildId(buildId));
             var sharedAssembly = Path.Combine(sharedDirectory, $"{node.Name}.dll");
             if (File.Exists(sharedAssembly)) CopyDirectory(sharedDirectory, outputDirectory);
         }
 
         if (!File.Exists(assemblyPath))
         {
-            var buildDirectory = Path.Combine(temporaryRoot, "ScriptBuild", node.Name, buildId);
+            var buildDirectory = Path.Combine(temporaryRoot, "ScriptBuild", PhysicalBuildId(buildId));
             Directory.CreateDirectory(buildDirectory);
             Directory.CreateDirectory(outputDirectory);
             Directory.CreateDirectory(logsRoot);
-            var projectPath = Path.Combine(buildDirectory, $"{node.Name}.csproj");
+            var projectPath = Path.Combine(buildDirectory, "build.csproj");
             var logPath = Path.Combine(logsRoot, $"ScriptCompilation.{Sanitize(node.Name)}.log");
             var phaseLogPath = Path.Combine(logsRoot,
                 configuration.IsEditor ? "EditorScriptCompilation.log" : "ScriptCompilation.log");
@@ -558,7 +556,7 @@ public static class ProjectScriptCompiler
     {
         var sourceDirectory = Path.GetDirectoryName(artifact.AssemblyPath)!;
         var sharedDirectory = Path.Combine(
-            ScriptAssemblyStore.GetAssemblyRoot(workspace, artifact.Node.Name), artifact.BuildId);
+            ScriptAssemblyStore.GetAssemblyRoot(workspace, artifact.Node.Name), PhysicalBuildId(artifact.BuildId));
         if (!File.Exists(Path.Combine(sharedDirectory, $"{artifact.Node.Name}.dll")))
             CopyDirectory(sourceDirectory, sharedDirectory);
         var sharedAssembly = Path.Combine(sharedDirectory, $"{artifact.Node.Name}.dll");
@@ -656,7 +654,7 @@ public static class ProjectScriptCompiler
         var symbols = new HashSet<string>(StringComparer.Ordinal);
         AddBuiltInSymbols(symbols, editor);
         return new ScriptBuildConfiguration(
-            editor ? "net9.0-windows" : "net9.0", ResolvePlatform(editor),
+            editor ? "net10.0-windows" : "net10.0", ResolvePlatform(editor),
             symbols.OrderBy(symbol => symbol, StringComparer.Ordinal).ToArray(), editor);
     }
 
@@ -731,6 +729,8 @@ public static class ProjectScriptCompiler
 
     private static string Sanitize(string value) => string.Concat(value.Select(character =>
         Path.GetInvalidFileNameChars().Contains(character) ? '_' : character));
+
+    private static string PhysicalBuildId(string buildId) => buildId[..24];
 
     private static void Append(IncrementalHash hash, string value)
     {

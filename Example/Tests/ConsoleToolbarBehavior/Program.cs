@@ -366,7 +366,7 @@ internal static class Program
 
     private static void VerifyLifecycleWiring()
     {
-        Require(ContainsCall(RequireMethod(ApplicationType, "TogglePlay", HiddenInstance), ClearIfEnabled),
+        Require(ContainsCall(RequireMethod(ApplicationType, "EnterPlayModeCore", HiddenInstance), ClearIfEnabled),
             "Entering Play Mode is not wired to the Console clear controller.");
         Require(ContainsCall(RequireMethod(ApplicationType, "CompileScripts", HiddenInstance), ClearIfEnabled),
             "Script recompilation is not wired to the Console clear controller.");

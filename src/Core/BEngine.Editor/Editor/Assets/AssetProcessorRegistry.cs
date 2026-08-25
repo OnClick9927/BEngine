@@ -4,7 +4,7 @@ namespace BEngine.Editor;
 
 internal static class AssetProcessorRegistry
 {
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static AssetPostprocessorDescriptor[] _postprocessors = [];
     private static Action<string>[] _create = [];
     private static Func<string[], string[]>[] _save = [];

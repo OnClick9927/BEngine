@@ -8,7 +8,6 @@ public sealed class ParticleSystem2D : Renderer2D
         name = "Default Particle 2D Material"
     };
     private readonly List<Particle2D> _particles = [];
-    private Material _material = DefaultMaterial;
     private Fix64 _emissionAccumulator;
 
     protected override bool supportsUiSortingLayers => true;
@@ -32,9 +31,9 @@ public sealed class ParticleSystem2D : Renderer2D
 
     public Material material
     {
-        get { MainThreadGuard.Ensure(); return _material; }
-        set { MainThreadGuard.Ensure(); _material = value ?? throw new ArgumentNullException(nameof(value)); }
-    }
+        get;
+        set => field = value ?? throw new ArgumentNullException(nameof(value));
+    } = DefaultMaterial;
 
     public override void Start()
     {
@@ -90,5 +89,5 @@ public sealed class ParticleSystem2D : Renderer2D
 
     internal SpriteRenderData2D ResolveSpriteUnchecked() => TextureAtlasResolver.Resolve(atlas, sprite);
     internal RenderBatchKey2D BatchKeyUnchecked => BatchKey(ResolveSpriteUnchecked());
-    internal RenderBatchKey2D BatchKey(SpriteRenderData2D visual) => new(_material, visual.BatchIdentity);
+    internal RenderBatchKey2D BatchKey(SpriteRenderData2D visual) => new(material, visual.BatchIdentity);
 }

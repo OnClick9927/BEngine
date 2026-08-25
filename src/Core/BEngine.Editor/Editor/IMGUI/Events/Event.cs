@@ -1,8 +1,22 @@
+using System.Collections.Frozen;
+
 namespace BEngine.Editor;
 
 /// <summary>Unity-compatible immediate GUI input event. One current event is active during each OnGUI pass.</summary>
 public sealed class Event
 {
+    private static readonly FrozenDictionary<string, KeyCode> KeyAliases =
+        new Dictionary<string, KeyCode>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["left"] = KeyCode.LeftArrow, ["right"] = KeyCode.RightArrow,
+            ["up"] = KeyCode.UpArrow, ["down"] = KeyCode.DownArrow,
+            ["enter"] = KeyCode.Return, ["return"] = KeyCode.Return,
+            ["esc"] = KeyCode.Escape, ["escape"] = KeyCode.Escape,
+            ["del"] = KeyCode.Delete, ["delete"] = KeyCode.Delete,
+            ["backspace"] = KeyCode.Backspace, ["home"] = KeyCode.Home, ["end"] = KeyCode.End,
+            ["page up"] = KeyCode.PageUp, ["page down"] = KeyCode.PageDown
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
     [ThreadStatic] private static Event? _current;
     [ThreadStatic] private static Func<Event?>? _popEvent;
     [ThreadStatic] private static Func<int>? _eventCount;
@@ -34,7 +48,8 @@ public sealed class Event
     public bool functionKey => (modifiers & EventModifiers.FunctionKey) != 0;
     public bool isKey => type is EventType.KeyDown or EventType.KeyUp;
     public bool isMouse => type is EventType.MouseDown or EventType.MouseUp or EventType.MouseMove or
-        EventType.MouseDrag or EventType.ContextClick or EventType.MouseEnterWindow or EventType.MouseLeaveWindow;
+        EventType.MouseDrag or EventType.ContextClick or EventType.MouseEnterWindow or EventType.MouseLeaveWindow or
+        EventType.DragUpdated or EventType.DragPerform or EventType.DragExited;
     public bool isScrollWheel => type == EventType.ScrollWheel;
     public bool isDirectManipulationDevice => pointerType is PointerType.Touch or PointerType.Pen;
 
@@ -105,17 +120,7 @@ public sealed class Event
             else break;
             token = token[1..];
         }
-        var aliases = new Dictionary<string, KeyCode>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["left"] = KeyCode.LeftArrow, ["right"] = KeyCode.RightArrow,
-            ["up"] = KeyCode.UpArrow, ["down"] = KeyCode.DownArrow,
-            ["enter"] = KeyCode.Return, ["return"] = KeyCode.Return,
-            ["esc"] = KeyCode.Escape, ["escape"] = KeyCode.Escape,
-            ["del"] = KeyCode.Delete, ["delete"] = KeyCode.Delete,
-            ["backspace"] = KeyCode.Backspace, ["home"] = KeyCode.Home, ["end"] = KeyCode.End,
-            ["page up"] = KeyCode.PageUp, ["page down"] = KeyCode.PageDown
-        };
-        if (aliases.TryGetValue(token.Trim('[', ']'), out var code)) result.keyCode = code;
+        if (KeyAliases.TryGetValue(token.Trim('[', ']'), out var code)) result.keyCode = code;
         else if (Enum.TryParse<KeyCode>(token, true, out code)) result.keyCode = code;
         else if (token.Length == 1)
         {

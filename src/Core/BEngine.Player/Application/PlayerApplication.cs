@@ -239,28 +239,14 @@ internal sealed class PlayerApplication : IDisposable
         if (_presentationDevice is not null && _portableRenderer is not null)
         {
             _presentationDevice.BeginFrame(size.X, size.Y);
-            var viewport = new GraphicsRect(0, 0, size.X, size.Y);
-            var background = cameras.Count > 0
-                ? RenderCamera.From(cameras[0]).ClearColor
-                : RenderCamera.Default.ClearColor;
-            _portableRenderer.FillViewport(viewport, background);
-            for (var index = 0; index < cameras.Count; index++)
-                _portableRenderer.Render(_sceneManager.LoadedScenes, _scene, RenderCamera.From(cameras[index]),
-                    size.X, size.Y, drawUi: _uiElementsEnabled && index == cameras.Count - 1);
+            _portableRenderer.RenderCameras(_sceneManager.LoadedScenes, _scene, cameras,
+                new GraphicsRect(0, 0, size.X, size.Y), _uiElementsEnabled);
             _presentationDevice.Present();
         }
         else
         {
-            var background = cameras.Count > 0
-                ? RenderCamera.From(cameras[0]).ClearColor
-                : RenderCamera.Default.ClearColor;
-            _renderer!.Clear(background, size.X, size.Y);
-            for (var index = 0; index < cameras.Count; index++)
-            {
-                var cameraScene = cameras[index].gameObject.scene ?? _scene;
-                _renderer.Render(cameraScene, RenderCamera.From(cameras[index]), size.X, size.Y,
-                    drawUi: _uiElementsEnabled && index == cameras.Count - 1);
-            }
+            _renderer!.RenderCameras(_sceneManager.LoadedScenes, _scene, cameras,
+                size.X, size.Y, _uiElementsEnabled);
             _window.SwapBuffers();
         }
     }

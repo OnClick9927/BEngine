@@ -7,8 +7,8 @@ namespace BEngine.Editor.Codex;
 public sealed class CodexAppServerClient : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly object _sync = new();
-    private readonly object _sessionSaveLock = new();
+    private readonly Lock _sync = new();
+    private readonly Lock _sessionSaveLock = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonElement>> _pendingRequests = new();
     private readonly CancellationTokenSource _lifetime = new();

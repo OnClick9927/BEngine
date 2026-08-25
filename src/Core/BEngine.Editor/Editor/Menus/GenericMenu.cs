@@ -2,6 +2,8 @@ namespace BEngine.Editor;
 
 public sealed class GenericMenu
 {
+    private const int AdvancedDropDownThreshold = 12;
+
     public delegate void MenuFunction();
     public delegate void MenuFunction2(object? userData);
 
@@ -35,5 +37,15 @@ public sealed class GenericMenu
     internal IReadOnlyList<GenericMenuItem> Items => _items;
 
     public void ShowAsContext() => GenericMenuDispatcher.Show(_items);
-    public void DropDown(Rect position) => ShowAsContext();
+
+    public void DropDown(Rect position) => GenericMenuDispatcher.Show(_items,
+        GetItemCount() >= AdvancedDropDownThreshold
+            ? GenericMenuPresentation.AdvancedDropDown(position)
+            : GenericMenuPresentation.DropDown(position));
+
+    public void ShowAsAdvancedDropdown() => GenericMenuDispatcher.Show(_items,
+        GenericMenuPresentation.AdvancedDropDown());
+
+    public void ShowAsAdvancedDropdown(Rect position) => GenericMenuDispatcher.Show(_items,
+        GenericMenuPresentation.AdvancedDropDown(position));
 }

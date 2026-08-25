@@ -14,11 +14,13 @@ internal static class Program
             using var configuration = LayerTagConfiguration.ApplyTestConfiguration();
             RuntimeLayerTagTests.Run();
             RenderOrderingTests.Run();
+            CameraRenderingTests.Run();
+            SceneHandleTests.Run();
             HierarchyStateTests.Run();
             SceneSerializationTests.Run();
             InspectorSelectorTests.Run();
             Console.WriteLine(
-                "GAMEOBJECT_LAYER_TAG_OK|defaults,power-of-two-layers,ui-boundary,sprite-particle-boundary,render-order,batching,tag-compare,hierarchy-active,scene-yaml,inspector-popups");
+                "GAMEOBJECT_LAYER_TAG_OK|defaults,power-of-two-layers,ui-boundary,sprite-particle-boundary,render-order,batching,camera-stack,camera-mask,camera-culling,camera-viewport,legacy-camera-depth,scene-handle-center,tag-compare,hierarchy-active,scene-yaml,inspector-popups,tag-layer-settings-links");
             return 0;
         }
         catch (Exception exception)

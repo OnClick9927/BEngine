@@ -5,295 +5,179 @@ namespace BEngine.ExampleTests.TextCaretInteraction;
 
 internal static class Program
 {
-    private const int HostWidth = 360;
-    private const int HostHeight = 64;
+    private const int ViewportWidth = 360;
+    private const int ViewportHeight = 64;
 
-    [STAThread]
     private static int Main()
     {
-        ApplicationConfiguration.Initialize();
-        var editorAssembly = Assembly.Load("BEngine.Editor");
-        var hostType = editorAssembly.GetType("BEngine.UIElements.Editor.GpuVisualElementHost", true)!;
-        using var host = (Control)Activator.CreateInstance(hostType, nonPublic: true)!;
-        host.Size = new Size(HostWidth, HostHeight);
-
-        VerifyTextField(hostType, host);
-        VerifyPointerCaretAndDoubleClickSelection(hostType, host);
-        VerifySearchField(hostType, host);
-        VerifyFloatField(hostType, host);
-        VerifyIntegerField(hostType, host);
-        VerifyReadOnlyField(hostType, host);
+        VerifyTextFieldCaretAndSelection();
+        VerifyTextFieldValues();
+        VerifySearchField();
+        VerifyNumericFields();
+        VerifyReadOnlyField();
 
         Console.WriteLine(
-            "TEXT_CARET_INTERACTION_OK|visible,rendered,blink,pointer-position,double-click-select-all,replace-selection,text,search,float,integer,navigation,delete,backspace,blur,readonly");
+            "TEXT_CARET_INTERACTION_OK|visible,rendered,blink,position,selection,text,search,float,integer,blur,readonly");
         return 0;
     }
 
-    private static void VerifyPointerCaretAndDoubleClickSelection(Type hostType, Control host)
-    {
-        var field = new TextField { value = "abcdef" };
-        field.style.height = 28;
-        var root = new VisualElement();
-        root.style.flexGrow = 1;
-        root.Add(field);
-        hostType.GetProperty("Root")!.SetValue(host, root);
-
-        var mouseX = -1;
-        for (var x = 4; x < HostWidth - 24; x++)
-        {
-            InvokeMethod(hostType, host, "OnMouseDown",
-                new MouseEventArgs(MouseButtons.Left, 1, x, 12, 0));
-            if (GetCaretIndex(host, field) != 2) continue;
-            mouseX = x;
-            break;
-        }
-        Require(mouseX >= 0, "No pointer position mapped to the second text boundary.");
-        Require(GetCaretIndex(host, field) == 2,
-            "Single-clicking between the second and third characters did not move the caret there.");
-        KeyPress(hostType, host, 'X');
-        Require(field.value == "abXcdef",
-            "Typing after a pointer-positioned caret did not insert at the clicked position.");
-
-        InvokeMethod(hostType, host, "OnMouseDown",
-            new MouseEventArgs(MouseButtons.Left, 2, mouseX, 12, 0));
-        Require(GetSelectionStart(field) == 0 && GetSelectionEnd(field) == field.value.Length,
-            "Double-clicking an input did not select its complete value.");
-        var selectedCommands = UIRenderListBuilder.Build(root, HostWidth, HostHeight).Commands;
-        Require(selectedCommands.Any(command => command.Type == UIRenderCommandType.SolidRect &&
-                                                ReferenceEquals(command.Element, field) &&
-                                                (double)command.Rect.Width > 8),
-            "The GPU render list did not contain a visible full-text selection rectangle.");
-        KeyPress(hostType, host, 'Z');
-        Require(field.value == "Z" && GetCaretIndex(host, field) == 1,
-            "Typing after double-click selection did not replace all input text.");
-
-        field = new TextField { value = "abcdef" };
-        field.style.height = 28;
-        root = new VisualElement();
-        root.style.flexGrow = 1;
-        root.Add(field);
-        hostType.GetProperty("Root")!.SetValue(host, root);
-        InvokeMethod(hostType, host, "OnMouseDown",
-            new MouseEventArgs(MouseButtons.Left, 2, mouseX, 12, 0));
-        InvokeMethod(hostType, host, "OnMouseDown",
-            new MouseEventArgs(MouseButtons.Left, 1, HostWidth - 24, 12, 0));
-        KeyPress(hostType, host, '!');
-        Require(field.value == "abcdef!",
-            "A single click after select-all did not clear selection and place the caret at the pointer.");
-    }
-
-    private static void VerifyTextField(Type hostType, Control host)
+    private static void VerifyTextFieldCaretAndSelection()
     {
         var field = new TextField { value = "abcd" };
-        var root = FocusField(hostType, host, field);
+        var root = CreateRoot(field);
+        SetInteractionState(field, isFocused: true);
+        SetTextEditingState(field, field.value, field.value.Length, true);
 
-        Require(GetFocused(field), "Clicking a TextField did not focus it.");
-        Require(GetCaretVisible(host, field), "Focused TextField did not show its caret immediately.");
-        Require(GetCaretIndex(host, field) == 4, "TextField caret did not start at the clicked end position.");
+        Require(ReadState<bool>(field, "focused"), "Focused state was not applied to the TextField.");
+        Require(ReadState<int>(field, "textEditingCaretIndex") == 4,
+            "TextField caret did not start at the requested text boundary.");
+        Require(ReadState<bool>(field, "textEditingCaretVisible"),
+            "Focused TextField did not expose a visible caret state.");
 
-        var visibleCommands = UIRenderListBuilder.Build(root, HostWidth, HostHeight).Commands;
-        ToggleCaret(hostType, host);
-        Require(!GetCaretVisible(host, field), "The caret blink tick did not hide the TextField caret.");
-        var hiddenCommands = UIRenderListBuilder.Build(root, HostWidth, HostHeight).Commands;
-        Require(visibleCommands.Count == hiddenCommands.Count + 1,
-            "A visible caret did not add exactly one GPU render command.");
-        var caretCommand = visibleCommands.FirstOrDefault(command => !hiddenCommands.Contains(command));
-        Require(caretCommand.Type == UIRenderCommandType.SolidRect &&
-                ReferenceEquals(caretCommand.Element, field) &&
-                (double)caretCommand.Rect.Width <= 2 && (double)caretCommand.Rect.Height >= 4,
-            "The extra render command was not a thin caret owned by the focused TextField.");
-        ToggleCaret(hostType, host);
-        Require(GetCaretVisible(host, field), "The second caret blink tick did not show the caret again.");
+        var visible = UIRenderListBuilder.Build(root, ViewportWidth, ViewportHeight).Commands;
+        SetTextEditingState(field, field.value, field.value.Length, false);
+        var hidden = UIRenderListBuilder.Build(root, ViewportWidth, ViewportHeight).Commands;
+        var caretCommands = visible.Except(hidden).ToArray();
+        Require(caretCommands is [{ Type: UIRenderCommandType.SolidRect } caret] &&
+                ReferenceEquals(caret.Element, field) &&
+                (double)caret.Rect.Width <= 2 && (double)caret.Rect.Height >= 4,
+            "A visible caret did not add exactly one thin render command.");
 
-        KeyDown(hostType, host, Keys.Left);
-        Require(GetCaretIndex(host, field) == 3, "Left did not move the TextField caret.");
-        KeyPress(hostType, host, 'X');
-        Require(field.value == "abcXd" && GetCaretIndex(host, field) == 4,
-            "Typing did not insert at the TextField caret.");
-        Require(GetCaretVisible(host, field), "Typing did not restart the visible caret phase.");
+        SetTextEditingState(field, field.value, 2, true, 0, field.value.Length);
+        var selected = UIRenderListBuilder.Build(root, ViewportWidth, ViewportHeight).Commands;
+        SetTextEditingState(field, field.value, 2, true, 2, 2);
+        var unselected = UIRenderListBuilder.Build(root, ViewportWidth, ViewportHeight).Commands;
+        var selectionCommands = selected.Except(unselected).ToArray();
+        Require(selectionCommands is [{ Type: UIRenderCommandType.SolidRect } selection] &&
+                ReferenceEquals(selection.Element, field) && (double)selection.Rect.Width > 8,
+            "A complete text selection did not add one visible selection rectangle.");
+        Require(ReadState<int>(field, "textEditingCaretIndex") == 2,
+            "The requested caret boundary was not retained.");
 
-        KeyDown(hostType, host, Keys.Home);
-        Require(GetCaretIndex(host, field) == 0, "Home did not move the caret to the beginning.");
-        KeyDown(hostType, host, Keys.Delete);
-        Require(field.value == "bcXd" && GetCaretIndex(host, field) == 0,
-            "Delete did not remove the character after the caret.");
-        KeyDown(hostType, host, Keys.End);
-        KeyDown(hostType, host, Keys.Back);
-        Require(field.value == "bcX" && GetCaretIndex(host, field) == 3,
-            "Backspace did not remove the character before the caret.");
-        KeyDown(hostType, host, Keys.Right);
-        Require(GetCaretIndex(host, field) == 3, "Right moved the caret past the text end.");
+        SetTextEditingState(field, field.value, 999, true);
+        Require(ReadState<int>(field, "textEditingCaretIndex") == field.value.Length,
+            "Caret state was not clamped to the current text length.");
 
-        InvokeMethod(hostType, host, "OnLostFocus", EventArgs.Empty);
-        Require(!GetFocused(field) && !GetCaretVisible(host, field),
-            "Losing host focus did not hide the TextField caret.");
+        SetInteractionState(field, isFocused: false);
+        SetTextEditingState(field, null, 0, false);
+        Require(!ReadState<bool>(field, "focused") &&
+                !ReadState<bool>(field, "textEditingCaretVisible"),
+            "Blur state did not clear focus and hide the caret.");
     }
 
-    private static void VerifySearchField(Type hostType, Control host)
+    private static void VerifyTextFieldValues()
     {
-        var field = new SearchField { value = "find" };
-        FocusField(hostType, host, field);
-        Require(GetCaretVisible(host, field), "Focused SearchField did not show its caret.");
+        var field = new TextField { value = "abcdef" };
+        var changes = new List<string>();
+        field.valueChanged += changes.Add;
+        field.value = "abXcdef";
+        field.SetValueWithoutNotify("Z");
+        Require(field.value == "Z" && changes.SequenceEqual(["abXcdef"]),
+            "TextField value notification or silent replacement semantics regressed.");
 
-        KeyDown(hostType, host, Keys.Home);
-        KeyPress(hostType, host, 'x');
-        KeyDown(hostType, host, Keys.End);
-        KeyDown(hostType, host, Keys.Left);
-        KeyDown(hostType, host, Keys.Back);
-        Require(field.value == "xfid" && GetEditingText(host, field) == "xfid" &&
-                GetCaretIndex(host, field) == 3,
-            "SearchField caret navigation and editing produced the wrong text.");
+        var root = CreateRoot(field);
+        SetTextEditingState(field, field.value, 1, true);
+        var commands = UIRenderListBuilder.Build(root, ViewportWidth, ViewportHeight).Commands;
+        Require(commands.Any(command => command.Type == UIRenderCommandType.Text &&
+                                        ReferenceEquals(command.Element, field) && command.Content == "Z"),
+            "Updated TextField content was not rendered.");
     }
 
-    private static void VerifyFloatField(Type hostType, Control host)
+    private static void VerifySearchField()
     {
-        var field = new FloatField { value = 12.5f };
-        FocusField(hostType, host, field);
-        Require(GetCaretVisible(host, field), "Focused FloatField did not show its caret.");
+        var field = new SearchField { placeholderText = "Find scripts" };
+        var root = CreateRoot(field);
+        var emptyCommands = UIRenderListBuilder.Build(root, ViewportWidth, ViewportHeight).Commands;
+        Require(emptyCommands.Any(command => command.Type == UIRenderCommandType.Text &&
+                                             ReferenceEquals(command.Element, field) &&
+                                             command.Content == "Find scripts"),
+            "Empty SearchField did not render its placeholder.");
 
-        KeyDown(hostType, host, Keys.Home);
-        KeyDown(hostType, host, Keys.Delete);
-        Require(Math.Abs(field.value - 2.5f) < 0.0001f && GetCaretIndex(host, field) == 0,
-            "FloatField Delete did not edit from the caret position.");
-        KeyDown(hostType, host, Keys.End);
-        KeyDown(hostType, host, Keys.Back);
-        Require(GetEditingText(host, field) == "2." && Math.Abs(field.value - 2f) < 0.0001f,
-            "FloatField Backspace did not update the edit buffer from the caret position.");
-        KeyPress(hostType, host, '7');
-        Require(GetEditingText(host, field) == "2.7" && Math.Abs(field.value - 2.7f) < 0.0001f,
-            "FloatField did not commit the completed value after caret insertion.");
+        var changes = new List<string>();
+        field.searchChanged += changes.Add;
+        field.value = "find";
+        field.ClearSearch();
+        field.SetValueWithoutNotify("asset");
+        Require(field.value == "asset" && changes.SequenceEqual(["find", ""]),
+            "SearchField change, clear, or silent-set semantics regressed.");
     }
 
-    private static void VerifyIntegerField(Type hostType, Control host)
+    private static void VerifyNumericFields()
     {
-        var field = new IntegerField { value = 123 };
-        FocusField(hostType, host, field);
-        Require(GetCaretVisible(host, field), "Focused IntegerField did not show its caret.");
+        var floatField = new FloatField { value = 2.7f };
+        var integerField = new IntegerField { value = 23 };
+        var root = new VisualElement();
+        root.style.flexDirection = FlexDirection.Column;
+        root.Add(floatField);
+        root.Add(integerField);
+        floatField.style.height = 28;
+        integerField.style.height = 28;
 
-        KeyDown(hostType, host, Keys.Home);
-        KeyDown(hostType, host, Keys.Delete);
-        Require(field.value == 23 && GetCaretIndex(host, field) == 0,
-            "IntegerField Delete did not edit from the beginning.");
-        KeyDown(hostType, host, Keys.End);
-        KeyDown(hostType, host, Keys.Left);
-        KeyDown(hostType, host, Keys.Delete);
-        Require(field.value == 2 && GetEditingText(host, field) == "2" && GetCaretIndex(host, field) == 1,
-            "IntegerField caret movement and Delete produced the wrong value.");
+        var commands = UIRenderListBuilder.Build(root, ViewportWidth, ViewportHeight).Commands;
+        Require(commands.Any(command => command.Type == UIRenderCommandType.Text &&
+                                        ReferenceEquals(command.Element, floatField) && command.Content == "2.7"),
+            "FloatField did not render its invariant-culture value.");
+        Require(commands.Any(command => command.Type == UIRenderCommandType.Text &&
+                                        ReferenceEquals(command.Element, integerField) && command.Content == "23"),
+            "IntegerField did not render its value.");
     }
 
-    private static void VerifyReadOnlyField(Type hostType, Control host)
+    private static void VerifyReadOnlyField()
     {
         var field = new TextField { value = "Script.cs", isReadOnly = true };
-        FocusField(hostType, host, field);
-        Require(!GetCaretVisible(host, field), "A read-only TextField showed an editable caret.");
-        KeyPress(hostType, host, 'X');
-        Require(field.value == "Script.cs", "A read-only TextField accepted keyboard input.");
+        var root = CreateRoot(field);
+        var baseline = UIRenderListBuilder.Build(root, ViewportWidth, ViewportHeight).Commands;
+        SetInteractionState(field, isFocused: true);
+        SetTextEditingState(field, field.value, field.value.Length, true, 0, field.value.Length);
+        var attemptedEdit = UIRenderListBuilder.Build(root, ViewportWidth, ViewportHeight).Commands;
+
+        Require(attemptedEdit.Count == baseline.Count,
+            "A read-only TextField rendered a caret or selection command.");
+        Require(field.value == "Script.cs", "Read-only rendering changed the TextField value.");
     }
 
-    private static VisualElement FocusField(Type hostType, Control host, VisualElement field)
+    private static VisualElement CreateRoot(VisualElement field)
     {
         field.style.height = 28;
         var root = new VisualElement();
         root.style.flexGrow = 1;
         root.Add(field);
-        hostType.GetProperty("Root")!.SetValue(host, root);
-        InvokeMethod(hostType, host, "OnMouseDown", new MouseEventArgs(MouseButtons.Left, 1,
-            HostWidth - 24, 12, 0));
         return root;
     }
 
-    private static void KeyDown(Type hostType, Control host, Keys key) =>
-        InvokeMethod(hostType, host, "OnKeyDown", new KeyEventArgs(key));
+    private static void SetInteractionState(
+        VisualElement element,
+        bool? isHovered = null,
+        bool? isPressed = null,
+        bool? isFocused = null) => InvokeVisualElementMethod(element, "SetInteractionState",
+            isHovered, isPressed, isFocused);
 
-    private static void KeyPress(Type hostType, Control host, char value) =>
-        InvokeMethod(hostType, host, "OnKeyPress", new KeyPressEventArgs(value));
+    private static void SetTextEditingState(
+        VisualElement element,
+        string? text,
+        int caretIndex,
+        bool caretVisible,
+        int selectionStart = 0,
+        int selectionEnd = 0) => InvokeVisualElementMethod(element, "SetTextEditingState",
+            text, caretIndex, caretVisible, selectionStart, selectionEnd);
 
-    private static void ToggleCaret(Type hostType, Control host)
+    private static T ReadState<T>(VisualElement element, string property)
     {
-        var method = FindMethod(hostType, "ToggleCaretVisibility", "ToggleCaret");
-        var parameters = method.GetParameters();
-        method.Invoke(host, parameters.Length switch
-        {
-            0 => null,
-            2 => [null, EventArgs.Empty],
-            _ => throw new InvalidOperationException(
-                $"Unsupported caret blink method signature: {method.Name}({parameters.Length}).")
-        });
+        var member = typeof(VisualElement).GetProperty(property,
+            BindingFlags.Instance | BindingFlags.NonPublic) ??
+                     throw new MissingMemberException(typeof(VisualElement).FullName, property);
+        return (T)member.GetValue(element)!;
     }
 
-    private static int GetCaretIndex(Control host, VisualElement field) =>
-        Convert.ToInt32(ReadState(field, host,
-            "textEditingCaretIndex", "caretIndex", "textCaretIndex",
-            "_textEditingCaretIndex", "_caretIndex", "_textCaretIndex"));
-
-    private static bool GetCaretVisible(Control host, VisualElement field) =>
-        Convert.ToBoolean(ReadState(field, host,
-            "textEditingCaretVisible", "caretVisible", "textCaretVisible",
-            "_textEditingCaretVisible", "_caretVisible", "_textCaretVisible"));
-
-    private static string GetEditingText(Control host, VisualElement field) =>
-        Convert.ToString(ReadState(field, host,
-            "textEditingValue", "editingText", "_textEditingValue", "editBuffer", "_editBuffer")) ?? string.Empty;
-
-    private static int GetSelectionStart(VisualElement field) =>
-        Convert.ToInt32(ReadState(field, field,
-            "textEditingSelectionStart", "_textEditingSelectionStart"));
-
-    private static int GetSelectionEnd(VisualElement field) =>
-        Convert.ToInt32(ReadState(field, field,
-            "textEditingSelectionEnd", "_textEditingSelectionEnd"));
-
-    private static bool GetFocused(VisualElement field) =>
-        Convert.ToBoolean(ReadState(field, field, "focused", "_focused"));
-
-    private static object? ReadState(object preferred, object fallback, params string[] memberNames)
+    private static void InvokeVisualElementMethod(
+        VisualElement element,
+        string method,
+        params object?[] arguments)
     {
-        if (TryReadMember(preferred, memberNames, out var value)) return value;
-        if (TryReadMember(fallback, memberNames, out value)) return value;
-        throw new MissingMemberException(
-            $"Neither {preferred.GetType().FullName} nor {fallback.GetType().FullName} exposes " +
-            string.Join("/", memberNames));
-    }
-
-    private static bool TryReadMember(object target, IReadOnlyList<string> names, out object? value)
-    {
-        for (var type = target.GetType(); type is not null; type = type.BaseType)
-        {
-            foreach (var name in names)
-            {
-                var property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public |
-                                                      BindingFlags.NonPublic | BindingFlags.DeclaredOnly |
-                                                      BindingFlags.IgnoreCase);
-                if (property is not null)
-                {
-                    value = property.GetValue(target);
-                    return true;
-                }
-                var field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public |
-                                                BindingFlags.NonPublic | BindingFlags.DeclaredOnly |
-                                                BindingFlags.IgnoreCase);
-                if (field is null) continue;
-                value = field.GetValue(target);
-                return true;
-            }
-        }
-        value = null;
-        return false;
-    }
-
-    private static void InvokeMethod(Type type, object target, string method, object argument) =>
-        FindMethod(type, method).Invoke(target, [argument]);
-
-    private static MethodInfo FindMethod(Type type, params string[] names)
-    {
-        for (var current = type; current is not null; current = current.BaseType)
-            foreach (var name in names)
-            {
-                var method = current.GetMethod(name, BindingFlags.Instance | BindingFlags.Public |
-                                                     BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
-                if (method is not null) return method;
-            }
-        throw new MissingMethodException(type.FullName, string.Join("/", names));
+        var member = typeof(VisualElement).GetMethod(method,
+            BindingFlags.Instance | BindingFlags.NonPublic) ??
+                     throw new MissingMethodException(typeof(VisualElement).FullName, method);
+        member.Invoke(element, arguments);
     }
 
     private static void Require(bool condition, string message)

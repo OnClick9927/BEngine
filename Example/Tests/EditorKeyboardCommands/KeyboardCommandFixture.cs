@@ -33,7 +33,7 @@ internal sealed class KeyboardCommandFixture : IDisposable
         var child = scene.CreateGameObject("Keyboard Child");
         child.transform.SetParent(root.transform, false);
         Document.SaveBObject<SceneDocument>(scene, ScenePath);
-        scene.world.Dispose();
+        scene.Dispose();
     }
 
     public void Dispose()

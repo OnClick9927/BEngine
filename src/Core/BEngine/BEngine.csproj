@@ -10,7 +10,6 @@
     <Compile Include="Properties/**/*.cs" />
     <Compile Include="Documents/**/*.cs" />
     <Compile Include="DependencyInjection/**/*.cs" />
-    <Compile Include="Entities/**/*.cs" />
     <Compile Include="ProjectSystem/**/*.cs" />
   </ItemGroup>
 
@@ -35,7 +34,6 @@
     <Compile Include="Core\LogType.cs" />
     <Compile Include="Core\Input.cs" />
     <Compile Include="Core\Lifecycle\ISceneRuntimeSystem.cs" />
-    <Compile Include="Core\Lifecycle\LegacySceneRuntimeSystemAdapter.cs" />
     <Compile Include="Core\Lifecycle\RuntimeInitializationEntry.cs" />
     <Compile Include="Core\Lifecycle\RuntimeLifecycle.cs" />
     <Compile Include="Core\Lifecycle\RuntimePackageState.cs" />
@@ -102,6 +100,7 @@
     <Compile Include="Rendering\Rhi\Abstractions\IGraphicsProgram.cs" />
     <Compile Include="Rendering\Rhi\Abstractions\IGraphicsRenderTarget.cs" />
     <Compile Include="Rendering\Rhi\Abstractions\IGraphicsResource.cs" />
+    <Compile Include="Rendering\Rhi\Abstractions\IGraphicsResourceRetirement.cs" />
     <Compile Include="Rendering\Rhi\Abstractions\IGraphicsTexture2D.cs" />
     <Compile Include="Rendering\Rhi\Backends\GraphicsBackend.cs" />
     <Compile Include="Rendering\Rhi\Backends\GraphicsBackendAvailability.cs" />

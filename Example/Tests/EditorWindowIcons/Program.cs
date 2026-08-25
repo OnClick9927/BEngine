@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Reflection;
 using BEngine.Editor;
 
@@ -9,8 +8,8 @@ internal static class Program
     [STAThread]
     private static int Main()
     {
-        ApplicationConfiguration.Initialize();
-        var root = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "src", "Core"));
+        var repository = FindRepository(AppContext.BaseDirectory);
+        var root = Path.Combine(repository, "src", "Core");
         EditorResources.RegisterResourceRoot(root);
 
         var content = new GUIContent("Custom", "Icons/Windows/Scene.png", "Custom tooltip");
@@ -28,34 +27,36 @@ internal static class Program
             "EditorWindow without a specific icon did not receive the generic window icon.");
 
         var editorAssembly = Assembly.Load("BEngine.Editor");
-        var workspaceType = editorAssembly.GetType("BEngine.Editor.DockWorkspace", true)!;
-        using var workspace = (Control)Activator.CreateInstance(workspaceType, nonPublic: true)!;
-        workspace.Size = new Size(800, 500);
-        var zoneType = editorAssembly.GetType("BEngine.Editor.DockZone", true)!;
-        var center = Enum.Parse(zoneType, "Center");
-        var add = workspaceType.GetMethod("AddPanelContent", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        add.Invoke(workspace, ["Custom", content, new Panel(), center, null]);
-
-        var panels = (IDictionary)workspaceType.GetField("_panels", BindingFlags.Instance |
-            BindingFlags.NonPublic)!.GetValue(workspace)!;
-        var record = panels["Custom"]!;
-        var tab = (TabPage)record.GetType().GetProperty("Tab")!.GetValue(record)!;
-        Require(ReferenceEquals(tab.Tag, content) && tab.Text == "Custom" &&
-                tab.ToolTipText == "Custom tooltip", "Dock tab did not consume GUIContent.");
+        var workspaceType = editorAssembly.GetType("BEngine.Editor.ImGuiDockWorkspace", true)!;
+        var workspace = Activator.CreateInstance(workspaceType, nonPublic: true)!;
+        var areaType = editorAssembly.GetType("BEngine.Editor.DockArea", true)!;
+        var center = Enum.Parse(areaType, "Center");
+        var panel = workspaceType.GetMethod("Add", BindingFlags.Instance | BindingFlags.Public)!
+            .Invoke(workspace, ["Custom", custom, center, true])!;
+        var panelWindow = (EditorWindow)panel.GetType().GetProperty("Window")!.GetValue(panel)!;
+        Require(ReferenceEquals(panelWindow, custom) &&
+                (bool)workspaceType.GetMethod("IsSelected")!.Invoke(workspace, [custom])!,
+            "IMGUI dock workspace did not retain and select the EditorWindow.");
 
         var updated = new GUIContent("Renamed", "Icons/Windows/Inspector.png", "Updated tooltip");
-        workspaceType.GetMethod("UpdatePanelContent")!.Invoke(workspace, ["Custom", updated]);
-        Require(tab.Text == "Renamed" && tab.ToolTipText == "Updated tooltip" &&
-                ReferenceEquals(tab.Tag, updated), "Dock tab did not synchronize updated titleContent.");
+        custom.titleContent = updated;
+        Require(ReferenceEquals(panelWindow.titleContent, updated) && panelWindow.titleContent.text == "Renamed" &&
+                panelWindow.titleContent.tooltip == "Updated tooltip",
+            "IMGUI dock panel did not observe the EditorWindow's updated titleContent.");
 
-        var cacheType = editorAssembly.GetType("BEngine.Editor.DockIconCache", true)!;
-        var tryImage = cacheType.GetMethod("TryGetImage")!;
-        var arguments = new object?[] { updated.image, null };
-        Require((bool)tryImage.Invoke(null, arguments)! && arguments[1] is Bitmap,
-            "Dock icon cache could not decode an EditorResources window icon.");
+        var resolvedIcon = EditorResources.FindPath(updated.image);
+        Require(resolvedIcon is not null && File.Exists(resolvedIcon),
+            "EditorResources could not resolve the updated window icon.");
 
-        Console.WriteLine("EDITOR_WINDOW_ICONS_OK|guicontent,iconcontent,attribute,fallback,tab,tooltip,dynamic-update,png");
+        Console.WriteLine("EDITOR_WINDOW_ICONS_OK|guicontent,iconcontent,attribute,fallback,imgui-dock,tooltip,dynamic-update,png");
         return 0;
+    }
+
+    private static string FindRepository(string start)
+    {
+        for (var directory = new DirectoryInfo(start); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "src", "BEngine.sln"))) return directory.FullName;
+        throw new DirectoryNotFoundException("Could not locate BEngine repository root.");
     }
 
     private static void Require(bool condition, string message)

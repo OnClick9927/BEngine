@@ -22,9 +22,9 @@ public abstract class Editor : ScriptableObject, IDisposable
         serializedObject.ApplyModifiedProperties();
         return GUI.changed != changedBefore;
     }
-    public virtual bool HasPreviewGUI() => false;
-    public virtual void OnPreviewGUI(Rect previewArea) { }
-    public virtual string GetInfoString() => string.Empty;
+    public virtual bool HasPreviewGUI() => AssetPreview.HasPreview(target);
+    public virtual void OnPreviewGUI(Rect previewArea) => AssetPreview.DrawAssetPreview(target, previewArea);
+    public virtual string GetInfoString() => AssetPreview.GetInfoString(target);
     public virtual bool RequiresConstantRepaint() => false;
     public virtual bool UseDefaultMargins() => true;
     public virtual void OnSceneGUI() { }

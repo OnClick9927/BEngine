@@ -17,3 +17,5 @@ editor:
   dependencies:
   - packageId: com.bengine.navigation2d
     target: runtime
+  - packageId: com.bengine.physics2d
+    target: runtime

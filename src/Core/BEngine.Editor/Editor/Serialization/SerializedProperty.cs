@@ -10,7 +10,6 @@ public sealed class SerializedProperty : IDisposable
     private readonly string[]? _iteratorPaths;
     private int _iteratorIndex = -1;
     private string _propertyPath;
-    private bool _isExpanded;
     private string _name;
     private MemberInfo? _memberInfo;
     private SerializedMemberMetadata _metadata;
@@ -43,7 +42,7 @@ public sealed class SerializedProperty : IDisposable
     }
     public bool isArray => boxedValue is IList or Array;
     public bool hasVisibleChildren => isArray && arraySize > 0;
-    public bool isExpanded { get => _isExpanded; set => _isExpanded = value; }
+    public bool isExpanded { get; set; }
     public SerializedPropertyType propertyType => GetPropertyType(valueType);
 
     internal SerializedProperty(SerializedObject serializedObject, string propertyPath)
@@ -110,7 +109,18 @@ public sealed class SerializedProperty : IDisposable
     public Vector4 vector4Value { get => boxedValue is Vector4 value ? value : Vector4.zero; set => boxedValue = value; }
     public Color colorValue { get => boxedValue is Color value ? value : Color.white; set => boxedValue = value; }
     public Rect rectValue { get => boxedValue is Rect value ? value : default; set => boxedValue = value; }
-    public BObject? objectReferenceValue { get => boxedValue as BObject; set => boxedValue = value; }
+    public BObject? objectReferenceValue
+    {
+        get => boxedValue as BObject;
+        set
+        {
+            if (value is not null && !valueType.IsInstanceOfType(value))
+                throw new ArgumentException(
+                    $"Object of type {value.GetType().Name} cannot be assigned to {valueType.Name}.",
+                    nameof(value));
+            boxedValue = value;
+        }
+    }
     public int objectReferenceInstanceIDValue => objectReferenceValue?.GetInstanceID() ?? 0;
 
     public int enumValueIndex
@@ -208,7 +218,7 @@ public sealed class SerializedProperty : IDisposable
         boxedValue = list;
     }
 
-    public SerializedProperty Copy() => new(_serializedObject, propertyPath) { isExpanded = _isExpanded };
+    public SerializedProperty Copy() => new(_serializedObject, propertyPath) { isExpanded = isExpanded };
     public void Dispose() { }
 
     private object ConvertNumeric(object value)

@@ -17,13 +17,14 @@ internal static class Program
         {
             VerifyEventApi();
             VerifyGpuCommandsAndTextEditing();
+            VerifyNumericEditingBuffers();
             VerifyWindowCoordinatesAndScrolling();
             VerifyEditorWindowRoutingAndDockTabs();
             VerifyProjectTreeVisualLayout();
             VerifyIconToolbarLanguage();
             VerifyPrefabWorkflow();
             VerifyAssemblyBoundary();
-            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,double-click,window-local-input,scroll,dock-tabs,focus,mouse-over,border,project-tree-row-clip,assets-packages-separator,icon-toolbar,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
+            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,double-click,numeric-edit-buffer,window-local-input,scroll,dock-tabs,focus,mouse-over,border,project-tree-row-clip,assets-packages-separator,icon-toolbar,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
             return 0;
         }
         catch (Exception exception)
@@ -138,6 +139,55 @@ internal static class Program
         }, commands, false);
         Dispatch(new Event(EventType.KeyDown) { character = 'Z' }, commands, false);
         Require(_text == "Z", "Double-click did not select all text before replacement.");
+    }
+
+    private static void VerifyNumericEditingBuffers()
+    {
+        var floatValue = 1f;
+        void DrawFloat(Event evt)
+        {
+            GUI.BeginFrame(evt, 360, 80, []);
+            try { floatValue = EditorGUI.FloatField(new Rect(4, 4, 300, 24), floatValue); }
+            finally { GUI.EndFrame(); }
+        }
+
+        GUI.FocusControl(string.Empty);
+        DrawFloat(new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(20, 12), button = 0, clickCount = 1
+        });
+        DrawFloat(new Event(EventType.KeyDown) { character = '.' });
+        DrawFloat(new Event(EventType.KeyDown) { character = '5' });
+        Require(Math.Abs(floatValue - 1.5f) < 0.0001f,
+            $"FloatField discarded its intermediate decimal buffer and produced {floatValue}.");
+
+        DrawFloat(new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(20, 12), button = 0, clickCount = 2
+        });
+        DrawFloat(new Event(EventType.KeyDown) { keyCode = KeyCode.Backspace });
+        DrawFloat(new Event(EventType.KeyDown) { character = '2' });
+        Require(Math.Abs(floatValue - 2f) < 0.0001f,
+            $"FloatField restored its old value after clearing the edit buffer: {floatValue}.");
+
+        var integerValue = 23;
+        void DrawInteger(Event evt)
+        {
+            GUI.BeginFrame(evt, 360, 80, []);
+            try { integerValue = EditorGUI.IntField(new Rect(4, 4, 300, 24), integerValue); }
+            finally { GUI.EndFrame(); }
+        }
+
+        GUI.FocusControl(string.Empty);
+        DrawInteger(new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(20, 12), button = 0, clickCount = 2
+        });
+        DrawInteger(new Event(EventType.KeyDown) { character = '-' });
+        DrawInteger(new Event(EventType.KeyDown) { character = '7' });
+        Require(integerValue == -7,
+            $"IntField discarded its intermediate sign buffer and produced {integerValue}.");
+        GUI.FocusControl(string.Empty);
     }
 
     private static void VerifyWindowCoordinatesAndScrolling()

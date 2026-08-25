@@ -16,14 +16,14 @@ public sealed class TextAsset : BAsset
 
     public string text
     {
-        get { MainThreadGuard.Ensure(); return _text; }
+        get { return _text; }
     }
     public byte[] bytes
     {
-        get { MainThreadGuard.Ensure(); return (byte[])_bytes.Clone(); }
+        get { return (byte[])_bytes.Clone(); }
     }
     public string path
     {
-        get { MainThreadGuard.Ensure(); return _path; }
+        get { return _path; }
     }
 }

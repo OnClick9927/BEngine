@@ -24,10 +24,13 @@ internal static class InspectorSelectorTests
 
         GenericMenuCapture.Reset();
         inspector.Click(Center(tagValue.Rect));
+        TestAssert.Require(GenericMenuCapture.IsAdvanced,
+            "The GameObject Tag field did not open as an AdvancedDropdown.");
         var tagItems = GenericMenuCapture.Items;
         TestAssert.Require(tagItems.Any(item => item.Path == "Untagged" && item.Enabled) &&
-                           tagItems.Any(item => item.Path == "Player" && item.On),
-            "The GameObject Tag field is not a dropdown with Untagged and the selected Player tag.");
+                           tagItems.Any(item => item.Path == "Player" && item.On) &&
+                           tagItems.Any(item => item.Path == "Add Tag..." && item.Enabled),
+            "The GameObject Tag field is missing configured Tags or its Add Tag management entry.");
         GenericMenuCapture.Invoke("Untagged");
         inspector.Render(new Event(EventType.Repaint));
         TestAssert.Require(gameObject.tag == "Untagged",
@@ -37,15 +40,31 @@ internal static class InspectorSelectorTests
         layerValue = Text(commands, "2^8  Gameplay");
         GenericMenuCapture.Reset();
         inspector.Click(Center(layerValue.Rect));
+        TestAssert.Require(GenericMenuCapture.IsAdvanced,
+            "The GameObject Layer field did not open as an AdvancedDropdown.");
         var layerItems = GenericMenuCapture.Items;
         TestAssert.Require(layerItems.Any(item => item.Path == "2^1  Default" && item.Enabled) &&
                            layerItems.Any(item => item.Path == "2^8  Gameplay" && item.On) &&
-                           layerItems.Any(item => item.Path == "2^9  Enemies" && item.Enabled),
-            "The GameObject Layer field is not a named dropdown backed by the configured project Layers.");
+                           layerItems.Any(item => item.Path == "2^9  Enemies" && item.Enabled) &&
+                           layerItems.Any(item => item.Path == "Edit Layers..." && item.Enabled),
+            "The GameObject Layer field is missing configured Layers or its Edit Layers management entry.");
         GenericMenuCapture.Invoke("2^1  Default");
         inspector.Render(new Event(EventType.Repaint));
         TestAssert.Require(gameObject.layer == LayerMask.NameToLayer("Default"),
             "Selecting an Inspector Layer dropdown item did not update GameObject.layer.");
+
+        var cameraOwner = new GameObject("Camera Inspector Target");
+        cameraOwner.AddComponent<Camera2D>();
+        using var cameraInspector = new InspectorHarness(cameraOwner);
+        cameraInspector.Render(new Event(EventType.Layout));
+        var cameraCommands = cameraInspector.Render(new Event(EventType.Repaint));
+        GenericMenuCapture.Reset();
+        cameraInspector.Click(Center(Text(cameraCommands, "Everything").Rect));
+        TestAssert.Require(GenericMenuCapture.IsAdvanced &&
+                           GenericMenuCapture.Items.Any(item => item.Path == "Nothing") &&
+                           GenericMenuCapture.Items.Any(item => item.Path.StartsWith(
+                               "World/", StringComparison.Ordinal)),
+            "Camera Culling Mask did not open as a searchable AdvancedDropdown with project Layers.");
     }
 
     private static GpuCanvasCommand Text(IEnumerable<GpuCanvasCommand> commands, string content) =>

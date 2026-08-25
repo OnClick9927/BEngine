@@ -10,30 +10,29 @@ public static class Cursor
 
     public static bool visible
     {
-        get { MainThreadGuard.Ensure(); return _visible; }
-        set { MainThreadGuard.Ensure(); _visible = value; }
+        get { return _visible; }
+        set { _visible = value; }
     }
     public static CursorLockMode lockState
     {
-        get { MainThreadGuard.Ensure(); return _lockState; }
-        set { MainThreadGuard.Ensure(); _lockState = value; }
+        get { return _lockState; }
+        set { _lockState = value; }
     }
     public static BAsset? texture
     {
-        get { MainThreadGuard.Ensure(); return _texture; }
+        get { return _texture; }
     }
     public static Vector2 hotspot
     {
-        get { MainThreadGuard.Ensure(); return _hotspot; }
+        get { return _hotspot; }
     }
     public static CursorMode mode
     {
-        get { MainThreadGuard.Ensure(); return _mode; }
+        get { return _mode; }
     }
 
     public static void SetCursor(BAsset? cursorTexture, Vector2 cursorHotspot, CursorMode cursorMode)
     {
-        MainThreadGuard.Ensure();
         _texture = cursorTexture;
         _hotspot = cursorHotspot;
         _mode = cursorMode;

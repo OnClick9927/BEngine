@@ -8,4 +8,5 @@ internal sealed class InspectorProbe : ScriptableObject
     public Vector2 offset = new(Fix64.FromDecimal(11.25m), Fix64.FromDecimal(-22.5m));
     public Vector4 weights = new(Fix64.FromDecimal(1.234567m), Fix64.FromDecimal(-2.5m),
         Fix64.FromDecimal(3.75m), Fix64.FromDecimal(4.125m));
+    public GameObject? gameObjectReference = null;
 }

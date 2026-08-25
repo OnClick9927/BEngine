@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -17,17 +16,15 @@ public sealed class AssetBundleManager : IAssetBundleManager
     private readonly string? _builtInRoot;
     private readonly HttpClient _httpClient;
     private readonly bool _ownsHttpClient;
-    private readonly SemaphoreSlim _mutationGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly object _bundleLifecycleGate = new();
-    private readonly ConcurrentDictionary<string, Lazy<Task<LoadedAssetBundle>>> _loadedBundles =
+    private readonly Dictionary<string, Task<LoadedAssetBundle>> _loadedBundles =
         new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, string> _builtInBundlePaths =
+    private readonly Dictionary<string, string> _builtInBundlePaths =
         new(StringComparer.OrdinalIgnoreCase);
     private RuntimeState? _active;
     private RuntimeState? _builtIn;
-    private int _initialized;
-    private int _disposed;
+    private bool _initialized;
+    private bool _disposed;
 
     public AssetBundleManager(AssetBundleRuntimeOptions options)
     {
@@ -44,7 +41,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         get
         {
-            var catalog = Volatile.Read(ref _active)?.Catalog;
+            var catalog = _active?.Catalog;
             return catalog is null ? null : CloneCatalog(catalog);
         }
     }
@@ -53,11 +50,11 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         get
         {
-            var version = Volatile.Read(ref _active)?.Version;
+            var version = _active?.Version;
             return version is null ? null : CloneVersion(version);
         }
     }
-    public bool IsInitialized => Volatile.Read(ref _initialized) != 0;
+    public bool IsInitialized => _initialized;
     public string CacheDirectory => _cacheRoot;
     public string ObjectsDirectory => Path.Combine(_cacheRoot, "objects");
     public string CatalogsDirectory => Path.Combine(_cacheRoot, "catalogs");
@@ -69,48 +66,39 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         ThrowIfDisposed();
         if (IsInitialized) return;
-        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        CreateCacheLayout();
+        CleanupStagingFiles();
+
+        _builtIn = await LoadBuiltInStateAsync(cancellationToken).ConfigureAwait(false);
+        RuntimeState? selected = null;
         try
         {
-            if (IsInitialized) return;
-            CreateCacheLayout();
-            CleanupStagingFiles();
+            selected = await LoadCachedStateAsync(ActivePointerPath, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (IsRecoverableContentFailure(exception))
+        {
+            selected = null;
+        }
 
-            _builtIn = await LoadBuiltInStateAsync(cancellationToken).ConfigureAwait(false);
-            RuntimeState? selected = null;
+        if (selected is null)
+        {
             try
             {
-                selected = await LoadCachedStateAsync(ActivePointerPath, cancellationToken)
+                selected = await LoadCachedStateAsync(PreviousPointerPath, cancellationToken)
                     .ConfigureAwait(false);
+                if (selected is not null)
+                    await WritePointerAsync(ActivePointerPath, selected.Version, cancellationToken)
+                        .ConfigureAwait(false);
             }
             catch (Exception exception) when (IsRecoverableContentFailure(exception))
             {
                 selected = null;
             }
-
-            if (selected is null)
-            {
-                try
-                {
-                    selected = await LoadCachedStateAsync(PreviousPointerPath, cancellationToken)
-                        .ConfigureAwait(false);
-                    if (selected is not null)
-                        await WritePointerAsync(ActivePointerPath, selected.Version, cancellationToken)
-                            .ConfigureAwait(false);
-                }
-                catch (Exception exception) when (IsRecoverableContentFailure(exception))
-                {
-                    selected = null;
-                }
-            }
-            selected ??= _builtIn;
-            Volatile.Write(ref _active, selected);
-            Volatile.Write(ref _initialized, 1);
         }
-        finally
-        {
-            _mutationGate.Release();
-        }
+        selected ??= _builtIn;
+        _active = selected;
+        _initialized = true;
     }
 
     public async Task<AssetBundleUpdatePlan> CheckForUpdatesAsync(
@@ -120,7 +108,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
         ThrowIfDisposed();
         if (_options.RemoteBaseUri is null)
         {
-            var active = Volatile.Read(ref _active) ??
+            var active = _active ??
                          throw new InvalidOperationException(
                              "No active asset bundle catalog and no remote source are configured.");
             return new AssetBundleUpdatePlan(
@@ -145,7 +133,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
             if (!await HasValidBundleAsync(descriptor, cancellationToken).ConfigureAwait(false))
                 downloads.Add(descriptor);
         }
-        var activeState = Volatile.Read(ref _active);
+        var activeState = _active;
         var hasUpdates = activeState is null ||
                          !activeState.Version.CatalogSha256.Equals(
                              version.CatalogSha256, StringComparison.OrdinalIgnoreCase) ||
@@ -167,10 +155,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
         VerifyPayload(plan.CatalogBytes, plan.TargetVersion.CatalogSize,
             plan.TargetVersion.CatalogSha256, "update catalog");
 
-        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var current = Volatile.Read(ref _active);
+        var current = _active;
             var previousVersion = current?.Version.Version ?? string.Empty;
             if (!plan.HasUpdates)
                 return new AssetBundleUpdateResult(
@@ -186,37 +171,27 @@ public sealed class AssetBundleManager : IAssetBundleManager
             progress?.Report(new AssetBundleUpdateProgress(
                 AssetBundleUpdatePhase.Downloading, 0, plan.Downloads.Count, 0, totalBytes));
 
-            using var downloadGate = new SemaphoreSlim(_options.MaxConcurrentDownloads);
-            var downloads = plan.Downloads.Select(async descriptor =>
+            try
             {
-                await downloadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                try
+                foreach (var descriptor in plan.Downloads)
                 {
                     var downloaded = await DownloadBundleAsync(
                         plan.TargetVersion, descriptor, cancellationToken).ConfigureAwait(false);
                     if (downloaded)
                     {
-                        Interlocked.Increment(ref downloadedBundles);
-                        Interlocked.Add(ref downloadedBytes, descriptor.Size);
+                        downloadedBundles++;
+                        downloadedBytes += descriptor.Size;
                     }
-                    var bundleCount = Interlocked.Increment(ref completedBundles);
-                    var byteCount = Interlocked.Add(ref completedBytes, descriptor.Size);
+                    completedBundles++;
+                    completedBytes += descriptor.Size;
                     progress?.Report(new AssetBundleUpdateProgress(
                         AssetBundleUpdatePhase.Downloading,
-                        bundleCount,
+                        completedBundles,
                         plan.Downloads.Count,
-                        byteCount,
+                        completedBytes,
                         totalBytes,
                         descriptor.Name));
                 }
-                finally
-                {
-                    downloadGate.Release();
-                }
-            }).ToArray();
-            try
-            {
-                await Task.WhenAll(downloads).ConfigureAwait(false);
             }
             catch
             {
@@ -256,34 +231,26 @@ public sealed class AssetBundleManager : IAssetBundleManager
                 CloneVersion(plan.TargetVersion),
                 CloneCatalog(plan.TargetCatalog),
                 (byte[])plan.CatalogBytes.Clone());
-            Volatile.Write(ref _active, activated);
+            _active = activated;
             progress?.Report(new AssetBundleUpdateProgress(
                 AssetBundleUpdatePhase.Completed,
                 plan.Downloads.Count,
                 plan.Downloads.Count,
                 totalBytes,
                 totalBytes));
-            return new AssetBundleUpdateResult(
-                true,
-                previousVersion,
-                activated.Version.Version,
-                downloadedBundles,
-                downloadedBytes);
-        }
-        finally
-        {
-            _mutationGate.Release();
-        }
+        return new AssetBundleUpdateResult(
+            true,
+            previousVersion,
+            activated.Version.Version,
+            downloadedBundles,
+            downloadedBytes);
     }
 
     public async Task<bool> RollbackAsync(CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
         ThrowIfDisposed();
-        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            RuntimeState? previous;
+        RuntimeState? previous;
             try
             {
                 previous = await LoadCachedStateAsync(PreviousPointerPath, cancellationToken)
@@ -295,7 +262,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
             }
             if (previous is null) return false;
 
-            var current = Volatile.Read(ref _active);
+            var current = _active;
             await WritePointerAsync(ActivePointerPath, previous.Version, cancellationToken)
                 .ConfigureAwait(false);
             if (current is not null)
@@ -308,13 +275,8 @@ public sealed class AssetBundleManager : IAssetBundleManager
             {
                 File.Delete(PreviousPointerPath);
             }
-            Volatile.Write(ref _active, previous);
+            _active = previous;
             return true;
-        }
-        finally
-        {
-            _mutationGate.Release();
-        }
     }
 
     public async Task<AssetBundleHandle<byte[]>> LoadBytesAsync(
@@ -323,7 +285,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         EnsureInitialized();
         ThrowIfDisposed();
-        var state = Volatile.Read(ref _active) ??
+        var state = _active ??
                     throw new InvalidOperationException("No asset bundle catalog is active.");
         var canonicalAddress = AssetBundleValidation.NormalizeAddress(address);
         var asset = state.Catalog.Assets.FirstOrDefault(item =>
@@ -353,7 +315,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         EnsureInitialized();
         ThrowIfDisposed();
-        var state = Volatile.Read(ref _active) ??
+        var state = _active ??
                     throw new InvalidOperationException("No asset bundle catalog is active.");
         var canonicalAddress = AssetBundleValidation.NormalizeAddress(address);
         var asset = state.Catalog.Assets.FirstOrDefault(item =>
@@ -380,7 +342,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
     public bool TryLoadBytes(string address, out byte[] bytes)
     {
         bytes = [];
-        if (!IsInitialized || Volatile.Read(ref _disposed) != 0 || !ContainsAddress(address)) return false;
+        if (!IsInitialized || _disposed || !ContainsAddress(address)) return false;
         using var handle = LoadBytesAsync(address).ConfigureAwait(false).GetAwaiter().GetResult();
         bytes = handle.Value;
         return true;
@@ -390,7 +352,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         EnsureInitialized();
         ThrowIfDisposed();
-        var catalog = Volatile.Read(ref _active)?.Catalog;
+        var catalog = _active?.Catalog;
         if (catalog is null) return [];
         var normalizedPrefix = NormalizePrefix(prefix);
         return catalog.Assets.Select(item => item.Address)
@@ -403,19 +365,17 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         ThrowIfDisposed();
         var unloaded = 0;
-        foreach (var (hash, lazy) in _loadedBundles.ToArray())
+        foreach (var (hash, task) in _loadedBundles.ToArray())
         {
-            if (!lazy.IsValueCreated) continue;
-            var task = lazy.Value;
             if (!task.IsCompleted)
                 continue;
             if (!task.IsCompletedSuccessfully)
             {
-                RemoveLoadedBundle(hash, lazy);
+                RemoveLoadedBundle(hash, task);
                 continue;
             }
             if (!task.Result.TryDisposeIfUnused()) continue;
-            RemoveLoadedBundle(hash, lazy);
+            RemoveLoadedBundle(hash, task);
             unloaded++;
         }
         return unloaded;
@@ -425,71 +385,55 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         EnsureInitialized();
         ThrowIfDisposed();
-        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _ = UnloadUnused();
+        var keepBundles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var keepCatalogs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddState(_active, keepBundles, keepCatalogs);
         try
         {
-            _ = UnloadUnused();
-            var keepBundles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var keepCatalogs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var active = Volatile.Read(ref _active);
-            AddState(active, keepBundles, keepCatalogs);
-            try
-            {
-                AddState(await LoadCachedStateAsync(PreviousPointerPath, cancellationToken)
-                    .ConfigureAwait(false), keepBundles, keepCatalogs);
-            }
-            catch (Exception exception) when (IsRecoverableContentFailure(exception))
-            {
-            }
-            foreach (var (hash, lazy) in _loadedBundles)
-                if (lazy.IsValueCreated && lazy.Value.IsCompletedSuccessfully &&
-                    lazy.Value.Result.ReferenceCount > 0)
-                    keepBundles.Add(hash);
-
-            var deleted = 0;
-            foreach (var path in Directory.EnumerateFiles(ObjectsDirectory, "*.bassetbundle"))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var hash = Path.GetFileNameWithoutExtension(path);
-                if (keepBundles.Contains(hash)) continue;
-                try { File.Delete(path); deleted++; }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
-            }
-            foreach (var path in Directory.EnumerateFiles(CatalogsDirectory, "*.json"))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var hash = Path.GetFileNameWithoutExtension(path);
-                if (keepCatalogs.Contains(hash)) continue;
-                try { File.Delete(path); deleted++; }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
-            }
-            CleanupStagingFiles();
-            return deleted;
+            AddState(await LoadCachedStateAsync(PreviousPointerPath, cancellationToken)
+                .ConfigureAwait(false), keepBundles, keepCatalogs);
         }
-        finally
+        catch (Exception exception) when (IsRecoverableContentFailure(exception))
         {
-            _mutationGate.Release();
         }
+        foreach (var (hash, task) in _loadedBundles)
+            if (task.IsCompletedSuccessfully && task.Result.ReferenceCount > 0)
+                keepBundles.Add(hash);
+
+        var deleted = 0;
+        foreach (var path in Directory.EnumerateFiles(ObjectsDirectory, "*.bassetbundle"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var hash = Path.GetFileNameWithoutExtension(path);
+            if (keepBundles.Contains(hash)) continue;
+            try { File.Delete(path); deleted++; }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        foreach (var path in Directory.EnumerateFiles(CatalogsDirectory, "*.json"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var hash = Path.GetFileNameWithoutExtension(path);
+            if (keepCatalogs.Contains(hash)) continue;
+            try { File.Delete(path); deleted++; }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        CleanupStagingFiles();
+        return deleted;
     }
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (_disposed) return;
+        _disposed = true;
         _lifetime.Cancel();
-        Task<LoadedAssetBundle>[] tasks;
-        lock (_bundleLifecycleGate)
+        foreach (var task in _loadedBundles.Values)
         {
-            tasks = _loadedBundles.Values.Select(lazy => lazy.Value).ToArray();
-        }
-        if (tasks.Length > 0)
-        {
-            try { Task.WhenAll(tasks).ConfigureAwait(false).GetAwaiter().GetResult(); }
+            try { task.ConfigureAwait(false).GetAwaiter().GetResult().Dispose(); }
             catch { }
         }
-        foreach (var task in tasks)
-            if (task.IsCompletedSuccessfully) task.Result.Dispose();
         _loadedBundles.Clear();
         if (_ownsHttpClient) _httpClient.Dispose();
         _lifetime.Dispose();
@@ -506,7 +450,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
         try
         {
             var canonical = AssetBundleValidation.NormalizeAddress(address);
-            return Volatile.Read(ref _active)?.Catalog.Assets.Any(item =>
+            return _active?.Catalog.Assets.Any(item =>
                 item.Address.Equals(canonical, StringComparison.OrdinalIgnoreCase)) == true;
         }
         catch (ArgumentException)
@@ -554,21 +498,14 @@ public sealed class AssetBundleManager : IAssetBundleManager
         var hash = descriptor.Sha256.ToLowerInvariant();
         while (true)
         {
-            Lazy<Task<LoadedAssetBundle>> lazy;
-            lock (_bundleLifecycleGate)
+            ThrowIfDisposed();
+            if (!_loadedBundles.TryGetValue(hash, out var task))
             {
-                ThrowIfDisposed();
                 var lifetimeToken = _lifetime.Token;
-                lazy = _loadedBundles.GetOrAdd(hash, _ => new Lazy<Task<LoadedAssetBundle>>(
-                    async () =>
-                    {
-                        var path = await ResolveBundlePathAsync(descriptor, lifetimeToken).ConfigureAwait(false);
-                        return await LoadedAssetBundle.OpenAsync(
-                            path, descriptor, assets, _options, lifetimeToken).ConfigureAwait(false);
-                    }, LazyThreadSafetyMode.ExecutionAndPublication));
+                task = OpenBundleAsync(descriptor, assets, lifetimeToken);
+                _loadedBundles[hash] = task;
             }
             LoadedAssetBundle bundle;
-            var task = lazy.Value;
             try
             {
                 bundle = await task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -580,12 +517,22 @@ public sealed class AssetBundleManager : IAssetBundleManager
             }
             catch
             {
-                if (task.IsCompleted) RemoveLoadedBundle(hash, lazy);
+                if (task.IsCompleted) RemoveLoadedBundle(hash, task);
                 throw;
             }
             if (bundle.TryAcquire()) return bundle;
-            RemoveLoadedBundle(hash, lazy);
+            RemoveLoadedBundle(hash, task);
         }
+    }
+
+    private async Task<LoadedAssetBundle> OpenBundleAsync(
+        AssetBundleDescriptor descriptor,
+        IReadOnlyList<AssetBundleAsset> assets,
+        CancellationToken cancellationToken)
+    {
+        var path = await ResolveBundlePathAsync(descriptor, cancellationToken).ConfigureAwait(false);
+        return await LoadedAssetBundle.OpenAsync(
+            path, descriptor, assets, _options, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<string> ResolveBundlePathAsync(
@@ -938,10 +885,10 @@ public sealed class AssetBundleManager : IAssetBundleManager
         for (var index = leases.Count - 1; index >= 0; index--) leases[index].Bundle.Release();
     }
 
-    private void RemoveLoadedBundle(string hash, Lazy<Task<LoadedAssetBundle>> lazy)
+    private void RemoveLoadedBundle(string hash, Task<LoadedAssetBundle> task)
     {
-        if (_loadedBundles.TryGetValue(hash, out var current) && ReferenceEquals(current, lazy))
-            _loadedBundles.TryRemove(hash, out _);
+        if (_loadedBundles.TryGetValue(hash, out var current) && ReferenceEquals(current, task))
+            _loadedBundles.Remove(hash);
     }
 
     private void CreateCacheLayout()
@@ -1092,7 +1039,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
 
     private void ThrowIfDisposed()
     {
-        if (Volatile.Read(ref _disposed) != 0) throw new ObjectDisposedException(nameof(AssetBundleManager));
+        if (_disposed) throw new ObjectDisposedException(nameof(AssetBundleManager));
     }
 
     private sealed record RuntimeState(

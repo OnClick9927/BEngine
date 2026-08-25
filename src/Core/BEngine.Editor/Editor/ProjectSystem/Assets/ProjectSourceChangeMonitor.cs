@@ -3,7 +3,7 @@ namespace BEngine.ProjectSystem.Editor;
 internal sealed class ProjectSourceChangeMonitor : IDisposable
 {
     private const int DebounceMilliseconds = 250;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly FileSystemWatcher _watcher;
     private bool _pending;
     private bool _scriptsChanged;

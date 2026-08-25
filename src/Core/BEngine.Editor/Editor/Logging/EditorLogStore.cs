@@ -3,7 +3,7 @@ namespace BEngine.Editor;
 internal static class EditorLogStore
 {
     private const int MaximumEntries = 20_000;
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static readonly List<LogEntry> Entries = [];
     private static long _version;
     private static long _clearVersion;

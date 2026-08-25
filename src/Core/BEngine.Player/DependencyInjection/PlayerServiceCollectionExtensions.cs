@@ -75,8 +75,7 @@ public static class PlayerServiceCollectionExtensions
                 ? null
                 : new Uri(settings.RemoteBaseUrl, UriKind.Absolute),
             RequireHttps = settings.RequireHttps,
-            MaxRetries = settings.MaxRetries,
-            MaxConcurrentDownloads = settings.MaxConcurrentDownloads
+            MaxRetries = settings.MaxRetries
         };
     }
 

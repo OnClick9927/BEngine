@@ -6,13 +6,11 @@ public abstract class ScriptableObject : BAsset
 
     public static T CreateInstance<T>() where T : ScriptableObject, new()
     {
-        MainThreadGuard.Ensure();
         return new T();
     }
 
     public static ScriptableObject CreateInstance(Type type)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(type);
         if (!typeof(ScriptableObject).IsAssignableFrom(type) || type.IsAbstract)
         {

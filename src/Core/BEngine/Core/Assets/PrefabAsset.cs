@@ -10,7 +10,7 @@ public sealed class PrefabAsset : BAsset
 
     internal PrefabDocument Document
     {
-        get { MainThreadGuard.Ensure(); return _document; }
+        get { return _document; }
     }
     internal PrefabDocument DocumentUnchecked => _document;
 
@@ -23,29 +23,27 @@ public sealed class PrefabAsset : BAsset
 
     public Guid assetId
     {
-        get { MainThreadGuard.Ensure(); return _document.Id; }
+        get { return _document.Id; }
     }
     public string assetPath
     {
-        get { MainThreadGuard.Ensure(); return _assetPath; }
+        get { return _assetPath; }
         internal set => _assetPath = value;
     }
     public int objectCount
     {
-        get { MainThreadGuard.Ensure(); return _document.GameObjects.Count; }
+        get { return _document.GameObjects.Count; }
     }
     public int componentCount
     {
         get
         {
-            MainThreadGuard.Ensure();
             return _document.GameObjects.Sum(item => item.Components.Count + 1);
         }
     }
 
     public GameObject Instantiate(Scene scene, Transform? parent = null)
     {
-        MainThreadGuard.Ensure();
         return PrefabDocumentOperations.Instantiate(this, scene, parent);
     }
 }

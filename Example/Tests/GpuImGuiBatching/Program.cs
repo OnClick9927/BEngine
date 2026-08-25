@@ -28,11 +28,14 @@ internal static class Program
                     new GpuCanvasColor(18, 18, 18))
             ];
 
+            device.SetRasterizerState(GraphicsRasterizerState.CullBackFaces);
             renderer.Render(commands, 640, 360);
             Require(renderer.LastRenderStats is
                 { CommandCount: 5, VisibleCommandCount: 5, BatchCount: 1, DrawCallCount: 1,
                     BufferUploadCount: 1, VertexCount: 30 },
                 $"Unexpected first-frame batch statistics: {renderer.LastRenderStats}.");
+            Require(device.RasterizerStates[^1] == GraphicsRasterizerState.Default,
+                "IMGUI did not reset the scene renderer's back-face culling state.");
             Require(device.Draws.Count == 1 && device.Draws[0].VertexCount == 30,
                 "Interleaved IMGUI background, text and icon commands were not submitted as one draw.");
             Require(device.Meshes.Single(mesh => mesh.Label.EndsWith("TextureDynamic")).UpdateCount == 1,
@@ -126,6 +129,7 @@ internal static class Program
         public List<RecordingMesh> Meshes { get; } = [];
         public List<RecordingTexture> Textures { get; } = [];
         public List<DrawRecord> Draws { get; } = [];
+        public List<GraphicsRasterizerState> RasterizerStates { get; } = [];
 
         public IGraphicsProgram CreateProgram(GraphicsShaderProgramDescription description) =>
             new RecordingProgram(this, description.Label);
@@ -153,7 +157,7 @@ internal static class Program
         public void Clear(GraphicsClearFlags flags, System.Numerics.Vector4 color) { }
         public void SetDepthState(GraphicsDepthState state) { }
         public void SetBlendMode(GraphicsBlendMode mode) { }
-        public void SetRasterizerState(GraphicsRasterizerState state) { }
+        public void SetRasterizerState(GraphicsRasterizerState state) => RasterizerStates.Add(state);
         public void BindTexture(int slot, IGraphicsTexture2D texture) { }
         public void Draw(IGraphicsMesh mesh) => Draw(mesh, mesh.VertexCount);
         public void Draw(IGraphicsMesh mesh, int vertexCount, int firstVertex = 0) =>

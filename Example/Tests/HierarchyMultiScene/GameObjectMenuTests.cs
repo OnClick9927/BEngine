@@ -35,7 +35,8 @@ internal static class GameObjectMenuTests
         "Copy Hierarchy Path",
         "Rename",
         "Duplicate",
-        "Delete"
+        "Delete",
+        GameObjectMenuExtensionProbe.RelativePath
     ];
 
     public static void Run(SceneFixture fixture)
@@ -70,6 +71,12 @@ internal static class GameObjectMenuTests
             "GameObject main menu contains duplicate command paths.");
         TestAssert.Require(context.Select(item => item.Path).Distinct(StringComparer.Ordinal).Count() == context.Count,
             "Hierarchy GameObject context menu contains duplicate command paths.");
+        GameObjectMenuExtensionProbe.Reset();
+        var extension = RequireItem(context, GameObjectMenuExtensionProbe.RelativePath,
+            "Hierarchy context menu extension");
+        extension.Action?.Invoke();
+        TestAssert.Require(ReferenceEquals(GameObjectMenuExtensionProbe.LastContext, child),
+            "An external GameObject/MenuItem did not receive the context-clicked GameObject.");
 
         Selection.activeGameObject = null;
         var emptySelection = CaptureMainMenu(harness);
@@ -266,10 +273,12 @@ internal static class GameObjectMenuTests
         var childWorldPositions = parent.transform.children.Select(item => item.position).ToArray();
         Selection.activeGameObject = parent;
         Execute(harness, "Hierarchy/Center On Children");
+        var centeredChildPositions = parent.transform.children.Select(item => item.position).ToArray();
         TestAssert.Require(parent.transform.position == new Vector2(5, 4) &&
-                           parent.transform.children.Select(item => item.position)
-                               .SequenceEqual(childWorldPositions),
-            "Center On Children did not center the parent while preserving child world positions.");
+                           centeredChildPositions.SequenceEqual(childWorldPositions),
+            "Center On Children did not center the parent while preserving child world positions. " +
+            $"Parent={parent.transform.position}; before={string.Join(';', childWorldPositions)}; " +
+            $"after={string.Join(';', centeredChildPositions)}");
         Undo.PerformUndo();
         TestAssert.Require(parent.transform.position == new Vector2(10, 0),
             "Undo did not restore the parent moved by Center On Children.");
@@ -383,4 +392,18 @@ internal static class GameObjectMenuTests
         (T)item.GetType().GetProperty(propertyName, InstanceMembers)!.GetValue(item)!;
 
     private sealed record MenuSnapshot(string Path, bool Enabled, Action? Action);
+}
+
+internal static class GameObjectMenuExtensionProbe
+{
+    internal const string RelativePath = "Testing/External GameObject Command";
+    internal static BObject? LastContext { get; private set; }
+
+    [MenuItem("GameObject/" + RelativePath, false, 75)]
+    private static void Execute(MenuCommand command) => LastContext = command.context;
+
+    [MenuItem("GameObject/" + RelativePath, true)]
+    private static bool Validate(MenuCommand command) => command.context is GameObject;
+
+    internal static void Reset() => LastContext = null;
 }

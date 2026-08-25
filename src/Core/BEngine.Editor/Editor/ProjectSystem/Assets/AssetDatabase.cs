@@ -18,7 +18,6 @@ public sealed class AssetDatabase
     {
         get
         {
-            EngineThreadContext.AssertMainThread("Read the Editor asset database");
             return _assetSnapshot;
         }
     }
@@ -30,7 +29,6 @@ public sealed class AssetDatabase
 
     public IReadOnlyList<AssetChange> Refresh(Action<AssetScanProgress>? progress = null)
     {
-        EngineThreadContext.AssertMainThread("Refresh the Editor asset database");
         return ApplyRefresh(PrepareRefresh(progress));
     }
 
@@ -56,7 +54,6 @@ public sealed class AssetDatabase
 
     internal IReadOnlyList<AssetChange> ApplyRefresh(AssetRefreshSnapshot snapshot)
     {
-        EngineThreadContext.AssertMainThread("Apply an Editor asset refresh");
         ArgumentNullException.ThrowIfNull(snapshot);
         if (!TryApplyRefresh(snapshot, out var changes))
             throw new InvalidOperationException(
@@ -68,7 +65,6 @@ public sealed class AssetDatabase
         AssetRefreshSnapshot snapshot,
         out IReadOnlyList<AssetChange> changes)
     {
-        EngineThreadContext.AssertMainThread("Apply an Editor asset refresh");
         ArgumentNullException.ThrowIfNull(snapshot);
         if (snapshot.BaseRevision != Volatile.Read(ref _revision))
         {
@@ -94,7 +90,6 @@ public sealed class AssetDatabase
 
     public AssetRecord ImportAsset(string path)
     {
-        EngineThreadContext.AssertMainThread("Import an Editor asset");
         _refreshGate.Wait();
         try
         {
@@ -121,7 +116,6 @@ public sealed class AssetDatabase
 
     public string? AssetPathToGuid(string assetPath)
     {
-        EngineThreadContext.AssertMainThread("Read the Editor asset database");
         return _byPath.TryGetValue(NormalizeAssetPath(assetPath), out var record)
             ? record.Guid.ToString("N")
             : null;
@@ -129,25 +123,21 @@ public sealed class AssetDatabase
 
     public string? GuidToAssetPath(Guid guid)
     {
-        EngineThreadContext.AssertMainThread("Read the Editor asset database");
         return _byGuid.TryGetValue(guid, out var record) ? record.AssetPath : null;
     }
 
     public AssetRecord? GetRecord(Guid guid)
     {
-        EngineThreadContext.AssertMainThread("Read the Editor asset database");
         return _byGuid.GetValueOrDefault(guid);
     }
 
     public AssetRecord? GetRecord(string assetPath)
     {
-        EngineThreadContext.AssertMainThread("Read the Editor asset database");
         return _byPath.GetValueOrDefault(NormalizeAssetPath(assetPath));
     }
 
     public IReadOnlyList<AssetRecord> FindAssets(string search)
     {
-        EngineThreadContext.AssertMainThread("Search the Editor asset database");
         search ??= string.Empty;
         return _byGuid.Values.Where(record =>
                 record.AssetPath.Contains(search, StringComparison.OrdinalIgnoreCase) ||

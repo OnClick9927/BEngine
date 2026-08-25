@@ -2,17 +2,17 @@ namespace BEngine;
 
 public sealed class Shader : BAsset
 {
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Shader> Shaders =
+    private static readonly Dictionary<string, Shader> Shaders =
         new(StringComparer.Ordinal);
 
     private readonly string _shaderName;
 
     public string shaderName
     {
-        get { MainThreadGuard.Ensure(); return _shaderName; }
+        get { return _shaderName; }
     }
 
-    private Shader(string shaderName)
+    internal Shader(string shaderName)
     {
         _shaderName = shaderName;
         name = shaderName;
@@ -20,8 +20,9 @@ public sealed class Shader : BAsset
 
     public static Shader Find(string name)
     {
-        MainThreadGuard.Ensure();
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        return Shaders.GetOrAdd(name, static shaderName => new Shader(shaderName));
+        if (!Shaders.TryGetValue(name, out var shader))
+            Shaders[name] = shader = new Shader(name);
+        return shader;
     }
 }

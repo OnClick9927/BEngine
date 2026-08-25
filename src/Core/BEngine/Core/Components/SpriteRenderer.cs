@@ -7,7 +7,6 @@ public sealed class SpriteRenderer : Renderer2D
     {
         name = "Default Sprite Material"
     };
-    private Material _material = DefaultMaterial;
 
     public string sprite { get; set; } = string.Empty;
     public string atlas { get; set; } = string.Empty;
@@ -20,11 +19,11 @@ public sealed class SpriteRenderer : Renderer2D
 
     public Material material
     {
-        get { MainThreadGuard.Ensure(); return _material; }
-        set { MainThreadGuard.Ensure(); _material = value ?? throw new ArgumentNullException(nameof(value)); }
-    }
+        get;
+        set => field = value ?? throw new ArgumentNullException(nameof(value));
+    } = DefaultMaterial;
 
     internal SpriteRenderData2D ResolveSpriteUnchecked() => TextureAtlasResolver.Resolve(atlas, sprite);
     internal RenderBatchKey2D BatchKeyUnchecked => BatchKey(ResolveSpriteUnchecked());
-    internal RenderBatchKey2D BatchKey(SpriteRenderData2D visual) => new(_material, visual.BatchIdentity);
+    internal RenderBatchKey2D BatchKey(SpriteRenderData2D visual) => new(material, visual.BatchIdentity);
 }

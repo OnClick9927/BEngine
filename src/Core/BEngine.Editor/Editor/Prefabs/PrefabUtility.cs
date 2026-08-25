@@ -178,6 +178,10 @@ public static class PrefabUtility
     private static PrefabAsset? SaveAsset(GameObject root, string assetPath, bool connect, out bool success)
     {
         ArgumentNullException.ThrowIfNull(root);
+        success = false;
+        if (!EditorAssetWritePolicy.CanWrite || root.IsRuntimeOnly)
+            throw new InvalidOperationException(
+                "Prefab assets cannot be saved while entering, running, or exiting Play Mode.");
         var (projectPath, fullPath) = ResolveAssetPath(assetPath);
         var existingGuid = AssetDatabase.AssetPathToGUID(projectPath);
         var assetId = Guid.TryParse(existingGuid, out var parsed) ? parsed : (Guid?)null;
@@ -206,7 +210,6 @@ public static class PrefabUtility
         }
         catch
         {
-            success = false;
             throw;
         }
     }

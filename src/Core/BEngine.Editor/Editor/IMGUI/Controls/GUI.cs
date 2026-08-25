@@ -7,6 +7,7 @@ public static class GUI
     [ThreadStatic] private static ImGuiContext? _context;
     [ThreadStatic] private static Dictionary<int, TextState>? _textStates;
     [ThreadStatic] private static string? _focusedControlName;
+    [ThreadStatic] private static string? _pendingFocusControlName;
     [ThreadStatic] private static int _activeTextControl;
     [ThreadStatic] private static TextState? _activeTextState;
     [ThreadStatic] private static long _caretBlinkStart;
@@ -15,14 +16,17 @@ public static class GUI
     [ThreadStatic] private static string? _tooltipCandidate;
     [ThreadStatic] private static long _tooltipHoverStarted;
     [ThreadStatic] private static Vector2 _tooltipPointer;
-    private static GUISkin _skin = new();
     public static Color color { get; set; } = Color.white;
     public static Color backgroundColor { get; set; } = Color.white;
     public static Color contentColor { get; set; } = Color.white;
     public static bool enabled { get; set; } = true;
     public static bool changed { get; set; }
     public static int depth { get; set; }
-    public static GUISkin skin { get => _skin; set => _skin = value ?? throw new ArgumentNullException(nameof(value)); }
+    public static GUISkin skin
+    {
+        get;
+        set => field = value ?? throw new ArgumentNullException(nameof(value));
+    } = new();
     public static string tooltip => _context?.Tooltip ?? string.Empty;
     internal static bool isEditingTextField => _activeTextControl != 0 &&
         GUIUtility.keyboardControl == _activeTextControl;
@@ -41,6 +45,7 @@ public static class GUI
         GUIUtility.currentViewWidth = logicalWidth;
         GUIUtility.currentViewHeight = logicalHeight;
         _requestedMouseCursor = MouseCursor.Arrow;
+        DragAndDrop.BeginEvent(inputEvent);
         Event.current = inputEvent;
         GUIUtility.BeginEvent();
         _textStates ??= [];
@@ -48,7 +53,8 @@ public static class GUI
         _coordinateScopes.Clear();
         _context = new ImGuiContext(logicalWidth, logicalHeight, renderScale, commands, _textStates)
         {
-            FocusedName = _focusedControlName ?? string.Empty
+            FocusedName = _focusedControlName ?? string.Empty,
+            FocusRequest = _pendingFocusControlName ?? string.Empty
         };
         GUILayout.BeginFrame(new Rect(0, 0, logicalWidth, logicalHeight));
         changed = false;
@@ -60,6 +66,7 @@ public static class GUI
         if (_context is not null) _focusedControlName = _context.FocusedName;
         GUILayout.EndFrame();
         _context = null;
+        DragAndDrop.EndEvent(Event.current);
         Event.ClearCurrent();
     }
 
@@ -205,6 +212,7 @@ public static class GUI
             _context.Tooltip,
             _context.NextControlName,
             _context.FocusRequest,
+            _pendingFocusControlName,
             _context.FocusedName);
     }
 
@@ -212,9 +220,52 @@ public static class GUI
         point + (_context?.InputOrigin ?? Vector2.zero);
     internal static Vector2 RootToGUIPoint(Vector2 point) =>
         point - (_context?.InputOrigin ?? Vector2.zero);
-    public static void FocusControl(string name) { if (_context is not null) _context.FocusRequest = name; }
+    public static void FocusControl(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            if (_context is not null)
+            {
+                _context.FocusRequest = string.Empty;
+                _context.FocusedName = string.Empty;
+            }
+            _focusedControlName = null;
+            _pendingFocusControlName = null;
+            GUIUtility.keyboardControl = 0;
+            _activeTextControl = 0;
+            _activeTextState = null;
+            return;
+        }
+        if (_context is null)
+        {
+            if (!string.Equals(_focusedControlName, name, StringComparison.Ordinal))
+            {
+                GUIUtility.keyboardControl = 0;
+                _activeTextControl = 0;
+                _activeTextState = null;
+            }
+            _pendingFocusControlName = name;
+            return;
+        }
+        if (!_context.FocusedName.Equals(name, StringComparison.Ordinal))
+        {
+            GUIUtility.keyboardControl = 0;
+            _activeTextControl = 0;
+            _activeTextState = null;
+        }
+        _context.FocusRequest = name;
+        _pendingFocusControlName = name;
+    }
     public static void SetNextControlName(string name) { if (_context is not null) _context.NextControlName = name ?? ""; }
     public static string GetNameOfFocusedControl() => _context?.FocusedName ?? string.Empty;
+    internal static void ClearTextState(int controlId)
+    {
+        if (controlId == 0) return;
+        _textStates?.Remove(controlId);
+        if (_activeTextControl != controlId) return;
+        _activeTextControl = 0;
+        _activeTextState = null;
+    }
     internal static MouseCursor requestedMouseCursor => _requestedMouseCursor;
     internal static Fix64 visibleViewWidth => _context is null
         ? GUIUtility.currentViewWidth
@@ -258,6 +309,7 @@ public static class GUI
     {
         value ??= string.Empty;
         var id = GUIUtility.GetControlID("TextField".GetHashCode(StringComparison.Ordinal), FocusType.Keyboard, rect);
+        var controlName = _context?.AssignNextControlName(id) ?? string.Empty;
         var evt = Event.current;
         var absolute = _context?.Translate(rect) ?? rect;
         if (enabled && evt.type == EventType.MouseDown && absolute.Contains(PointerPosition) &&
@@ -270,21 +322,27 @@ public static class GUI
             var characterWidth = Fix64.Max(1, style.fontSize * Fix64.FromDecimal(0.58m));
             var clickedIndex = Math.Clamp((int)Math.Round((double)(localX / characterWidth)), 0,
                 visibleValue.Length);
-            _context?.SetText(id, value, evt.clickCount >= 2 ? value.Length : clickedIndex,
-                evt.clickCount >= 2 ? 0 : clickedIndex);
+            _context?.SetText(id, new TextState(value,
+                evt.clickCount >= 2 ? value.Length : clickedIndex,
+                evt.clickCount >= 2 ? 0 : clickedIndex,
+                value));
             _activeTextControl = id;
             _activeTextState = new TextState(value, evt.clickCount >= 2 ? value.Length : clickedIndex,
-                evt.clickCount >= 2 ? 0 : clickedIndex);
+                evt.clickCount >= 2 ? 0 : clickedIndex, value);
             _caretBlinkStart = Environment.TickCount64;
-            _context?.AssignNextControlName(id);
+            if (controlName.Length > 0 && _context is not null) _context.FocusedName = controlName;
             evt.Use();
         }
         var focused = GUIUtility.keyboardControl == id;
         var state = focused
             ? _activeTextControl == id && _activeTextState is { } active
                 ? active
-                : _context?.GetText(id, value) ?? new TextState(value, value.Length, value.Length)
-            : new TextState(value, value.Length, value.Length);
+                : _context?.GetText(id, value) ?? new TextState(value, value.Length, value.Length, value)
+            : new TextState(value, value.Length, value.Length, value);
+        if (focused && !state.ObservedValue.Equals(value, StringComparison.Ordinal))
+            state = state.Text.Equals(value, StringComparison.Ordinal)
+                ? state with { ObservedValue = value }
+                : new TextState(value, value.Length, value.Length, value);
         if (enabled && focused && evt.type == EventType.KeyDown)
         {
             var before = state.Text;
@@ -293,7 +351,7 @@ public static class GUI
             _caretBlinkStart = Environment.TickCount64;
             if (evt.type != EventType.Used) evt.Use();
         }
-        _context?.SetText(id, state.Text, state.Caret, state.Anchor);
+        _context?.SetText(id, state);
         if (focused) { _activeTextControl = id; _activeTextState = state; }
         GUIUtility.textFieldInput = focused;
         var displayed = new GUIContent(mask is null ? state.Text : new string(mask.Value, state.Text.Length));
@@ -330,7 +388,13 @@ public static class GUI
         {
             DeleteSelection(); var insert = GUIUtility.systemCopyBuffer;
             if (maxLength >= 0) insert = insert[..Math.Min(insert.Length, Math.Max(0, maxLength - text.Length))];
-            text = text.Insert(state.Caret, insert); return new(text, state.Caret + insert.Length, state.Caret + insert.Length);
+            text = text.Insert(state.Caret, insert);
+            return state with
+            {
+                Text = text,
+                Caret = state.Caret + insert.Length,
+                Anchor = state.Caret + insert.Length
+            };
         }
         switch (evt.keyCode)
         {
@@ -353,7 +417,7 @@ public static class GUI
             if (maxLength < 0 || text.Length < maxLength)
             {
                 text = text.Insert(state.Caret, evt.character.ToString());
-                return new(text, state.Caret + 1, state.Caret + 1);
+                return state with { Text = text, Caret = state.Caret + 1, Anchor = state.Caret + 1 };
             }
         }
         return state with { Text = text };
@@ -618,14 +682,31 @@ public static class GUI
             foreach (var clip in structural.Clips) _clips.Push(clip);
             InputOrigin = structural.InputOrigin;
         }
-        public TextState GetText(int id, string fallback) => _texts.GetValueOrDefault(id, new(fallback, fallback.Length, fallback.Length));
-        public void SetText(int id, string text, int caret, int anchor) => _texts[id] = new(text, caret, anchor);
-        public void AssignNextControlName(int id)
+        public TextState GetText(int id, string fallback) => _texts.GetValueOrDefault(id,
+            new(fallback, fallback.Length, fallback.Length, fallback));
+        public void SetText(int id, TextState state) => _texts[id] = state;
+        public string AssignNextControlName(int id)
         {
-            if (string.IsNullOrEmpty(NextControlName)) return;
-            FocusedName = NextControlName;
+            if (string.IsNullOrEmpty(NextControlName)) return string.Empty;
+            var name = NextControlName;
             NextControlName = string.Empty;
-            GUIUtility.keyboardControl = id;
+            if (FocusRequest.Equals(name, StringComparison.Ordinal))
+            {
+                FocusRequest = string.Empty;
+                _pendingFocusControlName = null;
+                if (GUIUtility.keyboardControl != id)
+                {
+                    _texts.Remove(id);
+                    if (_activeTextControl == id)
+                    {
+                        _activeTextControl = 0;
+                        _activeTextState = null;
+                    }
+                }
+                GUIUtility.keyboardControl = id;
+            }
+            if (GUIUtility.keyboardControl == id) FocusedName = name;
+            return name;
         }
     }
 
@@ -667,6 +748,7 @@ public static class GUI
         string tooltip,
         string nextControlName,
         string focusRequest,
+        string? pendingFocusControlName,
         string focusedName)
     {
         internal void Restore(bool succeeded)
@@ -702,6 +784,7 @@ public static class GUI
             context.Tooltip = tooltip;
             context.NextControlName = nextControlName;
             context.FocusRequest = focusRequest;
+            _pendingFocusControlName = pendingFocusControlName;
             context.FocusedName = focusedName;
         }
     }
@@ -717,5 +800,5 @@ public static class GUI
         Fix64 ViewWidth,
         Fix64 ViewHeight);
 
-    internal readonly record struct TextState(string Text, int Caret, int Anchor);
+    internal readonly record struct TextState(string Text, int Caret, int Anchor, string ObservedValue);
 }

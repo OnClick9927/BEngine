@@ -11,9 +11,9 @@
 <body>
   <header class="top"><span class="mark">B</span><strong>BEngine Core</strong><small>内置引擎与编辑器 API</small></header>
   <div class="shell">
-    <nav aria-label="章节"><a href="#start">开始</a><a href="#project">工程结构</a><a href="#runtime">运行时</a><a href="#ecs">ECS 与服务</a><a href="#editor">编辑器扩展</a><a href="#atlas">Texture Atlas</a><a href="#assets">资源与包</a><a href="#examples">示例</a></nav>
+    <nav aria-label="章节"><a href="#start">开始</a><a href="#project">工程结构</a><a href="#runtime">运行时</a><a href="#services">场景与服务</a><a href="#editor">编辑器扩展</a><a href="#atlas">Texture Atlas</a><a href="#assets">资源与包</a><a href="#examples">示例</a></nav>
     <main>
-      <section id="start"><p class="eyebrow">CORE MANUAL</p><h1>BEngine Core</h1><p class="lead">Core 提供 Scene、GameObject、Component、混合 ECS、序列化、渲染基础和 Unity 风格编辑器扩展 API。运行 <code>Output/BEngine.bat</code> 后，可从 Package Manager 按需启用功能包。</p><div class="note">世界只包含 X/Y 坐标与一个旋转角；Sprite、粒子、Tilemap 与 UI 使用统一的 2D 排序和合批队列。</div></section>
+      <section id="start"><p class="eyebrow">CORE MANUAL</p><h1>BEngine Core</h1><p class="lead">Core 提供 Scene、GameObject、Component、序列化、渲染基础和 Unity 风格编辑器扩展 API。运行 <code>Output/BEngine.bat</code> 后，可从 Package Manager 按需启用功能包。</p><div class="note">世界只包含 X/Y 坐标与一个旋转角；Sprite、粒子、Tilemap 与 UI 使用统一的 2D 排序和合批队列。</div></section>
       <section id="project"><h2>工程结构</h2><pre><code>Project.yaml
 Assets/
 Packages/manifest.yaml
@@ -21,15 +21,16 @@ ProjectSettings/
 Library/        # 可重建缓存
 Logs/
 Temp/           # 临时输出</code></pre><p>业务资源只放入 <code>Assets</code>。包由 Package Manager 管理，包文档、技能和示例分别位于包自身的 <code>EditorResources/Doc</code>、<code>EditorResources/Skills</code> 和 <code>EditorResources/Examples</code>。</p></section>
-      <section id="runtime"><h2>运行时对象</h2><div class="grid"><article class="panel"><h3>场景与层级</h3><p><code>Scene</code> 管理根对象；<code>Transform</code> 维护父子关系。加载模式支持 Single 和 Additive，持久对象通过 <code>DontDestroyOnLoad</code> 保留。</p></article><article class="panel"><h3>生命周期</h3><p><code>Awake → OnEnable → Start → Update → LateUpdate → OnDisable → OnDestroy</code>。固定步长逻辑在 <code>FixedUpdate</code> 执行。</p></article><article class="panel"><h3>Scene 与 Game</h3><p>Scene 视图使用唯一的 2D 编辑器相机；Game 视图使用场景中的 <code>Camera2D</code>，并可按渲染优先级叠加多个相机。</p></article><article class="panel"><h3>主线程约束</h3><p>BObject、Scene、ECS 结构变更和 Runtime 渲染位于引擎主线程；编辑器扫描、编译、哈希和文件 IO 可在后台执行。</p></article></div></section>
-      <section id="ecs"><h2>混合 ECS 与依赖注入</h2><p>每个 Scene 始终拥有 <code>World</code>；每个 GameObject 映射一个带版本的 <code>Entity</code>。数据组件实现 <code>IComponentData</code>，传统 MonoBehaviour 作为 managed facade 保留 Inspector 与生命周期兼容性。</p><pre><code>var entity = world.EntityManager.CreateEntity();
-world.EntityManager.AddComponent(entity, new MovementData());
-using var query = world.EntityManager.CreateQuery(typeof(MovementData));</code></pre><p>有状态服务通过 <code>Microsoft.Extensions.DependencyInjection</code> 注册。项目、Scene/World 和窗口分别拥有明确 scope；扩展包实现 <code>IEngineServiceModule</code> 添加服务。</p></section>
+      <section id="runtime"><h2>运行时对象</h2><div class="grid"><article class="panel"><h3>场景与层级</h3><p><code>Scene</code> 管理根对象；<code>Transform</code> 维护父子关系。加载模式支持 Single 和 Additive，持久对象通过 <code>DontDestroyOnLoad</code> 保留。</p></article><article class="panel"><h3>生命周期</h3><p><code>Awake → OnEnable → Start → Update → LateUpdate → OnDisable → OnDestroy</code>。固定步长逻辑在 <code>FixedUpdate</code> 执行。</p></article><article class="panel"><h3>Scene 与 Game</h3><p>Scene 视图使用唯一的 2D 编辑器相机；Game 视图使用场景中的 <code>Camera2D</code>，并可按渲染优先级叠加多个相机。</p></article><article class="panel"><h3>单线程运行</h3><p>SceneRuntime 在同一线程依次执行脚本、协程、包运行系统与渲染；编辑器扫描、编译、哈希和文件 IO 可在后台执行。</p></article></div></section>
+      <section id="services"><h2>托管场景与依赖注入</h2><p>Scene 直接拥有 GameObject，GameObject 直接拥有 Component；统一通过托管查询访问场景组件。</p><pre><code>var player = scene.CreateGameObject("Player");
+player.AddComponent&lt;PlayerController&gt;();
+foreach (var controller in scene.QueryComponents&lt;PlayerController&gt;())
+    controller.ResetState();</code></pre><p>有状态服务通过 <code>Microsoft.Extensions.DependencyInjection</code> 注册。项目、Scene 和窗口分别拥有明确 scope；扩展包实现 <code>IEngineServiceModule</code> 添加服务。</p></section>
       <section id="editor"><h2>编辑器扩展</h2><div class="grid"><article class="panel"><h3>常用入口</h3><p><code>MenuItem</code>、<code>EditorWindow</code>、<code>CustomEditor</code>、<code>CustomPropertyDrawer</code>、<code>SettingsProvider</code>。</p></article><article class="panel"><h3>编辑器生命周期</h3><p><code>InitializeOnLoad</code>、<code>DidReloadScripts</code>、<code>CompilationPipeline</code>、<code>AssemblyReloadEvents</code> 和资源处理器回调。</p></article></div><p>包的菜单项应归入与功能相关的标准菜单；示例扩展命令统一放在 <code>Tools</code> 下。一个扩展报错会被功能边界隔离，不应阻断其他窗口或菜单。</p></section>
       <section id="atlas"><h2>Texture Atlas</h2><p>从 <code>Assets/Create/2D/Texture Atlas</code> 创建 <code>.atlas.yaml</code>，在 <code>Window/2D/Texture Atlas</code> 添加 PNG 来源并 Build。打包器会确定性生成 2 的整数次方 PNG，Padding 和 Extrude 用于隔离相邻区域。</p><pre><code>renderer.atlas = "Assets/Art/Characters.atlas.yaml";
 renderer.sprite = "hero_idle";</code></pre><p><code>SpriteRenderer</code> 与 <code>ParticleSystem2D</code> 会读取区域 UV 和 pivot。共享 Material、Shader、Atlas 且排序后相邻的项目合并为一次绘制；TiledMap 的 Tile Palette 也可直接导入 Texture Atlas 区域。</p></section>
       <section id="assets"><h2>资源与包</h2><p><code>AssetDatabase</code> 负责 GUID、meta、导入和打开资源；<code>Resources</code> 是运行时兼容入口。AssetBundle 使用确定性构建、内容哈希缓存、依赖清单、原子激活和回滚实现资源热更。</p><p><code>.bpackage</code> 用于把示例或资源集合导入工程；包示例默认不进入新工程，应由使用者在 Package Manager 的 Examples 页签主动 Import 或 Reimport。</p></section>
-      <section id="examples"><h2>可导入示例</h2><p><strong>Core Getting Started</strong> 展示场景、生命周期、输入、Transform、渲染与编辑器扩展；<strong>ECS Systems</strong> 展示 Entity、数据组件、查询与系统调度。打开 Package Manager，选择 BEngine Core，再进入 Examples 页签导入。</p></section>
+      <section id="examples"><h2>可导入示例</h2><p><strong>Core Getting Started</strong> 展示场景、生命周期、输入、Transform、渲染与编辑器扩展。打开 Package Manager，选择 BEngine Core，再进入 Examples 页签导入。</p></section>
     </main>
   </div>
 </body>

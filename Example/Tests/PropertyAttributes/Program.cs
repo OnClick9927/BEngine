@@ -3,12 +3,17 @@ using BEngine.Editor;
 using BEngine.PropertyAttributes;
 using BEngine.PropertyAttributes.Editor;
 using BEngine.ProjectSystem;
-using BEngine.UIElements;
+using BEngine.Editor.Rendering;
 
 namespace BEngine.ExampleTests.PropertyAttributes;
 
 internal static class Program
 {
+    private static readonly MethodInfo BeginFrame = typeof(GUI).GetMethod("BeginFrame",
+        BindingFlags.Static | BindingFlags.NonPublic)!;
+    private static readonly MethodInfo EndFrame = typeof(GUI).GetMethod("EndFrame",
+        BindingFlags.Static | BindingFlags.NonPublic)!;
+
     [STAThread]
     private static int Main()
     {
@@ -18,7 +23,7 @@ internal static class Program
             RegisterEditorResources();
             VerifyPackageDefinition();
             VerifyAttributeSurface();
-            VerifyRetainedDrawers();
+            VerifyImGuiDrawers();
             Console.WriteLine("PROPERTY_ATTRIBUTES_OK|attributes=25|drawers=conditional,readonly,required,password,range,clamp,progress");
             return 0;
         }
@@ -64,39 +69,58 @@ internal static class Program
         throw new DirectoryNotFoundException("Could not locate the BEngine repository root from the test directory.");
     }
 
-    private static void VerifyRetainedDrawers()
+    private static void VerifyImGuiDrawers()
     {
         var fixture = new AttributeFixture();
         using var serialized = new SerializedObject(fixture);
 
-        var configField = CreateField(serialized, nameof(AttributeFixture.config));
-        var configRoot = configField.Children.Single();
-        Assert(configRoot.style.display == DisplayStyle.None, "ShowIf did not initially hide the property.");
-        Assert(configField.Q<TextField>() is { enabledInHierarchy: false }, "ReadOnly did not disable the field.");
-        Assert(configField.DescendantsAndSelf().OfType<HelpBox>().Any(box => box.messageType == MessageType.Error),
-            "Required did not create an error HelpBox.");
+        var config = Find(serialized, nameof(AttributeFixture.config));
+        Assert(EditorGUI.GetPropertyHeight(config) == 0, "ShowIf did not initially hide the property.");
 
         serialized.FindProperty(nameof(AttributeFixture.advanced))!.boolValue = true;
-        Assert(configRoot.style.display == DisplayStyle.Flex, "ShowIf did not react to SerializedObject changes.");
+        Assert(EditorGUI.GetPropertyHeight(config) > 0, "ShowIf did not react to SerializedObject changes.");
+        GUI.enabled = true;
+        var configCommands = Render(() => EditorGUI.PropertyField(new Rect(0, 0, 420, 80), config));
+        Assert(GUI.enabled, "ReadOnly leaked its disabled state into following controls.");
+        Assert(configCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                             command.Content.Contains("Configuration is required",
+                                                 StringComparison.Ordinal)),
+            "Required did not render an error HelpBox.");
 
-        var passwordField = CreateField(serialized, nameof(AttributeFixture.password));
-        Assert(passwordField.Q<TextField>() is { isPasswordField: true, maskCharacter: '#' },
-            "Password did not configure the retained TextField.");
+        var passwordCommands = Render(() => EditorGUI.PropertyField(new Rect(0, 0, 420, 20),
+            Find(serialized, nameof(AttributeFixture.password))));
+        Assert(passwordCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                               command.Content == "######") &&
+               passwordCommands.All(command => command.Content != fixture.password),
+            "Password did not mask the IMGUI text field.");
 
-        var speedField = CreateField(serialized, nameof(AttributeFixture.speed));
-        Assert(speedField.Q<Slider>() is not null, "Range did not compose with the extension drawer.");
-        serialized.FindProperty(nameof(AttributeFixture.speed))!.doubleValue = 99;
+        var speed = Find(serialized, nameof(AttributeFixture.speed));
+        speed.doubleValue = 99;
+        var speedCommands = Render(() => EditorGUI.PropertyField(new Rect(0, 0, 420, 20), speed));
+        Assert(speedCommands.Count(command => command.Type == GpuCanvasCommandType.SolidRect) >= 2,
+            "Range did not render an IMGUI slider.");
         Assert(Math.Abs(serialized.FindProperty(nameof(AttributeFixture.speed))!.doubleValue - 8) < 0.001,
             "Clamp did not constrain a SerializedProperty change.");
 
-        var healthField = CreateField(serialized, nameof(AttributeFixture.health));
-        Assert(healthField.Q<BEngine.UIElements.ProgressBar>() is not null,
-            "ProgressBar did not create a retained progress control.");
-        Assert(healthField.Q<Slider>() is not null, "Editable ProgressBar did not create its slider.");
+        var healthCommands = Render(() => EditorGUI.PropertyField(new Rect(0, 0, 420, 20),
+            Find(serialized, nameof(AttributeFixture.health))));
+        Assert(healthCommands.Count(command => command.Type == GpuCanvasCommandType.SolidRect) >= 3 &&
+               healthCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                             command.Content == "Health"),
+            "ProgressBar did not render its fill, title, and editable slider.");
     }
 
-    private static PropertyField CreateField(SerializedObject serialized, string name) =>
-        new(serialized.FindProperty(name) ?? throw new InvalidOperationException($"Missing property '{name}'."));
+    private static SerializedProperty Find(SerializedObject serialized, string name) =>
+        serialized.FindProperty(name) ?? throw new InvalidOperationException($"Missing property '{name}'.");
+
+    private static List<GpuCanvasCommand> Render(Action draw)
+    {
+        var commands = new List<GpuCanvasCommand>();
+        BeginFrame.Invoke(null, [new Event(EventType.Repaint), 480, 120, commands]);
+        try { draw(); }
+        finally { EndFrame.Invoke(null, null); }
+        return commands;
+    }
 
     private static void RegisterEditorResources()
     {

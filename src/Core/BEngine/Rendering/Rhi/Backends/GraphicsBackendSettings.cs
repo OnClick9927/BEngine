@@ -2,7 +2,6 @@ namespace BEngine.Rendering.Rhi;
 
 public static class GraphicsBackendSettings
 {
-    private static readonly object Sync = new();
     private static GraphicsBackend _preferredBackend = GraphicsBackendDefaults.Default;
     private static GraphicsBackend _activeBackend = GraphicsBackendDefaults.Default;
     private static bool _hasActiveDevice;
@@ -18,16 +17,13 @@ public static class GraphicsBackendSettings
     internal static void ReportActive(GraphicsDeviceCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
-        lock (Sync)
-        {
-            if (_hasActiveDevice && _activeBackend == PreferredBackend &&
-                capabilities.Backend != PreferredBackend) return;
-            _activeBackend = capabilities.Backend;
-            _hasActiveDevice = true;
-            SystemInfo.graphicsDeviceType = capabilities.Backend.ToString();
-            SystemInfo.graphicsDeviceName = capabilities.DeviceName;
-            SystemInfo.graphicsDeviceVersion = capabilities.ApiVersion;
-            SystemInfo.supportsComputeShaders = false;
-        }
+        if (_hasActiveDevice && _activeBackend == PreferredBackend &&
+            capabilities.Backend != PreferredBackend) return;
+        _activeBackend = capabilities.Backend;
+        _hasActiveDevice = true;
+        SystemInfo.graphicsDeviceType = capabilities.Backend.ToString();
+        SystemInfo.graphicsDeviceName = capabilities.DeviceName;
+        SystemInfo.graphicsDeviceVersion = capabilities.ApiVersion;
+        SystemInfo.supportsComputeShaders = false;
     }
 }

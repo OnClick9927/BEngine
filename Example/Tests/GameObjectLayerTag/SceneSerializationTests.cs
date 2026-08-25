@@ -55,7 +55,7 @@ internal static class SceneSerializationTests
             }
             finally
             {
-                if (restored.world.IsCreated) restored.world.Dispose();
+                if (restored.isCreated) restored.Dispose();
             }
 
             var projectSettings = new ProjectSettingsDocument
@@ -78,7 +78,7 @@ internal static class SceneSerializationTests
         }
         finally
         {
-            if (source.world.IsCreated) source.world.Dispose();
+            if (source.isCreated) source.Dispose();
         }
     }
 }

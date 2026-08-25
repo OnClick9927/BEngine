@@ -13,7 +13,7 @@ ValidateArchives(repositoryRoot);
 Console.WriteLine(
     "PACKAGE_EXAMPLES_OK|default-project-empty,on-demand-import,partial-repair,reimport-preserve," +
     "reimport-overwrite," +
-    "no-duplicate-import,readme,scene,asmdef,tools-menuitems");
+    "no-duplicate-import,readme,scene,asmdef,tools-menuitems,core-no-ecs");
 
 static void ValidateDefaultProject(string repositoryRoot)
 {
@@ -31,19 +31,28 @@ static void ValidateDefaultProject(string repositoryRoot)
 
 static void ValidateArchives(string repositoryRoot)
 {
-    var modules = new[]
-    {
-        "Core", "Animation", "Navigation2D", "Physics2D", "PropertyAttributes", "TiledMap", "UIElements"
-    };
+    (string Name, string[] ExpectedArchives)[] modules =
+    [
+        ("Core", ["CoreGettingStarted.bpackage"]),
+        ("Animation", ["AnimationGettingStarted.bpackage", "StateMachine.bpackage"]),
+        ("Navigation2D", ["DynamicRebake.bpackage", "NavigationSurfaceAndAgent.bpackage"]),
+        ("Physics2D", ["RigidbodyAndQueries.bpackage", "TriggersAndQueries.bpackage"]),
+        ("PropertyAttributes", ["AttributesGallery.bpackage", "InspectorAttributesAndDrawer.bpackage"]),
+        ("TiledMap", ["AtlasPalette.bpackage", "RuntimePainting.bpackage"]),
+        ("UIElements", ["ControlsGallery.bpackage", "RuntimeHud.bpackage"])
+    ];
     var temporaryRoot = Path.Combine(Path.GetTempPath(), $"BEngine.PackageExamples.{Guid.NewGuid():N}");
     try
     {
         foreach (var module in modules)
         {
-            var examplesDirectory = Path.Combine(repositoryRoot, "src", module, "EditorResources", "Examples");
+            var examplesDirectory = Path.Combine(repositoryRoot, "src", module.Name, "EditorResources", "Examples");
             var archives = Directory.EnumerateFiles(examplesDirectory, "*.bpackage", SearchOption.TopDirectoryOnly)
                 .OrderBy(path => path, StringComparer.Ordinal).ToArray();
-            Require(archives.Length >= 2, $"{module} must provide at least two importable examples.");
+            Require(archives.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    .SetEquals(module.ExpectedArchives),
+                $"{module.Name} importable examples do not match the expected package examples: " +
+                string.Join(", ", module.ExpectedArchives));
 
             foreach (var archive in archives)
             {
@@ -69,9 +78,9 @@ static void ValidateArchives(string repositoryRoot)
                 Require(manifest.Entries.Any(entry => entry.RelativePath.Equals("res", StringComparison.Ordinal)),
                     $"{Path.GetFileName(archive)} is missing its res directory.");
 
-                var importRoot = Path.Combine(temporaryRoot, module, Path.GetFileNameWithoutExtension(archive));
+                var importRoot = Path.Combine(temporaryRoot, module.Name, Path.GetFileNameWithoutExtension(archive));
                 var workspace = ProjectWorkspaceFactory.Create(importRoot, "Package Example");
-                var installationId = $"tests.package-example.{module}.{exampleName}";
+                var installationId = $"tests.package-example.{module.Name}.{exampleName}";
                 var result = BPackageArchive.ImportPackage(workspace, archive,
                     new BPackageImportOptions
                     {
@@ -95,6 +104,9 @@ static void ValidateArchives(string repositoryRoot)
                         entry.RelativePath.Replace('/', Path.DirectorySeparatorChar));
                     Require(File.Exists(importedPath), $"Imported asset is missing: {entry.RelativePath}");
                 }
+
+                if (module.Name.Equals("Core", StringComparison.Ordinal))
+                    ValidateCoreExample(workspace, importPath, manifest);
 
                 foreach (var sourcePath in Directory.EnumerateFiles(workspace.AssetsPath, "*.cs", SearchOption.AllDirectories))
                 {
@@ -121,6 +133,40 @@ static void ValidateArchives(string repositoryRoot)
         {
             // Script compilation or antivirus scanners may briefly retain generated files.
         }
+    }
+}
+
+static void ValidateCoreExample(
+    ProjectWorkspace workspace,
+    string importPath,
+    BPackageManifest manifest)
+{
+    Require(!Regex.IsMatch(manifest.Description, @"\bECS\b", RegexOptions.IgnoreCase),
+        "CoreGettingStarted description must not advertise ECS support.");
+    Require(manifest.Entries.All(entry =>
+            !entry.RelativePath.Contains("Ecs", StringComparison.OrdinalIgnoreCase)),
+        "CoreGettingStarted must not contain ECS source files.");
+
+    var destination = Path.Combine(workspace.AssetsPath,
+        importPath.Replace('/', Path.DirectorySeparatorChar));
+    var runtimeExample = Path.Combine(destination, "runtime", "CoreRuntimeExample.cs");
+    var scene = Path.Combine(destination, "res", "Core.scene.yaml");
+    Require(File.ReadAllText(runtimeExample).Contains("MonoBehaviour", StringComparison.Ordinal),
+        "CoreGettingStarted must demonstrate MonoBehaviour runtime behaviour.");
+    Require(File.ReadAllText(scene).Contains("BEngine.Examples.Core.CoreRuntimeExample", StringComparison.Ordinal),
+        "CoreGettingStarted scene must reference its MonoBehaviour component.");
+
+    foreach (var entry in manifest.Entries.Where(entry => !entry.IsDirectory &&
+                 (entry.RelativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ||
+                  entry.RelativePath.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
+                  entry.RelativePath.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase))))
+    {
+        var path = Path.Combine(destination, entry.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+        var content = File.ReadAllText(path);
+        Require(!content.Contains("BEngine.Entities", StringComparison.Ordinal) &&
+                !content.Contains("CoreEcs", StringComparison.OrdinalIgnoreCase) &&
+                !Regex.IsMatch(content, @"\bECS\b", RegexOptions.IgnoreCase),
+            $"CoreGettingStarted still contains ECS content: {entry.RelativePath}");
     }
 }
 

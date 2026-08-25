@@ -5,7 +5,7 @@ namespace BEngine.Editor;
 public static class EditorApplication
 {
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
-    private static readonly object DelayCallGate = new();
+    private static readonly Lock DelayCallGate = new();
     private static Action? _delayCall;
     private static int _reloadLockCount;
     private static bool _reloadRequested;
@@ -26,7 +26,8 @@ public static class EditorApplication
     public static bool isCompiling { get; internal set; }
     public static bool isUpdating { get; internal set; }
     public static bool isAssemblyReloadLocked => Volatile.Read(ref _reloadLockCount) > 0;
-    public static bool isPlayingOrWillChangePlaymode => isPlaying;
+    public static bool isPlayingOrWillChangePlaymode =>
+        EditorBridge.Host is { } host && (host.IsPlaying || host.IsChangingPlayMode);
     public static bool isPlaying
     {
         get => EditorBridge.Host?.IsPlaying ?? false;

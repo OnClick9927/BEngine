@@ -28,6 +28,11 @@ public sealed class EngineRenderer : IDisposable
     public void Clear(NVector4 color, int width, int height) =>
         _renderer.FillViewport(new GraphicsRect(0, 0, Math.Max(1, width), Math.Max(1, height)), color);
 
+    public void RenderCameras(IReadOnlyList<Scene> scenes, Scene activeScene,
+        IReadOnlyList<Camera2D> cameras, int width, int height, bool drawUi = true) =>
+        _renderer.RenderCameras(scenes, activeScene, cameras,
+            new GraphicsRect(0, 0, Math.Max(1, width), Math.Max(1, height)), drawUi);
+
     public static RenderCamera ResolveGameCamera(Scene scene) =>
         TryResolveGameCamera(scene, out var camera) ? camera : RenderCamera.Default;
 
@@ -57,8 +62,8 @@ public sealed class EngineRenderer : IDisposable
         }
         cameras.Sort(static (left, right) =>
         {
-            var depth = left.Camera.depth.CompareTo(right.Camera.depth);
-            return depth != 0 ? depth : left.Sequence.CompareTo(right.Sequence);
+            var priority = left.Camera.priority.CompareTo(right.Camera.priority);
+            return priority != 0 ? priority : left.Sequence.CompareTo(right.Sequence);
         });
         return cameras.Select(item => item.Camera).ToArray();
     }

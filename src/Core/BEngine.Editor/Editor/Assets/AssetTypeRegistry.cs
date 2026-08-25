@@ -2,7 +2,7 @@ namespace BEngine.Editor;
 
 public static class AssetTypeRegistry
 {
-    private static readonly object Sync = new();
+    private static readonly Lock Sync = new();
     private static readonly Dictionary<string, Registration> Types =
         new(StringComparer.OrdinalIgnoreCase);
 

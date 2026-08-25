@@ -202,13 +202,15 @@ internal static class PackageSourceCompiler
         var instance = EditorInstanceContext.current;
         var scriptAssembliesRoot = instance?.scriptAssembliesPath ?? workspace.ScriptAssembliesPath;
         var outputDirectory = Path.Combine(
-            ScriptAssemblyStore.GetAssemblyRoot(scriptAssembliesRoot, node.Assembly.Assembly), buildId);
+            ScriptAssemblyStore.GetAssemblyRoot(scriptAssembliesRoot, node.Assembly.Assembly),
+            PhysicalBuildId(buildId));
         var assemblyPath = Path.Combine(outputDirectory, $"{node.Assembly.Assembly}.dll");
 
         if (!File.Exists(assemblyPath) && instance is not null)
         {
             var sharedDirectory = Path.Combine(
-                ScriptAssemblyStore.GetAssemblyRoot(workspace, node.Assembly.Assembly), buildId);
+                ScriptAssemblyStore.GetAssemblyRoot(workspace, node.Assembly.Assembly),
+                PhysicalBuildId(buildId));
             var sharedAssembly = Path.Combine(sharedDirectory, $"{node.Assembly.Assembly}.dll");
             if (File.Exists(sharedAssembly)) CopyDirectory(sharedDirectory, outputDirectory);
         }
@@ -233,7 +235,7 @@ internal static class PackageSourceCompiler
         var instance = EditorInstanceContext.current;
         var temporaryRoot = instance?.tempPath ?? workspace.TempPath;
         var logsRoot = instance?.logsPath ?? workspace.LogsPath;
-        var buildDirectory = Path.Combine(temporaryRoot, "PackageBuild", node.Assembly.Assembly, buildId);
+        var buildDirectory = Path.Combine(temporaryRoot, "PackageBuild", PhysicalBuildId(buildId));
         Directory.CreateDirectory(buildDirectory);
         Directory.CreateDirectory(outputDirectory);
         Directory.CreateDirectory(logsRoot);
@@ -300,8 +302,8 @@ internal static class PackageSourceCompiler
         IReadOnlyDictionary<string, string> references)
     {
         var propertyGroup = new XElement("PropertyGroup",
-            new XElement("TargetFramework", node.Kind == "editor" ? "net9.0-windows" : "net9.0"),
-            new XElement("LangVersion", "13.0"),
+            new XElement("TargetFramework", node.Kind == "editor" ? "net10.0-windows" : "net10.0"),
+            new XElement("LangVersion", "14.0"),
             new XElement("Nullable", "enable"),
             new XElement("ImplicitUsings", "enable"),
             new XElement("EnableDefaultCompileItems", "false"),
@@ -372,7 +374,8 @@ internal static class PackageSourceCompiler
         string sourceDirectory)
     {
         if (EditorInstanceContext.current is null) return;
-        var destination = Path.Combine(ScriptAssemblyStore.GetAssemblyRoot(workspace, assemblyName), buildId);
+        var destination = Path.Combine(ScriptAssemblyStore.GetAssemblyRoot(workspace, assemblyName),
+            PhysicalBuildId(buildId));
         if (!File.Exists(Path.Combine(destination, $"{assemblyName}.dll")))
             CopyDirectory(sourceDirectory, destination);
         var assemblyPath = Path.Combine(destination, $"{assemblyName}.dll");
@@ -411,7 +414,7 @@ internal static class PackageSourceCompiler
         CompilationNode node,
         string outputDirectory)
     {
-        var targetFramework = node.Kind == "editor" ? "net9.0-windows" : "net9.0";
+        var targetFramework = node.Kind == "editor" ? "net10.0-windows" : "net10.0";
         var intermediateRoot = Path.Combine(buildDirectory, "obj", "Debug", targetFramework);
         var intermediateAssembly = Path.Combine(intermediateRoot, $"{node.Assembly.Assembly}.dll");
         var deadline = Environment.TickCount64 + 5_000;
@@ -500,6 +503,8 @@ internal static class PackageSourceCompiler
     }
 
     private static string Key(string packageId, string kind) => $"{packageId}\0{kind}";
+
+    private static string PhysicalBuildId(string buildId) => buildId[..24];
 
     private static string Sanitize(string value) => string.Concat(value.Select(character =>
         Path.GetInvalidFileNameChars().Contains(character) ? '_' : character));

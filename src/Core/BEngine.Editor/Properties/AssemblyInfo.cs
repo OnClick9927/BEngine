@@ -9,3 +9,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.TreeViewDragRename")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.ProjectPackageCache")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.ThreadingArchitecture")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.EditorSettingsWindows")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.GameViewResolution")]

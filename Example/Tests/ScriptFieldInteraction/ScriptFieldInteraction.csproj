@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>BEngine.ExampleTests.ScriptFieldInteraction</RootNamespace>
     <AssemblyName>BEngine.ExampleTests.ScriptFieldInteraction</AssemblyName>
@@ -10,5 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
     <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../../src/UIElements/BEngine.UIElements/BEngine.UIElements.csproj" />
   </ItemGroup>
 </Project>

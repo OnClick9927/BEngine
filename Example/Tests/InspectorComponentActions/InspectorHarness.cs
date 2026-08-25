@@ -112,7 +112,7 @@ internal sealed class InspectorHarness : IDisposable
     {
         try { CloseWindow.Invoke(_window, null); }
         catch (TargetInvocationException) { }
-        if (_fallbackScene.world.IsCreated) _fallbackScene.world.Dispose();
+        if (_fallbackScene.isCreated) _fallbackScene.Dispose();
         GUIUtility.hotControl = 0;
         GUIUtility.keyboardControl = 0;
     }

@@ -9,7 +9,7 @@ namespace BEngine.Editor;
 /// </summary>
 public static class EditorReflectionCache
 {
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static readonly Dictionary<MemberKey, Func<object, object?>> Getters = [];
     private static readonly Dictionary<MemberKey, PredicateInvoker[]> Predicates = [];
     private static readonly Dictionary<MemberKey, ActionInvoker[]> Actions = [];

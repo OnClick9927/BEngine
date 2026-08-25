@@ -163,7 +163,7 @@ internal sealed class EditorKeyboardHarness : IDisposable
             try { Invoke(window, "CloseInternal"); }
             catch (TargetInvocationException) { }
         }
-        if (Scene.world.IsCreated) Scene.world.Dispose();
+        if (Scene.isCreated) Scene.Dispose();
         _packages.Dispose();
         try { ((IDisposable)_nativeWindow).Dispose(); }
         catch (InvalidOperationException) { }

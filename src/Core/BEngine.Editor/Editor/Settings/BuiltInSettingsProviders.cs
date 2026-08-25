@@ -62,14 +62,6 @@ internal static class BuiltInSettingsProviders
     };
 
     [SettingsProvider]
-    private static SettingsProvider EditorProjectProvider() => new("Project/Editor", SettingsScope.Project,
-        ["locale", "language", "本地化", "语言"])
-    {
-        label = EditorLocalization.Tr("Editor"),
-        guiHandler = _ => DrawProjectEditorSettings()
-    };
-
-    [SettingsProvider]
     private static SettingsProvider ScriptingProjectSettings() => new("Project/Scripting", SettingsScope.Project,
         ["assembly", "define", "symbol", "script", "程序集", "宏", "脚本"])
     {
@@ -130,16 +122,6 @@ internal static class BuiltInSettingsProviders
         EditorGUILayout.HelpBox(EditorLocalization.Tr("Restart renderer"), MessageType.Info);
         if (next == backend) return;
         value.GraphicsBackend = Backends[next];
-        EditorProjectSettings.Save();
-    }
-
-    private static void DrawProjectEditorSettings()
-    {
-        var value = EditorProjectSettings.current;
-        var locale = Math.Max(0, Array.IndexOf(LocaleValues, value.Locale));
-        var next = EditorGUILayout.Popup(EditorLocalization.Tr("Language"), locale, Locales);
-        if (next == locale) return;
-        value.Locale = LocaleValues[next];
         EditorProjectSettings.Save();
     }
 

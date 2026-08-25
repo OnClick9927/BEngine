@@ -38,7 +38,7 @@ internal static class Program
                 EditorUtility.ClearProgressBar();
             }
 
-            Console.WriteLine("EDITOR_PROGRESS_OK|visible,clamp,cancel-request,clear,event,gpu-startup-window");
+            Console.WriteLine("EDITOR_PROGRESS_OK|visible,clamp,cancel-request,clear,event,imgui-startup-window");
             return 0;
         }
         catch (Exception exception)
@@ -57,11 +57,17 @@ internal static class Program
             "GPU startup progress window must have deterministic lifetime management.");
         Assert(startupWindow.GetMethod("Show", BindingFlags.Static | BindingFlags.Public) is not null,
             "GPU startup progress window does not expose its startup entry point.");
+        Assert(startupWindow.GetMethod("Complete", BindingFlags.Instance | BindingFlags.Public) is not null,
+            "GPU startup progress window does not expose first-frame completion.");
 
-        var nativeWindow = assembly.GetType("BEngine.UIElements.Editor.GpuNativeWindow") ??
-                           throw new InvalidOperationException("GPU native window was not found.");
+        var nativeWindow = assembly.GetType("BEngine.Editor.ImGuiNativeWindow") ??
+                           throw new InvalidOperationException("IMGUI native window was not found.");
+        Assert(typeof(IDisposable).IsAssignableFrom(nativeWindow),
+            "IMGUI native window must have deterministic lifetime management.");
         Assert(nativeWindow.GetEvent("firstFrameRendered", BindingFlags.Instance | BindingFlags.Public) is not null,
-            "GPU native window does not expose first-frame completion.");
+            "IMGUI native window does not expose first-frame completion.");
+        Assert(startupWindow.GetField("_window", BindingFlags.Instance | BindingFlags.NonPublic)?.FieldType ==
+               nativeWindow, "Startup progress is not hosted by the current IMGUI native window.");
 
         var editorApplication = assembly.GetType("BEngine.Editor.GpuEditorApplication") ??
                                 throw new InvalidOperationException("GPU editor application was not found.");

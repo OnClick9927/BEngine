@@ -9,66 +9,61 @@ public static class Screen
 
     public static int width
     {
-        get { MainThreadGuard.Ensure(); return _currentResolution.width; }
+        get { return _currentResolution.width; }
     }
     public static int height
     {
-        get { MainThreadGuard.Ensure(); return _currentResolution.height; }
+        get { return _currentResolution.height; }
     }
     public static Resolution currentResolution
     {
-        get { MainThreadGuard.Ensure(); return _currentResolution; }
+        get { return _currentResolution; }
     }
     public static Resolution[] resolutions
     {
-        get { MainThreadGuard.Ensure(); return (Resolution[])_resolutions.Clone(); }
+        get { return (Resolution[])_resolutions.Clone(); }
         internal set => _resolutions = value is null ? [] : (Resolution[])value.Clone();
     }
     public static Rect safeArea
     {
         get
         {
-            MainThreadGuard.Ensure();
             return new Rect(0, 0, _currentResolution.width, _currentResolution.height);
         }
     }
     public static bool fullScreen
     {
-        get { MainThreadGuard.Ensure(); return _fullScreenMode != FullScreenMode.Windowed; }
+        get { return _fullScreenMode != FullScreenMode.Windowed; }
         set
         {
-            MainThreadGuard.Ensure();
             _fullScreenMode = value ? FullScreenMode.FullScreenWindow : FullScreenMode.Windowed;
         }
     }
     public static FullScreenMode fullScreenMode
     {
-        get { MainThreadGuard.Ensure(); return _fullScreenMode; }
-        set { MainThreadGuard.Ensure(); _fullScreenMode = value; }
+        get { return _fullScreenMode; }
+        set { _fullScreenMode = value; }
     }
     [Obsolete("Use Cursor.lockState instead.")]
     public static bool lockCursor
     {
         get
         {
-            MainThreadGuard.Ensure();
             return Cursor.GetLockStateUnchecked() == CursorLockMode.Locked;
         }
         set
         {
-            MainThreadGuard.Ensure();
             Cursor.SetLockStateUnchecked(value ? CursorLockMode.Locked : CursorLockMode.None);
         }
     }
     public static Fix64 dpi
     {
-        get { MainThreadGuard.Ensure(); return _dpi; }
+        get { return _dpi; }
         internal set => _dpi = value;
     }
 
     public static void SetResolution(int width, int height, bool fullscreen, int preferredRefreshRate = 60)
     {
-        MainThreadGuard.Ensure();
         SetResolutionCore(width, height,
             fullscreen ? FullScreenMode.FullScreenWindow : FullScreenMode.Windowed, preferredRefreshRate);
     }
@@ -76,7 +71,6 @@ public static class Screen
     public static void SetResolution(int width, int height, FullScreenMode fullscreenMode,
         int preferredRefreshRate = 60)
     {
-        MainThreadGuard.Ensure();
         SetResolutionCore(width, height, fullscreenMode, preferredRefreshRate);
     }
 

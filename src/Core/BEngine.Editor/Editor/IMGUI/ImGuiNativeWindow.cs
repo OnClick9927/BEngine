@@ -18,6 +18,8 @@ namespace BEngine.Editor;
 internal sealed class ImGuiNativeWindow : IDisposable
 {
     private readonly IWindow _window;
+    private readonly GraphicsBackend _requestedBackend;
+    private readonly bool _vsync;
     private readonly ConcurrentQueue<BEvent> _events = new();
     private readonly List<GpuCanvasCommand> _commands = [];
     private IInputContext? _input;
@@ -43,7 +45,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
     public event Action<bool>? focusChanged;
     public Action<IGraphicsDevice, int, int>? renderBackground { get; set; }
     public bool isClosing => _window.IsClosing;
-    public GraphicsBackend backend => _device?.Backend ?? GraphicsBackendSettings.PreferredBackend;
+    public GraphicsBackend backend => _device?.Backend ?? _requestedBackend;
     public int width => Math.Max(1, _window.FramebufferSize.X);
     public int height => Math.Max(1, _window.FramebufferSize.Y);
     public Fix64 renderScale { get; private set; } = Fix64.One;
@@ -54,18 +56,26 @@ internal sealed class ImGuiNativeWindow : IDisposable
     public bool leftMouseButtonPressed => OperatingSystem.IsWindows()
         ? (GetAsyncKeyState(0x01) & 0x8000) != 0
         : _primaryMouse?.IsButtonPressed(MouseButton.Left) == true;
+    private bool anyNavigationMouseButtonPressed => OperatingSystem.IsWindows()
+        ? (GetAsyncKeyState(0x01) & 0x8000) != 0 ||
+          (GetAsyncKeyState(0x02) & 0x8000) != 0 ||
+          (GetAsyncKeyState(0x04) & 0x8000) != 0
+        : _primaryMouse?.IsButtonPressed(MouseButton.Left) == true ||
+          _primaryMouse?.IsButtonPressed(MouseButton.Right) == true ||
+          _primaryMouse?.IsButtonPressed(MouseButton.Middle) == true;
 
     public ImGuiNativeWindow(string title, int width, int height, bool visible = true)
     {
+        _requestedBackend = ResolveWindowBackend(GraphicsBackendSettings.PreferredBackend);
+        _vsync = true;
         var options = WindowOptions.Default;
         options.Title = title;
         options.Size = new Vector2D<int>(Math.Max(320, width), Math.Max(200, height));
-        options.VSync = true;
+        options.VSync = _vsync;
         options.ShouldSwapAutomatically = false;
         options.IsVisible = visible;
         options.WindowBorder = WindowBorder.Resizable;
-        options.API = new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core,
-            ContextFlags.ForwardCompatible, new APIVersion(3, 3));
+        options.API = WindowApiForBackend(_requestedBackend);
         _window = Window.Create(options);
         _window.Load += OnLoad;
         _window.Update += OnUpdate;
@@ -165,7 +175,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
 
     private void CreateDevice()
     {
-        if (GraphicsBackendSettings.PreferredBackend == GraphicsBackend.Vulkan)
+        if (_requestedBackend == GraphicsBackend.Vulkan)
         {
             try
             {
@@ -173,20 +183,43 @@ internal sealed class ImGuiNativeWindow : IDisposable
                     throw new PlatformNotSupportedException("Vulkan editor windows require Win32.");
                 var factory = new GraphicsDeviceFactory();
                 factory.RegisterProvider(new VulkanGraphicsDeviceProvider(native.Hwnd, native.HInstance,
-                    width, height, _window.VSync));
+                    width, height, _vsync));
                 _device = factory.CreateDevice(GraphicsBackend.Vulkan);
                 _presentation = (IGraphicsPresentationDevice)_device;
                 return;
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"Vulkan IMGUI window failed; using OpenGL: {exception.Message}");
                 _device?.Dispose(); _device = null; _presentation = null;
+                throw new InvalidOperationException("Vulkan IMGUI window initialization failed.", exception);
             }
         }
         _gl = GL.GetApi(_window);
         _device = new OpenGlGraphicsDevice(_gl);
     }
+
+    private static GraphicsBackend ResolveWindowBackend(GraphicsBackend preferred)
+    {
+        if (preferred != GraphicsBackend.Vulkan) return GraphicsBackend.OpenGL;
+        try
+        {
+            if (Veldrid.GraphicsDevice.IsBackendSupported(Veldrid.GraphicsBackend.Vulkan))
+                return GraphicsBackend.Vulkan;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning($"Vulkan support could not be queried; using OpenGL: {exception.Message}");
+            return GraphicsBackend.OpenGL;
+        }
+        Debug.LogWarning("Vulkan is unavailable; using OpenGL for the editor window.");
+        return GraphicsBackend.OpenGL;
+    }
+
+    private static GraphicsAPI WindowApiForBackend(GraphicsBackend backend) =>
+        backend == GraphicsBackend.Vulkan
+            ? GraphicsAPI.None
+            : new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core,
+                ContextFlags.ForwardCompatible, new APIVersion(3, 3));
 
     private void OnUpdate(double delta) =>
         EditorCallbackDispatcher.Invoke(updating, delta, nameof(updating));
@@ -293,6 +326,8 @@ internal sealed class ImGuiNativeWindow : IDisposable
     {
         _lastMousePosition = _mousePosition;
         _mousePosition = new BVector2((Fix64)position.X, (Fix64)position.Y);
+        if (GUIUtility.hotControl != 0 && !anyNavigationMouseButtonPressed)
+            GUIUtility.hotControl = 0;
         var type = GUIUtility.hotControl == 0 ? EventType.MouseMove : EventType.MouseDrag;
         Enqueue(new BEvent(type) { mousePosition = _mousePosition,
             delta = _mousePosition - _lastMousePosition, modifiers = _modifiers,

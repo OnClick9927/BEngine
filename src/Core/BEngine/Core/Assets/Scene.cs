@@ -1,66 +1,59 @@
-using BEngine.Entities;
+using BEngine.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BEngine;
 
-public sealed class Scene : BAsset
+public sealed class Scene : BAsset, IDisposable
 {
     private readonly List<GameObject> _gameObjects = [];
-    private readonly ThreadGuardedReadOnlyList<GameObject> _gameObjectsView;
-    private readonly World _world;
+    private readonly IReadOnlyList<GameObject> _gameObjectsView;
+    private readonly IServiceScope? _serviceScope;
     private string _path = string.Empty;
     private bool _isLoaded = true;
+    private bool _disposed;
 
-    public IReadOnlyList<GameObject> gameObjects
-    {
-        get
-        {
-            MainThreadGuard.Ensure();
-            return _gameObjectsView;
-        }
-    }
-    public IEnumerable<GameObject> rootGameObjects
-    {
-        get
-        {
-            MainThreadGuard.Ensure();
-            return _gameObjects.Where(static item => item.TransformUnchecked.ParentUnchecked is null).ToArray();
-        }
-    }
+    public IReadOnlyList<GameObject> gameObjects => _gameObjectsView;
+    public IEnumerable<GameObject> rootGameObjects => GetRootGameObjects();
     public int rootCount
     {
         get
         {
-            MainThreadGuard.Ensure();
-            return _gameObjects.Count(static item => item.TransformUnchecked.ParentUnchecked is null);
+            var count = 0;
+            foreach (var gameObject in _gameObjects)
+                if (gameObject.TransformUnchecked.ParentUnchecked is null) count++;
+            return count;
         }
     }
     public string path
     {
-        get { MainThreadGuard.Ensure(); return _path; }
+        get => _path;
         internal set => _path = value;
     }
     public bool isLoaded
     {
-        get { MainThreadGuard.Ensure(); return _isLoaded; }
+        get => _isLoaded;
         internal set => _isLoaded = value;
     }
-    public World world
-    {
-        get { MainThreadGuard.Ensure(); return _world; }
-    }
+    public bool isCreated => !_disposed;
 
-    internal World WorldUnchecked => _world;
+    internal IServiceProvider Services { get; }
 
     public Scene(string name = "Untitled", IServiceProvider? services = null)
     {
-        _gameObjectsView = new ThreadGuardedReadOnlyList<GameObject>(_gameObjects);
+        _gameObjectsView = _gameObjects.AsReadOnly();
         this.name = name;
-        _world = new World($"{name} World", this, services);
+        if (services?.GetService(typeof(IServiceScopeFactory)) is IServiceScopeFactory scopeFactory)
+        {
+            _serviceScope = scopeFactory.CreateScope();
+            Services = _serviceScope.ServiceProvider;
+        }
+        else
+            Services = services ?? EmptyServiceProvider.Instance;
     }
 
     public GameObject CreateGameObject(string name = "GameObject")
     {
-        MainThreadGuard.Ensure();
+        ThrowIfDisposed();
         var gameObject = new GameObject(name);
         Add(gameObject);
         return gameObject;
@@ -68,48 +61,54 @@ public sealed class Scene : BAsset
 
     internal void Add(GameObject gameObject)
     {
-        MainThreadGuard.Ensure();
-        if (!_isLoaded || !_world.IsCreated)
+        ThrowIfDisposed();
+        if (!_isLoaded)
             throw new InvalidOperationException("GameObjects cannot be added to an unloaded Scene.");
         if (gameObject.SceneUnchecked is not null)
-        {
             throw new InvalidOperationException("GameObject already belongs to a Scene.");
-        }
 
-        var entity = _world.EntityManager.CreateEntity();
-        gameObject.BindToScene(this, entity);
+        if (IsRuntimeOnly)
+        {
+            gameObject.IsRuntimeOnly = true;
+            foreach (var component in gameObject.ComponentsSpanUnchecked)
+                component.IsRuntimeOnly = true;
+        }
+        gameObject.BindToScene(this);
         _gameObjects.Add(gameObject);
         SceneRuntime.NotifyGameObjectAdded(gameObject);
     }
 
     internal IReadOnlyList<GameObject> ReleaseAll()
     {
-        MainThreadGuard.Ensure();
         var released = _gameObjects.ToArray();
-        foreach (var gameObject in released)
-        {
-            var entity = gameObject.EntityUnchecked;
-            gameObject.UnbindFromScene();
-            _world.EntityManager.DestroyEntityImmediate(entity);
-        }
+        foreach (var gameObject in released) gameObject.UnbindFromScene();
         _gameObjects.Clear();
         return released;
     }
 
     public GameObject[] GetRootGameObjects()
     {
-        MainThreadGuard.Ensure();
-        return _gameObjects.Where(static item => item.TransformUnchecked.ParentUnchecked is null).ToArray();
+        var result = new GameObject[rootCount];
+        var index = 0;
+        foreach (var gameObject in _gameObjects)
+            if (gameObject.TransformUnchecked.ParentUnchecked is null) result[index++] = gameObject;
+        return result;
     }
 
-    internal void SetRootSiblingIndex(GameObject gameObject, int index)
-    {
-        MainThreadGuard.Ensure();
+    internal void SetRootSiblingIndex(GameObject gameObject, int index) =>
         SetRootSiblingIndexUnchecked(gameObject, index);
-    }
 
-    internal int RootIndexOfUnchecked(GameObject gameObject) =>
-        _gameObjects.Where(static item => item.TransformUnchecked.ParentUnchecked is null).ToList().IndexOf(gameObject);
+    internal int RootIndexOfUnchecked(GameObject gameObject)
+    {
+        var rootIndex = 0;
+        foreach (var candidate in _gameObjects)
+        {
+            if (candidate.TransformUnchecked.ParentUnchecked is not null) continue;
+            if (ReferenceEquals(candidate, gameObject)) return rootIndex;
+            rootIndex++;
+        }
+        return -1;
+    }
 
     internal void SetRootSiblingIndexUnchecked(GameObject gameObject, int index)
     {
@@ -126,7 +125,6 @@ public sealed class Scene : BAsset
 
     public static void MoveGameObjectToScene(GameObject gameObject, Scene destination)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(gameObject);
         ArgumentNullException.ThrowIfNull(destination);
         if (gameObject.SceneUnchecked is not { } source)
@@ -134,9 +132,9 @@ public sealed class Scene : BAsset
         if (ReferenceEquals(source, destination)) return;
         if (gameObject.TransformUnchecked.ParentUnchecked is not null)
             throw new InvalidOperationException("Only a root GameObject can be moved between Scenes.");
-        if (!source._world.IsCreated)
-            throw new ObjectDisposedException(nameof(source), "The source Scene has been unloaded.");
-        if (!destination._world.IsCreated || !destination._isLoaded)
+        source.ThrowIfDisposed();
+        destination.ThrowIfDisposed();
+        if (!destination._isLoaded)
             throw new InvalidOperationException("The destination Scene is not loaded.");
 
         var hierarchy = EnumerateHierarchy(gameObject).ToArray();
@@ -144,91 +142,80 @@ public sealed class Scene : BAsset
             hierarchy.Any(item => !source._gameObjects.Contains(item)))
             throw new InvalidOperationException("The GameObject hierarchy is not wholly owned by its source Scene.");
 
-        var oldEntities = hierarchy.Select(static item => item.EntityUnchecked).ToArray();
-        var newEntities = new Entity[hierarchy.Length];
-        var stagedCount = 0;
-        try
-        {
-            for (; stagedCount < hierarchy.Length; stagedCount++)
-                newEntities[stagedCount] = destination._world.EntityManager.CreateEntity();
-        }
-        catch
-        {
-            for (var index = 0; index < stagedCount; index++)
-                destination._world.EntityManager.DestroyEntityImmediate(newEntities[index]);
-            throw;
-        }
-
         SceneRuntime.NotifyGameObjectMoving(gameObject, source);
-        var boundCount = 0;
-        try
+        foreach (var item in hierarchy)
         {
-            foreach (var item in hierarchy) item.UnbindFromScene();
-            for (; boundCount < hierarchy.Length; boundCount++)
-                hierarchy[boundCount].BindToScene(destination, newEntities[boundCount]);
-
-            foreach (var item in hierarchy)
-            {
-                source._gameObjects.Remove(item);
-                destination._gameObjects.Add(item);
-            }
-            foreach (var entity in oldEntities)
-                source._world.EntityManager.DestroyEntityImmediate(entity);
+            source._gameObjects.Remove(item);
+            item.RestoreSceneBinding(destination);
+            destination._gameObjects.Add(item);
         }
-        catch
-        {
-            for (var index = 0; index < boundCount; index++) hierarchy[index].UnbindFromScene();
-            for (var index = 0; index < newEntities.Length; index++)
-                destination._world.EntityManager.DestroyEntityImmediate(newEntities[index]);
-            for (var index = 0; index < hierarchy.Length; index++)
-                hierarchy[index].RestoreSceneBinding(source, oldEntities[index]);
-            SceneRuntime.NotifyGameObjectMoved(gameObject, source);
-            throw;
-        }
-
         SceneRuntime.NotifyGameObjectMoved(gameObject, destination);
     }
 
     public GameObject? Find(string name)
     {
-        MainThreadGuard.Ensure();
-        return _gameObjects.FirstOrDefault(item => item.name == name);
+        foreach (var gameObject in _gameObjects)
+            if (gameObject.name == name) return gameObject;
+        return null;
     }
 
     public GameObject? Find(Guid id)
     {
-        MainThreadGuard.Ensure();
-        return _gameObjects.FirstOrDefault(item => item.Id == id);
+        foreach (var gameObject in _gameObjects)
+            if (gameObject.Id == id) return gameObject;
+        return null;
     }
 
-    public ManagedComponentQuery<T> QueryComponents<T>() where T : class
+    public IReadOnlyList<T> QueryComponents<T>() where T : class
     {
-        MainThreadGuard.Ensure();
-        return _world.EntityManager.QueryManagedComponents<T>();
+        var result = new List<T>();
+        foreach (var gameObject in _gameObjects)
+            foreach (var component in gameObject.ComponentsSpanUnchecked)
+                if (component is T typed) result.Add(typed);
+        return result.Count == 0 ? [] : [.. result];
+    }
+
+    internal bool Contains(GameObject gameObject) => _gameObjects.Contains(gameObject);
+
+    internal void MarkRuntimeOnly()
+    {
+        IsRuntimeOnly = true;
+        foreach (var gameObject in _gameObjects)
+        {
+            gameObject.IsRuntimeOnly = true;
+            foreach (var component in gameObject.ComponentsSpanUnchecked)
+                component.IsRuntimeOnly = true;
+        }
     }
 
     public bool Destroy(GameObject gameObject)
     {
-        MainThreadGuard.Ensure();
-        if (!_gameObjects.Contains(gameObject))
-        {
-            return false;
-        }
+        if (!_gameObjects.Contains(gameObject)) return false;
 
         foreach (var child in gameObject.TransformUnchecked.ChildrenUnchecked.ToArray())
-        {
             Destroy(child.GameObjectUnchecked);
-        }
-
         foreach (var behaviour in gameObject.GetComponents<MonoBehaviour>())
             SceneRuntime.NotifyComponentDestroying(behaviour);
 
-        var entity = gameObject.EntityUnchecked;
         gameObject.UnbindFromScene();
         gameObject.TransformUnchecked.SetParent(null, false);
-        var removed = _gameObjects.Remove(gameObject);
-        _world.EntityManager.DestroyEntityImmediate(entity);
-        return removed;
+        return _gameObjects.Remove(gameObject);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        SceneRuntime.StopRunningScene(this);
+        foreach (var root in rootGameObjects.ToArray()) Destroy(root);
+        _gameObjects.Clear();
+        _serviceScope?.Dispose();
+        _isLoaded = false;
+        _disposed = true;
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(Scene), "The Scene has been unloaded.");
     }
 
     private static IEnumerable<GameObject> EnumerateHierarchy(GameObject root)

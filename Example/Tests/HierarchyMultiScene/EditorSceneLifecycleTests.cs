@@ -55,7 +55,7 @@ internal static class EditorSceneLifecycleTests
             TestAssert.Require(ReferenceEquals(single, loadedAgain) && EditorSceneManager.sceneCount == 1 &&
                                ReferenceEquals(EditorSceneManager.activeScene, loadedAgain),
                 "Single editor loading did not leave exactly the requested Scene active.");
-            TestAssert.Require(!first.isLoaded && !first.world.IsCreated,
+            TestAssert.Require(!first.isLoaded && !first.isCreated,
                 "A Scene replaced by Single mode still reports itself as loaded.");
 
             TestAssert.Require(opened.Any(item => item.Mode == OpenSceneMode.Additive) &&

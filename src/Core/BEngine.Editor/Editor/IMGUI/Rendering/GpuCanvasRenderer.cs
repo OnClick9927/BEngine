@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
 using BEngine.Rendering.Rhi;
@@ -9,6 +10,7 @@ namespace BEngine.Editor.Rendering;
 public sealed class GpuCanvasRenderer : IDisposable
 {
     private const int MaximumRasterizedTextWidth = 2046;
+    private const int MaximumAssetPreviewTextures = 64;
 
     private static readonly GraphicsVertexLayout Layout = new(6 * sizeof(float),
         [new GraphicsVertexAttribute(0, 2, 0), new GraphicsVertexAttribute(1, 4, 2 * sizeof(float))]);
@@ -23,6 +25,10 @@ public sealed class GpuCanvasRenderer : IDisposable
     private readonly IGraphicsMesh _mesh;
     private readonly IGpuCanvasResourceResolver _resourceResolver;
     private readonly Dictionary<string, IGraphicsTexture2D> _textures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, AssetPreviewTexture> _assetPreviewTextures =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentQueue<AssetPreviewCacheInvalidation> _assetPreviewInvalidations = new();
+    private readonly List<IGraphicsTexture2D> _retiredAssetPreviewTextures = [];
     private readonly Dictionary<string, IGraphicsTexture2D> _textTextures = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _textTextureAccess = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _textWidths = new(StringComparer.Ordinal);
@@ -55,17 +61,25 @@ public sealed class GpuCanvasRenderer : IDisposable
         _mesh = device.CreateMesh(new GraphicsMeshDescription(
             "BEngine.GpuCanvas.Dynamic", ReadOnlyMemory<float>.Empty, Layout,
             usage: GraphicsBufferUsage.Dynamic));
+        AssetPreview.CacheInvalidated += QueueAssetPreviewInvalidation;
     }
 
     public void Render(IReadOnlyList<GpuCanvasCommand> commands, int width, int height)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        DrainAssetPreviewInvalidations();
         if (commands.Count == 0)
         {
             LastRenderStats = default;
             return;
         }
         _renderSequence++;
+        try { RenderFrame(commands, width, height); }
+        finally { DisposeRetiredAssetPreviewTextures(); }
+    }
+
+    private void RenderFrame(IReadOnlyList<GpuCanvasCommand> commands, int width, int height)
+    {
         var visibleCommands = BuildBatches(commands);
         if (_batches.Count == 0)
         {
@@ -87,6 +101,7 @@ public sealed class GpuCanvasRenderer : IDisposable
         _device.SetViewport(new GraphicsRect(0, 0, Math.Max(1, width), Math.Max(1, height)));
         _device.SetDepthState(GraphicsDepthState.Disabled);
         _device.SetBlendMode(GraphicsBlendMode.AlphaBlend);
+        _device.SetRasterizerState(GraphicsRasterizerState.Default);
         IGraphicsProgram? activeProgram = null;
         try
         {
@@ -129,8 +144,12 @@ public sealed class GpuCanvasRenderer : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        AssetPreview.CacheInvalidated -= QueueAssetPreviewInvalidation;
         foreach (var texture in _textures.Values) texture.Dispose();
         _textures.Clear();
+        foreach (var preview in _assetPreviewTextures.Values) RetireAssetPreviewTexture(preview.Texture);
+        _assetPreviewTextures.Clear();
+        DisposeRetiredAssetPreviewTextures();
         foreach (var texture in _textTextures.Values) texture.Dispose();
         _textTextures.Clear();
         _atlas?.Dispose();
@@ -352,6 +371,9 @@ public sealed class GpuCanvasRenderer : IDisposable
         texture = null;
         region = GpuCanvasAtlasRegion.Full;
         if (!_device.Capabilities.Supports(GraphicsDeviceFeatures.SampledTextures)) return false;
+        var revision = source.LastIndexOf(AssetPreview.PreviewRevisionQuery, StringComparison.Ordinal);
+        if (revision >= 0)
+            return TryResolveAssetPreviewTexture(source, CanonicalAssetPreviewPath(source[..revision]), out texture);
         if (_textures.TryGetValue(source, out texture)) return true;
         var atlasKey = $"image|{source}";
         if (TryGetAtlas(out var atlas) && atlas.TryGet(atlasKey, out region))
@@ -375,6 +397,86 @@ public sealed class GpuCanvasRenderer : IDisposable
         region = GpuCanvasAtlasRegion.Full;
         _textures.Add(source, texture);
         return true;
+    }
+
+    private bool TryResolveAssetPreviewTexture(string source, string canonicalPath,
+        out IGraphicsTexture2D? texture)
+    {
+        texture = null;
+        if (_assetPreviewTextures.TryGetValue(canonicalPath, out var cached) &&
+            cached.Source.Equals(source, StringComparison.Ordinal))
+        {
+            _assetPreviewTextures[canonicalPath] = cached with { LastAccess = _renderSequence };
+            texture = cached.Texture;
+            return true;
+        }
+        if (!_resourceResolver.TryResolveTexture(source, out var data)) return false;
+        data.Validate();
+        var replacement = _device.CreateTexture2D(
+            $"BEngine.GpuCanvas.AssetPreview.{Path.GetFileName(canonicalPath)}",
+            new GraphicsTextureDescription(data.Width, data.Height, data.Format,
+                GraphicsTextureUsage.Sampled, GraphicsTextureFilter.Linear, GraphicsTextureFilter.Linear,
+                GraphicsTextureAddressMode.ClampToEdge),
+            data.Pixels.Span);
+        if (_assetPreviewTextures.Remove(canonicalPath, out var previous))
+            RetireAssetPreviewTexture(previous.Texture);
+        else TrimAssetPreviewCache();
+        _assetPreviewTextures.Add(canonicalPath, new AssetPreviewTexture(source, replacement, _renderSequence));
+        texture = replacement;
+        return true;
+    }
+
+    private void TrimAssetPreviewCache()
+    {
+        if (_assetPreviewTextures.Count < MaximumAssetPreviewTextures) return;
+        var oldest = _assetPreviewTextures.MinBy(static pair => pair.Value.LastAccess);
+        if (_assetPreviewTextures.Remove(oldest.Key, out var removed))
+            RetireAssetPreviewTexture(removed.Texture);
+    }
+
+    private void RetireAssetPreviewTexture(IGraphicsTexture2D texture) =>
+        _retiredAssetPreviewTextures.Add(texture);
+
+    private void DisposeRetiredAssetPreviewTextures()
+    {
+        foreach (var texture in _retiredAssetPreviewTextures)
+            if (_device is IGraphicsResourceRetirement retirement)
+                retirement.RetireResource(texture);
+            else
+                texture.Dispose();
+        _retiredAssetPreviewTextures.Clear();
+    }
+
+    private void QueueAssetPreviewInvalidation(AssetPreviewCacheInvalidation invalidation) =>
+        _assetPreviewInvalidations.Enqueue(invalidation);
+
+    private void DrainAssetPreviewInvalidations()
+    {
+        while (_assetPreviewInvalidations.TryDequeue(out var invalidation))
+        {
+            if (invalidation.Path is null)
+            {
+                foreach (var preview in _assetPreviewTextures.Values)
+                    RetireAssetPreviewTexture(preview.Texture);
+                _assetPreviewTextures.Clear();
+                DisposeRetiredAssetPreviewTextures();
+                continue;
+            }
+            if (_assetPreviewTextures.Remove(invalidation.Path, out var removed))
+            {
+                RetireAssetPreviewTexture(removed.Texture);
+                DisposeRetiredAssetPreviewTextures();
+            }
+        }
+    }
+
+    private static string CanonicalAssetPreviewPath(string path)
+    {
+        try { return Path.GetFullPath(path); }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or IOException)
+        {
+            return path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        }
     }
 
     private bool TryResolveText(GpuCanvasCommand command, out IGraphicsTexture2D? texture,
@@ -435,6 +537,11 @@ public sealed class GpuCanvasRenderer : IDisposable
         _textTextureAccess[key] = _renderSequence;
         return true;
     }
+
+    private readonly record struct AssetPreviewTexture(
+        string Source,
+        IGraphicsTexture2D Texture,
+        long LastAccess);
 
     private static GpuCanvasAtlasRegion CropRegionWidth(
         GpuCanvasAtlasRegion region, float visibleWidth, int rasterizedWidth)

@@ -66,14 +66,27 @@ public static class Selection
     public static T[] GetFiltered<T>(SelectionMode mode = SelectionMode.Unfiltered) where T : BObject =>
         objects.OfType<T>().ToArray();
 
-    internal static void NotifyHostSelectionChanged(BObject? selected)
+    internal static void NotifyHostSelectionChanged(BObject? selected, bool force = false)
     {
         if (selected is not null && !_objects.Any(item => ReferenceEquals(item, selected))) _objects = [selected];
         if (selected is null) _objects = [];
         var id = selected?.Id;
-        if (_lastSelection == id) return;
+        if (!force && _lastSelection == id) return;
         _lastSelection = id;
         EditorCallbackDispatcher.Invoke(selectionChanged, nameof(selectionChanged));
         EditorWindow.NotifySelectionChanged();
+    }
+
+    internal static void RestoreHostSelection(
+        IEnumerable<BObject> objects,
+        BObject? activeContext,
+        BObject? activeObject)
+    {
+        ArgumentNullException.ThrowIfNull(objects);
+        _objects = objects.Where(item => item is not null).DistinctBy(item => item.Id).ToArray();
+        if (activeObject is not null && !_objects.Any(item => ReferenceEquals(item, activeObject)))
+            _objects = [activeObject, .. _objects];
+        _activeContext = activeContext;
+        NotifyHostSelectionChanged(activeObject, force: true);
     }
 }

@@ -1,17 +1,17 @@
 format: BEngine.Prefab
 version: 1
 id: 597d8a91-16cb-4266-b3a1-e81a215afbe0
-name: Demo Camera 2D
-root: f8770a6c-78a9-45ce-b55d-f03165ed6538
+name: Camera 2D
+root: ea690f1a-23e7-478c-9039-20fbcaeb54cb
 gameObjects:
-- id: f8770a6c-78a9-45ce-b55d-f03165ed6538
-  name: Demo Camera 2D
+- id: ea690f1a-23e7-478c-9039-20fbcaeb54cb
+  name: Camera 2D
   active: true
   tag: MainCamera
   layer: 2
   isStatic: false
   transform:
-    id: fa39dab5-edde-4aa6-ba1b-080e80ae1715
+    id: 471bf032-43aa-4d94-878b-108d6ee74874
     type: BEngine.Transform
     localPosition:
       x: 0
@@ -22,11 +22,14 @@ gameObjects:
       y: 1
     fields: {}
   components:
-  - id: e9d9771e-c939-4a89-aa2a-fc83cb5ea304
+  - id: 103120e8-09cf-4319-98a8-7f67d438ce06
     type: BEngine.Camera2D
     enabled: true
     fields:
-      backgroundColor: 0.1,0.16,0.24,1
-      depth: 0
+      backgroundColor: 0.03499999991618096828460693359375,0.0469999997876584529876708984375,0.06599999987520277500152587890625,1
+      clearMode: Color
+      cullingMask: 14
       isMain: true
+      priority: 0
       size: 5
+      viewportRect: 0,0,1,1

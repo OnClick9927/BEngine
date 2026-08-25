@@ -1,12 +1,10 @@
-using BEngine.Entities;
-
 namespace BEngine.Navigation2D;
 
 public static class Navigation2D
 {
     public const ulong AllAreas = ulong.MaxValue;
     private static Scene? _scene;
-    private static Scene? ActiveScene => World.Current?.Scene ?? _scene;
+    private static Scene? ActiveScene => SceneRuntime.currentScene ?? _scene;
 
     internal static void SetScene(Scene? scene) => _scene = scene;
 

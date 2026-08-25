@@ -184,6 +184,11 @@ internal sealed class PackageAssemblyManager : IDisposable
             _pendingReflectionAssemblies.RemoveAll(assemblies.Contains);
             foreach (var registration in runtimeSystemRegistrations)
                 RuntimeSystemRegistry.Unregister(registration);
+            foreach (var assembly in assemblies)
+            {
+                ScenePickingProviderRegistry.UnregisterAssembly(assembly);
+                SceneRenderContributor2DRegistry.UnregisterAssembly(assembly);
+            }
             services?.Dispose();
             if (_dynamicEditorInitialization && assemblies.Count > 0)
             {
@@ -229,6 +234,7 @@ internal sealed class PackageAssemblyManager : IDisposable
         {
             AssetTypeRegistry.UnregisterAssembly(assembly);
             EditorIconRegistry.UnregisterAssembly(assembly);
+            ScenePickingProviderRegistry.UnregisterAssembly(assembly);
             RuntimeSystemRegistry.UnregisterAssembly(assembly);
             SceneRenderContributor2DRegistry.UnregisterAssembly(assembly);
             RemoveStaticEventHandlers(assembly);

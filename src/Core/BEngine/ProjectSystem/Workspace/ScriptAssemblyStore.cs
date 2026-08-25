@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Reflection;
 using BEngine.Documents;
 
@@ -10,6 +11,9 @@ public static class ScriptAssemblyStore
     private const string ProjectManifestFormat = "BEngine.ProjectScriptAssemblies";
     private const int ProjectManifestVersion = 1;
     private const string ProjectManifestFileName = "ProjectAssemblies.yaml";
+    private static readonly SearchValues<char> InvalidAssemblyNameCharacters =
+        SearchValues.Create([.. Path.GetInvalidFileNameChars(), Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar]);
 
     public static string GetAssemblyRoot(ProjectWorkspace workspace, string assemblyName)
     {
@@ -266,9 +270,7 @@ public static class ScriptAssemblyStore
     private static void ValidateAssemblyName(string assemblyName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(assemblyName);
-        if (assemblyName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
-            assemblyName.Contains(Path.DirectorySeparatorChar) ||
-            assemblyName.Contains(Path.AltDirectorySeparatorChar))
+        if (assemblyName.AsSpan().ContainsAny(InvalidAssemblyNameCharacters))
             throw new ArgumentException("Assembly name contains invalid path characters.", nameof(assemblyName));
     }
 }

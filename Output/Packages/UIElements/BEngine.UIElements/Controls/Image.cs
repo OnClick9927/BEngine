@@ -5,7 +5,6 @@ namespace BEngine.UIElements;
 
 public class Image : VisualElement
 {
-    private string _sourcePath = string.Empty;
-    public string sourcePath { get => _sourcePath; set => Set(ref _sourcePath, value ?? string.Empty); }
+    public string sourcePath { get => field; set => Set(ref field, value ?? string.Empty); } = string.Empty;
     public string scaleMode { get; set; } = "ScaleToFit";
 }

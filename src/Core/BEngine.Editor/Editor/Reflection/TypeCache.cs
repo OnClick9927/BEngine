@@ -6,7 +6,7 @@ namespace BEngine.Editor;
 
 public static class TypeCache
 {
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static readonly Dictionary<Type, Type[]> Derived = [];
     private static readonly Dictionary<Type, Type[]> AttributedTypes = [];
     private static readonly Dictionary<Type, MethodInfo[]> AttributedMethods = [];
@@ -33,7 +33,9 @@ public static class TypeCache
         Warm("InitializeOnLoadMethods", () => _ = GetMethodsWithAttribute<InitializeOnLoadMethodAttribute>());
         Warm("DidReloadScripts", () => _ = GetMethodsWithAttribute<DidReloadScriptsAttribute>());
         Warm("ContextMenus", () => _ = GetMethodsWithAttribute<ContextMenuAttribute>());
+        Warm("ComponentContextMenuRegistry", ComponentContextMenuRegistry.Warmup);
         Warm("DrawGizmos", () => _ = GetMethodsWithAttribute<DrawGizmoAttribute>());
+        Warm("GizmoDrawerRegistry", GizmoDrawerRegistry.Warmup);
         Warm("OnOpenAsset", () => _ = GetMethodsWithAttribute<OnOpenAssetAttribute>());
         Warm("PropertyDrawerRegistry", PropertyDrawerRegistry.Warmup);
         Warm("EditorTypeRegistry", EditorTypeRegistry.Warmup);

@@ -31,7 +31,6 @@ public sealed class GraphicsDeviceFactory
 
     public IGraphicsDevice CreateDevice(GraphicsBackend backend)
     {
-        MainThreadGuard.Ensure();
         if (!_providers.TryGetValue(backend, out var provider))
         {
             var support = QuerySupport(backend);

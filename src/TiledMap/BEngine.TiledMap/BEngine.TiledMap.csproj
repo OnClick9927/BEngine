@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../Core/BEngine/BEngine.csproj" />
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 </Project>

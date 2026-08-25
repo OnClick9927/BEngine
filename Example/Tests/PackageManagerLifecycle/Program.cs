@@ -115,6 +115,7 @@ internal static class Program
             GC.Collect();
             Console.WriteLine(
                 "PACKAGE_MANAGER_LIFECYCLE_OK|package-import,detail-tabs,example-import-reimport," +
+                "example-button-layout," +
                 "legacy-codex-migration,runtime-and-editor-disable,unload,export-filter,reload");
             return 0;
         }

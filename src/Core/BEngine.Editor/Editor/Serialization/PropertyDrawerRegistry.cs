@@ -5,7 +5,7 @@ namespace BEngine.Editor;
 
 internal static class PropertyDrawerRegistry
 {
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static Registration[]? _registrations;
     private static readonly Dictionary<Type, Registration?> Resolved = [];
     private static readonly ConditionalWeakTable<SerializedObject, Dictionary<DrawerKey, PropertyDrawer>> Drawers = new();

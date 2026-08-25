@@ -26,18 +26,17 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public GraphicsBackend Backend
     {
-        get { MainThreadGuard.Ensure(); return GraphicsBackend.OpenGL; }
+        get { return GraphicsBackend.OpenGL; }
     }
     public GraphicsDeviceCapabilities Capabilities
     {
-        get { MainThreadGuard.Ensure(); return _capabilities; }
+        get { return _capabilities; }
     }
 
     internal GL Api => _api;
 
     public OpenGlGraphicsDevice(GL api)
     {
-        MainThreadGuard.Ensure("Create OpenGL graphics device");
         ArgumentNullException.ThrowIfNull(api);
         _api = api;
         _capabilities = new GraphicsDeviceCapabilities(
@@ -51,7 +50,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public IGraphicsProgram CreateProgram(GraphicsShaderProgramDescription description)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(description);
         description.Validate();
@@ -65,7 +63,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public IGraphicsMesh CreateMesh(GraphicsMeshDescription description)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(description);
         return new OpenGlMesh(this, description);
@@ -76,7 +73,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
         GraphicsTextureDescription description,
         ReadOnlySpan<byte> initialData = default)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         description.Validate();
@@ -87,7 +83,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
         string label,
         GraphicsRenderTargetDescription description)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         description.Validate();
@@ -96,7 +91,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public IDisposable PushRenderTarget(IGraphicsRenderTarget renderTarget)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         var target = RequireResource<OpenGlRenderTarget>(renderTarget);
         _api.GetInteger(GetPName.DrawFramebufferBinding, out var previousFramebuffer);
@@ -106,7 +100,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void SetViewport(GraphicsRect viewport)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         viewport.Validate();
         _viewport = viewport;
@@ -115,7 +108,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void SetScissor(GraphicsRect? scissor)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         if (scissor is null)
         {
@@ -133,7 +125,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void Clear(GraphicsClearFlags flags, NumericsVector4 color)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         var mask = (ClearBufferMask)0;
         if ((flags & GraphicsClearFlags.Color) != 0)
@@ -148,7 +139,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void SetDepthState(GraphicsDepthState state)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         if (state.TestEnabled) _api.Enable(EnableCap.DepthTest);
         else _api.Disable(EnableCap.DepthTest);
@@ -157,7 +147,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void SetBlendMode(GraphicsBlendMode mode)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         switch (mode)
         {
@@ -175,21 +164,28 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void SetRasterizerState(GraphicsRasterizerState state)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
-        if (!state.DepthBiasEnabled)
+        if (state.CullMode == GraphicsCullMode.None)
+            _api.Disable(EnableCap.CullFace);
+        else
         {
-            _api.Disable(EnableCap.PolygonOffsetFill);
-            return;
+            _api.Enable(EnableCap.CullFace);
+            _api.CullFace(state.CullMode == GraphicsCullMode.Back
+                ? TriangleFace.Back
+                : TriangleFace.Front);
+            _api.FrontFace(FrontFaceDirection.Ccw);
         }
-
-        _api.Enable(EnableCap.PolygonOffsetFill);
-        _api.PolygonOffset(state.SlopeScale, state.ConstantBias);
+        if (state.DepthBiasEnabled)
+        {
+            _api.Enable(EnableCap.PolygonOffsetFill);
+            _api.PolygonOffset(state.SlopeScale, state.ConstantBias);
+        }
+        else
+            _api.Disable(EnableCap.PolygonOffsetFill);
     }
 
     public void BindTexture(int slot, IGraphicsTexture2D texture)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         if (slot is < 0 or > 31) throw new ArgumentOutOfRangeException(nameof(slot));
         var openGlTexture = RequireResource<OpenGlTexture2D>(texture);
@@ -201,7 +197,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void Draw(IGraphicsMesh mesh)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         var openGlMesh = RequireResource<OpenGlMesh>(mesh);
         _api.BindVertexArray(openGlMesh.VertexArray);
@@ -210,7 +205,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void Draw(IGraphicsMesh mesh, int vertexCount, int firstVertex = 0)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         if (vertexCount < 0) throw new ArgumentOutOfRangeException(nameof(vertexCount));
         if (firstVertex < 0) throw new ArgumentOutOfRangeException(nameof(firstVertex));
@@ -223,7 +217,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void Draw(int vertexCount, GraphicsPrimitiveTopology topology, int firstVertex = 0)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         if (vertexCount < 0) throw new ArgumentOutOfRangeException(nameof(vertexCount));
         if (firstVertex < 0) throw new ArgumentOutOfRangeException(nameof(firstVertex));
@@ -234,7 +227,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
     public void Dispose()
     {
-        MainThreadGuard.Ensure();
         if (_disposed) return;
         if (_emptyVertexArray != 0) _api.DeleteVertexArray(_emptyVertexArray);
         _emptyVertexArray = 0;
@@ -273,11 +265,11 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
         private readonly string _label;
         public IGraphicsDevice Device
         {
-            get { MainThreadGuard.Ensure(); return OpenGlDevice; }
+            get { return OpenGlDevice; }
         }
         public string Label
         {
-            get { MainThreadGuard.Ensure(); return _label; }
+            get { return _label; }
         }
         protected bool IsDisposed => _disposed;
 
@@ -289,7 +281,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
         public void Dispose()
         {
-            MainThreadGuard.Ensure();
             if (_disposed) return;
             Release();
             _disposed = true;
@@ -345,35 +336,30 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
         public void Bind()
         {
-            MainThreadGuard.Ensure();
             ThrowIfDisposed();
             Gl.UseProgram(_handle);
         }
 
         public unsafe void SetMatrix4x4(string name, NumericsMatrix4x4 value)
         {
-            MainThreadGuard.Ensure();
             ThrowIfDisposed();
             Gl.UniformMatrix4(GetUniformLocation(name), 1, false, (float*)&value);
         }
 
         public void SetVector4(string name, NumericsVector4 value)
         {
-            MainThreadGuard.Ensure();
             ThrowIfDisposed();
             Gl.Uniform4(GetUniformLocation(name), value.X, value.Y, value.Z, value.W);
         }
 
         public void SetFloat(string name, float value)
         {
-            MainThreadGuard.Ensure();
             ThrowIfDisposed();
             Gl.Uniform1(GetUniformLocation(name), value);
         }
 
         public void SetInt(string name, int value)
         {
-            MainThreadGuard.Ensure();
             ThrowIfDisposed();
             Gl.Uniform1(GetUniformLocation(name), value);
         }
@@ -425,19 +411,19 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
         public uint VertexArray { get; private set; }
         public GraphicsVertexLayout Layout
         {
-            get { MainThreadGuard.Ensure(); return _layout; }
+            get { return _layout; }
         }
         public GraphicsPrimitiveTopology Topology
         {
-            get { MainThreadGuard.Ensure(); return _topology; }
+            get { return _topology; }
         }
         public GraphicsBufferUsage Usage
         {
-            get { MainThreadGuard.Ensure(); return _usage; }
+            get { return _usage; }
         }
         public int VertexCount
         {
-            get { MainThreadGuard.Ensure(); return _vertexCount; }
+            get { return _vertexCount; }
         }
         internal GraphicsPrimitiveTopology TopologyUnchecked => _topology;
         internal int VertexCountUnchecked => _vertexCount;
@@ -469,7 +455,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
         public void Update(ReadOnlySpan<float> vertices)
         {
-            MainThreadGuard.Ensure();
             ThrowIfDisposed();
             if (_usage != GraphicsBufferUsage.Dynamic)
                 throw new InvalidOperationException($"Mesh '{Label}' was created as a static vertex buffer.");
@@ -509,7 +494,7 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
         public uint Handle { get; private set; }
         public GraphicsTextureDescription Description
         {
-            get { MainThreadGuard.Ensure(); return _description; }
+            get { return _description; }
         }
         internal GraphicsTextureDescription DescriptionUnchecked => _description;
 
@@ -536,7 +521,6 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
         public unsafe void Update(ReadOnlySpan<byte> pixels)
         {
-            MainThreadGuard.Ensure();
             ThrowIfDisposed();
             ValidatePixelData(pixels);
             var (_, format, type, _) = GetFormat(_description.Format);
@@ -634,19 +618,19 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
         public uint Handle { get; private set; }
         public int Width
         {
-            get { MainThreadGuard.Ensure(); return _width; }
+            get { return _width; }
         }
         public int Height
         {
-            get { MainThreadGuard.Ensure(); return _height; }
+            get { return _height; }
         }
         public IGraphicsTexture2D? ColorTexture
         {
-            get { MainThreadGuard.Ensure(); return _colorTexture; }
+            get { return _colorTexture; }
         }
         public IGraphicsTexture2D? DepthTexture
         {
-            get { MainThreadGuard.Ensure(); return _depthTexture; }
+            get { return _depthTexture; }
         }
 
         public OpenGlRenderTarget(
@@ -766,8 +750,8 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
 
         public void Dispose()
         {
-            MainThreadGuard.Ensure();
-            var device = Interlocked.Exchange(ref _device, null);
+            var device = _device;
+            _device = null;
             if (device is null) return;
             device.ThrowIfDisposed();
             device._api.BindFramebuffer(FramebufferTarget.Framebuffer, _previousFramebuffer);

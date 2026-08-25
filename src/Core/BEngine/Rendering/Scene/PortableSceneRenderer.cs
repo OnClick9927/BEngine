@@ -36,7 +36,6 @@ public sealed class PortableSceneRenderer : IDisposable
 
     public PortableSceneRenderer(IGraphicsDevice device, bool ownsDevice = false)
     {
-        MainThreadGuard.Ensure("Create PortableSceneRenderer");
         _device = device ?? throw new ArgumentNullException(nameof(device));
         _ownsDevice = ownsDevice;
         _device.Capabilities.Require(GraphicsDeviceFeatures.Rasterization |
@@ -67,67 +66,184 @@ public sealed class PortableSceneRenderer : IDisposable
     {
         RenderCore(scenes, activeScene, camera,
             new GraphicsRect(0, 0, Math.Max(1, width), Math.Max(1, height)),
-            clearTarget: true, initializeColor: false, drawGrid, drawUi, drawGizmos);
+            clearTarget: true, initializeColor: false, drawGrid, drawUi, drawExtensions, drawGizmos);
     }
 
     public void RenderViewport(IReadOnlyList<Scene> scenes, Scene activeScene, RenderCamera camera,
         GraphicsRect viewport, bool initializeColor = false, bool drawGrid = false, bool drawUi = true,
-        bool drawExtensions = true, bool drawGizmos = false)
+        bool drawExtensions = true, bool drawGizmos = false,
+        Predicate<GameObject>? objectFilter = null)
     {
         RenderCore(scenes, activeScene, camera, viewport, clearTarget: false, initializeColor,
-            drawGrid, drawUi, drawGizmos);
+            drawGrid, drawUi, drawExtensions, drawGizmos, objectFilter: objectFilter);
+    }
+
+    public void RenderCameras(IReadOnlyList<Scene> scenes, Scene activeScene,
+        IReadOnlyList<Camera2D> cameras, GraphicsRect targetViewport, bool drawUi = true)
+    {
+        RenderCameras(scenes, activeScene, cameras, targetViewport,
+            targetViewport.Width, targetViewport.Height, drawUi);
+    }
+
+    public void RenderCameras(IReadOnlyList<Scene> scenes, Scene activeScene,
+        IReadOnlyList<Camera2D> cameras, GraphicsRect targetViewport,
+        int targetWidth, int targetHeight, bool drawUi = true)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(scenes);
+        ArgumentNullException.ThrowIfNull(activeScene);
+        ArgumentNullException.ThrowIfNull(cameras);
+        targetViewport.Validate();
+        if (targetViewport.Width <= 0 || targetViewport.Height <= 0) return;
+        targetWidth = Math.Max(1, targetWidth);
+        targetHeight = Math.Max(1, targetHeight);
+
+        FillViewport(targetViewport, RenderCamera.Default.ClearColor);
+        var ordered = cameras.Select((camera, sequence) => (Camera: camera, Sequence: sequence))
+            .Where(item => item.Camera.enabled && item.Camera.gameObject.activeInHierarchy)
+            .OrderBy(item => item.Camera.priority)
+            .ThenBy(item => item.Sequence);
+        foreach (var item in ordered)
+        {
+            var camera = RenderCamera.From(item.Camera);
+            var viewport = ResolveViewport(targetViewport, camera.ViewportRect, _device.Backend);
+            if (viewport.Width <= 0 || viewport.Height <= 0) continue;
+            var logicalViewport = ResolveViewport(
+                new GraphicsRect(0, 0, targetWidth, targetHeight),
+                camera.ViewportRect, _device.Backend);
+            switch (camera.ClearMode)
+            {
+                case CameraClearMode.Color:
+                    FillViewport(viewport, camera.ClearColor);
+                    ClearDepth(viewport);
+                    break;
+                case CameraClearMode.DepthOnly:
+                    ClearDepth(viewport);
+                    break;
+                case CameraClearMode.Nothing:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(camera.ClearMode));
+            }
+            RenderCore(scenes, activeScene, camera, viewport, clearTarget: false,
+                initializeColor: false, drawGrid: false, drawUi,
+                drawExtensions: true, drawGizmos: false,
+                logicalWidth: Math.Max(1, logicalViewport.Width),
+                logicalHeight: Math.Max(1, logicalViewport.Height));
+        }
+    }
+
+    public static GraphicsRect ResolveViewport(
+        GraphicsRect target, Rect normalizedViewport, GraphicsBackend backend)
+    {
+        target.Validate();
+        var x = Math.Clamp((float)normalizedViewport.x, 0f, 1f);
+        var y = Math.Clamp((float)normalizedViewport.y, 0f, 1f);
+        var right = Math.Clamp((float)normalizedViewport.xMax, x, 1f);
+        var top = Math.Clamp((float)normalizedViewport.yMax, y, 1f);
+        var leftPixel = Math.Clamp((int)MathF.Floor(x * target.Width), 0, target.Width);
+        var rightPixel = Math.Clamp((int)MathF.Ceiling(right * target.Width), leftPixel, target.Width);
+        int yPixel;
+        int bottomPixel;
+        if (backend == GraphicsBackend.OpenGL)
+        {
+            yPixel = Math.Clamp((int)MathF.Floor(y * target.Height), 0, target.Height);
+            bottomPixel = Math.Clamp((int)MathF.Ceiling(top * target.Height), yPixel, target.Height);
+        }
+        else
+        {
+            yPixel = Math.Clamp((int)MathF.Floor((1f - top) * target.Height), 0, target.Height);
+            bottomPixel = Math.Clamp((int)MathF.Ceiling((1f - y) * target.Height), yPixel, target.Height);
+        }
+        return new GraphicsRect(target.X + leftPixel, target.Y + yPixel,
+            rightPixel - leftPixel, bottomPixel - yPixel);
     }
 
     public void FillViewport(GraphicsRect viewport, NVector4 color)
     {
-        MainThreadGuard.Ensure();
         ObjectDisposedException.ThrowIf(_disposed, this);
         viewport.Validate();
         if (viewport.Width <= 0 || viewport.Height <= 0) return;
         PrepareViewport(viewport);
+        _device.SetBlendMode(GraphicsBlendMode.Disabled);
+        _device.SetRasterizerState(GraphicsRasterizerState.Default);
         DrawVertices(_triangleMesh, CreateScreenQuad(0, 0, viewport.Width, viewport.Height, color),
             viewport.Width, viewport.Height);
         _device.SetScissor(null);
     }
 
-    private void RenderCore(IReadOnlyList<Scene> scenes, Scene activeScene, RenderCamera camera,
-        GraphicsRect viewport, bool clearTarget, bool initializeColor, bool drawGrid, bool drawUi, bool drawGizmos)
+    internal void DrawGizmos(IReadOnlyList<GizmoLine2D> gizmos, RenderCamera camera,
+        GraphicsRect viewport)
     {
-        MainThreadGuard.Ensure();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(gizmos);
+        viewport.Validate();
+        if (viewport.Width <= 0 || viewport.Height <= 0 || gizmos.Count == 0) return;
+        PrepareViewport(viewport);
+        var vertices = new List<float>(gizmos.Count * 12);
+        foreach (var line in gizmos)
+        {
+            AddLine(vertices,
+                camera.WorldToViewport(line.From, viewport.Width, viewport.Height),
+                camera.WorldToViewport(line.To, viewport.Width, viewport.Height),
+                Numerics.ToNumerics(line.Color));
+        }
+        DrawVertices(_lineMesh, vertices, viewport.Width, viewport.Height);
+        _device.SetScissor(null);
+    }
+
+    private void ClearDepth(GraphicsRect viewport)
+    {
+        PrepareViewport(viewport);
+        _device.SetDepthState(GraphicsDepthState.Default);
+        _device.Clear(GraphicsClearFlags.Depth, default);
+        _device.SetDepthState(GraphicsDepthState.Disabled);
+        _device.SetScissor(null);
+    }
+
+    private void RenderCore(IReadOnlyList<Scene> scenes, Scene activeScene, RenderCamera camera,
+        GraphicsRect viewport, bool clearTarget, bool initializeColor, bool drawGrid, bool drawUi,
+        bool drawExtensions, bool drawGizmos,
+        int logicalWidth = 0, int logicalHeight = 0, Predicate<GameObject>? objectFilter = null)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(scenes);
         ArgumentNullException.ThrowIfNull(activeScene);
         viewport.Validate();
         if (viewport.Width <= 0 || viewport.Height <= 0) return;
+        var renderWidth = logicalWidth > 0 ? logicalWidth : viewport.Width;
+        var renderHeight = logicalHeight > 0 ? logicalHeight : viewport.Height;
 
         PrepareViewport(viewport);
         if (clearTarget)
             _device.Clear(GraphicsClearFlags.Color, camera.ClearColor);
         else if (initializeColor)
             DrawVertices(_triangleMesh,
-                CreateScreenQuad(0, 0, viewport.Width, viewport.Height, camera.ClearColor),
-                viewport.Width, viewport.Height);
+                CreateScreenQuad(0, 0, renderWidth, renderHeight, camera.ClearColor),
+                renderWidth, renderHeight);
 
-        if (drawGrid) DrawGrid(camera, viewport.Width, viewport.Height);
+        if (drawGrid) DrawGrid(camera, renderWidth, renderHeight);
 
-        var submissions = Collect(scenes, camera, viewport.Width, viewport.Height, drawUi);
+        var submissions = Collect(scenes, camera, renderWidth, renderHeight,
+            drawUi, drawExtensions, objectFilter);
         foreach (var batch in RenderBatchBuilder2D.Build(submissions))
         {
             if (SceneRenderContributor2DRegistry.TryRender(
-                    _device, batch, camera, viewport.Width, viewport.Height, viewport))
+                    _device, batch, camera, renderWidth, renderHeight, viewport))
             {
                 PrepareViewport(viewport);
                 continue;
             }
-            DrawBatch(batch, camera, viewport.Width, viewport.Height);
+            DrawBatch(batch, camera, renderWidth, renderHeight);
         }
 
-        if (drawGizmos) DrawCameraGizmos(scenes, camera, viewport.Width, viewport.Height);
+        if (drawGizmos) DrawCameraGizmos(scenes, camera, renderWidth, renderHeight);
         _device.SetScissor(null);
     }
 
     private IReadOnlyList<RenderSubmission2D> Collect(
-        IReadOnlyList<Scene> scenes, RenderCamera camera, int width, int height, bool drawUi)
+        IReadOnlyList<Scene> scenes, RenderCamera camera, int width, int height, bool drawUi,
+        bool drawExtensions, Predicate<GameObject>? objectFilter)
     {
         var submissions = new List<RenderSubmission2D>();
         long sequence = 0;
@@ -138,6 +254,8 @@ public sealed class PortableSceneRenderer : IDisposable
             foreach (var renderer in scene.QueryComponents<SpriteRenderer>())
             {
                 if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+                if (objectFilter is not null && !objectFilter(renderer.gameObject)) continue;
+                if (!camera.ContainsLayer(renderer.sortingLayer)) continue;
                 var color = WithOpacity(renderer.color, renderer.opacity);
                 var visual = renderer.ResolveSpriteUnchecked();
                 var pivot = renderer.useAtlasPivot && !string.IsNullOrWhiteSpace(renderer.atlas)
@@ -146,18 +264,26 @@ public sealed class PortableSceneRenderer : IDisposable
                 var localCenter = new Vector2(
                     (Fix64.Half - pivot.x) * renderer.size.x,
                     (Fix64.Half - pivot.y) * renderer.size.y);
+                var renderedSize = Vector2.Scale(renderer.size, renderer.transform.lossyScale);
+                var quad = new Quad(renderer.transform.TransformPoint(localCenter), renderer.transform.rotation,
+                    Abs(renderedSize), color,
+                    visual.Texture, visual.Uv,
+                    renderer.flipX ^ renderedSize.x < 0,
+                    renderer.flipY ^ renderedSize.y < 0,
+                    visual.IsTextured);
+                if (!camera.IsVisible(quad.Center, quad.Rotation, quad.Size, width, height)) continue;
                 submissions.Add(new RenderSubmission2D(
                     new RenderSortKey2D(renderer.sortingLayer, renderer.orderInLayer,
                         hierarchy.GetValueOrDefault(renderer.gameObject), renderer.TransparencyUnchecked(color),
                         sequence++),
                     renderer.BatchKey(visual),
-                    new Quad(renderer.transform.TransformPoint(localCenter), renderer.transform.rotation,
-                        Vector2.Scale(renderer.size, renderer.transform.lossyScale), color,
-                        visual.Texture, visual.Uv, renderer.flipX, renderer.flipY, visual.IsTextured)));
+                    quad));
             }
             foreach (var system in scene.QueryComponents<ParticleSystem2D>())
             {
                 if (!system.enabled || !system.gameObject.activeInHierarchy) continue;
+                if (objectFilter is not null && !objectFilter(system.gameObject)) continue;
+                if (!camera.ContainsLayer(system.sortingLayer)) continue;
                 var hierarchyOrder = hierarchy.GetValueOrDefault(system.gameObject);
                 var visual = system.ResolveSpriteUnchecked();
                 foreach (var particle in system.particles)
@@ -170,20 +296,24 @@ public sealed class PortableSceneRenderer : IDisposable
                         (Fix64.Half - visual.Pivot.y) * particle.Size.y);
                     worldPosition += Transform.RotateVector(
                         Vector2.Scale(offset, system.transform.lossyScale), rotation);
+                    var renderedSize = Vector2.Scale(particle.Size, system.transform.lossyScale);
+                    var quad = new Quad(worldPosition, rotation,
+                        Abs(renderedSize), color,
+                        visual.Texture, visual.Uv, renderedSize.x < 0, renderedSize.y < 0,
+                        visual.IsTextured);
+                    if (!camera.IsVisible(quad.Center, quad.Rotation, quad.Size, width, height)) continue;
                     submissions.Add(new RenderSubmission2D(
                         new RenderSortKey2D(system.sortingLayer, system.orderInLayer, hierarchyOrder,
                             system.TransparencyUnchecked(color), sequence++),
                         system.BatchKey(visual),
-                        new Quad(worldPosition, rotation,
-                            Vector2.Scale(particle.Size, system.transform.lossyScale), color,
-                            visual.Texture, visual.Uv, false, false, visual.IsTextured)));
+                        quad));
                 }
             }
-            if (drawUi)
+            if (drawExtensions)
                 sequence = SceneRenderContributor2DRegistry.Collect(
-                    _device, scene, camera, width, height, submissions, sequence);
+                    _device, scene, camera, width, height, submissions, sequence, drawUi, objectFilter);
         }
-        return submissions;
+        return submissions.Where(submission => camera.ContainsLayer(submission.SortKey.Layer)).ToArray();
     }
 
     private void DrawBatch(RenderBatch2D batch, RenderCamera camera, int width, int height)
@@ -230,14 +360,10 @@ public sealed class PortableSceneRenderer : IDisposable
         foreach (var camera in scene.QueryComponents<Camera2D>())
         {
             if (!camera.enabled || !camera.gameObject.activeInHierarchy) continue;
-            var aspect = width / (Fix64)Math.Max(1, height);
-            var half = new Vector2(camera.size * aspect, camera.size);
-            var center = camera.transform.position;
-            var points = new[]
-            {
-                center + new Vector2(-half.x, -half.y), center + new Vector2(half.x, -half.y),
-                center + new Vector2(half.x, half.y), center + new Vector2(-half.x, half.y)
-            };
+            var cameraViewport = camera.viewportRect;
+            var cameraWidth = Math.Max(1, (int)(width * (float)cameraViewport.width));
+            var cameraHeight = Math.Max(1, (int)(height * (float)cameraViewport.height));
+            var points = RenderCamera.From(camera).ViewBoundary(cameraWidth, cameraHeight);
             for (var index = 0; index < points.Length; index++)
                 AddLine(lines, view.WorldToViewport(points[index], width, height),
                     view.WorldToViewport(points[(index + 1) % points.Length], width, height),
@@ -251,7 +377,7 @@ public sealed class PortableSceneRenderer : IDisposable
         _device.SetViewport(viewport);
         _device.SetDepthState(GraphicsDepthState.Disabled);
         _device.SetBlendMode(GraphicsBlendMode.AlphaBlend);
-        _device.SetRasterizerState(GraphicsRasterizerState.Default);
+        _device.SetRasterizerState(GraphicsRasterizerState.CullBackFaces);
         _device.SetScissor(new GraphicsRect(0, 0, viewport.Width, viewport.Height));
     }
 
@@ -293,6 +419,12 @@ public sealed class PortableSceneRenderer : IDisposable
     private static void AddTexturedQuad(
         List<float> output, Quad quad, RenderCamera camera, int width, int height)
     {
+        var u0 = (float)quad.Uv.x;
+        var u1 = (float)quad.Uv.xMax;
+        var v0 = (float)quad.Uv.y;
+        var v1 = (float)quad.Uv.yMax;
+        if (quad.FlipX) (u0, u1) = (u1, u0);
+        if (quad.FlipY) (v0, v1) = (v1, v0);
         var half = quad.Size * Fix64.Half;
         var local = new[]
         {
@@ -301,12 +433,6 @@ public sealed class PortableSceneRenderer : IDisposable
         };
         var points = local.Select(point => camera.WorldToViewport(
             quad.Center + Transform.RotateVector(point, quad.Rotation), width, height)).ToArray();
-        var u0 = (float)quad.Uv.x;
-        var u1 = (float)quad.Uv.xMax;
-        var v0 = (float)quad.Uv.y;
-        var v1 = (float)quad.Uv.yMax;
-        if (quad.FlipX) (u0, u1) = (u1, u0);
-        if (quad.FlipY) (v0, v1) = (v1, v0);
         var uv = new[]
         {
             new NVector2(u0, v1), new NVector2(u1, v1),
@@ -360,6 +486,8 @@ public sealed class PortableSceneRenderer : IDisposable
     }
     private static Color WithOpacity(Color color, Fix64 opacity) =>
         new(color.r, color.g, color.b, color.a * opacity);
+    private static Vector2 Abs(Vector2 value) =>
+        new(Fix64.Abs(value.x), Fix64.Abs(value.y));
 
     private static (GraphicsShaderSource Vertex, GraphicsShaderSource Fragment) ResolveShaders(IGraphicsDevice device)
     {
@@ -423,7 +551,6 @@ public sealed class PortableSceneRenderer : IDisposable
 
     public void Dispose()
     {
-        MainThreadGuard.Ensure();
         if (_disposed) return;
         SceneRenderContributor2DRegistry.Release(_device);
         _textures.Dispose();
@@ -447,4 +574,5 @@ public sealed class PortableSceneRenderer : IDisposable
         bool FlipX,
         bool FlipY,
         bool IsTextured);
+
 }

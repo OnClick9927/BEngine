@@ -18,7 +18,6 @@ internal static class Program
             {
                 throw new ArgumentException("A BEngine project path is required. Start the engine with BEngine.bat.");
             }
-            using var engineThread = EngineThreadContext.BindCurrentThread("BEngine Editor");
             var projectPath = Path.GetFullPath(args[0]);
             var openEditorStatus = args.Skip(1).Any(argument =>
                 argument.Equals("--editor-status", StringComparison.OrdinalIgnoreCase));

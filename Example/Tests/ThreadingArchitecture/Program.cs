@@ -10,13 +10,12 @@ internal static class Program
             AssetRefreshPipelineTests.Run();
             ShaderCompilationPipelineTests.Run();
             ScriptBuildApplyPipelineTests.Run();
-            RuntimeThreadingTests.Run();
             Console.WriteLine(
                 "THREADING_ARCHITECTURE_OK|editor-concurrency,priority,cancellation,fault-isolation," +
-                "main-thread-continuation,dispose-race,worker-dispose-rejection," +
+                "main-thread-continuation,dispose-race," +
                 "asset-prepare-apply,asset-cancel," +
                 "shader-compile-apply,shader-delete,shader-cancel,script-build-apply," +
-                "compilation-event-order,runtime-main-thread,bobject,scene,world,render,frame-isolation");
+                "compilation-event-order");
             return 0;
         }
         catch (Exception exception)

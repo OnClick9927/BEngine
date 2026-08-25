@@ -14,9 +14,14 @@ public sealed class AssetBundleHandle<T> : IDisposable, IAsyncDisposable
     public string Address { get; }
     public T Value { get; }
     public T Asset => Value;
-    public bool IsDisposed => Volatile.Read(ref _release) is null;
+    public bool IsDisposed => _release is null;
 
-    public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
+    public void Dispose()
+    {
+        var release = _release;
+        _release = null;
+        release?.Invoke();
+    }
 
     public ValueTask DisposeAsync()
     {

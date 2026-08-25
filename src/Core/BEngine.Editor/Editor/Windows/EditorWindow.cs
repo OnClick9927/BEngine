@@ -12,20 +12,18 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     private static readonly List<WeakReference<EditorWindow>> Windows = [];
     private bool _enabled;
     private double _lastInspectorUpdate;
-    private GUIContent _titleContent = new();
-
     public static EditorWindow? focusedWindow { get; private set; }
     public static EditorWindow? mouseOverWindow { get; internal set; }
 
     public GUIContent titleContent
     {
-        get => _titleContent;
+        get;
         set
         {
-            _titleContent = value ?? GUIContent.none;
+            field = value ?? GUIContent.none;
             EditorCallbackDispatcher.Invoke(titleContentChanged, this, nameof(titleContentChanged));
         }
-    }
+    } = new();
     public Rect position { get; set; } = new(100, 100, 480, 320);
     public Vector2 minSize { get; set; } = new(160, 100);
     public Vector2 maxSize { get; set; } = new(8192, 8192);

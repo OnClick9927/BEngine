@@ -49,8 +49,14 @@ internal static class Program
             ProjectBrowserMode = "TwoColumn",
             ProjectFoldersWidth = 312,
             ProjectThumbnailSize = 104,
-            SceneCameraOrthographic = true,
-            SceneCameraOrthographicSize = 12.5f,
+            SceneCameraPositionX = 3.25f,
+            SceneCameraPositionY = -1.5f,
+            SceneCameraRotation = 17.5f,
+            SceneCameraSize = 12.5f,
+            SceneCameraBackgroundR = 0.1f,
+            SceneCameraBackgroundG = 0.2f,
+            SceneCameraBackgroundB = 0.3f,
+            SceneCameraDrawGrid = false,
             DockRoot = dock.CaptureLayout(),
             MaximizedPanelId = dock.MaximizedPanelId,
             Windows =
@@ -70,9 +76,15 @@ internal static class Program
         Require(loaded.ProjectBrowserMode == "TwoColumn" && loaded.ProjectFoldersWidth == 312 &&
                 loaded.ProjectThumbnailSize == 104,
             "The layout YAML did not preserve Project browser mode, folder width, and preview scale.");
-        Require(loaded.SceneCameraOrthographic &&
-                MathF.Abs(loaded.SceneCameraOrthographicSize - 12.5f) < 0.001f,
-            "The layout YAML did not preserve the Scene projection mode and orthographic size.");
+        Require(MathF.Abs(loaded.SceneCameraPositionX - 3.25f) < 0.001f &&
+                MathF.Abs(loaded.SceneCameraPositionY + 1.5f) < 0.001f &&
+                MathF.Abs(loaded.SceneCameraRotation - 17.5f) < 0.001f &&
+                MathF.Abs(loaded.SceneCameraSize - 12.5f) < 0.001f &&
+                MathF.Abs(loaded.SceneCameraBackgroundR - 0.1f) < 0.001f &&
+                MathF.Abs(loaded.SceneCameraBackgroundG - 0.2f) < 0.001f &&
+                MathF.Abs(loaded.SceneCameraBackgroundB - 0.3f) < 0.001f &&
+                !loaded.SceneCameraDrawGrid,
+            "The layout YAML did not preserve the 2D Scene camera state.");
         Require(store.LoadLastSession().ActiveLayout == "Editing",
             "The last-session layout did not remember the active named layout.");
 

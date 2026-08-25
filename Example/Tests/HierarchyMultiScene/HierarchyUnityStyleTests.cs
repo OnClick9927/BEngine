@@ -226,10 +226,15 @@ internal static class HierarchyUnityStyleTests
         TestAssert.Require(beginRename.type == EventType.Used && harness.HierarchyRenamingId == root.Id,
             "Hierarchy F2 rename stopped working after the Unity-style row changes.");
         harness.SetHierarchyRenameValue("Renamed Hierarchy Root");
+        var requestedRename = harness.HierarchyRenameValue;
+        var focusBeforeCommit = harness.GuiFocusState;
         var commitRename = new Event(EventType.KeyDown) { keyCode = KeyCode.Return };
         harness.RenderHierarchy(commitRename, WideWidth);
         TestAssert.Require(root.name == "Renamed Hierarchy Root",
-            "Hierarchy rename could not commit after the Unity-style row changes.");
+            $"Hierarchy rename could not commit after the Unity-style row changes " +
+            $"(name: '{root.name}', requested: '{requestedRename}', pending: " +
+            $"'{harness.HierarchyRenameValue}', focus-before: {focusBeforeCommit}, " +
+            $"event: {commitRename.type}, control: {GUIUtility.keyboardControl}).");
     }
 
     private static bool HasFullRowBackground(IEnumerable<GpuCanvasCommand> commands,

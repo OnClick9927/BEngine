@@ -17,6 +17,7 @@ internal static class AssetMenuIntegrationTests
                                                        BindingFlags.NonPublic;
 
     private static IReadOnlyList<MenuSnapshot> _capturedMenu = [];
+    private static bool _capturedMenuAdvanced;
 
     internal static void Run(
         Assembly editorAssembly,
@@ -33,12 +34,14 @@ internal static class AssetMenuIntegrationTests
             assets.Refresh();
             application = CreateApplication(editorAssembly, applicationType, projectWindowType, workspace, assets);
             AttachEditorHost(editorAssembly, application);
+            VerifyStableManagedAssetIdentity(assets);
             var folderContext = CaptureFolderContextMenu(editorAssembly, application, projectWindowType, itemType,
                 workspace, out var contextWindow, out var folderPath, out var sourcePath);
             var toolbarCreate = CaptureProjectCreateMenu(editorAssembly, projectWindowType);
             var assetsMenu = CaptureAssetsMenu(applicationType, application);
 
             VerifyCoreMenuOwnership(editorAssembly);
+            VerifyUnifiedAssetsMenus(folderContext, assetsMenu);
             VerifyUnifiedCreateMenus(toolbarCreate, folderContext, assetsMenu);
             VerifyUsefulAssetCommands(folderContext, assetsMenu, contextWindow, folderPath, sourcePath);
             VerifyCreationTemplates(editorAssembly, workspace, folderPath);
@@ -48,6 +51,23 @@ internal static class AssetMenuIntegrationTests
             if (application is not null) DetachEditorHost(editorAssembly, application);
             TryDelete(root);
         }
+    }
+
+    private static void VerifyStableManagedAssetIdentity(ProjectAssetDatabase assets)
+    {
+        const string path = "Assets/Object Field Identity.asset.yaml";
+        var source = ScriptableObject.CreateInstance<WorkflowAsset>();
+        BEngine.Editor.AssetDatabase.CreateAsset(source, path);
+        assets.Refresh();
+
+        var guidText = BEngine.Editor.AssetDatabase.AssetPathToGUID(path);
+        Require(Guid.TryParse(guidText, out var guid) && guid != Guid.Empty,
+            "The managed asset did not receive an AssetDatabase GUID.");
+        var first = BEngine.Editor.AssetDatabase.LoadMainAssetAtPath(path);
+        var second = BEngine.Editor.AssetDatabase.LoadMainAssetAtPath(path);
+        Require(first is WorkflowAsset && second is WorkflowAsset &&
+                first.Id == guid && second.Id == guid,
+            "Repeated managed-asset loads did not preserve the AssetDatabase GUID as BObject.Id.");
     }
 
     private static void VerifyCoreMenuOwnership(Assembly editorAssembly)
@@ -106,8 +126,11 @@ internal static class AssetMenuIntegrationTests
         var showCreateMenu = projectWindowType.GetMethod("ShowCreateMenu", InstanceMembers,
                                  binder: null, types: [typeof(Rect)], modifiers: null) ??
                              throw new MissingMethodException(projectWindowType.FullName, "ShowCreateMenu");
-        return CaptureGenericMenu(editorAssembly,
+        var menu = CaptureGenericMenu(editorAssembly,
             () => showCreateMenu.Invoke(projectWindow, [new Rect(0, 0, 24, 20)]));
+        Require(_capturedMenuAdvanced,
+            "The Project Create type selector did not open as an AdvancedDropdown.");
+        return menu;
     }
 
     private static IReadOnlyList<MenuSnapshot> CaptureFolderContextMenu(
@@ -222,6 +245,37 @@ internal static class AssetMenuIntegrationTests
             Read<string>(item, "Label"),
             Read<bool>(item, "Enabled"),
             Read<Delegate?>(item, "Action"))).ToArray();
+    }
+
+    private static void VerifyUnifiedAssetsMenus(
+        IReadOnlyList<MenuSnapshot> folderContext,
+        IReadOnlyList<MenuSnapshot> assetsMenu)
+    {
+        var contextByPath = folderContext.ToDictionary(item => NormalizePath(item.Path), StringComparer.Ordinal);
+        var mainByPath = assetsMenu.ToDictionary(item => NormalizePath(item.Path), StringComparer.Ordinal);
+        Require(contextByPath.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(mainByPath.Keys),
+            "Project right-click and the Assets main menu do not use the same command set. " +
+            DescribeDifference(contextByPath.Keys.ToHashSet(StringComparer.Ordinal),
+                mainByPath.Keys.ToHashSet(StringComparer.Ordinal)));
+        foreach (var (path, contextItem) in contextByPath)
+        {
+            var mainItem = mainByPath[path];
+            Require(contextItem.Enabled == mainItem.Enabled,
+                $"Assets command '{path}' has different enabled states in Project and the main menu.");
+            Require(!contextItem.Enabled || contextItem.Action is not null && mainItem.Action is not null,
+                $"Enabled Assets command '{path}' has no action in one of the shared menus.");
+        }
+
+        var extension = contextByPath.GetValueOrDefault(AssetMenuExtensionProbe.Path) ??
+                        throw new InvalidOperationException("An external Assets/MenuItem was not discovered.");
+        var extensionAction = extension.Action ??
+                              throw new InvalidOperationException("The external Assets/MenuItem has no action.");
+        Require(extension.Enabled,
+            "The external Assets/MenuItem is not executable from the Project context menu.");
+        AssetMenuExtensionProbe.Reset();
+        extensionAction.DynamicInvoke();
+        Require(AssetMenuExtensionProbe.InvocationCount == 1,
+            "The external Assets/MenuItem did not execute from the Project context menu.");
     }
 
     private static void VerifyUnifiedCreateMenus(
@@ -393,6 +447,7 @@ internal static class AssetMenuIntegrationTests
         try
         {
             _capturedMenu = [];
+            _capturedMenuAdvanced = false;
             handler.SetValue(null, BuildMenuCaptureDelegate(handler.PropertyType));
             show();
             return _capturedMenu;
@@ -424,6 +479,12 @@ internal static class AssetMenuIntegrationTests
                 Read<Delegate?>(item, "Action")));
         }
         _capturedMenu = items;
+        var dispatcherType = typeof(EditorWindow).Assembly.GetType(
+            "BEngine.Editor.GenericMenuDispatcher", throwOnError: true)!;
+        var presentation = dispatcherType.GetProperty(
+            "CurrentPresentation", StaticMembers)!.GetValue(null)!;
+        _capturedMenuAdvanced = (bool)(presentation.GetType().GetProperty(
+            "IsAdvanced", InstanceMembers)!.GetValue(presentation) ?? false);
     }
 
     private static T Read<T>(object source, string propertyName)
@@ -489,4 +550,15 @@ internal static class AssetMenuIntegrationTests
         Reimport,
         Refresh
     }
+}
+
+internal static class AssetMenuExtensionProbe
+{
+    internal const string Path = "Testing/External Asset Command";
+    internal static int InvocationCount { get; private set; }
+
+    [MenuItem("Assets/" + Path, false, 75)]
+    private static void Execute() => InvocationCount++;
+
+    internal static void Reset() => InvocationCount = 0;
 }

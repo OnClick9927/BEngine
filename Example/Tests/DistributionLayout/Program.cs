@@ -64,9 +64,11 @@ internal static class Program
 
             var coreExamples = Path.Combine(engine, "EditorResources", "Examples");
             Require(Directory.Exists(coreExamples) &&
-                    Directory.EnumerateFiles(coreExamples, "*.bpackage", SearchOption.AllDirectories).Count() >= 2,
-                "The core engine must contain at least two .bpackage examples in " +
+                    Directory.EnumerateFiles(coreExamples, "*.bpackage", SearchOption.AllDirectories).Any(),
+                "The core engine must contain a .bpackage example in " +
                 "Output/BEgine/EditorResources/Examples.");
+            Require(!File.Exists(Path.Combine(coreExamples, "EcsSystems.bpackage")),
+                "The removed ECS example was exported with the core engine.");
             Require(File.Exists(Path.Combine(engine, "EditorResources", "Readme.md")),
                 "The core engine has no Output/BEgine/EditorResources/Readme.md.");
             Require(File.Exists(Path.Combine(engine, "EditorResources", "Doc", "index.html")),

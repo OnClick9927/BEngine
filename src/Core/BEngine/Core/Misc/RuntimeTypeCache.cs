@@ -10,7 +10,6 @@ namespace BEngine;
 /// </summary>
 public static class RuntimeTypeCache
 {
-    private static readonly object Gate = new();
     private static readonly Dictionary<Assembly, AssemblyIndex> Assemblies = [];
     private static readonly Dictionary<string, Type> TypesByName = new(StringComparer.Ordinal);
     private static readonly Dictionary<Type, Type[]> DerivedTypes = [];
@@ -33,21 +32,13 @@ public static class RuntimeTypeCache
 
     static RuntimeTypeCache() => AppDomain.CurrentDomain.AssemblyLoad += (_, args) =>
     {
-        lock (Gate)
-        {
-            if (!_initialized) return;
-        }
+        if (!_initialized) return;
         RegisterAssemblies([args.LoadedAssembly]);
     };
 
     public static ReflectionCacheStats stats
     {
-        get
-        {
-            lock (Gate)
-                return new ReflectionCacheStats(_generation, Assemblies.Count, _allTypes.Length,
-                    _assembliesScanned, _typesScanned);
-        }
+        get => new(_generation, Assemblies.Count, _allTypes.Length, _assembliesScanned, _typesScanned);
     }
 
     public static void Warmup() => RegisterAssemblies(AppDomain.CurrentDomain.GetAssemblies());
@@ -55,39 +46,33 @@ public static class RuntimeTypeCache
     public static void RegisterAssemblies(IEnumerable<Assembly> assemblies)
     {
         ArgumentNullException.ThrowIfNull(assemblies);
-        lock (Gate)
+        _initialized = true;
+        var changed = false;
+        foreach (var assembly in assemblies.Distinct())
         {
-            _initialized = true;
-            var changed = false;
-            foreach (var assembly in assemblies.Distinct())
-            {
-                if (Assemblies.ContainsKey(assembly) || !ReferencesCore(assembly)) continue;
-                var index = Scan(assembly);
-                Assemblies.Add(assembly, index);
-                _assembliesScanned++;
-                _typesScanned += index.Types.Length;
-                changed = true;
-            }
-            if (changed) RebuildIndexes();
+            if (Assemblies.ContainsKey(assembly) || !ReferencesCore(assembly)) continue;
+            var index = Scan(assembly);
+            Assemblies.Add(assembly, index);
+            _assembliesScanned++;
+            _typesScanned += index.Types.Length;
+            changed = true;
         }
+        if (changed) RebuildIndexes();
     }
 
     public static void UnregisterAssemblies(IEnumerable<Assembly> assemblies)
     {
         ArgumentNullException.ThrowIfNull(assemblies);
-        lock (Gate)
-        {
-            var removed = false;
-            foreach (var assembly in assemblies) removed |= Assemblies.Remove(assembly);
-            if (removed) RebuildIndexes();
-        }
+        var removed = false;
+        foreach (var assembly in assemblies) removed |= Assemblies.Remove(assembly);
+        if (removed) RebuildIndexes();
     }
 
     public static Type? FindType(string fullName)
     {
         if (string.IsNullOrWhiteSpace(fullName)) return null;
         EnsureInitialized();
-        lock (Gate) return TypesByName.GetValueOrDefault(fullName);
+        return TypesByName.GetValueOrDefault(fullName);
     }
 
     public static Type[] GetTypesDerivedFrom<T>() => GetTypesDerivedFrom(typeof(T));
@@ -96,38 +81,31 @@ public static class RuntimeTypeCache
     {
         ArgumentNullException.ThrowIfNull(parentType);
         EnsureInitialized();
-        lock (Gate)
-        {
-            if (DerivedTypes.TryGetValue(parentType, out var cached)) return cached;
-            cached = _allTypes.Where(type => type != parentType && parentType.IsAssignableFrom(type)).ToArray();
-            DerivedTypes[parentType] = cached;
-            return cached;
-        }
+        if (DerivedTypes.TryGetValue(parentType, out var cached)) return cached;
+        cached = _allTypes.Where(type => type != parentType && parentType.IsAssignableFrom(type)).ToArray();
+        DerivedTypes[parentType] = cached;
+        return cached;
     }
 
     public static bool TryCreateInstance(Type type, out object instance)
     {
         ArgumentNullException.ThrowIfNull(type);
         EnsureInitialized();
-        Func<object>? factory;
-        lock (Gate)
+        if (!Factories.TryGetValue(type, out var factory))
         {
-            if (!Factories.TryGetValue(type, out factory))
-            {
-                factory = CreateFactory(type);
-                if (factory is null) { instance = null!; return false; }
-                Factories[type] = factory;
-            }
+            factory = CreateFactory(type);
+            if (factory is null) { instance = null!; return false; }
+            Factories[type] = factory;
         }
         instance = factory();
         return true;
     }
 
-    public static Type[] GetAllTypes() { EnsureInitialized(); lock (Gate) return _allTypes; }
+    public static Type[] GetAllTypes() { EnsureInitialized(); return _allTypes; }
     public static Type[] GetTypes(Assembly assembly)
     {
         EnsureInitialized();
-        lock (Gate) return Assemblies.TryGetValue(assembly, out var index) ? index.Types : [];
+        return Assemblies.TryGetValue(assembly, out var index) ? index.Types : [];
     }
 
     /// <summary>Invokes a cached zero-argument Unity-style message without runtime reflection.</summary>
@@ -144,8 +122,7 @@ public static class RuntimeTypeCache
     internal static bool TryInvokeCoroutine(MonoBehaviour target, string methodName, out IEnumerator routine)
     {
         EnsureInitialized();
-        Func<object, IEnumerator>? factory;
-        lock (Gate) CoroutineFactories.TryGetValue(new RuntimeMessageKey(target.GetType(), methodName), out factory);
+        CoroutineFactories.TryGetValue(new RuntimeMessageKey(target.GetType(), methodName), out var factory);
         if (factory is null) { routine = null!; return false; }
         routine = factory(target);
         return routine is not null;
@@ -154,20 +131,17 @@ public static class RuntimeTypeCache
     internal static bool HasMessage(Type targetType, string methodName, bool hasArgument)
     {
         EnsureInitialized();
-        lock (Gate) return MessageHandlers.TryGetValue(new RuntimeMessageKey(targetType, methodName), out var handlers) &&
-                            handlers.Any(handler => handler.HasArgument == hasArgument);
+        return MessageHandlers.TryGetValue(new RuntimeMessageKey(targetType, methodName), out var handlers) &&
+               handlers.Any(handler => handler.HasArgument == hasArgument);
     }
 
     internal static ComponentReflectionInfo GetComponentInfo(Type type)
     {
         EnsureInitialized();
-        lock (Gate)
-        {
-            if (Components.TryGetValue(type, out var info)) return info;
-            info = BuildComponentInfo(type);
-            Components[type] = info;
-            return info;
-        }
+        if (Components.TryGetValue(type, out var info)) return info;
+        info = BuildComponentInfo(type);
+        Components[type] = info;
+        return info;
     }
 
     internal static MemberInfo[] GetSerializableMembers(Type type, bool inspectorOnly)
@@ -179,60 +153,54 @@ public static class RuntimeTypeCache
     internal static RuntimeInitializationEntry[] GetRuntimeInitializers(RuntimeInitializeLoadType phase)
     {
         EnsureInitialized();
-        lock (Gate) return InitializersByPhase.GetValueOrDefault(phase) ?? [];
+        return InitializersByPhase.GetValueOrDefault(phase) ?? [];
     }
 
     internal static MethodInfo[] GetMethods(Type type)
     {
         EnsureInitialized();
-        lock (Gate) return MethodsByType.GetValueOrDefault(type) ?? [];
+        return MethodsByType.GetValueOrDefault(type) ?? [];
     }
 
     internal static Func<object>? GetFactory(Type type)
     {
         EnsureInitialized();
-        lock (Gate)
-        {
-            if (Factories.TryGetValue(type, out var factory)) return factory;
-            factory = CreateFactory(type);
-            if (factory is not null) Factories[type] = factory;
-            return factory;
-        }
+        if (Factories.TryGetValue(type, out var factory)) return factory;
+        factory = CreateFactory(type);
+        if (factory is not null) Factories[type] = factory;
+        return factory;
     }
 
     internal static MemberInfo[] GetInstanceMembers(Type type)
     {
         EnsureInitialized();
-        lock (Gate) return MembersByType.GetValueOrDefault(type) ?? [];
+        return MembersByType.GetValueOrDefault(type) ?? [];
     }
 
     public static bool TryFindInstanceMember(Type type, string name, out MemberInfo member)
     {
         EnsureInitialized();
-        lock (Gate) return MembersByName.TryGetValue(new MemberLookupKey(type, name), out member!);
+        return MembersByName.TryGetValue(new MemberLookupKey(type, name), out member!);
     }
 
     public static RuntimeMemberAccessor GetMemberAccessor(MemberInfo member)
     {
         EnsureInitialized();
-        lock (Gate)
-        {
-            if (MemberAccessors.TryGetValue(member, out var accessor)) return accessor;
-            accessor = CreateMemberAccessor(member);
-            MemberAccessors[member] = accessor;
-            return accessor;
-        }
+        if (MemberAccessors.TryGetValue(member, out var accessor)) return accessor;
+        accessor = CreateMemberAccessor(member);
+        MemberAccessors[member] = accessor;
+        return accessor;
     }
 
     internal static Type[] GetRuntimeSystemTypes()
     {
         EnsureInitialized();
-        lock (Gate) return _runtimeSystemTypes;
+        return _runtimeSystemTypes;
     }
 
     private static void EnsureInitialized()
     {
-        lock (Gate) { if (_initialized) return; }
+        if (_initialized) return;
         Warmup();
     }
 
@@ -348,12 +316,8 @@ public static class RuntimeTypeCache
         ArgumentNullException.ThrowIfNull(target);
         ArgumentException.ThrowIfNullOrWhiteSpace(methodName);
         EnsureInitialized();
-        RuntimeMessageHandler[] handlers;
-        lock (Gate)
-        {
-            if (!MessageHandlers.TryGetValue(new RuntimeMessageKey(target.GetType(), methodName), out handlers!))
-                return false;
-        }
+        if (!MessageHandlers.TryGetValue(new RuntimeMessageKey(target.GetType(), methodName), out var handlers))
+            return false;
         foreach (var handler in handlers)
         {
             if (handler.HasArgument != hasArgument) continue;
@@ -529,10 +493,12 @@ public static class RuntimeTypeCache
         catch { required = []; }
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         var fields = type.GetFields(flags).Where(field => !field.IsStatic && !field.IsInitOnly &&
+            !typeof(Delegate).IsAssignableFrom(field.FieldType) &&
             (field.IsPublic || field.IsDefined(typeof(SerializeFieldAttribute), true) ||
              field.IsDefined(typeof(SerializeReferenceAttribute), true)));
         var properties = type.GetProperties(flags).Where(property => property.GetIndexParameters().Length == 0 &&
             property.GetMethod is { IsPublic: true } && property.SetMethod is { IsPublic: true } &&
+            !typeof(Delegate).IsAssignableFrom(property.PropertyType) &&
             !IgnoredComponentProperties.Contains(property.Name));
         var serializable = fields.Cast<MemberInfo>().Concat(properties)
             .OrderBy(member => member.Name, StringComparer.Ordinal).ToArray();

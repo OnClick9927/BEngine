@@ -9,37 +9,52 @@ internal static class Program
 {
     private static int Main()
     {
-        var repository = FindRepositoryRoot();
-        Resources.RegisterResourceRoot(Path.Combine(repository, "src", "Core"));
+        try
+        {
+            var repository = FindRepositoryRoot();
+            EditorResources.RegisterResourceRoot(Path.Combine(repository, "src", "Core"));
 
-        Require(EditorIconRegistry.GetComponentIconPath(typeof(Camera2D)).EndsWith(
-            "Icons/Components/Camera.png", StringComparison.OrdinalIgnoreCase),
-            "Camera2D did not receive the built-in component icon.");
-        Require(EditorIconRegistry.GetComponentIconPath(typeof(SpriteRenderer)).EndsWith(
-            "Icons/Assets/AssetImage.png", StringComparison.OrdinalIgnoreCase),
-            "SpriteRenderer did not receive the image icon.");
-        Require(EditorIconRegistry.GetComponentIconPath(typeof(ExampleBehaviour)).EndsWith(
-            "Icons/Components/Script.png", StringComparison.OrdinalIgnoreCase),
-            "MonoBehaviour did not receive the script icon.");
+            Require(EditorIconRegistry.GetComponentIconPath(typeof(Camera2D)).EndsWith(
+                    EditorBuiltinIcons.Components.Camera2D, StringComparison.OrdinalIgnoreCase),
+                "Camera2D did not receive the built-in component icon.");
+            Require(EditorIconRegistry.GetComponentIconPath(typeof(ExampleBehaviour)).EndsWith(
+                    EditorBuiltinIcons.Components.Script, StringComparison.OrdinalIgnoreCase),
+                "MonoBehaviour did not receive the script icon.");
+            Require(EditorIconRegistry.GetComponentIconPath(typeof(Transform)).EndsWith(
+                    EditorBuiltinIcons.Components.Transform, StringComparison.OrdinalIgnoreCase),
+                "Transform did not receive the transform icon.");
 
-        EditorIconRegistry.Register(typeof(ExampleBehaviour), "Icons/Assets/AssetMaterial.png");
-        var overridden = EditorIconRegistry.GetComponentIconPath(typeof(ExampleBehaviour));
-        Require(File.Exists(overridden) && overridden.EndsWith("AssetMaterial.png", StringComparison.OrdinalIgnoreCase),
-            "A package component icon registration did not override the default icon.");
+            var rendererIcon = EditorIconRegistry.GetComponentIconPath(typeof(SpriteRenderer));
+            Require(ResourcePathEndsWith(rendererIcon, EditorBuiltinIcons.Assets.Image),
+                "SpriteRenderer did not receive the built-in image icon.");
 
-        Require(FileGpuCanvasResourceResolver.Shared.TryResolveTexture(
-                "Icons/Components/Script.png", out var texture),
-            "The GPU Canvas did not resolve the component PNG from EditorResources.");
-        Require(texture.Width > 0 && texture.Height > 0 &&
-                texture.Format == GraphicsTextureFormat.Rgba8Unorm &&
-                texture.Pixels.Length == texture.Width * texture.Height * 4,
-            "The component icon was not decoded as an RGBA GPU texture.");
-        Require(EditorGUIUtility.IconContent("d_Camera Icon").image == EditorBuiltinIcons.Components.Camera2D &&
-                EditorGUIUtility.IconContent("cs Script Icon").image == EditorBuiltinIcons.Assets.Script,
-            "Unity-style icon names were not resolved to the BEngine icon set.");
+            EditorIconRegistry.Register(typeof(ExampleBehaviour), EditorBuiltinIcons.Assets.Material);
+            var overridden = EditorIconRegistry.GetComponentIconPath(typeof(ExampleBehaviour));
+            Require(File.Exists(overridden) && ResourcePathEndsWith(
+                    overridden, EditorBuiltinIcons.Assets.Material),
+                "A package component icon registration did not override the default icon.");
 
-        Console.WriteLine("COMPONENT_ICONS_OK|defaults,package-override,png-rgba,unity-aliases");
-        return 0;
+            Require(FileGpuCanvasResourceResolver.Shared.TryResolveTexture(
+                    EditorBuiltinIcons.Components.Script, out var texture),
+                "The GPU Canvas did not resolve the component PNG from EditorResources.");
+            Require(texture.Width > 0 && texture.Height > 0 &&
+                    texture.Format == GraphicsTextureFormat.Rgba8Unorm &&
+                    texture.Pixels.Length == texture.Width * texture.Height * 4,
+                "The component icon was not decoded as an RGBA GPU texture.");
+            Require(EditorGUIUtility.IconContent("d_Camera Icon").image ==
+                    EditorBuiltinIcons.Components.Camera2D &&
+                    EditorGUIUtility.IconContent("cs Script Icon").image == EditorBuiltinIcons.Assets.Script,
+                "Unity-style icon names were not resolved to the BEngine icon set.");
+
+            Console.WriteLine(
+                "COMPONENT_ICONS_OK|type-defaults,sprite-image,package-override,png-rgba,unity-aliases");
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"COMPONENT_ICONS_FAILED|{exception}");
+            return 1;
+        }
     }
 
     private static string FindRepositoryRoot()
@@ -54,6 +69,9 @@ internal static class Program
     {
         if (!condition) throw new InvalidOperationException(message);
     }
+
+    private static bool ResourcePathEndsWith(string path, string resourcePath) =>
+        path.Replace('\\', '/').EndsWith(resourcePath, StringComparison.OrdinalIgnoreCase);
 
     private sealed class ExampleBehaviour : MonoBehaviour;
 }

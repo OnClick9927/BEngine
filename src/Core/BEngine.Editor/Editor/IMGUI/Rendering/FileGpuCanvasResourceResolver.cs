@@ -1,6 +1,12 @@
 using System.Buffers.Binary;
+using System.Drawing.Imaging;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using BEngine.Rendering.Rhi;
+using DrawingBitmap = System.Drawing.Bitmap;
+using DrawingColor = System.Drawing.Color;
+using DrawingGraphics = System.Drawing.Graphics;
+using DrawingRectangle = System.Drawing.Rectangle;
 
 namespace BEngine.Editor.Rendering;
 
@@ -17,9 +23,14 @@ public sealed class FileGpuCanvasResourceResolver : IGpuCanvasResourceResolver
         {
             var path = ResolvePath(source);
             if (path is null || !File.Exists(path)) return false;
-            var bytes = File.ReadAllBytes(path);
-            return Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase) &&
-                   PortablePngDecoder.TryDecode(bytes, out texture);
+            var extension = Path.GetExtension(path);
+            if (extension.Equals(".png", StringComparison.OrdinalIgnoreCase))
+                return PortablePngDecoder.TryDecode(File.ReadAllBytes(path), out texture);
+            return extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                   extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                   extension.Equals(".bmp", StringComparison.OrdinalIgnoreCase)
+                ? WindowsBitmapDecoder.TryDecode(path, out texture)
+                : false;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -29,9 +40,61 @@ public sealed class FileGpuCanvasResourceResolver : IGpuCanvasResourceResolver
 
     private static string? ResolvePath(string source)
     {
+        var revision = source.LastIndexOf(AssetPreview.PreviewRevisionQuery, StringComparison.Ordinal);
+        if (revision >= 0) source = source[..revision];
         if (Path.IsPathRooted(source)) return Path.GetFullPath(source);
         return ResourceLoader.Resolve(source, "EditorResources") ??
                ResourceLoader.Resolve(source, "Resources");
+    }
+
+    private static class WindowsBitmapDecoder
+    {
+        internal static bool TryDecode(string path, out GpuCanvasTextureData texture)
+        {
+            texture = default;
+            try
+            {
+                using var source = new DrawingBitmap(path);
+                if (source.Width is <= 0 or > 32768 || source.Height is <= 0 or > 32768) return false;
+                using var bitmap = new DrawingBitmap(source.Width, source.Height, PixelFormat.Format32bppArgb);
+                using (var graphics = DrawingGraphics.FromImage(bitmap))
+                {
+                    graphics.Clear(DrawingColor.Transparent);
+                    graphics.DrawImageUnscaled(source, 0, 0);
+                }
+
+                var bounds = new DrawingRectangle(0, 0, bitmap.Width, bitmap.Height);
+                var locked = bitmap.LockBits(bounds, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                try
+                {
+                    var rowLength = checked(bitmap.Width * 4);
+                    var row = new byte[rowLength];
+                    var rgba = new byte[checked(rowLength * bitmap.Height)];
+                    for (var y = 0; y < bitmap.Height; y++)
+                    {
+                        Marshal.Copy(IntPtr.Add(locked.Scan0, y * locked.Stride), row, 0, rowLength);
+                        var destination = y * rowLength;
+                        for (var x = 0; x < rowLength; x += 4)
+                        {
+                            rgba[destination + x] = row[x + 2];
+                            rgba[destination + x + 1] = row[x + 1];
+                            rgba[destination + x + 2] = row[x];
+                            rgba[destination + x + 3] = row[x + 3];
+                        }
+                    }
+                    texture = new GpuCanvasTextureData(bitmap.Width, bitmap.Height,
+                        GraphicsTextureFormat.Rgba8Unorm, rgba);
+                    return true;
+                }
+                finally { bitmap.UnlockBits(locked); }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                                              ArgumentException or ExternalException or OutOfMemoryException or
+                                              OverflowException)
+            {
+                return false;
+            }
+        }
     }
 
     private static class PortablePngDecoder

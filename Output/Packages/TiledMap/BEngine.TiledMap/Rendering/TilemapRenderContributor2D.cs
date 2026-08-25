@@ -11,10 +11,16 @@ internal sealed class TilemapRenderContributor2D(IGraphicsDevice device) : IScen
 
     public long Collect(Scene scene, RenderCamera camera, int width, int height,
         ICollection<RenderSubmission2D> submissions, long submissionOrder)
+        => Collect(scene, camera, width, height, submissions, submissionOrder, null);
+
+    public long Collect(Scene scene, RenderCamera camera, int width, int height,
+        ICollection<RenderSubmission2D> submissions, long submissionOrder,
+        Predicate<GameObject>? objectFilter)
     {
         var hierarchy = HierarchyOrder2D.Build(scene);
         foreach (var renderer in scene.QueryComponents<TilemapRenderer>().ToArray()
                      .Where(item => item.enabled && item.gameObject.activeInHierarchy)
+                     .Where(item => objectFilter is null || objectFilter(item.gameObject))
                      .OrderBy(item => hierarchy.GetValueOrDefault(item.gameObject)))
         {
             var tilemap = renderer.GetComponent<Tilemap>();

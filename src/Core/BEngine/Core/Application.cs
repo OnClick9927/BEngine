@@ -21,100 +21,97 @@ public static class Application
 
     public static event Func<bool>? wantsToQuit
     {
-        add { MainThreadGuard.Ensure(); _wantsToQuit += value; }
-        remove { MainThreadGuard.Ensure(); _wantsToQuit -= value; }
+        add { _wantsToQuit += value; }
+        remove { _wantsToQuit -= value; }
     }
     public static event Action? quitting
     {
-        add { MainThreadGuard.Ensure(); _quitting += value; }
-        remove { MainThreadGuard.Ensure(); _quitting -= value; }
+        add { _quitting += value; }
+        remove { _quitting -= value; }
     }
     public static event Action<bool>? focusChanged
     {
-        add { MainThreadGuard.Ensure(); _focusChanged += value; }
-        remove { MainThreadGuard.Ensure(); _focusChanged -= value; }
+        add { _focusChanged += value; }
+        remove { _focusChanged -= value; }
     }
     public static event Action<bool>? pauseStateChanged
     {
-        add { MainThreadGuard.Ensure(); _pauseStateChanged += value; }
-        remove { MainThreadGuard.Ensure(); _pauseStateChanged -= value; }
+        add { _pauseStateChanged += value; }
+        remove { _pauseStateChanged -= value; }
     }
     public static event Action? lowMemory
     {
-        add { MainThreadGuard.Ensure(); _lowMemory += value; }
-        remove { MainThreadGuard.Ensure(); _lowMemory -= value; }
+        add { _lowMemory += value; }
+        remove { _lowMemory -= value; }
     }
     public static string productName
     {
-        get { MainThreadGuard.Ensure(); return _productName; }
+        get { return _productName; }
         internal set => _productName = value;
     }
     public static string version
     {
-        get { MainThreadGuard.Ensure(); return _version; }
+        get { return _version; }
         internal set => _version = value;
     }
     public static string companyName
     {
-        get { MainThreadGuard.Ensure(); return _companyName; }
+        get { return _companyName; }
         internal set => _companyName = value;
     }
     public static bool isEditor
     {
-        get { MainThreadGuard.Ensure(); return _isEditor; }
+        get { return _isEditor; }
         internal set => _isEditor = value;
     }
     public static bool isPlaying
     {
-        get { MainThreadGuard.Ensure(); return _isPlaying; }
+        get { return _isPlaying; }
         internal set => _isPlaying = value;
     }
     public static bool isFocused
     {
-        get { MainThreadGuard.Ensure(); return _isFocused; }
+        get { return _isFocused; }
     }
     public static int targetFrameRate
     {
-        get { MainThreadGuard.Ensure(); return _targetFrameRate; }
-        set { MainThreadGuard.Ensure(); _targetFrameRate = value; }
+        get { return _targetFrameRate; }
+        set { _targetFrameRate = value; }
     }
     public static string dataPath
     {
-        get { MainThreadGuard.Ensure(); return _dataPath; }
+        get { return _dataPath; }
         internal set => _dataPath = value;
     }
     public static string streamingAssetsPath
     {
-        get { MainThreadGuard.Ensure(); return Path.Combine(_dataPath, "StreamingAssets"); }
+        get { return Path.Combine(_dataPath, "StreamingAssets"); }
     }
     public static string persistentDataPath
     {
         get
         {
-            MainThreadGuard.Ensure();
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 _companyName, _productName);
         }
     }
     public static string temporaryCachePath
     {
-        get { MainThreadGuard.Ensure(); return Path.Combine(Path.GetTempPath(), _companyName, _productName); }
+        get { return Path.Combine(Path.GetTempPath(), _companyName, _productName); }
     }
     public static RuntimePlatform platform
     {
-        get { MainThreadGuard.Ensure(); return ResolvePlatform(_isEditor); }
+        get { return ResolvePlatform(_isEditor); }
     }
 
     public static void OpenURL(string url)
     {
-        MainThreadGuard.Ensure();
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     public static void Quit()
     {
-        MainThreadGuard.Ensure();
         if (_wantsToQuit is not null)
         {
             foreach (Func<bool> callback in _wantsToQuit.GetInvocationList())
@@ -136,7 +133,6 @@ public static class Application
 
     internal static void SetFocus(bool focused)
     {
-        MainThreadGuard.Ensure();
         if (_isFocused == focused) return;
         _isFocused = focused;
         RuntimeLifecycle.Invoke(_focusChanged, focused, nameof(focusChanged));
@@ -144,13 +140,11 @@ public static class Application
 
     internal static void SetPaused(bool paused)
     {
-        MainThreadGuard.Ensure();
         RuntimeLifecycle.Invoke(_pauseStateChanged, paused, nameof(pauseStateChanged));
     }
 
     internal static void RaiseLowMemory()
     {
-        MainThreadGuard.Ensure();
         RuntimeLifecycle.Invoke(_lowMemory, nameof(lowMemory));
     }
 

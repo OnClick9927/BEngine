@@ -1,5 +1,3 @@
-using BEngine.Entities;
-
 namespace BEngine.SceneManagement;
 
 public static class SceneManager
@@ -46,14 +44,13 @@ public static class SceneManager
     {
         get
         {
-            MainThreadGuard.Ensure();
-            return World.Current?.Services.GetService(typeof(IRuntimeSceneManager)) as IRuntimeSceneManager ??
+            return SceneRuntime.currentScene?.Services.GetService(typeof(IRuntimeSceneManager)) as IRuntimeSceneManager ??
                    throw new InvalidOperationException(
-                       "SceneManager requires an active World context. Hosts can resolve IRuntimeSceneManager from " +
+                       "SceneManager requires an active SceneRuntime context. Hosts can resolve IRuntimeSceneManager from " +
                        "their BEngine service provider outside runtime callbacks.");
         }
     }
 
     private static IRuntimeSceneManager ManagerFor(Scene scene) =>
-        scene.world.Services.GetService(typeof(IRuntimeSceneManager)) as IRuntimeSceneManager ?? Current;
+        scene.Services.GetService(typeof(IRuntimeSceneManager)) as IRuntimeSceneManager ?? Current;
 }

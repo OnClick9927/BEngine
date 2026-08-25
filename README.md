@@ -1,10 +1,10 @@
 # BEngine
 
-BEngine 是基于 .NET 9 的轻量化 2D 游戏引擎。运行时世界状态使用 Q32.32 定点数和 ECS，脚本 API 采用 Unity 风格，工程、场景、设置和包清单统一使用 YAML。
+BEngine 是基于 .NET 10 LTS 与 C# 14 的轻量化单线程 2D 游戏引擎。运行时世界状态使用 Q32.32 定点数，脚本 API 采用 Unity 风格，工程、场景、设置和包清单统一使用 YAML。
 
 ## 启动
 
-前置条件：Windows 10/11 与 .NET 9 SDK。
+前置条件：Windows 10/11 与 .NET 10 SDK。仓库根目录的 `global.json` 会统一引擎、扩展包与测试使用的 SDK feature band。
 
 双击 `Output/BEngine.bat` 打开工程管理器。Launcher 会记住多个历史工程，并从 `Output/Packages` 展示所有可用扩展包。
 
@@ -63,7 +63,7 @@ Sprite、Tilemap、Particle 与 UIElements 进入同一渲染队列，顺序依�
 
 Core 内置 Texture Atlas：通过 `Assets/Create/2D/Texture Atlas` 创建 `.atlas.yaml`，在 `Window/2D/Texture Atlas` 添加 PNG 并自动打包。输出采用 2 的整数次方尺寸、确定性 MaxRects 布局、Padding 和边缘 Extrude；Sprite、Particle 与 TiledMap 都可复用生成的图集和归一化 UV。
 
-有状态对象使用 .NET 标准 `Microsoft.Extensions.DependencyInjection`。`BEngine` 只暴露 Abstractions；Editor、Launcher、Player 各自负责构建根 Provider，项目与 Scene/World 使用嵌套 scope。扩展包通过 `IEngineServiceModule` 注册服务，不需要 Core 维护包列表。
+有状态对象使用 .NET 标准 `Microsoft.Extensions.DependencyInjection`。`BEngine` 只暴露 Abstractions；Editor、Launcher、Player 各自负责构建根 Provider，项目与 Scene 使用嵌套 scope。扩展包通过 `IEngineServiceModule` 注册服务，不需要 Core 维护包列表。
 
 ## 包结构
 
@@ -131,5 +131,8 @@ PackageManager 仅存在于 `BEngine.Editor`。全局可用包只从 `Output/Pac
 示例工程与独立功能测试位于根目录 `Example/`，测试代码统一放在 `Example/Tests/<Feature>/`。
 
 ```powershell
-dotnet test E:/Project/_BZP/BEP/EngineTests/BEngine.EngineTests.sln -c Release
+Get-ChildItem Example/Tests -Filter *.csproj -Recurse |
+    ForEach-Object { dotnet build $_.FullName -c Release }
+
+dotnet run --project Example/Tests/SourceLayout/SourceLayout.csproj -c Release
 ```

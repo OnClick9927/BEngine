@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
@@ -258,12 +259,23 @@ internal sealed class ImGuiDockWorkspace
             EditorStyles.dockTab.CalcSize(panel.Window.titleContent).x +
             (string.IsNullOrWhiteSpace(panel.Window.titleContent.image) ? 14 : 34))).ToArray();
         var totalWidth = tabWidths.Aggregate(Fix64.Zero, (sum, width) => sum + width);
+        var tabLayoutSignature = TabLayoutSignature(panels, tabWidths);
         var tabViewportWidth = tabAreaWidth;
-        if (totalWidth > tabViewportWidth)
+        if (panels.Length > 1 && totalWidth > tabViewportWidth)
         {
             var scrollButtonWidth = Fix64.Max(20, Fix64.Min(actionWidth, 24));
             tabViewportWidth = Fix64.Max(40, tabAreaWidth - scrollButtonWidth * 2 - 2);
-            KeepSelectedTabVisible(group, panels, tabWidths, tabViewportWidth);
+            if (!string.Equals(group.TabVisibilitySelectedId, selected.Id, StringComparison.Ordinal) ||
+                group.TabVisibilityViewportWidth != tabViewportWidth ||
+                group.TabVisibilityTotalWidth != totalWidth ||
+                group.TabVisibilityLayoutSignature != tabLayoutSignature)
+            {
+                KeepSelectedTabVisible(group, panels, tabWidths, tabViewportWidth);
+                group.TabVisibilitySelectedId = selected.Id;
+                group.TabVisibilityViewportWidth = tabViewportWidth;
+                group.TabVisibilityTotalWidth = totalWidth;
+                group.TabVisibilityLayoutSignature = tabLayoutSignature;
+            }
             if (EditorToolbar.Button(new Rect(rect.x + tabViewportWidth + 2, actionY,
                     scrollButtonWidth, actionHeight),
                     new GUIContent("<", tooltip: "Previous tabs"))) group.TabOffset -= 90;
@@ -272,7 +284,14 @@ internal sealed class ImGuiDockWorkspace
                     new GUIContent(">", tooltip: "Next tabs"))) group.TabOffset += 90;
             group.TabOffset = Fix64.Clamp(group.TabOffset, 0, Fix64.Max(0, totalWidth - tabViewportWidth));
         }
-        else group.TabOffset = 0;
+        else
+        {
+            group.TabOffset = 0;
+            group.TabVisibilitySelectedId = selected.Id;
+            group.TabVisibilityViewportWidth = tabViewportWidth;
+            group.TabVisibilityTotalWidth = totalWidth;
+            group.TabVisibilityLayoutSignature = tabLayoutSignature;
+        }
 
         var tabViewport = new Rect(rect.x + 2, tabY, Fix64.Max(1, tabViewportWidth - 2), tabHeight);
         GUI.BeginClip(tabViewport);
@@ -281,12 +300,15 @@ internal sealed class ImGuiDockWorkspace
         for (var index = 0; index < panels.Length; index++)
         {
             var panel = panels[index];
-            var width = tabWidths[index];
+            var width = panels.Length == 1
+                ? Fix64.Min(tabWidths[index], tabViewport.width)
+                : tabWidths[index];
             var tab = new Rect(tabX, tabY, width, tabHeight);
             var visibleTab = tab.xMax >= tabViewport.x && tab.x <= tabViewport.xMax;
             var active = panel.Id == group.SelectedId;
-            var clicked = visibleTab && GUI.Button(tab, panel.Window.titleContent,
-                active ? EditorStyles.dockTabActive : EditorStyles.dockTab);
+            var style = active ? EditorStyles.dockTabActive : EditorStyles.dockTab;
+            var tabContent = FitTabContent(panel.Window.titleContent, GUI.GetVisibleWidth(tab), style);
+            var clicked = visibleTab && GUI.Button(tab, tabContent, style);
             if (visibleTab && active && Event.current.type == EventType.Repaint)
                 GUI.DrawRect(new Rect(tab.x, tab.y, tab.width, 2),
                     panel.Window.hasFocus
@@ -362,8 +384,63 @@ internal sealed class ImGuiDockWorkspace
         var start = Fix64.Zero;
         for (var index = 0; index < selectedIndex; index++) start += widths[index];
         var end = start + widths[selectedIndex];
+        if (widths[selectedIndex] >= viewportWidth)
+        {
+            group.TabOffset = start;
+            return;
+        }
         if (start < group.TabOffset) group.TabOffset = start;
         else if (end > group.TabOffset + viewportWidth) group.TabOffset = end - viewportWidth;
+    }
+
+    private static GUIContent FitTabContent(GUIContent source, Fix64 visibleWidth, GUIStyle style)
+    {
+        var hasImage = !string.IsNullOrWhiteSpace(source.image);
+        var availableTextWidth = Fix64.Max(0, visibleWidth - (hasImage ? 24 : 8));
+        var fittedText = FitText(source.text, availableTextWidth, style.fontSize);
+        if (fittedText.Equals(source.text, StringComparison.Ordinal)) return source;
+        var tooltip = string.IsNullOrWhiteSpace(source.tooltip) ? source.text : source.tooltip;
+        return new GUIContent(fittedText, source.image, tooltip);
+    }
+
+    private static int TabLayoutSignature(IReadOnlyList<ImGuiDockPanel> panels,
+        IReadOnlyList<Fix64> widths)
+    {
+        var hash = new HashCode();
+        for (var index = 0; index < panels.Count; index++)
+        {
+            hash.Add(panels[index].Id, StringComparer.Ordinal);
+            hash.Add(widths[index]);
+        }
+        return hash.ToHashCode();
+    }
+
+    private static string FitText(string text, Fix64 availableWidth, Fix64 fontSize)
+    {
+        if (string.IsNullOrEmpty(text) || availableWidth <= 0) return string.Empty;
+        if (GUITextMetrics.MeasureWidth(text, fontSize, GUIUtility.fontFamily) <= availableWidth) return text;
+
+        var suffix = "...";
+        while (suffix.Length > 0 &&
+               GUITextMetrics.MeasureWidth(suffix, fontSize, GUIUtility.fontFamily) > availableWidth)
+            suffix = suffix[..^1];
+        if (suffix.Length == 0) return string.Empty;
+
+        var elementStarts = StringInfo.ParseCombiningCharacters(text);
+        var low = 0;
+        var high = elementStarts.Length;
+        while (low < high)
+        {
+            var count = (low + high + 1) / 2;
+            var end = count == elementStarts.Length ? text.Length : elementStarts[count];
+            var candidate = string.Concat(text.AsSpan(0, end), suffix);
+            if (GUITextMetrics.MeasureWidth(candidate, fontSize, GUIUtility.fontFamily) <= availableWidth)
+                low = count;
+            else
+                high = count - 1;
+        }
+        var prefixEnd = low == elementStarts.Length ? text.Length : elementStarts[low];
+        return string.Concat(text.AsSpan(0, prefixEnd), suffix);
     }
 
     private void ShowWindowContextMenu(ImGuiDockPanel panel, Vector2 undockPosition)
@@ -645,28 +722,28 @@ internal sealed class ImGuiDockWorkspace
         public List<ImGuiDockPanel> Panels { get; } = [];
         public string? SelectedId { get; set; }
         public Fix64 TabOffset { get; set; }
+        public string? TabVisibilitySelectedId { get; set; }
+        public Fix64 TabVisibilityViewportWidth { get; set; } = -1;
+        public Fix64 TabVisibilityTotalWidth { get; set; } = -1;
+        public int TabVisibilityLayoutSignature { get; set; }
     }
 
     internal sealed class DockSplit : DockNode
     {
         private static int _nextControlId = 73000;
-        private DockNode _first;
-        private DockNode _second;
         public DockSplit(bool sideBySide, Fix64 ratio, DockNode first, DockNode second)
         {
             SideBySide = sideBySide;
             Ratio = ratio;
-            _first = first;
-            _second = second;
-            first.Parent = this;
-            second.Parent = this;
+            First = first;
+            Second = second;
             ControlId = Interlocked.Increment(ref _nextControlId);
         }
         public bool SideBySide { get; }
         public Fix64 Ratio { get; set; }
         public int ControlId { get; }
-        public DockNode First { get => _first; set { _first = value; value.Parent = this; } }
-        public DockNode Second { get => _second; set { _second = value; value.Parent = this; } }
+        public DockNode First { get; set { field = value; value.Parent = this; } }
+        public DockNode Second { get; set { field = value; value.Parent = this; } }
     }
 
     private enum DockDropPosition { Left, Right, Top, Bottom, Center }

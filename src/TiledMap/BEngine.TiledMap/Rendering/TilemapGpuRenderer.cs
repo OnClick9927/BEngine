@@ -49,10 +49,10 @@ internal sealed class TilemapGpuRenderer : IDisposable
         foreach (var tile in tiles) AddQuad(vertices, tile, camera, width, height);
         _mesh.Update(CollectionsMarshal.AsSpan(vertices));
         _device.SetViewport(viewport);
-        _device.SetScissor(new GraphicsRect(0, 0, width, height));
+        _device.SetScissor(new GraphicsRect(0, 0, viewport.Width, viewport.Height));
         _device.SetDepthState(GraphicsDepthState.Disabled);
         _device.SetBlendMode(GraphicsBlendMode.AlphaBlend);
-        _device.SetRasterizerState(GraphicsRasterizerState.Default);
+        _device.SetRasterizerState(GraphicsRasterizerState.CullBackFaces);
         _program.Bind();
         _program.SetFloat("uViewportWidth", width);
         _program.SetFloat("uViewportHeight", height);

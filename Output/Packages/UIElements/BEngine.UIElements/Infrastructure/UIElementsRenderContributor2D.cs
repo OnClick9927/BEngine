@@ -8,13 +8,20 @@ internal sealed class UIElementsRenderContributor2D(IGraphicsDevice device) : IS
     private readonly UIElementsRenderer _renderer = new(device);
 
     public string packageId => "com.bengine.ui-elements";
+    public bool rendersUi => true;
 
     public long Collect(Scene scene, RenderCamera camera, int width, int height,
         ICollection<RenderSubmission2D> submissions, long submissionOrder)
+        => Collect(scene, camera, width, height, submissions, submissionOrder, null);
+
+    public long Collect(Scene scene, RenderCamera camera, int width, int height,
+        ICollection<RenderSubmission2D> submissions, long submissionOrder,
+        Predicate<GameObject>? objectFilter)
     {
         var hierarchy = HierarchyOrder2D.Build(scene);
         foreach (var document in scene.QueryComponents<UIDocument>().ToArray()
                      .Where(item => item.enabled && item.gameObject.activeInHierarchy)
+                     .Where(item => objectFilter is null || objectFilter(item.gameObject))
                      .OrderBy(item => hierarchy.GetValueOrDefault(item.gameObject)))
         {
             var list = UIRenderListBuilder.Build(document.rootVisualElement, width, height,

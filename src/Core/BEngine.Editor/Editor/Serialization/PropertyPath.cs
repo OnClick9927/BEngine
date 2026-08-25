@@ -6,7 +6,7 @@ namespace BEngine.Editor;
 
 internal static class PropertyPath
 {
-    private static readonly object CacheGate = new();
+    private static readonly Lock CacheGate = new();
     private static readonly Dictionary<string, PathSegment[]> ParsedPaths = new(StringComparer.Ordinal);
 
     public static bool TryResolve(object target, string path, out PropertyAccessor accessor)

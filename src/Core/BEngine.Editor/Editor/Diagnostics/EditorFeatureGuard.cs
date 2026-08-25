@@ -6,7 +6,7 @@ namespace BEngine.Editor;
 internal static class EditorFeatureGuard
 {
     private const long RepeatLogIntervalMilliseconds = 5000;
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static readonly Dictionary<string, FaultState> Faults = new(StringComparer.Ordinal);
 
     internal static int activeFaultCount

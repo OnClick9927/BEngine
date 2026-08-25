@@ -1,8 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.0.31903.59
-MinimumVisualStudioVersion = 10.0.40219.1
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.0.0
+MinimumVisualStudioVersion = 18.0.0.0
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Core", "Core", "{CD1B5D5A-B6D1-43FC-A25E-879FA641616B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{743F2933-655E-4B11-9BCA-5B27724B7DE2}"
@@ -10,7 +10,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "EditorResources", "EditorResources", "{488E3C0A-547F-4B75-8CB1-B1C6F65961E9}"
 	ProjectSection(SolutionItems) = preProject
 		Core\EditorResources\Readme.md = Core\EditorResources\Readme.md
-		Core\EditorResources\Web.config = Core\EditorResources\Web.config
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine", "Core\BEngine\BEngine.csproj", "{48794D92-E601-4812-8ADE-A6B9754E7949}"
@@ -170,7 +169,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Core\EditorResources\Examples", "{E1C460E6-8867-557E-8674-56163A66A153}"
 	ProjectSection(SolutionItems) = preProject
 		Core\EditorResources\Examples\CoreGettingStarted.bpackage = Core\EditorResources\Examples\CoreGettingStarted.bpackage
-		Core\EditorResources\Examples\EcsSystems.bpackage = Core\EditorResources\Examples\EcsSystems.bpackage
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Icons", "Core\EditorResources\Icons", "{91B5755B-1E62-2531-191D-48DBD8E2E9BA}"
@@ -266,6 +264,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Windows", "Core\EditorResou
 		Core\EditorResources\Icons\Windows\Project.png = Core\EditorResources\Icons\Windows\Project.png
 		Core\EditorResources\Icons\Windows\ProjectSettings.png = Core\EditorResources\Icons\Windows\ProjectSettings.png
 		Core\EditorResources\Icons\Windows\Scene.png = Core\EditorResources\Icons\Windows\Scene.png
+		Core\EditorResources\Icons\Windows\SceneCamera.png = Core\EditorResources\Icons\Windows\SceneCamera.png
+		Core\EditorResources\Icons\Windows\Shortcuts.png = Core\EditorResources\Icons\Windows\Shortcuts.png
 		Core\EditorResources\Icons\Windows\UIBuilder.png = Core\EditorResources\Icons\Windows\UIBuilder.png
 		Core\EditorResources\Icons\Windows\Window.png = Core\EditorResources\Icons\Windows\Window.png
 	EndProjectSection

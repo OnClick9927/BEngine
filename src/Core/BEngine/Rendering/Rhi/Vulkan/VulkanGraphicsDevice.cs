@@ -8,7 +8,7 @@ using NVector4 = System.Numerics.Vector4;
 
 namespace BEngine.Rendering.Rhi.Vulkan;
 
-public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
+public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphicsResourceRetirement
 {
     private const GraphicsDeviceFeatures SupportedFeatures =
         GraphicsDeviceFeatures.Rasterization |
@@ -23,6 +23,8 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
     private readonly Vd.GraphicsDevice _device;
     private readonly ResourceFactory _factory;
     private readonly CommandList _commands;
+    private readonly Fence _frameFence;
+    private readonly List<IDisposable> _retiredResources = [];
     private readonly GraphicsDeviceCapabilities _capabilities;
     private VulkanProgram? _activeProgram;
     private VulkanTexture2D? _boundTexture;
@@ -33,15 +35,16 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
     private int _frameWidth;
     private int _frameHeight;
     private bool _frameOpen;
+    private bool _frameSubmitted;
     private bool _disposed;
 
     public GraphicsBackend Backend
     {
-        get { MainThreadGuard.Ensure(); return GraphicsBackend.Vulkan; }
+        get { return GraphicsBackend.Vulkan; }
     }
     public GraphicsDeviceCapabilities Capabilities
     {
-        get { MainThreadGuard.Ensure(); return _capabilities; }
+        get { return _capabilities; }
     }
 
     internal Vd.GraphicsDevice NativeDevice => _device;
@@ -53,10 +56,10 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     internal VulkanGraphicsDevice(Vd.GraphicsDevice device)
     {
-        MainThreadGuard.Ensure("Create Vulkan graphics device");
         _device = device ?? throw new ArgumentNullException(nameof(device));
         _factory = device.ResourceFactory;
         _commands = _factory.CreateCommandList();
+        _frameFence = _factory.CreateFence(false);
         _capabilities = new GraphicsDeviceCapabilities(
             GraphicsBackend.Vulkan,
             device.DeviceName,
@@ -68,9 +71,9 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     public void BeginFrame(int width, int height)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         if (_frameOpen) throw new InvalidOperationException("The Vulkan frame is already open.");
+        CompleteSubmittedFrame();
         width = Math.Max(1, width);
         height = Math.Max(1, height);
         if (width != _frameWidth || height != _frameHeight)
@@ -87,18 +90,23 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     public void Present()
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         if (!_frameOpen) throw new InvalidOperationException("No Vulkan frame is open.");
         _commands.End();
-        _device.SubmitCommands(_commands);
-        _device.SwapBuffers();
-        _frameOpen = false;
+        try
+        {
+            _device.SubmitCommands(_commands, _frameFence);
+            _frameSubmitted = true;
+            _device.SwapBuffers();
+        }
+        finally
+        {
+            _frameOpen = false;
+        }
     }
 
     public IGraphicsProgram CreateProgram(GraphicsShaderProgramDescription description)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(description);
         description.Validate();
@@ -109,7 +117,6 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     public IGraphicsMesh CreateMesh(GraphicsMeshDescription description)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(description);
         return new VulkanMesh(this, description);
@@ -120,7 +127,6 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
         GraphicsTextureDescription description,
         ReadOnlySpan<byte> initialData = default)
     {
-        MainThreadGuard.Ensure();
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         description.Validate();
@@ -129,19 +135,16 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     public IGraphicsRenderTarget CreateRenderTarget(string label, GraphicsRenderTargetDescription description)
     {
-        MainThreadGuard.Ensure();
         throw new NotSupportedException("Vulkan offscreen render targets are not enabled in this lightweight provider yet.");
     }
 
     public IDisposable PushRenderTarget(IGraphicsRenderTarget renderTarget)
     {
-        MainThreadGuard.Ensure();
         throw new NotSupportedException("Vulkan offscreen render targets are not enabled in this lightweight provider yet.");
     }
 
     public void SetViewport(GraphicsRect viewport)
     {
-        MainThreadGuard.Ensure();
         SetViewportCore(viewport);
     }
 
@@ -155,7 +158,6 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     public void SetScissor(GraphicsRect? scissor)
     {
-        MainThreadGuard.Ensure();
         RequireFrame();
         var value = scissor ?? new GraphicsRect(0, 0, _viewport.Width, _viewport.Height);
         value.Validate();
@@ -167,7 +169,6 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     public void Clear(GraphicsClearFlags flags, NVector4 color)
     {
-        MainThreadGuard.Ensure();
         RequireFrame();
         if ((flags & GraphicsClearFlags.Color) != 0)
             _commands.ClearColorTarget(0, new RgbaFloat(color.X, color.Y, color.Z, color.W));
@@ -178,23 +179,19 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     public void SetDepthState(GraphicsDepthState state)
     {
-        MainThreadGuard.Ensure();
         _depthState = state;
     }
     public void SetBlendMode(GraphicsBlendMode mode)
     {
-        MainThreadGuard.Ensure();
         _blendMode = mode;
     }
     public void SetRasterizerState(GraphicsRasterizerState state)
     {
-        MainThreadGuard.Ensure();
         _rasterizerState = state;
     }
 
     public void BindTexture(int slot, IGraphicsTexture2D texture)
     {
-        MainThreadGuard.Ensure();
         if (slot != 0) throw new NotSupportedException("The lightweight Vulkan provider exposes texture slot 0.");
         _boundTexture = RequireResource<VulkanTexture2D>(texture);
         _boundTexture.MarkSampled();
@@ -202,14 +199,12 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     public void Draw(IGraphicsMesh mesh)
     {
-        MainThreadGuard.Ensure();
         var vkMesh = RequireResource<VulkanMesh>(mesh);
         Draw(vkMesh, vkMesh.VertexCountUnchecked, 0);
     }
 
     public void Draw(IGraphicsMesh mesh, int vertexCount, int firstVertex = 0)
     {
-        MainThreadGuard.Ensure();
         var vkMesh = RequireResource<VulkanMesh>(mesh);
         Draw(vkMesh, vertexCount, firstVertex);
     }
@@ -229,7 +224,6 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
     public void Draw(int vertexCount, GraphicsPrimitiveTopology topology, int firstVertex = 0)
     {
-        MainThreadGuard.Ensure();
         throw new NotSupportedException("The Vulkan provider requires an explicit mesh vertex buffer.");
     }
 
@@ -239,9 +233,33 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
         _activeProgram = program;
     }
 
+    internal void UpdateBuffer<T>(DeviceBuffer buffer, ReadOnlySpan<T> data) where T : unmanaged
+    {
+        if (_frameOpen)
+        {
+            _commands.UpdateBuffer(buffer, 0, data);
+            return;
+        }
+        CompleteSubmittedFrame();
+        _device.UpdateBuffer(buffer, 0, data);
+    }
+
+    public void RetireResource(IDisposable resource)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(resource);
+        if (ReferenceEquals(resource, _boundTexture)) _boundTexture = null;
+        if (_frameOpen)
+        {
+            _retiredResources.Add(resource);
+            return;
+        }
+        CompleteSubmittedFrame();
+        resource.Dispose();
+    }
+
     public void Dispose()
     {
-        MainThreadGuard.Ensure();
         if (_disposed) return;
         if (_frameOpen)
         {
@@ -250,9 +268,12 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
             _frameOpen = false;
         }
         _device.WaitForIdle();
+        _frameSubmitted = false;
         _fallbackTexture?.Dispose();
         _fallbackTexture = null;
         _commands.Dispose();
+        DisposeRetiredResources();
+        _frameFence.Dispose();
         _device.Dispose();
         _disposed = true;
         GC.SuppressFinalize(this);
@@ -274,6 +295,23 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
         if (!_frameOpen) throw new InvalidOperationException("BeginFrame must be called before recording Vulkan commands.");
     }
 
+    private void CompleteSubmittedFrame()
+    {
+        if (_frameSubmitted)
+        {
+            _device.WaitForFence(_frameFence);
+            _device.ResetFence(_frameFence);
+            _frameSubmitted = false;
+        }
+        DisposeRetiredResources();
+    }
+
+    private void DisposeRetiredResources()
+    {
+        foreach (var resource in _retiredResources) resource.Dispose();
+        _retiredResources.Clear();
+    }
+
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
     private abstract class VulkanResource : IGraphicsResource
@@ -288,12 +326,12 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
         public IGraphicsDevice Device
         {
-            get { MainThreadGuard.Ensure(); return VulkanDevice; }
+            get { return VulkanDevice; }
         }
         internal VulkanGraphicsDevice VulkanDevice { get; }
         public string Label
         {
-            get { MainThreadGuard.Ensure(); return _label; }
+            get { return _label; }
         }
         public abstract void Dispose();
     }
@@ -310,19 +348,19 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
         public GraphicsVertexLayout Layout
         {
-            get { MainThreadGuard.Ensure(); return _layout; }
+            get { return _layout; }
         }
         public GraphicsPrimitiveTopology Topology
         {
-            get { MainThreadGuard.Ensure(); return _topology; }
+            get { return _topology; }
         }
         public GraphicsBufferUsage Usage
         {
-            get { MainThreadGuard.Ensure(); return _usage; }
+            get { return _usage; }
         }
         public int VertexCount
         {
-            get { MainThreadGuard.Ensure(); return _vertexCount; }
+            get { return _vertexCount; }
         }
         internal GraphicsVertexLayout LayoutUnchecked => _layout;
         internal GraphicsPrimitiveTopology TopologyUnchecked => _topology;
@@ -343,27 +381,25 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
         public void Update(ReadOnlySpan<float> vertices)
         {
-            MainThreadGuard.Ensure();
             ObjectDisposedException.ThrowIf(_disposed, this);
             var bytes = vertices.Length * sizeof(float);
             if (bytes > _capacityBytes)
             {
-                VulkanDevice.NativeDevice.WaitForIdle();
-                _buffer.Dispose();
+                var previous = _buffer;
                 _capacityBytes = Math.Max(bytes, _capacityBytes * 2);
                 _buffer = VulkanDevice.Factory.CreateBuffer(new BufferDescription((uint)_capacityBytes,
                     BufferUsage.VertexBuffer | BufferUsage.Dynamic));
+                VulkanDevice.RetireResource(previous);
             }
-            if (!vertices.IsEmpty) VulkanDevice.NativeDevice.UpdateBuffer(_buffer, 0, vertices);
+            if (!vertices.IsEmpty) VulkanDevice.UpdateBuffer(_buffer, vertices);
             _vertexCount = bytes / _layout.StrideBytes;
         }
 
         public override void Dispose()
         {
-            MainThreadGuard.Ensure();
             if (_disposed) return;
-            _buffer.Dispose();
             _disposed = true;
+            VulkanDevice.RetireResource(_buffer);
         }
     }
 
@@ -375,7 +411,7 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
         internal event Action<VulkanTexture2D>? Disposing;
         public GraphicsTextureDescription Description
         {
-            get { MainThreadGuard.Ensure(); return _description; }
+            get { return _description; }
         }
         public Texture Texture { get; }
         public TextureView View { get; }
@@ -406,7 +442,6 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
         public void Update(ReadOnlySpan<byte> pixels)
         {
-            MainThreadGuard.Ensure();
             ObjectDisposedException.ThrowIf(_disposed, this);
             var required = _description.Width * _description.Height *
                            (_description.Format == GraphicsTextureFormat.R8Unorm ? 1 : 4);
@@ -426,7 +461,6 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
         public override void Dispose()
         {
-            MainThreadGuard.Ensure();
             if (_disposed) return;
             Disposing?.Invoke(this);
             Disposing = null;
@@ -474,26 +508,24 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
         public void Bind()
         {
-            MainThreadGuard.Ensure();
             VulkanDevice.Bind(this);
         }
-        public void SetMatrix4x4(string name, NMatrix4x4 value) => MainThreadGuard.Ensure();
-        public void SetVector4(string name, NVector4 value) => MainThreadGuard.Ensure();
+        public void SetMatrix4x4(string name, NMatrix4x4 value) { }
+        public void SetVector4(string name, NVector4 value) { }
         public void SetFloat(string name, float value)
         {
-            MainThreadGuard.Ensure();
             if (name == "uViewportWidth") _uniforms[0] = value;
             else if (name == "uViewportHeight") _uniforms[1] = value;
             _uniformDirty = true;
         }
-        public void SetInt(string name, int value) => MainThreadGuard.Ensure();
+        public void SetInt(string name, int value) { }
 
         public void Prepare(VulkanMesh mesh, VulkanTexture2D? texture)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_uniformDirty)
             {
-                VulkanDevice.NativeDevice.UpdateBuffer(_uniformBuffer, 0, _uniforms);
+                VulkanDevice.UpdateBuffer<float>(_uniformBuffer, _uniforms);
                 _uniformDirty = false;
             }
             var key = new PipelineKey(mesh.LayoutUnchecked, mesh.TopologyUnchecked, VulkanDevice.BlendMode,
@@ -545,9 +577,14 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
                 key.DepthState.WriteEnabled,
                 ComparisonKind.LessEqual);
             var rasterizer = new RasterizerStateDescription(
-                FaceCullMode.None,
+                key.RasterizerState.CullMode switch
+                {
+                    GraphicsCullMode.Back => FaceCullMode.Back,
+                    GraphicsCullMode.Front => FaceCullMode.Front,
+                    _ => FaceCullMode.None
+                },
                 PolygonFillMode.Solid,
-                FrontFace.Clockwise,
+                FrontFace.CounterClockwise,
                 true,
                 false);
             var description = new GraphicsPipelineDescription(
@@ -564,7 +601,6 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice
 
         public override void Dispose()
         {
-            MainThreadGuard.Ensure();
             if (_disposed) return;
             foreach (var (texture, resourceSet) in _resourceSets)
             {

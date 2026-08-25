@@ -1,14 +1,14 @@
 format: BEngine.Project
 version: 1
 engineVersion: 0.1.0
-name: Example
+name: BEngine 2D Showcase
 startupScene: Assets/Scenes/Main.scene.yaml
 assetsDirectory: Assets
 scriptsDirectory: Assets/Scripts
 editorScriptsDirectory: Assets/Editor
 fixedDeltaTime: 0.02
 window:
-  title: Example
+  title: BEngine 2D Showcase
   width: 1280
   height: 720
   vSync: true

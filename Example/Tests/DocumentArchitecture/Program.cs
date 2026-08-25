@@ -2,6 +2,7 @@ using BEngine;
 using BEngine.Animation;
 using BEngine.Documents;
 using BEngine.Editor;
+using BEngine.Editor.Documents;
 using BEngine.UIElements;
 
 namespace BEngine.ExampleTests.DocumentArchitecture;
@@ -17,9 +18,9 @@ internal static class Program
             VerifyGenericDocumentObject(directory);
             VerifySceneConversion(directory);
             VerifyPackageConversions(directory);
-            VerifyDocumentInheritance();
+            VerifyDocumentComposition();
             VerifySourceBoundary();
-            Console.WriteLine("DOCUMENT_ARCHITECTURE_OK|base,object,yaml,disk,scene,packages,inheritance,boundary");
+            Console.WriteLine("DOCUMENT_ARCHITECTURE_OK|base,object,yaml,disk,scene,packages,composition,boundary");
             return 0;
         }
         catch (Exception exception)
@@ -49,22 +50,29 @@ internal static class Program
             "UIElements package did not register its Document converter.");
     }
 
-    private static void VerifyDocumentInheritance()
+    private static void VerifyDocumentComposition()
     {
-        var assemblies = new[]
+        Type[] persistentRoots =
         {
-            typeof(Document).Assembly,
-            typeof(EditorWindow).Assembly,
-            typeof(AnimationClipDocument).Assembly,
-            typeof(UIAssetDocument).Assembly
+            typeof(ProjectDocument),
+            typeof(SceneDocument),
+            typeof(EditorLayoutDocument),
+            typeof(AnimationClipDocument),
+            typeof(UIAssetDocument)
         };
-        var violations = assemblies.Distinct().SelectMany(assembly => assembly.GetTypes())
-            .Where(type => type.Name.EndsWith("Document", StringComparison.Ordinal) &&
-                           type != typeof(BEngine.UIElements.UIDocument) &&
-                           !typeof(Document).IsAssignableFrom(type))
+        var violations = persistentRoots.Where(type => !typeof(Document).IsAssignableFrom(type))
             .Select(type => type.FullName).ToArray();
         Require(violations.Length == 0,
-            $"Document types do not inherit the common base: {string.Join(", ", violations)}");
+            $"Persistent document roots do not inherit Document: {string.Join(", ", violations)}");
+
+        Require(!typeof(Document).IsAssignableFrom(typeof(EditorDockNodeDocument)) &&
+                !typeof(Document).IsAssignableFrom(typeof(EditorWindowLayoutDocument)),
+            "Editor layout child records must remain composed DTOs rather than independent document roots.");
+        Require(typeof(EditorLayoutDocument).GetProperty(nameof(EditorLayoutDocument.DockRoot))?.PropertyType ==
+                typeof(EditorDockNodeDocument) &&
+                typeof(EditorLayoutDocument).GetProperty(nameof(EditorLayoutDocument.Windows))?.PropertyType ==
+                typeof(List<EditorWindowLayoutDocument>),
+            "EditorLayoutDocument no longer composes the dock tree and window records.");
     }
 
     private static void VerifyGenericDocumentObject(string directory)
@@ -110,7 +118,7 @@ internal static class Program
     private static void VerifySourceBoundary()
     {
         var repository = FindRepository(AppContext.BaseDirectory);
-        var serializationRoot = Path.Combine(repository, "src", "Core", "BEngine", "Serialization");
+        var serializationRoot = Path.Combine(repository, "src", "Core", "BEngine", "Core", "Serialization");
         var files = Directory.EnumerateFiles(serializationRoot, "*.cs", SearchOption.AllDirectories)
             .Select(Path.GetFileName).OrderBy(name => name, StringComparer.Ordinal).ToArray();
         string[] expected = ["ISerializationCallbackReceiver.cs", "SerializationCallbackUtility.cs", "YamlUtility.cs"];

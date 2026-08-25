@@ -4,7 +4,7 @@ using System.Numerics;
 namespace BEngine;
 
 /// <summary>Signed deterministic Q32.32 fixed-point number.</summary>
-public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattable
+public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattable, ISpanParsable<Fix64>
 {
     public const int FractionalBits = 32;
     public const long OneRaw = 1L << FractionalBits;
@@ -29,6 +29,22 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
     public static Fix64 Parse(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
+        return Parse(value.AsSpan(), CultureInfo.InvariantCulture);
+    }
+
+    public static Fix64 Parse(string value, IFormatProvider? provider)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return Parse(value.AsSpan(), provider);
+    }
+
+    public static Fix64 Parse(ReadOnlySpan<char> value) =>
+        Parse(value, CultureInfo.InvariantCulture);
+
+    public static Fix64 Parse(ReadOnlySpan<char> value, IFormatProvider? provider)
+    {
+        _ = provider; // Fix64 text is deliberately culture-invariant for deterministic assets.
+        var original = value;
         var text = value.Trim();
         if (text.Length == 0)
         {
@@ -36,16 +52,17 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
         }
 
         var exponent = 0;
-        var exponentIndex = text.IndexOfAny(['e', 'E']);
+        var exponentIndex = text.IndexOfAny('e', 'E');
         if (exponentIndex >= 0)
         {
             exponent = int.Parse(text[(exponentIndex + 1)..], NumberStyles.AllowLeadingSign,
                 CultureInfo.InvariantCulture);
             text = text[..exponentIndex];
         }
+        if (text.IsEmpty) throw CreateFormatException(original);
 
-        var negative = text.StartsWith('-');
-        if (negative || text.StartsWith('+'))
+        var negative = text[0] == '-';
+        if (negative || text[0] == '+')
         {
             text = text[1..];
         }
@@ -53,27 +70,31 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
         var decimalIndex = text.IndexOf('.');
         if (decimalIndex != text.LastIndexOf('.'))
         {
-            throw new FormatException($"'{value}' is not a valid fixed-point value.");
+            throw CreateFormatException(original);
         }
 
         var fractionalDigits = decimalIndex < 0 ? 0 : text.Length - decimalIndex - 1;
-        var digits = decimalIndex < 0 ? text : text.Remove(decimalIndex, 1);
-        if (digits.Length == 0 || digits.Any(character => !char.IsAsciiDigit(character)))
+        Span<char> digits = text.Length <= 256 ? stackalloc char[text.Length] : new char[text.Length];
+        var digitCount = 0;
+        foreach (var character in text)
         {
-            throw new FormatException($"'{value}' is not a valid fixed-point value.");
+            if (character == '.') continue;
+            if (!char.IsAsciiDigit(character)) throw CreateFormatException(original);
+            digits[digitCount++] = character;
         }
+        if (digitCount == 0) throw CreateFormatException(original);
 
-        digits = digits.TrimStart('0');
-        if (digits.Length == 0)
+        var significantDigits = digits[..digitCount].TrimStart('0');
+        if (significantDigits.Length == 0)
         {
             return Zero;
         }
 
         var scale = (long)fractionalDigits - exponent;
-        var raw = BigInteger.Parse(digits, NumberStyles.None, CultureInfo.InvariantCulture) * OneRaw;
+        var raw = BigInteger.Parse(significantDigits, NumberStyles.None, CultureInfo.InvariantCulture) * OneRaw;
         if (scale > 0)
         {
-            if (scale > digits.Length + 10L)
+            if (scale > significantDigits.Length + 10L)
             {
                 return Zero;
             }
@@ -84,7 +105,7 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
         {
             if (-scale > 10)
             {
-                throw new OverflowException($"'{value}' is outside the Fix64 range.");
+                throw new OverflowException($"'{original.ToString()}' is outside the Fix64 range.");
             }
 
             raw *= BigInteger.Pow(10, checked((int)-scale));
@@ -97,17 +118,33 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
 
         if (raw < long.MinValue || raw > long.MaxValue)
         {
-            throw new OverflowException($"'{value}' is outside the Fix64 range.");
+            throw new OverflowException($"'{original.ToString()}' is outside the Fix64 range.");
         }
 
         return FromRaw((long)raw);
     }
 
     public static bool TryParse(string? value, out Fix64 result)
+        => TryParse(value, CultureInfo.InvariantCulture, out result);
+
+    public static bool TryParse(string? value, IFormatProvider? provider, out Fix64 result)
+    {
+        if (value is null)
+        {
+            result = Zero;
+            return false;
+        }
+        return TryParse(value.AsSpan(), provider, out result);
+    }
+
+    public static bool TryParse(ReadOnlySpan<char> value, out Fix64 result) =>
+        TryParse(value, CultureInfo.InvariantCulture, out result);
+
+    public static bool TryParse(ReadOnlySpan<char> value, IFormatProvider? provider, out Fix64 result)
     {
         try
         {
-            result = Parse(value!);
+            result = Parse(value, provider);
             return true;
         }
         catch (Exception exception) when (exception is ArgumentNullException or FormatException or OverflowException)
@@ -116,6 +153,9 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
             return false;
         }
     }
+
+    private static FormatException CreateFormatException(ReadOnlySpan<char> value) =>
+        new($"'{value.ToString()}' is not a valid fixed-point value.");
 
     public static implicit operator Fix64(int value) => FromRaw((long)value << FractionalBits);
     public static implicit operator Fix64(long value) => FromRaw(checked(value << FractionalBits));

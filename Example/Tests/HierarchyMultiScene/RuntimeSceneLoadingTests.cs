@@ -39,9 +39,6 @@ internal static class RuntimeSceneLoadingTests
         var transientDocument = Document.FromBObject<SceneDocument>(first).ToYaml();
         TestAssert.Require(!transientDocument.Contains("DontDestroyOnLoad", StringComparison.OrdinalIgnoreCase),
             "DontDestroyOnLoad leaked from runtime state into SceneDocument serialization.");
-        var oldRootEntity = firstRoot.entity;
-        var oldChildEntity = firstChild.entity;
-        var firstEntityManager = first.world.EntityManager;
         var replacement = manager.LoadScene(fixture.SecondScenePath, LoadSceneMode.Single);
         TestAssert.Require(manager.SceneCount == 1 && ReferenceEquals(manager.ActiveScene, replacement),
             "A subsequent Single load did not replace all ordinary loaded Scenes.");
@@ -52,16 +49,14 @@ internal static class RuntimeSceneLoadingTests
                            replacement.Find(firstRoot.Id) is not null &&
                            replacement.Find(firstChild.Id) is not null,
             "DontDestroyOnLoad did not preserve and move the complete GameObject hierarchy.");
-        TestAssert.Require(replacement.world.EntityManager.Exists(firstRoot.entity) &&
-                           replacement.world.EntityManager.Exists(firstChild.entity),
-            "Preserved GameObjects were not rebound to live entities in the replacement World.");
-        TestAssert.Require(!firstEntityManager.Exists(oldRootEntity) &&
-                           !firstEntityManager.Exists(oldChildEntity),
-            "The replaced Scene retained stale entities for DontDestroyOnLoad objects.");
+        TestAssert.Require(replacement.gameObjects.Contains(firstRoot) &&
+                           replacement.gameObjects.Contains(firstChild) &&
+                           !first.gameObjects.Contains(firstRoot) && !first.gameObjects.Contains(firstChild),
+            "Preserved GameObjects were not moved between the managed Scene collections.");
         TestAssert.Require(manager.UnregisterScene(replacement) && manager.SceneCount == 0 &&
-                           replacement.isLoaded && replacement.world.IsCreated &&
-                           replacement.world.EntityManager.Exists(firstRoot.entity),
-            "Non-destructive Scene unregistration disposed the Scene or its ECS objects.");
-        replacement.world.Dispose();
+                           replacement.isLoaded && replacement.isCreated &&
+                           replacement.gameObjects.Contains(firstRoot),
+            "Non-destructive Scene unregistration disposed the Scene or its managed objects.");
+        replacement.Dispose();
     }
 }

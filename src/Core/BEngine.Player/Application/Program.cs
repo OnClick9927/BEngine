@@ -13,7 +13,6 @@ internal static class Program
             {
                 throw new ArgumentException("A BEngine project path is required.");
             }
-            using var engineThread = EngineThreadContext.BindCurrentThread("BEngine Player");
             var projectPath = Path.GetFullPath(args[0]);
             using var services = new ServiceCollection()
                 .AddBEnginePlayer(projectPath)

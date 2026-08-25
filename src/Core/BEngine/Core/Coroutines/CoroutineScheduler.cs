@@ -4,7 +4,6 @@ namespace BEngine;
 
 internal static class CoroutineScheduler
 {
-    private static readonly object Gate = new();
     private static readonly List<Entry> Entries = [];
     private static readonly List<Invocation> Invocations = [];
     private static readonly List<Entry> TickEntries = [];
@@ -15,7 +14,7 @@ internal static class CoroutineScheduler
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(routine);
         var coroutine = new Coroutine(owner, routine, methodName);
-        lock (Gate) Entries.Add(new Entry(coroutine));
+        Entries.Add(new Entry(coroutine));
         return coroutine;
     }
 
@@ -29,30 +28,27 @@ internal static class CoroutineScheduler
     internal static void Stop(MonoBehaviour owner, Coroutine coroutine)
     {
         if (coroutine is null) return;
-        lock (Gate) Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine, coroutine) &&
-                                               ReferenceEquals(entry.Coroutine.Owner, owner));
+        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine, coroutine) &&
+                                   ReferenceEquals(entry.Coroutine.Owner, owner));
     }
 
     internal static void Stop(MonoBehaviour owner, IEnumerator routine)
     {
         if (routine is null) return;
-        lock (Gate) Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner, owner) &&
-                                               ReferenceEquals(entry.Coroutine.Routine, routine));
+        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner, owner) &&
+                                   ReferenceEquals(entry.Coroutine.Routine, routine));
     }
 
     internal static void Stop(MonoBehaviour owner, string methodName)
     {
-        lock (Gate) Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner, owner) &&
-                                               entry.Coroutine.MethodName == methodName);
+        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner, owner) &&
+                                   entry.Coroutine.MethodName == methodName);
     }
 
     internal static void StopAll(MonoBehaviour owner)
     {
-        lock (Gate)
-        {
-            Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner, owner));
-            Invocations.RemoveAll(entry => ReferenceEquals(entry.Owner, owner));
-        }
+        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner, owner));
+        Invocations.RemoveAll(entry => ReferenceEquals(entry.Owner, owner));
     }
 
     internal static void Invoke(MonoBehaviour owner, string methodName, Fix64 delay, Fix64? repeatRate)
@@ -61,35 +57,32 @@ internal static class CoroutineScheduler
             throw new MissingMethodException(owner.GetType().FullName, methodName);
         if (repeatRate is { } rate && rate <= Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(repeatRate));
-        lock (Gate) Invocations.Add(new Invocation(owner, methodName,
+        Invocations.Add(new Invocation(owner, methodName,
             Time.time + Fix64.Max(Fix64.Zero, delay), repeatRate));
     }
 
     internal static void CancelInvokes(MonoBehaviour owner, string? methodName = null)
     {
-        lock (Gate) Invocations.RemoveAll(entry => ReferenceEquals(entry.Owner, owner) &&
-                                                     (methodName is null || entry.MethodName == methodName));
+        Invocations.RemoveAll(entry => ReferenceEquals(entry.Owner, owner) &&
+                                       (methodName is null || entry.MethodName == methodName));
     }
 
     internal static bool IsInvoking(MonoBehaviour owner, string? methodName = null)
     {
-        lock (Gate) return Invocations.Any(entry => ReferenceEquals(entry.Owner, owner) &&
-                                                    (methodName is null || entry.MethodName == methodName));
+        return Invocations.Any(entry => ReferenceEquals(entry.Owner, owner) &&
+                                        (methodName is null || entry.MethodName == methodName));
     }
 
     internal static void Tick(Scene scene)
     {
-        lock (Gate)
-        {
-            if (Entries.Count == 0 && Invocations.Count == 0) return;
-            TickEntries.Clear();
-            TickInvocations.Clear();
-            foreach (var entry in Entries)
-                if (ReferenceEquals(entry.Coroutine.Owner.gameObject.scene, scene)) TickEntries.Add(entry);
-            foreach (var invocation in Invocations)
-                if (ReferenceEquals(invocation.Owner.gameObject.scene, scene) && invocation.NextTime <= Time.time)
-                    TickInvocations.Add(invocation);
-        }
+        if (Entries.Count == 0 && Invocations.Count == 0) return;
+        TickEntries.Clear();
+        TickInvocations.Clear();
+        foreach (var entry in Entries)
+            if (ReferenceEquals(entry.Coroutine.Owner.gameObject.scene, scene)) TickEntries.Add(entry);
+        foreach (var invocation in Invocations)
+            if (ReferenceEquals(invocation.Owner.gameObject.scene, scene) && invocation.NextTime <= Time.time)
+                TickInvocations.Add(invocation);
 
         foreach (var invocation in TickInvocations) RunInvocation(invocation);
         foreach (var entry in TickEntries)
@@ -111,11 +104,8 @@ internal static class CoroutineScheduler
 
     internal static void StopScene(Scene scene)
     {
-        lock (Gate)
-        {
-            Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner.gameObject.scene, scene));
-            Invocations.RemoveAll(entry => ReferenceEquals(entry.Owner.gameObject.scene, scene));
-        }
+        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner.gameObject.scene, scene));
+        Invocations.RemoveAll(entry => ReferenceEquals(entry.Owner.gameObject.scene, scene));
     }
 
     private static void RunInvocation(Invocation invocation)
@@ -126,16 +116,13 @@ internal static class CoroutineScheduler
             Debug.LogError($"Invoke {invocation.Owner.GetType().Name}.{invocation.MethodName} failed: " +
                            exception.Message);
         }
-        lock (Gate)
-        {
-            if (!Invocations.Remove(invocation) || invocation.RepeatRate is not { } repeatRate) return;
-            Invocations.Add(invocation with { NextTime = Time.time + repeatRate });
-        }
+        if (!Invocations.Remove(invocation) || invocation.RepeatRate is not { } repeatRate) return;
+        Invocations.Add(invocation with { NextTime = Time.time + repeatRate });
     }
 
     private static void Remove(Entry entry)
     {
-        lock (Gate) Entries.Remove(entry);
+        Entries.Remove(entry);
     }
 
     private sealed class Entry

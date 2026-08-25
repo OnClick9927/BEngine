@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>BEngine.ExampleTests.GpuTextAtlasCapacity</RootNamespace>
     <AssemblyName>BEngine.ExampleTests.GpuTextAtlasCapacity</AssemblyName>
     <NuGetAudit>false</NuGetAudit>

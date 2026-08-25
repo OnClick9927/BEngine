@@ -26,6 +26,7 @@ public static class EditorSceneManager
     }
     public static bool SaveOpenScenes()
     {
+        if (EditorApplication.isPlayingOrWillChangePlaymode) return false;
         var host = EditorBridge.Host;
         if (host is null) return false;
         var saved = true;
@@ -35,6 +36,7 @@ public static class EditorSceneManager
     public static bool SaveScene(Scene scene)
     {
         ArgumentNullException.ThrowIfNull(scene);
+        if (EditorApplication.isPlayingOrWillChangePlaymode || scene.IsRuntimeOnly) return false;
         return EditorBridge.Host?.SaveScene(scene) ?? false;
     }
     public static Scene? OpenScene(string scenePath, OpenSceneMode mode = OpenSceneMode.Single) =>

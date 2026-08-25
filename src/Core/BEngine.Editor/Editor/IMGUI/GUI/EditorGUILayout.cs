@@ -40,8 +40,56 @@ public static class EditorGUILayout
         bool hdr = false, params GUILayoutOption[] options) => EditorGUI.ColorField(
         GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), value,
         showEyedropper, showAlpha, hdr);
+    public static BObject? ObjectField(BObject? value, Type objectType, bool allowSceneObjects,
+        params GUILayoutOption[] options) => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), value, objectType,
+        allowSceneObjects);
+    public static BObject? ObjectField(string label, BObject? value, Type objectType, bool allowSceneObjects,
+        params GUILayoutOption[] options) => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), label, value, objectType,
+        allowSceneObjects);
+    public static BObject? ObjectField(GUIContent label, BObject? value, Type objectType, bool allowSceneObjects,
+        params GUILayoutOption[] options) => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), label, value, objectType,
+        allowSceneObjects);
+    public static T? ObjectField<T>(T? value, bool allowSceneObjects, params GUILayoutOption[] options)
+        where T : BObject => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), value, allowSceneObjects);
+    public static T? ObjectField<T>(string label, T? value, bool allowSceneObjects,
+        params GUILayoutOption[] options) where T : BObject => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), label, value,
+        allowSceneObjects);
+    public static T? ObjectField<T>(GUIContent label, T? value, bool allowSceneObjects,
+        params GUILayoutOption[] options) where T : BObject => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), label, value,
+        allowSceneObjects);
+    public static void ObjectField(SerializedProperty property, Type objectType,
+        params GUILayoutOption[] options) => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), property, objectType);
+    public static void ObjectField(SerializedProperty property, Type objectType, bool allowSceneObjects,
+        params GUILayoutOption[] options) => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), property, objectType,
+        allowSceneObjects);
+    public static void ObjectField(SerializedProperty property, Type objectType, GUIContent label,
+        params GUILayoutOption[] options) => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), property, objectType, label);
+    public static void ObjectField(SerializedProperty property, Type objectType, string label,
+        params GUILayoutOption[] options) => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), property, objectType, label);
+    public static void ObjectField(SerializedProperty property, Type objectType, GUIContent label,
+        bool allowSceneObjects, params GUILayoutOption[] options) => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), property, objectType, label,
+        allowSceneObjects);
+    public static void ObjectField(SerializedProperty property, Type objectType, string label,
+        bool allowSceneObjects, params GUILayoutOption[] options) => EditorGUI.ObjectField(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), property, objectType, label,
+        allowSceneObjects);
     public static int Popup(string label, int selectedIndex, string[] displayedOptions,
         params GUILayoutOption[] options) => EditorGUI.Popup(
+        GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), label, selectedIndex,
+        displayedOptions);
+    public static int AdvancedPopup(string label, int selectedIndex, string[] displayedOptions,
+        params GUILayoutOption[] options) => EditorGUI.AdvancedPopup(
         GUILayoutUtility.GetControlRect(EditorGUIUtility.singleLineHeight, options), label, selectedIndex,
         displayedOptions);
     public static Enum EnumPopup(string label, Enum selected, params GUILayoutOption[] options) =>

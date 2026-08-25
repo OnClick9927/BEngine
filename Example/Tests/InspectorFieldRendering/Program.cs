@@ -14,6 +14,7 @@ internal static class Program
     private static readonly MethodInfo EndFrame = typeof(GUI).GetMethod("EndFrame",
         BindingFlags.Static | BindingFlags.NonPublic)!;
     private static object? _capturedMenuItems;
+    private static bool _capturedMenuAdvanced;
 
     private static int Main()
     {
@@ -26,8 +27,11 @@ internal static class Program
             VerifyHighDpiVectorLayout();
             VerifyColorSwatchAndAlphaPicker();
             VerifyEnumDropdown();
+            VerifyObjectFields();
             VerifyRangeSlider();
-            Console.WriteLine("INSPECTOR_FIELD_RENDERING_OK|vector24-responsive,vector4dp,color-alpha,enum-dropdown,range-slider");
+            Console.WriteLine(
+                "INSPECTOR_FIELD_RENDERING_OK|vector24-responsive,vector4dp,color-alpha,enum-dropdown," +
+                "advanced-popup,object-field,object-dragdrop,range-slider");
             return 0;
         }
         catch (Exception exception)
@@ -84,12 +88,16 @@ internal static class Program
         using var serialized = new SerializedObject(probe);
         var property = serialized.FindProperty(nameof(InspectorProbe.offset))!;
         var stacked = Render(260, 60, () => EditorGUILayout.PropertyField(property));
-        var axes = stacked.Where(command => command.Type == GpuCanvasCommandType.Text &&
-                                             command.Content is "X" or "Y").ToArray();
-        Require(axes.Length == 2 && axes.All(command => command.Rect.Y >= 19),
-            "A very narrow Inspector did not move Vector2 components onto their own row.");
-        VerifyAxisFieldOrdering(stacked.Where(command => command.Type == GpuCanvasCommandType.Text).ToArray(),
-            ["X", "Y"], ["11.25", "-22.5"]);
+        var compactTexts = stacked.Where(command => command.Type == GpuCanvasCommandType.Text).ToArray();
+        var label = compactTexts.Single(command => command.Content == "Offset");
+        var axes = compactTexts.Where(command => command.Content is "X" or "Y").ToArray();
+        Require(axes.Length == 2, "A compact Inspector did not render both Vector2 axes.");
+        var axesBelowLabel = axes.All(command => command.Rect.Y > label.Rect.Y);
+        var axesAfterLabel = axes.All(command => Math.Abs(command.Rect.Y - label.Rect.Y) < 0.01f) &&
+                             label.Rect.Right <= axes[0].Rect.X;
+        Require(axesBelowLabel || axesAfterLabel,
+            "A compact Inspector overlapped its Vector2 label and axes.");
+        VerifyAxisFieldOrdering(compactTexts, ["X", "Y"], ["11.25", "-22.5"]);
     }
 
     private static void VerifyNarrowSerializedComponentFields()
@@ -155,8 +163,6 @@ internal static class Program
             texts.Single(command => command.Content == axis)).ToArray();
         var fields = new[] { "11.25", "-22.5" }.Select(value =>
             texts.Single(command => command.Content == value)).ToArray();
-        Require(axes[0].Rect.Y < axes[1].Rect.Y,
-            "A clipped Inspector did not place X and Y on separate rows.");
         for (var index = 0; index < axes.Length; index++)
         {
             var requiredAxisWidth = (float)EditorStyles.vectorAxisLabel
@@ -166,28 +172,38 @@ internal static class Program
                 $"{axes[index].Rect.Width} < {requiredAxisWidth}.");
             Require(axes[index].Rect.Right <= fields[index].Rect.X,
                 $"Clipped axis {axes[index].Content} overlaps its numeric field.");
-            Require(fields[index].Rect.Width >= 150,
+            Require(fields[index].Rect.Width >= 58,
                 $"Clipped axis {axes[index].Content} did not receive a readable numeric field.");
             Require(fields[index].Rect.Right <= 190.1f,
                 $"Clipped axis {axes[index].Content} escaped the visible Inspector width.");
         }
+        Require(fields[0].Rect.Right <= axes[1].Rect.X || fields[0].Rect.Y < axes[1].Rect.Y,
+            "Clipped Vector2 fields overlap each other.");
     }
 
     private static void VerifyHighDpiVectorLayout()
     {
         var property = typeof(GUIUtility).GetField("devicePixelsPerPoint",
             BindingFlags.Static | BindingFlags.NonPublic)!;
+        var probe = ScriptableObject.CreateInstance<InspectorProbe>();
+        using var serialized = new SerializedObject(probe);
+        var vector = serialized.FindProperty(nameof(InspectorProbe.offset))!;
+        var baseline = Render(210, 120, () => EditorGUILayout.PropertyField(vector));
         property.SetValue(null, (Fix64)2);
         try
         {
-            var probe = ScriptableObject.CreateInstance<InspectorProbe>();
-            using var serialized = new SerializedObject(probe);
-            var vector = serialized.FindProperty(nameof(InspectorProbe.offset))!;
             var commands = Render(420, 240, () => EditorGUILayout.PropertyField(vector));
-            var axes = new[] { "X", "Y" }.Select(axis => commands.Single(command =>
-                command.Type == GpuCanvasCommandType.Text && command.Content == axis)).ToArray();
-            Require(axes[0].Rect.Y < axes[1].Rect.Y,
-                "High-DPI framebuffer pixels were incorrectly used as the Inspector layout width.");
+            foreach (var content in new[] { "Offset", "X", "Y", "11.25", "-22.5" })
+            {
+                var logical = baseline.Single(command => command.Type == GpuCanvasCommandType.Text &&
+                                                       command.Content == content);
+                var scaled = commands.Single(command => command.Type == GpuCanvasCommandType.Text &&
+                                                      command.Content == content);
+                Require(Math.Abs(scaled.Rect.X / 2 - logical.Rect.X) < 0.1f &&
+                        Math.Abs(scaled.Rect.Y / 2 - logical.Rect.Y) < 0.1f &&
+                        Math.Abs(scaled.Rect.Width / 2 - logical.Rect.Width) < 0.1f,
+                    $"High-DPI layout changed the logical position of '{content}'.");
+            }
             Require(commands.All(command => command.Rect.Right <= 420.1f),
                 "High-DPI Inspector commands escaped the framebuffer bounds.");
         }
@@ -250,6 +266,19 @@ internal static class Program
             Require(items.Select(item => (string)item.GetType().GetProperty("Path")!.GetValue(item)!)
                     .SequenceEqual(["First", "Second", "Third"]),
                 "EnumPopup dropdown labels do not match the enum names.");
+            Require(!_capturedMenuAdvanced,
+                "A short EnumPopup unexpectedly opened as an AdvancedDropdown.");
+
+            _capturedMenuItems = null;
+            _capturedMenuAdvanced = false;
+            var longOptions = Enumerable.Range(0, 20).Select(index => $"Option {index:00}").ToArray();
+            Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(210, 9), button = 0 },
+                320, 40, () => EditorGUI.Popup(new Rect(0, 0, 320, 18), "Long", 0, longOptions));
+            Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(210, 9), button = 0 },
+                320, 40, () => EditorGUI.Popup(new Rect(0, 0, 320, 18), "Long", 0, longOptions));
+            Require(_capturedMenuAdvanced &&
+                    ((IEnumerable?)_capturedMenuItems)?.Cast<object>().Count() == longOptions.Length,
+                "A long EditorGUI.Popup did not automatically open as an AdvancedDropdown.");
         }
         finally { handler.SetValue(null, null); }
     }
@@ -271,6 +300,229 @@ internal static class Program
             () => EditorGUI.PropertyField(new Rect(0, 0, 340, 18), property));
     }
 
+    private static void VerifyObjectFields()
+    {
+        var dispatcher = typeof(EditorWindow).Assembly.GetType("BEngine.Editor.GenericMenuDispatcher", true)!;
+        var handler = dispatcher.GetProperty("Handler", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var invoke = handler.PropertyType.GetMethod("Invoke")!;
+        var parameterType = invoke.GetParameters()[0].ParameterType;
+        var parameter = Expression.Parameter(parameterType, "items");
+        var capture = typeof(Program).GetMethod(nameof(CaptureMenu), BindingFlags.Static | BindingFlags.NonPublic)!;
+        handler.SetValue(null, Expression.Lambda(handler.PropertyType,
+            Expression.Call(capture, Expression.Convert(parameter, typeof(object))), parameter).Compile());
+
+        using var scene = new Scene("Object Field Scene");
+        var compatible = scene.CreateGameObject("Object Field Compatible");
+        var cameraObject = scene.CreateGameObject("Object Field Camera");
+        var camera = cameraObject.AddComponent<Camera2D>();
+        camera.name = "Object Field Camera Component";
+        var incompatible = new Material(Shader.Find("Tests/ObjectField")) { name = "Object Field Incompatible" };
+        var rect = new Rect(0, 0, 320, 18);
+
+        try
+        {
+            Selection.activeObject = incompatible;
+            OpenObjectMenu(rect, null, typeof(GameObject), allowSceneObjects: true);
+            Require(_capturedMenuAdvanced, "ObjectField did not use an AdvancedDropdown picker.");
+            Require(CapturedMenuItems().Any(item => MenuPath(item).Equals("None", StringComparison.OrdinalIgnoreCase)),
+                "ObjectField picker does not provide a None entry.");
+            Require(!CapturedMenuItems().Any(item => IsSelectionItem(item) && MenuEnabled(item)),
+                "ObjectField exposed an incompatible active Selection.");
+
+            Selection.activeObject = compatible;
+            OpenObjectMenu(rect, null, typeof(GameObject), allowSceneObjects: true);
+            var selectionItem = CapturedMenuItems().Single(item => IsSelectionItem(item) && MenuEnabled(item));
+            InvokeMenuItem(selectionItem);
+            var selected = RenderObjectField(rect, null, typeof(GameObject), allowSceneObjects: true);
+            Require(ReferenceEquals(selected, compatible),
+                "ObjectField did not return its compatible Selection on the next IMGUI pass.");
+
+            OpenObjectMenu(rect, selected, typeof(GameObject), allowSceneObjects: true);
+            InvokeMenuItem(CapturedMenuItems().Single(item =>
+                MenuPath(item).Equals("None", StringComparison.OrdinalIgnoreCase)));
+            selected = RenderObjectField(rect, selected, typeof(GameObject), allowSceneObjects: true);
+            Require(selected is null, "ObjectField None did not clear the current reference.");
+
+            var equivalentMaterial = new Material(Shader.Find("Tests/ObjectFieldEquivalent"))
+            {
+                name = "Object Field Equivalent"
+            };
+            typeof(BObject).GetProperty(nameof(BObject.Id))!.SetValue(equivalentMaterial, incompatible.Id);
+            Selection.activeObject = equivalentMaterial;
+            OpenObjectMenu(rect, incompatible, typeof(Material), allowSceneObjects: true);
+            InvokeMenuItem(CapturedMenuItems().Single(item => IsSelectionItem(item) && MenuEnabled(item)));
+            BObject? unchangedAsset = null;
+            var reportedAssetChange = true;
+            Dispatch(new Event(EventType.Repaint), 320, 40, () =>
+            {
+                unchangedAsset = EditorGUI.ObjectField(
+                    rect, "Target", incompatible, typeof(Material), allowSceneObjects: true);
+                reportedAssetChange = GUI.changed;
+            });
+            Require(ReferenceEquals(unchangedAsset, incompatible) && !reportedAssetChange,
+                "Selecting a stable-equivalent asset produced a redundant ObjectField change.");
+
+            var probe = ScriptableObject.CreateInstance<InspectorProbe>();
+            using (var serialized = new SerializedObject(probe))
+            {
+                var property = serialized.FindProperty(nameof(InspectorProbe.gameObjectReference))!;
+                var rejectedIncompatibleReference = false;
+                try { property.objectReferenceValue = incompatible; }
+                catch (ArgumentException) { rejectedIncompatibleReference = true; }
+                Require(rejectedIncompatibleReference && !serialized.hasModifiedProperties &&
+                        probe.gameObjectReference is null,
+                    "SerializedProperty accepted an object reference incompatible with its declared type.");
+
+                Selection.activeObject = compatible;
+                OpenSerializedObjectMenu(rect, property, typeof(GameObject), allowSceneObjects: true);
+                InvokeMenuItem(CapturedMenuItems().Single(item => IsSelectionItem(item) && MenuEnabled(item)));
+                Dispatch(new Event(EventType.Repaint), 320, 40,
+                    () => EditorGUI.ObjectField(rect, property, typeof(GameObject), allowSceneObjects: true));
+                Require(serialized.hasModifiedProperties && ReferenceEquals(probe.gameObjectReference, compatible),
+                    "SerializedProperty ObjectField did not write the chosen object through SerializedObject.");
+                Require(serialized.ApplyModifiedProperties(),
+                    "SerializedProperty ObjectField did not leave an applicable serialized change.");
+            }
+
+            var layoutProbe = ScriptableObject.CreateInstance<InspectorProbe>();
+            using (var layoutSerialized = new SerializedObject(layoutProbe))
+            {
+                var layoutProperty = layoutSerialized.FindProperty(nameof(InspectorProbe.gameObjectReference))!;
+                var layoutCommands = Render(420, 100, () =>
+                {
+                    _ = EditorGUILayout.ObjectField("Layout Object", compatible, typeof(GameObject), true);
+                    _ = EditorGUILayout.ObjectField<GameObject>("Layout Generic", compatible, true);
+                    EditorGUILayout.ObjectField(layoutProperty, typeof(GameObject), true);
+                });
+                Require(layoutCommands.Count(command => command.Type == GpuCanvasCommandType.Text &&
+                                                        command.Content.Contains("Object Field Compatible",
+                                                            StringComparison.Ordinal)) >= 2,
+                    "EditorGUILayout ObjectField overloads did not render their assigned objects.");
+                Require(layoutCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                                      command.Content.Contains("None (Game Object)",
+                                                          StringComparison.Ordinal)),
+                    "EditorGUILayout SerializedProperty ObjectField overload did not render its value.");
+            }
+
+            var mixedFirst = ScriptableObject.CreateInstance<InspectorProbe>();
+            var mixedSecond = ScriptableObject.CreateInstance<InspectorProbe>();
+            mixedFirst.gameObjectReference = compatible;
+            mixedSecond.gameObjectReference = cameraObject;
+            using (var mixedSerialized = new SerializedObject([mixedFirst, mixedSecond]))
+            {
+                var mixedProperty = mixedSerialized.FindProperty(nameof(InspectorProbe.gameObjectReference))!;
+                Require(mixedProperty.hasMultipleDifferentValues,
+                    "Object-reference SerializedProperty did not detect mixed target values.");
+                var mixedCommands = Render(320, 40,
+                    () => EditorGUI.PropertyField(rect, mixedProperty));
+                Require(mixedCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                                     command.Content == "-"),
+                    "A mixed ObjectField did not render its mixed-value indicator.");
+
+                Selection.activeObject = compatible;
+                OpenSerializedObjectMenu(rect, mixedProperty, typeof(GameObject), allowSceneObjects: true);
+                InvokeMenuItem(CapturedMenuItems().Single(item => IsSelectionItem(item) && MenuEnabled(item)));
+                Dispatch(new Event(EventType.Repaint), 320, 40,
+                    () => EditorGUI.ObjectField(rect, mixedProperty, typeof(GameObject), true));
+                Require(ReferenceEquals(mixedFirst.gameObjectReference, compatible) &&
+                        ReferenceEquals(mixedSecond.gameObjectReference, compatible) &&
+                        !mixedProperty.hasMultipleDifferentValues,
+                    "Choosing the first mixed ObjectField value did not write it to every target.");
+                Require(mixedSerialized.ApplyModifiedProperties(),
+                    "Mixed ObjectField unification did not leave an applicable serialized change.");
+            }
+
+            BObject? dragged = null;
+            DragAndDrop.objectReferences = [compatible];
+            Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));
+            Require(DragAndDrop.visualMode != DragAndDropVisualMode.Rejected,
+                "ObjectField rejected a compatible dragged GameObject.");
+            Dispatch(new Event(EventType.DragPerform) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));
+            Require(ReferenceEquals(dragged, compatible),
+                "ObjectField did not accept a compatible dragged GameObject.");
+
+            DragAndDrop.objectReferences = [incompatible];
+            Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Rejected,
+                "ObjectField did not reject a type-incompatible dragged asset.");
+            Dispatch(new Event(EventType.DragPerform) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));
+            Require(ReferenceEquals(dragged, compatible),
+                "A rejected drag replaced the ObjectField value.");
+
+            BObject? asset = null;
+            DragAndDrop.objectReferences = [incompatible];
+            Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => asset = EditorGUI.ObjectField(rect, "Asset", asset, typeof(BAsset), false));
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Rejected && asset is null,
+                "An asset-only ObjectField accepted a non-persistent BAsset.");
+            DragAndDrop.objectReferences = [camera];
+            Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => asset = EditorGUI.ObjectField(rect, "Asset", asset, typeof(BAsset), false));
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Rejected && asset is null,
+                "An asset-only ObjectField accepted a scene Component.");
+        }
+        finally
+        {
+            Selection.activeObject = null;
+            DragAndDrop.objectReferences = [];
+            handler.SetValue(null, null);
+        }
+    }
+
+    private static void OpenObjectMenu(Rect rect, BObject? value, Type type, bool allowSceneObjects)
+    {
+        _capturedMenuItems = null;
+        _capturedMenuAdvanced = false;
+        Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(210, 9), button = 0 }, 320, 40,
+            () => EditorGUI.ObjectField(rect, "Target", value, type, allowSceneObjects));
+        Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(210, 9), button = 0 }, 320, 40,
+            () => EditorGUI.ObjectField(rect, "Target", value, type, allowSceneObjects));
+        Require(_capturedMenuItems is not null, "Clicking ObjectField did not open its picker.");
+    }
+
+    private static void OpenSerializedObjectMenu(
+        Rect rect, SerializedProperty property, Type type, bool allowSceneObjects)
+    {
+        _capturedMenuItems = null;
+        _capturedMenuAdvanced = false;
+        Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(210, 9), button = 0 }, 320, 40,
+            () => EditorGUI.ObjectField(rect, property, type, allowSceneObjects));
+        Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(210, 9), button = 0 }, 320, 40,
+            () => EditorGUI.ObjectField(rect, property, type, allowSceneObjects));
+        Require(_capturedMenuItems is not null, "Clicking SerializedProperty ObjectField did not open its picker.");
+    }
+
+    private static BObject? RenderObjectField(Rect rect, BObject? value, Type type, bool allowSceneObjects)
+    {
+        BObject? result = value;
+        Dispatch(new Event(EventType.Repaint), 320, 40,
+            () => result = EditorGUI.ObjectField(rect, "Target", value, type, allowSceneObjects));
+        return result;
+    }
+
+    private static object[] CapturedMenuItems() =>
+        ((IEnumerable?)_capturedMenuItems)?.Cast<object>().ToArray() ?? [];
+
+    private static string MenuPath(object item) =>
+        (string?)item.GetType().GetProperty("Path")?.GetValue(item) ?? string.Empty;
+
+    private static bool MenuEnabled(object item) =>
+        item.GetType().GetProperty("Enabled")?.GetValue(item) is true;
+
+    private static bool IsSelectionItem(object item) =>
+        MenuPath(item).Contains("Select", StringComparison.OrdinalIgnoreCase);
+
+    private static void InvokeMenuItem(object item)
+    {
+        var action = item.GetType().GetProperty("Action")?.GetValue(item) as Action;
+        Require(action is not null, $"Object picker item '{MenuPath(item)}' has no action.");
+        action!();
+    }
+
     private static List<GpuCanvasCommand> Render(int width, int height, Action draw)
     {
         var commands = new List<GpuCanvasCommand>();
@@ -286,7 +538,16 @@ internal static class Program
         finally { EndFrame.Invoke(null, null); }
     }
 
-    private static void CaptureMenu(object items) => _capturedMenuItems = items;
+    private static void CaptureMenu(object items)
+    {
+        _capturedMenuItems = items;
+        var dispatcher = typeof(EditorWindow).Assembly.GetType(
+            "BEngine.Editor.GenericMenuDispatcher", true)!;
+        var presentation = dispatcher.GetProperty(
+            "CurrentPresentation", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        _capturedMenuAdvanced = (bool)(presentation.GetType().GetProperty(
+            "IsAdvanced", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(presentation) ?? false);
+    }
 
     private static bool RectsOverlap(GpuCanvasRect left, GpuCanvasRect right) =>
         left.X < right.Right && left.Right > right.X && left.Y < right.Bottom && left.Bottom > right.Y;

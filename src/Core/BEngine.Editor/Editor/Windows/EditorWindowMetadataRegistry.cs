@@ -5,7 +5,7 @@ namespace BEngine.Editor;
 
 internal static class EditorWindowMetadataRegistry
 {
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static readonly Dictionary<Type, WindowMetadata> Metadata = [];
     private static int _generation = -1;
 
@@ -43,7 +43,8 @@ internal static class EditorWindowMetadataRegistry
     {
         var icon = type.GetCustomAttribute<EditorWindowIconAttribute>()?.resourcePath;
         var commands = contextMethods.Where(method => method.DeclaringType?.IsAssignableFrom(type) == true)
-            .Select(method => (Method: method, Attribute: method.GetCustomAttribute<ContextMenuAttribute>()!))
+            .SelectMany(method => method.GetCustomAttributes<ContextMenuAttribute>(inherit: false)
+                .Select(attribute => (Method: method, Attribute: attribute)))
             .Where(item => IsValid(item.Method))
             .OrderBy(item => item.Attribute.itemName, StringComparer.Ordinal)
             .Select(item => new EditorWindowContextCommand(item.Attribute.itemName, item.Method.Name,

@@ -14,14 +14,12 @@ public sealed class SceneFramebuffer : IDisposable
 
     public SceneFramebuffer(GL gl, int width, int height)
     {
-        MainThreadGuard.Ensure("Create SceneFramebuffer");
         _gl = gl;
         Resize(width, height);
     }
 
     public unsafe void Resize(int width, int height)
     {
-        MainThreadGuard.Ensure();
         width = Math.Max(1, width);
         height = Math.Max(1, height);
         if (Width == width && Height == height)
@@ -61,19 +59,16 @@ public sealed class SceneFramebuffer : IDisposable
 
     public void Bind()
     {
-        MainThreadGuard.Ensure();
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _framebuffer);
     }
 
     public void Unbind()
     {
-        MainThreadGuard.Ensure();
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
     }
 
     public void Dispose()
     {
-        MainThreadGuard.Ensure();
         Release();
         GC.SuppressFinalize(this);
     }

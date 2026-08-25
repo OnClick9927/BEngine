@@ -1,19 +1,21 @@
-using System.Collections.Concurrent;
-
 namespace BEngine.Rendering.Rhi;
 
 public static class DefaultShaderResources
 {
-    private static readonly ConcurrentDictionary<string, string> Cache =
+    private static readonly Dictionary<string, string> Cache =
         new(StringComparer.OrdinalIgnoreCase);
 
     public static string Load(string resourcePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(resourcePath);
-        return Cache.GetOrAdd(resourcePath, static path =>
-            BEngine.Resources.Load<string>(path) ?? throw new FileNotFoundException(
-                $"Default shader resource '{path}' was not found. Ensure the owning package Resources folder " +
-                "is registered and included in the exported engine or player."));
+        if (!Cache.TryGetValue(resourcePath, out var source))
+        {
+            source = BEngine.Resources.Load<string>(resourcePath) ?? throw new FileNotFoundException(
+                $"Default shader resource '{resourcePath}' was not found. Ensure the owning package Resources folder " +
+                "is registered and included in the exported engine or player.");
+            Cache[resourcePath] = source;
+        }
+        return source;
     }
 
     public static void ClearCache() => Cache.Clear();

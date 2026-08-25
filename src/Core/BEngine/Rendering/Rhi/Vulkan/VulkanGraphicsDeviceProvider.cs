@@ -41,7 +41,6 @@ public sealed class VulkanGraphicsDeviceProvider : IGraphicsDeviceProvider
 
     public IGraphicsDevice CreateDevice()
     {
-        MainThreadGuard.Ensure("Create Vulkan graphics device");
         var support = QuerySupport();
         if (!support.CanCreateDevice) throw new NotSupportedException(support.Reason);
         var options = new GraphicsDeviceOptions(

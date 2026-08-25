@@ -7,7 +7,6 @@ public sealed class AssetBundleRuntimeOptions
     public string? BuiltInDirectory { get; init; }
     public Uri? RemoteBaseUri { get; init; }
     public int MaxRetries { get; init; } = 3;
-    public int MaxConcurrentDownloads { get; init; } = 4;
     public HttpClient? HttpClient { get; init; }
     public bool RequireHttps { get; init; } = true;
     public int MaximumBundleCount { get; init; } = 10_000;
@@ -23,7 +22,6 @@ public sealed class AssetBundleRuntimeOptions
         if (string.IsNullOrWhiteSpace(CacheDirectory))
             throw new ArgumentException("Asset bundle cache directory is required.", nameof(CacheDirectory));
         if (MaxRetries < 0) throw new ArgumentOutOfRangeException(nameof(MaxRetries));
-        if (MaxConcurrentDownloads <= 0) throw new ArgumentOutOfRangeException(nameof(MaxConcurrentDownloads));
         if (MaximumBundleCount <= 0 || MaximumAssetCount <= 0 || MaximumBundleSize <= 0 ||
             MaximumAssetSize < 0 || MaximumCatalogSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(MaximumBundleSize), "Asset bundle limits must be positive.");

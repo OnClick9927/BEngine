@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>BEngine.ExampleTests.SceneRuntimeArchitecture</RootNamespace>
+    <AssemblyName>BEngine.ExampleTests.SceneRuntimeArchitecture</AssemblyName>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>

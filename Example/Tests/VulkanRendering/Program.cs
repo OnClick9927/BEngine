@@ -50,7 +50,9 @@ internal static class Program
             }
 
             var scene = new Scene("VulkanValidation");
+            scene.CreateGameObject("Validation Camera").AddComponent<Camera2D>();
             var sprite = scene.CreateGameObject("Vulkan Sprite");
+            sprite.transform.localScale = new Vector2(-1, 1);
             sprite.AddComponent<SpriteRenderer>();
             var clip = new GpuCanvasRect(0, 0, 640, 360);
             GpuCanvasCommand[] firstFrame =
@@ -97,6 +99,8 @@ internal static class Program
                 throw new InvalidOperationException(
                     $"Vulkan dynamic GPU text atlas was not visible. Initial={initialPixels}, Late={latePixels}.");
 
+            var stableUiPixels = VerifyDynamicUiFrames(form, device, canvas, clip);
+            var sceneSpritePixels = VerifySceneSprite(form, device, sceneRenderer, scene);
             var offsetViewportPixels = VerifyOffsetViewport(form, device, sceneRenderer);
 
             if (device.Backend != GraphicsBackend.Vulkan ||
@@ -105,6 +109,8 @@ internal static class Program
 
             Console.WriteLine($"VULKAN_RENDERING_OK|{device.Capabilities.DeviceName}|" +
                               $"{device.Capabilities.ApiVersion}|dynamic-text={latePixels}|" +
+                              $"stable-ui={stableUiPixels}|" +
+                              $"scene-sprite={sceneSpritePixels}|" +
                               $"offset-viewport={offsetViewportPixels}");
             return 0;
         }
@@ -175,6 +181,83 @@ internal static class Program
             throw new InvalidOperationException(
                 $"Vulkan offset viewport was clipped incorrectly. Green={pixels}. Capture={failurePath}");
         }
+        return pixels;
+    }
+
+    private static int VerifyDynamicUiFrames(Form form, IGraphicsPresentationDevice device,
+        GpuCanvasRenderer canvas, GpuCanvasRect clip)
+    {
+        var minimumStablePixels = int.MaxValue;
+        for (var frame = 0; frame < 64; frame++)
+        {
+            var hoverOnTop = frame % 2 == 0;
+            var commands = new List<GpuCanvasCommand>
+            {
+                new(GpuCanvasCommandType.SolidRect, new GpuCanvasRect(0, 0, 640, 360), clip,
+                    new GpuCanvasColor(30, 32, 35)),
+                new(GpuCanvasCommandType.SolidRect, new GpuCanvasRect(24, 24, 42, 20), clip,
+                    new GpuCanvasColor(245, 245, 245)),
+                new(GpuCanvasCommandType.SolidRect, new GpuCanvasRect(574, 24, 42, 20), clip,
+                    new GpuCanvasColor(245, 245, 245)),
+                new(GpuCanvasCommandType.SolidRect, new GpuCanvasRect(24, 316, 42, 20), clip,
+                    new GpuCanvasColor(245, 245, 245)),
+                new(GpuCanvasCommandType.SolidRect, new GpuCanvasRect(574, 316, 42, 20), clip,
+                    new GpuCanvasColor(245, 245, 245)),
+                new(GpuCanvasCommandType.SolidRect,
+                    new GpuCanvasRect(120, hoverOnTop ? 92 : 136, 400, 30), clip,
+                    hoverOnTop ? new GpuCanvasColor(56, 92, 126) : new GpuCanvasColor(74, 76, 80)),
+                new(GpuCanvasCommandType.Text, new GpuCanvasRect(136, hoverOnTop ? 96 : 140, 360, 22), clip,
+                    new GpuCanvasColor(235, 238, 240),
+                    hoverOnTop ? "HIERARCHY HOVER TOP" : "HIERARCHY HOVER BOTTOM", 14)
+            };
+            if (hoverOnTop)
+                commands.Add(new GpuCanvasCommand(GpuCanvasCommandType.SolidRect,
+                    new GpuCanvasRect(120, 178, 400, 2), clip, new GpuCanvasColor(210, 210, 210)));
+
+            device.BeginFrame(640, 360);
+            device.Clear(GraphicsClearFlags.Color, new System.Numerics.Vector4(0.08f, 0.08f, 0.08f, 1));
+            canvas.Render(commands, 640, 360);
+            device.Present();
+            System.Windows.Forms.Application.DoEvents();
+            Thread.Sleep(20);
+
+            if (frame < 4) continue;
+
+            using var capture = CaptureClient(form);
+            var stablePixels = CountBrightPixels(capture, 20, 20, 50, 28, 1f) +
+                               CountBrightPixels(capture, 570, 20, 50, 28, 1f) +
+                               CountBrightPixels(capture, 20, 312, 50, 28, 1f) +
+                               CountBrightPixels(capture, 570, 312, 50, 28, 1f);
+            minimumStablePixels = Math.Min(minimumStablePixels, stablePixels);
+            if (stablePixels >= 2800) continue;
+            var failurePath = Path.Combine(FindRepositoryRoot(), "Output", "EditorData", "Logs",
+                $"VulkanDynamicUiFailure-{frame}.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(failurePath)!);
+            capture.Save(failurePath, System.Drawing.Imaging.ImageFormat.Png);
+            throw new InvalidOperationException(
+                $"Vulkan dynamic UI frame {frame} was incomplete. Stable={stablePixels}. Capture={failurePath}");
+        }
+        return minimumStablePixels;
+    }
+
+    private static int VerifySceneSprite(Form form, IGraphicsPresentationDevice device,
+        PortableSceneRenderer sceneRenderer, Scene scene)
+    {
+        device.BeginFrame(640, 360);
+        sceneRenderer.RenderCameras([scene], scene, EngineRenderer.ResolveGameCameras([scene]),
+            new GraphicsRect(0, 0, 640, 360), drawUi: false);
+        device.Present();
+        System.Windows.Forms.Application.DoEvents();
+
+        var pixels = 0;
+        PollCapture(form, capture =>
+        {
+            pixels = CountBrightPixels(capture, 295, 155, 50, 50, 1f);
+            return pixels >= 400;
+        });
+        if (pixels < 400)
+            throw new InvalidOperationException(
+                $"Vulkan scene sprite was removed by culling or did not render. Bright={pixels}.");
         return pixels;
     }
 

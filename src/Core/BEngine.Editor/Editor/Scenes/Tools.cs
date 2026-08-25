@@ -18,5 +18,7 @@ public static class Tools
     public static PivotMode pivotMode { get; set; } = PivotMode.Pivot;
     public static PivotRotation pivotRotation { get; set; } = PivotRotation.Global;
     public static bool hidden { get; set; }
-    public static Vector2 handlePosition => Selection.activeTransform?.position ?? Vector2.zero;
+    public static Vector2 handlePosition => Selection.activeGameObject is { } selected
+        ? SceneHandleUtility.GetHandlePosition(selected)
+        : Vector2.zero;
 }

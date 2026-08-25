@@ -11,11 +11,17 @@ internal static class GenericMenuCapture
         "BEngine.Editor.GenericMenuDispatcher", throwOnError: true)!;
     private static readonly PropertyInfo HandlerProperty = DispatcherType.GetProperty(
         "Handler", BindingFlags.Static | BindingFlags.NonPublic)!;
+    private static readonly PropertyInfo CurrentPresentationProperty = DispatcherType.GetProperty(
+        "CurrentPresentation", BindingFlags.Static | BindingFlags.NonPublic)!;
     private static object? _items;
+    private static bool _isAdvanced;
+
+    public static bool IsAdvanced => _isAdvanced;
 
     public static void Install()
     {
         _items = null;
+        _isAdvanced = false;
         var handlerType = HandlerProperty.PropertyType;
         var parameterType = handlerType.GetMethod("Invoke")!.GetParameters()[0].ParameterType;
         var parameter = Expression.Parameter(parameterType, "items");
@@ -29,6 +35,7 @@ internal static class GenericMenuCapture
     {
         HandlerProperty.SetValue(null, null);
         _items = null;
+        _isAdvanced = false;
     }
 
     public static IReadOnlyList<CapturedMenuItem> CapturedItems => Items().Select(item => new CapturedMenuItem(
@@ -60,7 +67,14 @@ internal static class GenericMenuCapture
     private static T Read<T>(object item, string propertyName) =>
         (T)item.GetType().GetProperty(propertyName)!.GetValue(item)!;
 
-    private static void Capture(object items) => _items = items;
+    private static void Capture(object items)
+    {
+        _items = items;
+        var presentation = CurrentPresentationProperty.GetValue(null) ??
+                           throw new InvalidOperationException("GenericMenu presentation was unavailable.");
+        _isAdvanced = (bool)(presentation.GetType().GetProperty(
+            "IsAdvanced", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(presentation) ?? false);
+    }
 
     internal sealed record CapturedMenuItem(
         string Path,

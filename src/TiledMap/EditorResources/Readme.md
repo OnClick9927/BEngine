@@ -12,5 +12,7 @@ Create a Tilemap from `GameObject/2D Object/Tilemap`, create a palette from
 
 `TilemapRenderer` uses the engine's shared layer, order, hierarchy and transparency sorting.
 Adjacent tiles batch only when their Material, Shader and Atlas keys are identical.
+Visible, non-empty tiles also participate in Scene click selection. They follow the same render-order
+cycling and Hierarchy visibility/picking overrides as Core Sprite and Particle renderers.
 
 Tile Palette accepts either a raw PNG for grid slicing or a Core `.atlas.yaml`. Enter the Texture Atlas path and choose `Import Texture Atlas` to create one tile per packed region while retaining matching collider and tint metadata.

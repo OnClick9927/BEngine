@@ -20,7 +20,7 @@ internal static class Program
             GpuBatchRendering();
             Console.WriteLine(
                 "TILEDMAP_OK|sparse-cells,box-fill,flood-fill,swap,deterministic-order,scene-fields," +
-                "coordinates,palette-yaml,world-layer-boundary,gpu-batch,culling");
+                "coordinates,palette-yaml,world-layer-boundary,gpu-batch,culling,scene-object-filter");
             return 0;
         }
         catch (Exception exception)
@@ -144,6 +144,21 @@ internal static class Program
             "Tiles with one Material/Shader/Atlas key did not render as one batch.");
         Require(device.Textures.Any(texture => texture.Label == "BEngine.TiledMap.Missing"),
             "Missing Atlas fallback texture was not created.");
+
+        using var filteredDevice = new RecordingGraphicsDevice();
+        using var filteredRenderer = new PortableSceneRenderer(filteredDevice);
+        var filterCalls = 0;
+        filteredRenderer.RenderViewport([scene], scene, RenderCamera.Default,
+            new GraphicsRect(0, 0, 320, 180), drawUi: false,
+            objectFilter: gameObject =>
+            {
+                filterCalls++;
+                return !ReferenceEquals(gameObject, owner);
+            });
+        var filteredMesh = filteredDevice.Meshes.Single(item => item.Label == "BEngine.TiledMap.DynamicMesh");
+        Require(filterCalls > 0 && filteredMesh.UpdateCount == 0 &&
+                filteredDevice.Draws.All(draw => !ReferenceEquals(draw.Mesh, filteredMesh)),
+            "The Scene object filter did not suppress a Tilemap contributor owned by a hidden GameObject.");
     }
 
     private static Tilemap NewMap()

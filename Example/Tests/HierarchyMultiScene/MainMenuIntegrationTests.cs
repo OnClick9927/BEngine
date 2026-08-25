@@ -52,8 +52,11 @@ internal static class MainMenuIntegrationTests
             ],
             ["Component"] =
             [
-                "Enable All Components", "Disable All Components", "Reset All Components",
-                "Remove Missing Scripts"
+                "Rendering/Camera 2D", "Rendering/Sprite Renderer"
+            ],
+            ["Tools"] =
+            [
+                "Remove Missing Components"
             ],
             ["Window"] =
             [
@@ -121,8 +124,19 @@ internal static class MainMenuIntegrationTests
 
         harness.SetPlaying(true);
         file = Capture(harness, "File");
-        foreach (var path in new[] { "New Scene", "Open Scene...", "Open Scene Additive...", "Save Scene" })
+        foreach (var path in new[]
+                 {
+                     "New Scene", "Open Scene...", "Open Scene Additive...", "Save Scene", "Save All Scenes"
+                 })
             RequireDisabled(file, path, "Play mode");
+        SetField(harness.ProjectWindow, "_selectedPath", "Assets/Scenes/First.scene.yaml");
+        var playAssets = Capture(harness, "Assets");
+        foreach (var path in new[]
+                 {
+                     "Create/Folder", "Create/C# Script", "Create/Scene", "Create/Prefab",
+                     "Rename", "Duplicate", "Delete", "Reimport", "Refresh", "Import New Asset..."
+                 })
+            RequireDisabled(playAssets, path, "Play mode project write isolation");
         edit = Capture(harness, "Edit");
         RequireEnabled(edit, "Pause", "Play mode");
         RequireEnabled(edit, "Step", "Play mode");
@@ -130,6 +144,7 @@ internal static class MainMenuIntegrationTests
         TestAssert.Require(RequireItem(edit, "Play", "Play mode").Checked,
             "Edit/Play did not display its checked state while playing.");
         harness.SetPlaying(false);
+        SetField(harness.ProjectWindow, "_selectedPath", null);
 
         var assets = Capture(harness, "Assets");
         RequireDisabled(assets, "Open", "no Project selection");
@@ -141,12 +156,16 @@ internal static class MainMenuIntegrationTests
         RequireDisabled(gameObject, "Delete", "an empty selection");
 
         var component = Capture(harness, "Component");
-        foreach (var path in new[]
-                 {
-                     "Enable All Components", "Disable All Components",
-                     "Reset All Components", "Remove Missing Scripts"
-                 })
+        foreach (var path in new[] { "Rendering/Camera 2D", "Rendering/Sprite Renderer" })
             RequireDisabled(component, path, "an empty selection");
+        RequireDisabled(Capture(harness, "Tools"), "Remove Missing Components", "an empty selection");
+        foreach (var removed in new[]
+                 {
+                     "Enable All Components", "Disable All Components", "Reset All Components",
+                     "Remove Missing Scripts"
+                 })
+            TestAssert.Require(component.All(item => item.Path != removed),
+                $"Removed Component command '{removed}' is still present.");
 
         var help = Capture(harness, "Help");
         foreach (var path in new[] { "View Editor Log", "Reveal Logs Folder", "Copy System Info", "About BEngine" })
@@ -163,10 +182,10 @@ internal static class MainMenuIntegrationTests
         RequireDisabled(edit, "Paste", "before anything has been copied");
 
         component = Capture(harness, "Component");
-        RequireEnabled(component, "Disable All Components", "an enabled Component");
-        RequireDisabled(component, "Enable All Components", "all Components enabled");
-        RequireEnabled(component, "Reset All Components", "an editable GameObject");
-        RequireDisabled(component, "Remove Missing Scripts", "a GameObject without missing scripts");
+        RequireEnabled(component, "Rendering/Camera 2D", "an editable GameObject without a Camera2D");
+        RequireEnabled(component, "Rendering/Sprite Renderer", "an editable GameObject");
+        RequireDisabled(Capture(harness, "Tools"), "Remove Missing Components",
+            "a GameObject without missing Components");
 
         harness.FocusHierarchy();
         var window = Capture(harness, "Window");
@@ -215,29 +234,12 @@ internal static class MainMenuIntegrationTests
             "Assets/Copy Path was not executable through EditorApplication.ExecuteMenuItem.");
 
         var componentTarget = scene.CreateGameObject("Main Menu Component Target");
-        var camera = componentTarget.AddComponent<Camera2D>();
-        var sprite = componentTarget.AddComponent<SpriteRenderer>();
         Selection.activeGameObject = componentTarget;
-        Execute("Component/Disable All Components");
-        TestAssert.Require(!camera.enabled && !sprite.enabled,
-            "Component/Disable All Components did not disable all non-Transform Components.");
-        RequireEnabled(Capture(harness, "Component"), "Enable All Components", "disabled Components");
-        Undo.PerformUndo();
-        TestAssert.Require(camera.enabled && sprite.enabled,
-            "Undo did not restore Components disabled from the Component menu.");
-
-        componentTarget.transform.localPosition = new Vector2(7, 8);
-        Execute("Component/Reset All Components");
-        TestAssert.Require(componentTarget.transform.localPosition == Vector2.zero,
-            "Component/Reset All Components did not reset Transform values.");
-        Undo.PerformUndo();
-        TestAssert.Require(componentTarget.transform.localPosition == new Vector2(7, 8),
-            "Undo did not restore values reset from the Component menu.");
-
         var missing = componentTarget.AddComponent<MissingComponent>();
-        Execute("Component/Remove Missing Scripts");
+        RequireEnabled(Capture(harness, "Tools"), "Remove Missing Components", "a missing Component");
+        Execute("Tools/Remove Missing Components");
         TestAssert.Require(componentTarget.GetComponent<MissingComponent>() is null,
-            "Component/Remove Missing Scripts did not remove a removable missing Component.");
+            "Tools/Remove Missing Components did not remove a removable missing Component.");
         Undo.PerformUndo();
         TestAssert.Require(ReferenceEquals(componentTarget.GetComponent<MissingComponent>(), missing),
             "Undo did not restore the missing Component removed from the Component menu.");

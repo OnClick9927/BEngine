@@ -4,7 +4,7 @@ namespace BEngine.Editor;
 
 internal static class EditorTypeRegistry
 {
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static readonly Dictionary<Type, Type?> Resolved = [];
     private static Registration[] _registrations = [];
     private static int _generation = -1;

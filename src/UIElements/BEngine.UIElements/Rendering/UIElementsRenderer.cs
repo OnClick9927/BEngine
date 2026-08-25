@@ -38,15 +38,15 @@ public sealed class UIElementsRenderer : IDisposable
 
     public GraphicsBackend Backend
     {
-        get { EngineThreadContext.AssertMainThread(); return _device.Backend; }
+        get { return _device.Backend; }
     }
     public GraphicsDeviceCapabilities Capabilities
     {
-        get { EngineThreadContext.AssertMainThread(); return _device.Capabilities; }
+        get { return _device.Capabilities; }
     }
     public UIRenderStatistics LastStatistics
     {
-        get { EngineThreadContext.AssertMainThread(); return _lastStatistics; }
+        get { return _lastStatistics; }
         private set => _lastStatistics = value;
     }
 
@@ -60,7 +60,6 @@ public sealed class UIElementsRenderer : IDisposable
         IUIRenderResourceResolver? resourceResolver = null,
         bool ownsDevice = false)
     {
-        EngineThreadContext.AssertMainThread("Create UIElementsRenderer");
         ArgumentNullException.ThrowIfNull(device);
         device.Capabilities.Require(
             GraphicsDeviceFeatures.Rasterization |
@@ -88,7 +87,6 @@ public sealed class UIElementsRenderer : IDisposable
 
     public void Render(Scene scene, int width, int height, GraphicsRect viewport)
     {
-        EngineThreadContext.AssertMainThread("UIElementsRenderer.Render");
         ArgumentNullException.ThrowIfNull(scene);
         var renderLists = scene.QueryComponents<UIDocument>().ToArray()
             .Where(item => item.gameObject.activeInHierarchy && item.enabled)
@@ -101,21 +99,18 @@ public sealed class UIElementsRenderer : IDisposable
 
     public void Render(VisualElement root, int width, int height, Fix64? scale = null)
     {
-        EngineThreadContext.AssertMainThread("UIElementsRenderer.Render");
         ArgumentNullException.ThrowIfNull(root);
         RenderCore([UIRenderListBuilder.Build(root, width, height, scale)], width, height);
     }
 
     public void Render(IEnumerable<UIRenderCommandList> renderLists, int width, int height)
     {
-        EngineThreadContext.AssertMainThread("UIElementsRenderer.Render");
         RenderCore(renderLists, width, height);
     }
 
     public void RenderCommands(IEnumerable<UIRenderCommand> commands, int width, int height,
         GraphicsRect viewport)
     {
-        EngineThreadContext.AssertMainThread("UIElementsRenderer.RenderCommands");
         RenderCore(commands, width, height, viewport);
     }
 
@@ -142,9 +137,11 @@ public sealed class UIElementsRenderer : IDisposable
             return;
         }
 
-        _device.SetViewport(viewport ?? new GraphicsRect(0, 0, width, height));
+        var targetViewport = viewport ?? new GraphicsRect(0, 0, width, height);
+        _device.SetViewport(targetViewport);
         _device.SetDepthState(GraphicsDepthState.Disabled);
         _device.SetBlendMode(GraphicsBlendMode.AlphaBlend);
+        _device.SetRasterizerState(GraphicsRasterizerState.Default);
         UploadFrameGeometry(build.Batches);
         IGraphicsProgram? activeProgram = null;
         var drawCalls = 0;
@@ -153,7 +150,8 @@ public sealed class UIElementsRenderer : IDisposable
         {
             foreach (var batch in build.Batches)
             {
-                _device.SetScissor(ToGraphicsRect(batch.ClipRect));
+                _device.SetScissor(ToGraphicsRect(batch.ClipRect,
+                    width, height, targetViewport.Width, targetViewport.Height));
                 if (batch.Texture is null)
                 {
                     if (!ReferenceEquals(activeProgram, _shader))
@@ -195,7 +193,6 @@ public sealed class UIElementsRenderer : IDisposable
 
     public void Dispose()
     {
-        EngineThreadContext.AssertMainThread("UIElementsRenderer.Dispose");
         if (_disposed) return;
         foreach (var texture in _textures.Values) texture.Dispose();
         _textures.Clear();
@@ -210,7 +207,6 @@ public sealed class UIElementsRenderer : IDisposable
 
     public bool InvalidateTexture(string source)
     {
-        EngineThreadContext.AssertMainThread("UIElementsRenderer.InvalidateTexture");
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
         if (!_textures.Remove(source, out var texture)) return false;
@@ -220,7 +216,6 @@ public sealed class UIElementsRenderer : IDisposable
 
     public void ClearTextureCache()
     {
-        EngineThreadContext.AssertMainThread("UIElementsRenderer.ClearTextureCache");
         ObjectDisposedException.ThrowIf(_disposed, this);
         foreach (var texture in _textures.Values) texture.Dispose();
         _textures.Clear();
@@ -493,11 +488,19 @@ public sealed class UIElementsRenderer : IDisposable
         program.SetFloat("uViewportHeight", height);
     }
 
-    private static GraphicsRect ToGraphicsRect(UIElementRect rect) => new(
-        Math.Max(0, (int)rect.X),
-        Math.Max(0, (int)rect.Y),
-        Math.Max(0, (int)rect.Width),
-        Math.Max(0, (int)rect.Height));
+    private static GraphicsRect ToGraphicsRect(UIElementRect rect,
+        int logicalWidth, int logicalHeight, int viewportWidth, int viewportHeight)
+    {
+        var scaleX = Math.Max(1, viewportWidth) / (double)Math.Max(1, logicalWidth);
+        var scaleY = Math.Max(1, viewportHeight) / (double)Math.Max(1, logicalHeight);
+        var left = Math.Clamp((int)Math.Floor((double)rect.X * scaleX), 0, Math.Max(0, viewportWidth));
+        var top = Math.Clamp((int)Math.Floor((double)rect.Y * scaleY), 0, Math.Max(0, viewportHeight));
+        var right = Math.Clamp((int)Math.Ceiling((double)(rect.X + rect.Width) * scaleX),
+            left, Math.Max(left, viewportWidth));
+        var bottom = Math.Clamp((int)Math.Ceiling((double)(rect.Y + rect.Height) * scaleY),
+            top, Math.Max(top, viewportHeight));
+        return new GraphicsRect(left, top, right - left, bottom - top);
+    }
 
     private static (GraphicsShaderSource Vertex, GraphicsShaderSource Fragment) ResolveShaderSources(
         IGraphicsDevice device,

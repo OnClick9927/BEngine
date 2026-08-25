@@ -34,7 +34,7 @@ public static class ComponentFieldSerializer
         }
         foreach (var member in GetSerializableMembers(component.GetType()))
         {
-            if (!fields.TryGetValue(member.Name, out var text))
+            if (!TryGetSerializedValue(member, fields, out var text))
             {
                 continue;
             }
@@ -48,6 +48,17 @@ public static class ComponentFieldSerializer
                 BEngine.Debug.LogWarning($"Could not restore {component.GetType().Name}.{member.Name}: {exception.Message}");
             }
         }
+    }
+
+    private static bool TryGetSerializedValue(
+        MemberInfo member, IReadOnlyDictionary<string, string> fields, out string text)
+    {
+        if (fields.TryGetValue(member.Name, out text!)) return true;
+        foreach (var alias in member.GetCustomAttributes<BEngine.FormerlySerializedAsAttribute>(inherit: true))
+            if (fields.TryGetValue(alias.oldName, out text!))
+                return true;
+        text = string.Empty;
+        return false;
     }
 
     public static IReadOnlyList<MemberInfo> GetSerializableMembers(Type type)

@@ -233,7 +233,7 @@ internal static class EditorTaskSchedulerTests
         finally
         {
             runtime.Stop();
-            scene.world.Dispose();
+            scene.Dispose();
             releaseAuxiliary.Set();
         }
         auxiliary.GetAwaiter().GetResult();

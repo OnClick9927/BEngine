@@ -1,10 +1,8 @@
-using System.Collections.Concurrent;
-
 namespace BEngine.Documents;
 
 public static class DocumentValidationRegistry
 {
-    private static readonly ConcurrentDictionary<Type, Action<Document>> Validators = [];
+    private static readonly Dictionary<Type, Action<Document>> Validators = [];
 
     static DocumentValidationRegistry() => CoreDocumentRegistration.RegisterValidators();
 

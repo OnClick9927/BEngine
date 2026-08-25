@@ -46,10 +46,12 @@ internal static class Program
             VerifyEditorWindowTypeBoundary(editorAssembly, nativeWindow);
             VerifySingleNativeEditorHost(editorAssembly, nativeWindow);
             VerifyNativeWindowConstructionBoundary(editorAssembly, nativeWindow);
+            VerifyNativeWindowGraphicsApi(nativeWindow);
             VerifyEditorWindowHostRouting(editorAssembly);
 
             Console.WriteLine(
-                "EDITOR_GPU_BOUNDARY_OK|no-winforms,no-uielements,gpu-imgui,rhi-window,gpu-dock,in-process-editor-windows,single-native-host");
+                "EDITOR_GPU_BOUNDARY_OK|no-winforms,no-uielements,gpu-imgui,rhi-window,gpu-dock," +
+                "in-process-editor-windows,single-native-host,vulkan-no-api-window");
             return 0;
         }
         catch (Exception exception)
@@ -168,6 +170,20 @@ internal static class Program
                 nativeFields[0].FieldType == nativeWindow,
             "GpuEditorApplication must own exactly one native graphics host (_mainWindow); " +
             $"found [{string.Join(", ", nativeFields.Select(field => field.Name))}].");
+    }
+
+    private static void VerifyNativeWindowGraphicsApi(Type nativeWindow)
+    {
+        var method = nativeWindow.GetMethod("WindowApiForBackend", BindingFlags.Static | BindingFlags.NonPublic) ??
+                     throw new InvalidOperationException("Native editor window does not expose its backend API mapping.");
+        var apiProperty = method.ReturnType.GetProperty("API") ??
+                          throw new InvalidOperationException("Silk window graphics API has no API discriminator.");
+        var vulkan = method.Invoke(null, [GraphicsBackend.Vulkan])!;
+        var openGl = method.Invoke(null, [GraphicsBackend.OpenGL])!;
+        Require(string.Equals(apiProperty.GetValue(vulkan)?.ToString(), "None", StringComparison.Ordinal),
+            "Vulkan editor window creates a competing graphics context instead of an external no-API window.");
+        Require(string.Equals(apiProperty.GetValue(openGl)?.ToString(), "OpenGL", StringComparison.Ordinal),
+            "OpenGL editor window no longer requests an OpenGL context.");
     }
 
     private static void VerifyEditorWindowHostRouting(Assembly editorAssembly)

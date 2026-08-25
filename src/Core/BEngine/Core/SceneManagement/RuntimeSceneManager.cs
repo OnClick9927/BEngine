@@ -13,7 +13,6 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
     {
         get
         {
-            MainThreadGuard.Ensure();
             return _loadedScenes;
         }
     }
@@ -21,7 +20,6 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
     {
         get
         {
-            MainThreadGuard.Ensure();
             return _activeScene;
         }
     }
@@ -29,14 +27,12 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
     {
         get
         {
-            MainThreadGuard.Ensure();
             return _loadedScenes.Count;
         }
     }
 
     public Scene LoadScene(string sceneNameOrPath, LoadSceneMode mode = LoadSceneMode.Single)
     {
-        MainThreadGuard.Ensure();
         ArgumentException.ThrowIfNullOrWhiteSpace(sceneNameOrPath);
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
         var loader = services.GetService(typeof(ISceneLoader)) as ISceneLoader ??
@@ -73,9 +69,8 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
 
     public void RegisterScene(Scene scene, bool setActive = false)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(scene);
-        if (!scene.world.IsCreated)
+        if (!scene.isCreated)
             throw new ObjectDisposedException(nameof(scene), "An unloaded Scene cannot be registered.");
         RegisterSceneCore(scene);
         if (setActive || _activeScene is null) SetActiveScene(scene);
@@ -83,7 +78,6 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
 
     public bool UnloadScene(Scene scene)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(scene);
         if (!_loadedScenes.Contains(scene)) return false;
         if (_loadedScenes.Count == 1)
@@ -94,7 +88,6 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
 
     public bool UnregisterScene(Scene scene, bool disposeScene = false)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(scene);
         if (!_loadedScenes.Contains(scene)) return false;
 
@@ -121,7 +114,6 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
 
     public bool SetActiveScene(Scene scene)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(scene);
         if (!_loadedScenes.Contains(scene) || !scene.isLoaded) return false;
         if (ReferenceEquals(_activeScene, scene)) return true;
@@ -133,7 +125,6 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
 
     public void MoveGameObjectToScene(GameObject gameObject, Scene destination)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(gameObject);
         ArgumentNullException.ThrowIfNull(destination);
         if (!_loadedScenes.Contains(destination))
@@ -146,7 +137,6 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
 
     public void MarkDontDestroyOnLoad(BObject target)
     {
-        MainThreadGuard.Ensure();
         ArgumentNullException.ThrowIfNull(target);
         var gameObject = target switch
         {
@@ -162,7 +152,7 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
     {
         SceneRuntime.StopRunningScene(scene);
         foreach (var root in scene.rootGameObjects.ToArray()) scene.Destroy(root);
-        scene.world.Dispose();
+        scene.Dispose();
         scene.isLoaded = false;
         SceneUnloaded?.Invoke(scene);
     }

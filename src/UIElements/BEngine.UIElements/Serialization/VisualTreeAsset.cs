@@ -6,7 +6,6 @@ namespace BEngine.UIElements;
 
 public sealed class VisualTreeAsset : ScriptableObject
 {
-    private static readonly object UxmlCacheLock = new();
     private static readonly Dictionary<string, VisualTreeAsset> UxmlCache =
         new(StringComparer.OrdinalIgnoreCase);
     private UIAssetDocument _document = UIAssetSerializer.CreateDefaultDocument();
@@ -27,19 +26,16 @@ public sealed class VisualTreeAsset : ScriptableObject
         if (Path.GetExtension(path).Equals(".uxml", StringComparison.OrdinalIgnoreCase))
         {
             var fullPath = Path.GetFullPath(path);
-            lock (UxmlCacheLock)
+            if (UxmlCache.TryGetValue(fullPath, out var cached) &&
+                cached._uxmlTemplate is { IsCurrent: true }) return cached;
+            var uxmlAsset = new VisualTreeAsset
             {
-                if (UxmlCache.TryGetValue(fullPath, out var cached) &&
-                    cached._uxmlTemplate is { IsCurrent: true }) return cached;
-                var uxmlAsset = new VisualTreeAsset
-                {
-                    assetPath = fullPath,
-                    _uxml = true,
-                    _uxmlTemplate = UxmlSerializer.LoadTemplate(fullPath)
-                };
-                UxmlCache[fullPath] = uxmlAsset;
-                return uxmlAsset;
-            }
+                assetPath = fullPath,
+                _uxml = true,
+                _uxmlTemplate = UxmlSerializer.LoadTemplate(fullPath)
+            };
+            UxmlCache[fullPath] = uxmlAsset;
+            return uxmlAsset;
         }
         return Document.LoadBObject<UIAssetDocument, VisualTreeAsset>(path);
     }
@@ -62,7 +58,7 @@ public sealed class VisualTreeAsset : ScriptableObject
             assetPath = Path.GetFullPath(path);
             _uxml = true;
             _uxmlTemplate = UxmlSerializer.LoadTemplate(assetPath);
-            lock (UxmlCacheLock) UxmlCache[assetPath] = this;
+            UxmlCache[assetPath] = this;
             return;
         }
         Document.SaveBObject<UIAssetDocument>(this, path);

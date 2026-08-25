@@ -81,8 +81,8 @@ internal static class CoreDocumentRegistration
         if (document.RequireHttps && !string.IsNullOrWhiteSpace(document.RemoteBaseUrl) &&
             !document.RemoteBaseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("AssetBundle remote base URL must use HTTPS.");
-        if (document.MaxRetries < 0 || document.MaxConcurrentDownloads <= 0)
-            throw new InvalidDataException("AssetBundle retry and concurrency values are invalid.");
+        if (document.MaxRetries < 0)
+            throw new InvalidDataException("AssetBundle retry value is invalid.");
     }
 
     internal static void ValidatePrefab(PrefabDocument document)

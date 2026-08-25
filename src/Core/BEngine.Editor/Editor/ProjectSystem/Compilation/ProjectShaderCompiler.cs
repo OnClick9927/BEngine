@@ -58,7 +58,6 @@ public static class ProjectShaderCompiler
     internal static void ApplyCompilationResult(ShaderCompilationResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        EngineThreadContext.AssertMainThread("Apply shader compilation result");
         foreach (var artifact in result.CompiledArtifacts)
         {
             var buildId = Path.GetFileNameWithoutExtension(artifact.Value);

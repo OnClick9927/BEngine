@@ -1,3 +1,4 @@
+using BEngine.Documents;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -58,6 +59,10 @@ public static class YamlUtility
     {
         ArgumentNullException.ThrowIfNull(value);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (value is Document { IsRuntimeSnapshot: true })
+            throw new InvalidOperationException("Runtime snapshots are transient and cannot be saved.");
+        if (value is BObject { IsRuntimeOnly: true })
+            throw new InvalidOperationException("Runtime objects are transient and cannot be saved.");
 
         var fullPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();

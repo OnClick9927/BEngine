@@ -8,7 +8,7 @@ namespace BEngine.Editor;
 
 public static class EditorPrefs
 {
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static string FilePath => EditorDataPaths.editorPrefsPath;
     private static Dictionary<string, string>? _values;
 

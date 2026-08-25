@@ -67,7 +67,6 @@ static void ValidatePublishedExamples(string repositoryRoot)
     var definitions = new (string Module, string Archive, string Scene)[]
     {
         ("Core", "src/Core/EditorResources/Examples/CoreGettingStarted.bpackage", "Core.scene.yaml"),
-        ("Core", "src/Core/EditorResources/Examples/EcsSystems.bpackage", "EcsSystems.scene.yaml"),
         ("Animation", "src/Animation/EditorResources/Examples/AnimationGettingStarted.bpackage",
             "Animation.scene.yaml"),
         ("Animation", "src/Animation/EditorResources/Examples/StateMachine.bpackage",

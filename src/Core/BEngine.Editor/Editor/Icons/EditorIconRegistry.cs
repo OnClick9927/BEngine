@@ -2,7 +2,7 @@ namespace BEngine.Editor;
 
 public static class EditorIconRegistry
 {
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
     private static readonly List<Registration> Registrations = [];
     private static readonly Dictionary<Type, string?> Resolved = [];
 
@@ -37,9 +37,9 @@ public static class EditorIconRegistry
         ArgumentNullException.ThrowIfNull(type);
         var registered = GetIconPath(type);
         if (!string.IsNullOrWhiteSpace(registered)) return registered;
-        if (typeof(MonoBehaviour).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Script;
         if (typeof(Camera2D).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Camera2D;
         if (typeof(SpriteRenderer).IsAssignableFrom(type)) return EditorBuiltinIcons.Assets.Image;
+        if (typeof(MonoBehaviour).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Script;
         if (typeof(Transform).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Transform;
         return EditorBuiltinIcons.Components.Default;
     }

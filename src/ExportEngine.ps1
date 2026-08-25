@@ -22,6 +22,22 @@ foreach ($path in @($engineOutput, $stageOutput, $backupOutput)) {
     }
 }
 
+$enginePrefix = [System.IO.Path]::GetFullPath($engineOutput).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+$runningEditor = @(Get-Process -Name 'BEngine.Editor' -ErrorAction SilentlyContinue | Where-Object {
+    try {
+        $_.Path -and [System.IO.Path]::GetFullPath($_.Path).StartsWith(
+            $enginePrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    catch {
+        $false
+    }
+})
+if ($runningEditor.Count -gt 0) {
+    $processIds = ($runningEditor | ForEach-Object Id) -join ', '
+    throw "BEngine Editor is running from Output/BEgine (PID: $processIds). Save your work and close it before exporting."
+}
+
 if (Test-Path -LiteralPath $stageOutput) {
     Remove-Item -LiteralPath $stageOutput -Recurse -Force
 }
@@ -48,18 +64,52 @@ foreach ($required in @('BEngine.Launcher.exe', 'BEngine.Editor.exe', 'BEngine.P
     }
 }
 
+foreach ($hostName in @('BEngine.Launcher', 'BEngine.Editor', 'BEngine.Player')) {
+    $runtimeConfigPath = Join-Path $stageOutput "$hostName.runtimeconfig.json"
+    $depsPath = Join-Path $stageOutput "$hostName.deps.json"
+    if (-not (Test-Path -LiteralPath $runtimeConfigPath) -or -not (Test-Path -LiteralPath $depsPath)) {
+        throw "Engine export is missing .NET host metadata for $hostName."
+    }
+
+    $runtimeConfig = Get-Content -Raw -LiteralPath $runtimeConfigPath | ConvertFrom-Json
+    if ($runtimeConfig.runtimeOptions.tfm -ne 'net10.0') {
+        throw "$hostName runtimeconfig targets '$($runtimeConfig.runtimeOptions.tfm)' instead of net10.0."
+    }
+    $frameworks = if ($null -ne $runtimeConfig.runtimeOptions.frameworks) {
+        @($runtimeConfig.runtimeOptions.frameworks)
+    }
+    else {
+        @($runtimeConfig.runtimeOptions.framework)
+    }
+    if ($frameworks.Count -eq 0 -or @($frameworks | Where-Object {
+            -not $_.version.StartsWith('10.', [System.StringComparison]::Ordinal)
+        }).Count -gt 0) {
+        throw "$hostName runtimeconfig does not exclusively reference .NET 10 frameworks."
+    }
+
+    $deps = Get-Content -Raw -LiteralPath $depsPath | ConvertFrom-Json
+    if (-not $deps.runtimeTarget.name.StartsWith(
+            '.NETCoreApp,Version=v10.0', [System.StringComparison]::Ordinal)) {
+        throw "$hostName deps target '$($deps.runtimeTarget.name)' instead of .NET 10."
+    }
+}
+
 if (Test-Path -LiteralPath $engineOutput) {
-    Move-Item -LiteralPath $engineOutput -Destination $backupOutput
+    [System.IO.Directory]::Move($engineOutput, $backupOutput)
 }
 try {
-    Move-Item -LiteralPath $stageOutput -Destination $engineOutput
+    Copy-Item -LiteralPath $stageOutput -Destination $engineOutput -Recurse
     if (Test-Path -LiteralPath $backupOutput) {
         Remove-Item -LiteralPath $backupOutput -Recurse -Force
     }
+    Remove-Item -LiteralPath $stageOutput -Recurse -Force
 }
 catch {
-    if (-not (Test-Path -LiteralPath $engineOutput) -and (Test-Path -LiteralPath $backupOutput)) {
-        Move-Item -LiteralPath $backupOutput -Destination $engineOutput
+    if (Test-Path -LiteralPath $engineOutput) {
+        Remove-Item -LiteralPath $engineOutput -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $backupOutput) {
+        [System.IO.Directory]::Move($backupOutput, $engineOutput)
     }
     throw
 }

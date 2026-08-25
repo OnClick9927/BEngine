@@ -17,60 +17,60 @@ public static class Time
 
     public static Fix64 deltaTime
     {
-        get { MainThreadGuard.Ensure(); return _deltaTime; }
+        get { return _deltaTime; }
         internal set => _deltaTime = value;
     }
     public static Fix64 unscaledDeltaTime
     {
-        get { MainThreadGuard.Ensure(); return _unscaledDeltaTime; }
+        get { return _unscaledDeltaTime; }
         internal set => _unscaledDeltaTime = value;
     }
     public static Fix64 fixedDeltaTime
     {
-        get { MainThreadGuard.Ensure(); return _fixedDeltaTime; }
-        set { MainThreadGuard.Ensure(); _fixedDeltaTime = value; }
+        get { return _fixedDeltaTime; }
+        set { _fixedDeltaTime = value; }
     }
     public static Fix64 time
     {
-        get { MainThreadGuard.Ensure(); return _time; }
+        get { return _time; }
         internal set => _time = value;
     }
     public static Fix64 unscaledTime
     {
-        get { MainThreadGuard.Ensure(); return _unscaledTime; }
+        get { return _unscaledTime; }
         internal set => _unscaledTime = value;
     }
     public static Fix64 fixedTime
     {
-        get { MainThreadGuard.Ensure(); return _fixedTime; }
+        get { return _fixedTime; }
         internal set => _fixedTime = value;
     }
     public static Fix64 timeSinceLevelLoad
     {
-        get { MainThreadGuard.Ensure(); return _time; }
+        get { return _time; }
     }
     public static Fix64 realtimeSinceStartup
     {
-        get { MainThreadGuard.Ensure(); return (Fix64)RealtimeClock.Elapsed.TotalSeconds; }
+        get { return (Fix64)RealtimeClock.Elapsed.TotalSeconds; }
     }
     public static Fix64 timeScale
     {
-        get { MainThreadGuard.Ensure(); return _timeScale; }
-        set { MainThreadGuard.Ensure(); _timeScale = value; }
+        get { return _timeScale; }
+        set { _timeScale = value; }
     }
     public static Fix64 maximumDeltaTime
     {
-        get { MainThreadGuard.Ensure(); return _maximumDeltaTime; }
-        set { MainThreadGuard.Ensure(); _maximumDeltaTime = value; }
+        get { return _maximumDeltaTime; }
+        set { _maximumDeltaTime = value; }
     }
     public static bool inFixedTimeStep
     {
-        get { MainThreadGuard.Ensure(); return _inFixedTimeStep; }
+        get { return _inFixedTimeStep; }
         internal set => _inFixedTimeStep = value;
     }
     public static long frameCount
     {
-        get { MainThreadGuard.Ensure(); return _frameCount; }
+        get { return _frameCount; }
         internal set => _frameCount = value;
     }
 

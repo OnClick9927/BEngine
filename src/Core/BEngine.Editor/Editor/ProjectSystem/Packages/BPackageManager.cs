@@ -78,6 +78,7 @@ public sealed class BPackageManager : IDisposable
     public void SetEnabled(string packageId, bool enabled)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        EnsureEditModeForPackageMutation();
         if (IsRetiredPackage(packageId))
             throw new KeyNotFoundException($"Package '{packageId}' was retired from the extension catalog.");
         if (!_catalog.TryGet(packageId, out var selected))
@@ -112,6 +113,7 @@ public sealed class BPackageManager : IDisposable
 
     public void Reload()
     {
+        EnsureEditModeForPackageMutation();
         var previous = Snapshot();
         _manifest = LoadOrCreate();
         NormalizeManifest();
@@ -133,6 +135,14 @@ public sealed class BPackageManager : IDisposable
             EditorCallbackDispatcher.Invoke(packagesChanged, nameof(packagesChanged));
             throw;
         }
+    }
+
+    private static void EnsureEditModeForPackageMutation()
+    {
+        if (!EditorApplication.isPlayingOrWillChangePlaymode) return;
+        if (EditorApplication.isPlaying) EditorApplication.isPlaying = false;
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+            throw new InvalidOperationException("Packages cannot change during a Play Mode transition.");
     }
 
     public void ExportEnabledRuntimePackages(string outputDirectory, Action<int, int, string>? progress = null)

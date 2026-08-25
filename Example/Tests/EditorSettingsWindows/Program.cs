@@ -24,8 +24,14 @@ internal static class Program
             var projectProviders = SettingsProviderRegistry.GetProviders(SettingsScope.Project);
             Require(userProviders.Any(item => item.settingsPath == "Preferences/General"),
                 "Built-in General preferences provider was not discovered.");
+            Require(projectProviders.All(item => !item.settingsPath.Equals(
+                        "Project/Editor", StringComparison.OrdinalIgnoreCase)),
+                "Project Settings must not expose the removed Editor page; editor preferences belong in Preferences.");
             Require(projectProviders.Any(item => item.settingsPath == "Project/Player"),
                 "Built-in Player project provider was not discovered.");
+            Require(projectProviders.Count(item => item.settingsPath.Equals(
+                        "Project/Tags and Layers", StringComparison.OrdinalIgnoreCase)) == 1,
+                "Project Settings must expose exactly one unified Tags and Layers provider.");
             Require(userProviders.Any(item => item.settingsPath == "Preferences/Packages/Test Package" &&
                                               item.isPackageProvider),
                 "Reflected package preferences provider was not discovered.");
@@ -85,9 +91,10 @@ internal static class Program
                     projectRestored.GraphicsBackend == "Vulkan",
                 "Project settings YAML did not round-trip.");
 
+            VerifyTagLayerDraftAndDocumentRewrites();
             var renderMarkers = SettingsWindowRenderRegressionTests.Run(testDirectory, projectPath);
             Console.WriteLine("EDITOR_SETTINGS_WINDOWS_OK|reflection,scopes,yaml,appearance,scale,locale," +
-                              $"font-gpu,project,{string.Join(',', renderMarkers)}");
+                              $"font-gpu,project,tag-layer-draft,tag-reference-rewrite,{string.Join(',', renderMarkers)}");
             return 0;
         }
         finally
@@ -101,6 +108,124 @@ internal static class Program
     {
         if (!condition) throw new InvalidOperationException(message);
     }
+
+    private static void VerifyTagLayerDraftAndDocumentRewrites()
+    {
+        var settings = EditorProjectSettings.current;
+        var originalTags = settings.Tags.ToList();
+        var originalLayers = CloneLayers(settings.SortingLayers);
+        try
+        {
+            settings.Tags = ["Untagged", "Player", "Enemy"];
+            settings.SortingLayers = CloneLayers(originalLayers);
+
+            var draft = new TagLayerSettingsDraft();
+            draft.Reload();
+            Require(!draft.IsDirty && draft.Error.Length == 0,
+                "A freshly loaded Tags and Layers draft must be clean and valid.");
+
+            var protectedCount = draft.Tags.Count;
+            draft.RenameTag(0, "Renamed Untagged");
+            draft.RemoveTag(0);
+            Require(draft.Tags.Count == protectedCount && draft.Tags[0] == "Untagged",
+                "The mandatory Untagged entry could be renamed or removed.");
+
+            draft.AddTag("Collectible");
+            draft.RenameTag(1, "Hero");
+            draft.RemoveTag(2);
+            draft.SetLayerName(8, "Actors");
+            Require(draft.IsDirty && draft.Error.Length == 0 &&
+                    draft.Tags.SequenceEqual(["Untagged", "Hero", "Collectible"]) &&
+                    draft.TagReplacements.TryGetValue("Player", out var renamed) && renamed == "Hero" &&
+                    draft.TagReplacements.TryGetValue("Enemy", out var deleted) && deleted == "Untagged",
+                "Tag add, rename, delete, or replacement tracking produced an invalid draft.");
+
+            var emptyTag = NewDraft();
+            emptyTag.AddTag("   ");
+            Require(emptyTag.Error.Contains("needs a name", StringComparison.OrdinalIgnoreCase),
+                "An empty Tag name was accepted.");
+            var duplicateTag = NewDraft();
+            duplicateTag.AddTag("Player");
+            Require(duplicateTag.Error.Contains("duplicated", StringComparison.OrdinalIgnoreCase),
+                "A duplicate Tag name was accepted.");
+
+            var emptyLayer = NewDraft();
+            emptyLayer.SetLayerName(SortingLayer.MinimumIndex, string.Empty);
+            Require(emptyLayer.Error.Contains("needs a name", StringComparison.OrdinalIgnoreCase),
+                "An empty Layer name was accepted.");
+            var duplicateLayer = NewDraft();
+            duplicateLayer.SetLayerName(SortingLayer.MinimumIndex,
+                duplicateLayer.SortingLayers[1].Name.ToUpperInvariant());
+            Require(duplicateLayer.Error.Contains("duplicated", StringComparison.OrdinalIgnoreCase),
+                "A case-insensitive duplicate Layer name was accepted.");
+
+            VerifyDocumentTagRewrites();
+            ProjectTagLayerSettingsApplier.Apply(draft);
+            var persisted = Document.Load<ProjectSettingsDocument>(EditorProjectSettings.settingsPath);
+            Require(persisted.Tags.SequenceEqual(["Untagged", "Hero", "Collectible"]) &&
+                    TagManager.tags.SequenceEqual(persisted.Tags),
+                "Applying the Tags draft did not update ProjectSettings.yaml and TagManager together.");
+            Require(persisted.SortingLayers.Single(layer => layer.Value == SortingLayer.FromIndex(8)).Name ==
+                    "Actors" && LayerMask.LayerToName(SortingLayer.FromIndex(8)) == "Actors",
+                "Applying the Layers draft did not preserve its value or refresh SortingLayerRegistry.");
+        }
+        finally
+        {
+            settings.Tags = originalTags;
+            settings.SortingLayers = originalLayers;
+            EditorProjectSettings.Save();
+        }
+
+        static TagLayerSettingsDraft NewDraft()
+        {
+            var value = new TagLayerSettingsDraft();
+            value.Reload();
+            return value;
+        }
+    }
+
+    private static void VerifyDocumentTagRewrites()
+    {
+        var replacements = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Player"] = "Hero",
+            ["Enemy"] = "Untagged"
+        };
+        var scene = new SceneDocument
+        {
+            GameObjects =
+            [
+                new GameObjectDocument { Name = "Renamed", Tag = "Player" },
+                new GameObjectDocument { Name = "Deleted", Tag = "Enemy" },
+                new GameObjectDocument { Name = "Untouched", Tag = "EditorOnly" }
+            ]
+        };
+        var sceneChanges = ProjectTagLayerSettingsApplier.RewriteDocumentTags(scene, replacements);
+        Require(sceneChanges == 2 &&
+                scene.GameObjects.Select(static item => item.Tag)
+                    .SequenceEqual(["Hero", "Untagged", "EditorOnly"]),
+            "Scene tag references were not rewritten for rename and delete mappings.");
+
+        var prefab = new PrefabDocument
+        {
+            GameObjects =
+            [
+                new GameObjectDocument { Name = "Root", Tag = "Player" },
+                new GameObjectDocument { Name = "Child", Tag = "Enemy" }
+            ]
+        };
+        var prefabChanges = ProjectTagLayerSettingsApplier.RewriteDocumentTags(prefab, replacements);
+        Require(prefabChanges == 2 &&
+                prefab.GameObjects.Select(static item => item.Tag).SequenceEqual(["Hero", "Untagged"]),
+            "Prefab tag references were not rewritten for rename and delete mappings.");
+    }
+
+    private static List<SortingLayerDocument> CloneLayers(IEnumerable<SortingLayerDocument> layers) =>
+        layers.Select(static layer => new SortingLayerDocument
+        {
+            Value = layer.Value,
+            Name = layer.Name
+        }).ToList();
 }
 
 internal static class ReflectedTestPackageSettings

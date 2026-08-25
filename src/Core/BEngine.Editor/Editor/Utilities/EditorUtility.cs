@@ -6,7 +6,7 @@ namespace BEngine.Editor;
 
 public static class EditorUtility
 {
-    private static readonly Dictionary<Guid, int> DirtyObjects = [];
+    private static readonly Dictionary<int, int> DirtyObjects = [];
     private static readonly object ProgressGate = new();
     private static EditorProgressInfo _progressInfo = EditorProgressInfo.None;
 
@@ -19,15 +19,32 @@ public static class EditorUtility
     public static void SetDirty(BObject target)
     {
         ArgumentNullException.ThrowIfNull(target);
-        DirtyObjects[target.Id] = DirtyObjects.GetValueOrDefault(target.Id) + 1;
-        if (target is GameObject or Component) EditorSceneManager.MarkSceneDirty();
+        var instanceId = target.GetInstanceID();
+        DirtyObjects[instanceId] = DirtyObjects.GetValueOrDefault(instanceId) + 1;
+        var scene = target is GameObject gameObject ? gameObject.scene : null;
+        if (target is Component component)
+        {
+            try { scene = component.gameObject.scene; }
+            catch (InvalidOperationException) { }
+        }
+        if (scene is not null) EditorSceneManager.MarkSceneDirty(scene);
     }
 
-    public static bool IsDirty(BObject target) => target is not null && DirtyObjects.ContainsKey(target.Id);
-    public static int GetDirtyCount(BObject target) => target is not null ? DirtyObjects.GetValueOrDefault(target.Id) : 0;
+    public static bool IsDirty(BObject target) => target is not null && DirtyObjects.ContainsKey(target.GetInstanceID());
+    public static int GetDirtyCount(BObject target) =>
+        target is not null ? DirtyObjects.GetValueOrDefault(target.GetInstanceID()) : 0;
     public static void ClearDirty(BObject target)
     {
-        if (target is not null) DirtyObjects.Remove(target.Id);
+        if (target is not null) DirtyObjects.Remove(target.GetInstanceID());
+    }
+
+    internal static DirtyState CaptureDirtyState() => new(DirtyObjects);
+
+    internal static void RestoreDirtyState(DirtyState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        DirtyObjects.Clear();
+        foreach (var pair in state.Counts) DirtyObjects.Add(pair.Key, pair.Value);
     }
 
     public static BObject? InstanceIDToObject(int instanceId) => BObject.FindObjectFromInstanceID(instanceId);
@@ -103,6 +120,12 @@ public static class EditorUtility
 
     private static void RaiseProgressChanged(EditorProgressInfo state)
         => EditorCallbackDispatcher.Invoke(progressChanged, state, nameof(progressChanged));
+
+    internal sealed class DirtyState(IReadOnlyDictionary<int, int> counts)
+    {
+        internal IReadOnlyDictionary<int, int> Counts { get; } =
+            new Dictionary<int, int>(counts);
+    }
     public static void FocusProjectWindow() => EditorApplication.RepaintProjectWindow();
     public static void PingObject(BObject target) => Selection.activeObject = target;
     public static void PingObject(int instanceId)

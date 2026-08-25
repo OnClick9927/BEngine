@@ -14,7 +14,7 @@ public sealed class EditorTaskScheduler : IEditorTaskScheduler
     private readonly SemaphoreSlim _signal = new(0);
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task[] _workers;
-    private readonly object _lifecycleGate = new();
+    private readonly Lock _lifecycleGate = new();
     private readonly int _mainThreadId;
     private int _pendingBackground;
     private int _disposed;

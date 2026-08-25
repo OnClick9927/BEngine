@@ -41,7 +41,7 @@ internal static class SettingsWindowRenderRegressionTests
             markers.AddRange(["preferences-render", "selection", "search", "navigation-scroll",
                 "content-scroll", "narrow", "multi-frame", "provider-fault", "preferences-persist"]);
             VerifyProjectSettingsWindow(projectSettingsPath);
-            markers.AddRange(["project-render", "apply-persist"]);
+            markers.AddRange(["project-render", "tag-layer-tabs", "apply-persist"]);
             return markers;
         }
         finally
@@ -128,6 +128,8 @@ internal static class SettingsWindowRenderRegressionTests
             VerifyTwoPaneLayout(Render(window, NarrowWidth, NarrowHeight), NarrowWidth, NarrowHeight,
                 "Project Overview", SettingsWindowRegressionState.ProjectBodyMarker);
 
+            VerifyTagLayerTabs(window);
+
             EditorProjectSettings.current.ScriptingDefineSymbols = ["OLD_SYMBOL"];
             EditorProjectSettings.Save();
             Select(window, "Project/Scripting");
@@ -147,6 +149,26 @@ internal static class SettingsWindowRenderRegressionTests
         {
             Close(window);
         }
+    }
+
+    private static void VerifyTagLayerTabs(ProjectSettingsWindow window)
+    {
+        Select(window, "Project/Tags and Layers");
+        var tags = Render(window, WideWidth, WideHeight);
+        Require(HasVisibleText(tags, "Tags") && HasVisibleText(tags, "Layers") &&
+                HasVisibleText(tags, "Untagged") && HasVisibleText(tags, "Add Tag"),
+            "The unified Tags and Layers provider did not render its Tags page and both tabs.");
+
+        ClickText(window, WideWidth, WideHeight, tags, "Layers");
+        var layers = Render(window, WideWidth, WideHeight);
+        Require(HasVisibleText(layers, "Tags") && HasVisibleText(layers, "Layers") &&
+                HasVisibleText(layers, "World: 2^1 - 2^58    UI: 2^59 - 2^63") &&
+                HasVisibleText(layers, "2^1"),
+            "Selecting the Layers tab did not render the layer editor.");
+
+        ClickText(window, WideWidth, WideHeight, layers, "Tags");
+        Require(HasVisibleText(Render(window, WideWidth, WideHeight), "Add Tag"),
+            "Selecting the Tags tab did not restore the tag editor.");
     }
 
     private static void VerifyContentScroll(

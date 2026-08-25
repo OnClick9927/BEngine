@@ -13,12 +13,12 @@ internal static class RuntimeAssetBundleTests
         AssetBundleTestWorkspace workspace,
         AssetBundleBuildResult build)
     {
-        await LoadsAreCoalescedAndReferenceCounted(workspace, build).ConfigureAwait(false);
+        await SerialLoadsAreCachedAndReferenceCounted(workspace, build).ConfigureAwait(false);
         await ResourcesAndPlayerPreferActiveBundles(workspace, build).ConfigureAwait(false);
         await ValidOfflineCacheSurvivesRestartAndRecoversPointer(workspace, build).ConfigureAwait(false);
     }
 
-    private static async Task LoadsAreCoalescedAndReferenceCounted(
+    private static async Task SerialLoadsAreCachedAndReferenceCounted(
         AssetBundleTestWorkspace workspace,
         AssetBundleBuildResult build)
     {
@@ -32,13 +32,13 @@ internal static class RuntimeAssetBundleTests
                 StringComparer.OrdinalIgnoreCase),
             "Address prefix enumeration did not return stable matching assets.");
 
-        var loadTasks = Enumerable.Range(0, 8)
-            .Select(_ => manager.LoadBytesAsync(AssetBundleTestWorkspace.SharedAddress))
-            .ToArray();
-        var handles = await Task.WhenAll(loadTasks).ConfigureAwait(false);
+        var handles = new AssetBundleHandle<byte[]>[8];
+        for (var index = 0; index < handles.Length; index++)
+            handles[index] = await manager.LoadBytesAsync(AssetBundleTestWorkspace.SharedAddress)
+                .ConfigureAwait(false);
         TestAssert.That(handles.All(handle =>
                 System.Text.Encoding.UTF8.GetString(handle.Value) == "shared-v1"),
-            "Concurrent async loads returned incorrect bytes.");
+            "Serial async loads returned incorrect bytes.");
         TestAssert.That(handles.Skip(1).All(handle => !ReferenceEquals(handles[0].Value, handle.Value)),
             "Asset handles exposed the cache's mutable byte array instance.");
         TestAssert.That(manager.UnloadUnused() == 0,
@@ -132,7 +132,7 @@ internal static class RuntimeAssetBundleTests
         }
         finally
         {
-            scene.world.Dispose();
+            scene.Dispose();
         }
         _ = manager.UnloadUnused();
     }

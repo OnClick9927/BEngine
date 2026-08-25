@@ -1,50 +1,79 @@
 using System.Runtime.CompilerServices;
-using BEngine.Entities;
 
 namespace BEngine.Physics2D;
 
 public sealed class PhysicsWorld2D : ISceneRuntimeSystem
 {
     private static readonly ConditionalWeakTable<Scene, PhysicsWorld2D> Worlds = new();
+    private static readonly List<PhysicsWorld2D> RunningWorlds = [];
     private static PhysicsWorld2D? _active;
     private readonly Dictionary<ContactKey, ContactState> _contacts = [];
+    private readonly PhysicsWorld2DState _state = new();
     private Scene? _scene;
 
-    private static PhysicsWorld2D? ActiveWorld => World.Current?.Scene is { } scene &&
-        Worlds.TryGetValue(scene, out var world) ? world : _active;
+    private static PhysicsWorld2D? ActiveWorld
+    {
+        get
+        {
+            if (SceneRuntime.currentScene is not { } scene) return _active;
+            return Worlds.TryGetValue(scene, out var world) ? world : null;
+        }
+    }
+
+    internal static PhysicsWorld2DState? activeState => ActiveWorld?._state;
 
     public int order => -100;
     public string packageId => "com.bengine.physics2d";
 
     public void Start(Scene scene)
     {
+        ArgumentNullException.ThrowIfNull(scene);
+        if (_scene is not null && !ReferenceEquals(_scene, scene))
+            throw new InvalidOperationException("A PhysicsWorld2D instance cannot run more than one Scene.");
+        _state.CopySettingsFrom(Physics2D.defaultState);
         _scene = scene;
         Worlds.Remove(scene);
         Worlds.Add(scene, this);
-        _active = this;
+        Activate();
     }
 
     public void FixedUpdate(Scene scene, Fix64 fixedDeltaTime)
     {
-        _active = this;
-        if (Physics2D.autoSimulation) Simulate(fixedDeltaTime);
+        Activate();
+        if (_state.AutoSimulation) Simulate(fixedDeltaTime);
     }
 
     public void Stop(Scene scene)
     {
         DispatchExits(_contacts.Values);
         _contacts.Clear();
+        _state.ClearIgnoredPairs();
         Worlds.Remove(scene);
-        if (ReferenceEquals(_active, this)) _active = null;
+        RunningWorlds.Remove(this);
+        if (ReferenceEquals(_active, this)) _active = RunningWorlds.LastOrDefault();
         _scene = null;
     }
 
     public static PhysicsWorld2D? Get(Scene scene) =>
         Worlds.TryGetValue(scene, out var world) ? world : null;
 
+    internal static PhysicsWorld2DState StateFor(Collider2D left, Collider2D right)
+    {
+        if (SceneRuntime.currentScene is { } currentScene)
+            return Worlds.TryGetValue(currentScene, out var currentWorld)
+                ? currentWorld._state
+                : Physics2D.defaultState;
+        var leftScene = left.gameObject.scene;
+        if (leftScene is not null && ReferenceEquals(leftScene, right.gameObject.scene) &&
+            Worlds.TryGetValue(leftScene, out var world))
+            return world._state;
+        return activeState ?? Physics2D.defaultState;
+    }
+
     public void Simulate(Fix64 deltaTime)
     {
         if (_scene is null || deltaTime <= Fix64.Zero) return;
+        Activate();
         foreach (var body in _scene.QueryComponents<Rigidbody2D>().ToArray()
                      .Where(IsActive).OrderBy(item => item.Id))
             Integrate(body, deltaTime);
@@ -58,7 +87,7 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
                 var left = colliders[leftIndex];
                 var right = colliders[rightIndex];
                 if (ReferenceEquals(left.gameObject, right.gameObject) ||
-                    Physics2D.ShouldIgnore(left, right) ||
+                    _state.ShouldIgnore(left, right) ||
                     left.attachedRigidbody?.simulated == false ||
                     right.attachedRigidbody?.simulated == false)
                     continue;
@@ -80,10 +109,17 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
 
     internal static void SimulateActive(Fix64 deltaTime) => ActiveWorld?.Simulate(deltaTime);
 
+    private void Activate()
+    {
+        _active = this;
+        RunningWorlds.Remove(this);
+        RunningWorlds.Add(this);
+    }
+
     private static bool IsActive(Component component) =>
         component.enabled && component.gameObject.activeInHierarchy;
 
-    private static void Integrate(Rigidbody2D body, Fix64 deltaTime)
+    private void Integrate(Rigidbody2D body, Fix64 deltaTime)
     {
         if (body.bodyType != RigidbodyType2D.Dynamic || body.IsSleeping)
         {
@@ -93,7 +129,7 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
         }
 
         var previous = body.position;
-        var acceleration = body.ConsumeAcceleration() + Physics2D.gravity * body.gravityScale;
+        var acceleration = body.ConsumeAcceleration() + _state.Gravity * body.gravityScale;
         body.linearVelocity += acceleration * deltaTime;
         body.linearVelocity *= Mathf.Clamp01(Fix64.One - body.linearDamping * deltaTime);
         body.linearVelocity = ApplyPositionConstraints(body.linearVelocity, body.constraints);
@@ -105,10 +141,10 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
             body.rotation += body.angularVelocity * deltaTime;
 
         if (body.collisionDetectionMode is not (CollisionDetectionMode.Continuous or
-            CollisionDetectionMode.ContinuousDynamic) || ActiveWorld is null)
+            CollisionDetectionMode.ContinuousDynamic))
             return;
         var distance = Vector2.Distance(previous, body.position);
-        if (distance <= Fix64.Epsilon || !Raycast(previous, body.linearVelocity.normalized, out var hit,
+        if (distance <= Fix64.Epsilon || !RaycastInWorld(previous, body.linearVelocity.normalized, out var hit,
                 distance, ~body.gameObject.layer, QueryTriggerInteraction.Ignore))
             return;
         body.position = hit.point - body.linearVelocity.normalized * Fix64.Parse("0.001");
@@ -165,18 +201,39 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
     internal static bool Raycast(Vector2 origin, Vector2 direction, out RaycastHit2D hit,
         Fix64 maxDistance, ulong layerMask, QueryTriggerInteraction triggerInteraction)
     {
-        hit = RaycastAll(origin, direction, maxDistance, layerMask, triggerInteraction).FirstOrDefault();
-        return hit.collider is not null;
+        var active = ActiveWorld;
+        if (active is null)
+        {
+            hit = default;
+            return false;
+        }
+        return active.RaycastInWorld(origin, direction, out hit, maxDistance, layerMask,
+            triggerInteraction);
     }
 
     internal static RaycastHit2D[] RaycastAll(Vector2 origin, Vector2 direction, Fix64 maxDistance,
         ulong layerMask, QueryTriggerInteraction triggerInteraction)
     {
         var active = ActiveWorld;
-        if (active?._scene is null || direction.sqrMagnitude <= Fix64.Epsilon) return [];
+        return active?.RaycastAllInWorld(origin, direction, maxDistance, layerMask,
+            triggerInteraction) ?? [];
+    }
+
+    private bool RaycastInWorld(Vector2 origin, Vector2 direction, out RaycastHit2D hit,
+        Fix64 maxDistance, ulong layerMask, QueryTriggerInteraction triggerInteraction)
+    {
+        hit = RaycastAllInWorld(origin, direction, maxDistance, layerMask, triggerInteraction)
+            .FirstOrDefault();
+        return hit.collider is not null;
+    }
+
+    private RaycastHit2D[] RaycastAllInWorld(Vector2 origin, Vector2 direction, Fix64 maxDistance,
+        ulong layerMask, QueryTriggerInteraction triggerInteraction)
+    {
+        if (_scene is null || direction.sqrMagnitude <= Fix64.Epsilon) return [];
         direction = direction.normalized;
         var results = new List<RaycastHit2D>();
-        foreach (var collider in ActiveColliders(active._scene))
+        foreach (var collider in ActiveColliders(_scene))
         {
             if (!LayerMatches(collider, layerMask) || !TriggerMatches(collider, triggerInteraction)) continue;
             if (!RayIntersects(BoundsFor(collider), origin, direction, maxDistance,
@@ -197,8 +254,14 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
         QueryTriggerInteraction triggerInteraction)
     {
         var active = ActiveWorld;
-        if (active?._scene is null) return [];
-        return [.. ActiveColliders(active._scene).Where(collider => LayerMatches(collider, layerMask) &&
+        return active?.OverlapCircleInWorld(position, radius, layerMask, triggerInteraction) ?? [];
+    }
+
+    private Collider2D[] OverlapCircleInWorld(Vector2 position, Fix64 radius, ulong layerMask,
+        QueryTriggerInteraction triggerInteraction)
+    {
+        if (_scene is null) return [];
+        return [.. ActiveColliders(_scene).Where(collider => LayerMatches(collider, layerMask) &&
             TriggerMatches(collider, triggerInteraction) &&
             Vector2.Distance(GetClosestPoint(collider, position), position) <= radius)];
     }
@@ -209,10 +272,19 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
     {
         hit = default;
         var active = ActiveWorld;
-        if (active?._scene is null || direction.sqrMagnitude <= Fix64.Epsilon) return false;
+        return active is not null && active.CircleCastInWorld(origin, radius, direction, out hit,
+            maxDistance, layerMask, triggerInteraction);
+    }
+
+    private bool CircleCastInWorld(Vector2 origin, Fix64 radius, Vector2 direction,
+        out RaycastHit2D hit, Fix64 maxDistance, ulong layerMask,
+        QueryTriggerInteraction triggerInteraction)
+    {
+        hit = default;
+        if (_scene is null || direction.sqrMagnitude <= Fix64.Epsilon) return false;
         direction = direction.normalized;
         var results = new List<RaycastHit2D>();
-        foreach (var collider in ActiveColliders(active._scene))
+        foreach (var collider in ActiveColliders(_scene))
         {
             if (!LayerMatches(collider, layerMask) || !TriggerMatches(collider, triggerInteraction)) continue;
             var bounds = BoundsFor(collider);
@@ -237,10 +309,16 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
         QueryTriggerInteraction triggerInteraction)
     {
         var active = ActiveWorld;
-        if (active?._scene is null) return [];
+        return active?.OverlapBoxInWorld(center, size, layerMask, triggerInteraction) ?? [];
+    }
+
+    private Collider2D[] OverlapBoxInWorld(Vector2 center, Vector2 size, ulong layerMask,
+        QueryTriggerInteraction triggerInteraction)
+    {
+        if (_scene is null) return [];
         var half = size / 2;
         var bounds = new BoundsData(center - half, center + half);
-        return [.. ActiveColliders(active._scene).Where(collider => LayerMatches(collider, layerMask) &&
+        return [.. ActiveColliders(_scene).Where(collider => LayerMatches(collider, layerMask) &&
             TriggerMatches(collider, triggerInteraction) && BoundsFor(collider).Intersects(bounds))];
     }
 
@@ -252,11 +330,11 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
     private static bool LayerMatches(Collider2D collider, ulong mask) =>
         (mask & collider.gameObject.layer) != 0;
 
-    private static bool TriggerMatches(Collider2D collider, QueryTriggerInteraction value) => value switch
+    private bool TriggerMatches(Collider2D collider, QueryTriggerInteraction value) => value switch
     {
         QueryTriggerInteraction.Ignore => !collider.isTrigger,
         QueryTriggerInteraction.Collide => true,
-        _ => Physics2D.queriesHitTriggers || !collider.isTrigger
+        _ => _state.QueriesHitTriggers || !collider.isTrigger
     };
 
     private static BoundsData BoundsFor(Collider2D collider)

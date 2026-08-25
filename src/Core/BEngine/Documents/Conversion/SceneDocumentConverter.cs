@@ -26,6 +26,7 @@ internal sealed class SceneDocumentConverter : IDocumentConverter
         ArgumentNullException.ThrowIfNull(scene);
         return new SceneDocument
         {
+            IsRuntimeSnapshot = scene.IsRuntimeOnly || SceneRuntime.IsRunningScene(scene),
             Id = scene.Id,
             Name = scene.name,
             GameObjects = [.. scene.gameObjects.Select(FromGameObject)]
@@ -81,7 +82,11 @@ internal sealed class SceneDocumentConverter : IDocumentConverter
     internal Scene ToScene(SceneDocument document, IServiceProvider? services = null)
     {
         CoreDocumentRegistration.ValidateScene(document);
-        var scene = new Scene(document.Name, services) { Id = document.Id };
+        var scene = new Scene(document.Name, services)
+        {
+            Id = document.Id,
+            IsRuntimeOnly = document.IsRuntimeSnapshot
+        };
         var objects = new Dictionary<Guid, GameObject>();
 
         foreach (var item in document.GameObjects)

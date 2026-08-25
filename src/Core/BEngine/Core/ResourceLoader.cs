@@ -4,7 +4,6 @@ namespace BEngine;
 
 internal static class ResourceLoader
 {
-    private static readonly object RootSync = new();
     private static readonly HashSet<string> RegisteredRoots = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<IResourceProvider> RegisteredProviders = [];
 
@@ -83,36 +82,31 @@ internal static class ResourceLoader
     internal static void RegisterRoot(string rootPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
-        lock (RootSync) RegisteredRoots.Add(Path.GetFullPath(rootPath));
+        RegisteredRoots.Add(Path.GetFullPath(rootPath));
     }
 
     internal static bool UnregisterRoot(string rootPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
-        lock (RootSync) return RegisteredRoots.Remove(Path.GetFullPath(rootPath));
+        return RegisteredRoots.Remove(Path.GetFullPath(rootPath));
     }
 
     internal static void RegisterProvider(IResourceProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
-        lock (RootSync)
-        {
-            if (!RegisteredProviders.Contains(provider)) RegisteredProviders.Insert(0, provider);
-        }
+        if (!RegisteredProviders.Contains(provider)) RegisteredProviders.Insert(0, provider);
     }
 
     internal static bool UnregisterProvider(IResourceProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
-        lock (RootSync) return RegisteredProviders.Remove(provider);
+        return RegisteredProviders.Remove(provider);
     }
 
     private static ResourceContent? ResolveProvider(string path, string folderName)
     {
         var normalized = NormalizeResourcePath(path);
-        IResourceProvider[] providers;
-        lock (RootSync) providers = RegisteredProviders.ToArray();
-        foreach (var provider in providers)
+        foreach (var provider in RegisteredProviders.ToArray())
             if (provider.TryLoad(normalized, folderName, out var content)) return content;
         return null;
     }
@@ -120,9 +114,7 @@ internal static class ResourceLoader
     private static IEnumerable<string> EnumerateProviders(string path, string folderName)
     {
         var normalized = NormalizeResourcePath(path);
-        IResourceProvider[] providers;
-        lock (RootSync) providers = RegisteredProviders.ToArray();
-        return providers.SelectMany(provider => provider.Enumerate(normalized, folderName))
+        return RegisteredProviders.ToArray().SelectMany(provider => provider.Enumerate(normalized, folderName))
             .Select(NormalizeResourcePath)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
@@ -142,8 +134,7 @@ internal static class ResourceLoader
         if (!string.IsNullOrWhiteSpace(Application.dataPath))
             yield return Path.Combine(Application.dataPath, folderName);
         yield return Path.Combine(AppContext.BaseDirectory, folderName);
-        string[] registered;
-        lock (RootSync) registered = RegisteredRoots.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
-        foreach (var root in registered) yield return Path.Combine(root, folderName);
+        foreach (var root in RegisteredRoots.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray())
+            yield return Path.Combine(root, folderName);
     }
 }

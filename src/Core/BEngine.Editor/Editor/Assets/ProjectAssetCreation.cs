@@ -48,7 +48,8 @@ internal static class ProjectAssetCreation
     [MenuItem("Assets/Create/Data/YAML File", false, 411)]
     private static void CreateYamlFromMenu() => CreateAndReveal(CreateYaml);
 
-    internal static bool CanCreateFromMenu() => EditorBridge.Host?.ActiveProjectFolderPath is not null;
+    internal static bool CanCreateFromMenu() => EditorAssetWritePolicy.CanWrite &&
+                                                EditorBridge.Host?.ActiveProjectFolderPath is not null;
 
     internal static string CreateFolder(string folder)
     {

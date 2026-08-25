@@ -18,5 +18,4 @@ public sealed class AssetBundleSettingsDocument : Document
     public bool FailStartupWhenUpdateFails { get; set; }
     public bool RequireHttps { get; set; } = true;
     public int MaxRetries { get; set; } = 3;
-    public int MaxConcurrentDownloads { get; set; } = 4;
 }

@@ -17,6 +17,7 @@ internal interface IEditorHost
     bool CloseScene(Scene scene, bool removeScene);
     bool SetActiveScene(Scene scene);
     bool IsPlaying { get; set; }
+    bool IsChangingPlayMode { get; }
     bool IsPaused { get; set; }
     void ShowWindow(EditorWindow window);
     void CloseWindow(EditorWindow window);

@@ -1,14 +1,12 @@
-using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace BEngine.Documents;
 
 public static class DocumentConversionRegistry
 {
-    private static readonly object Sync = new();
     private static readonly Dictionary<Type, IDocumentConverter> ByDocument = [];
     private static readonly List<IDocumentConverter> Converters = [];
-    private static readonly ConcurrentDictionary<Type, IDocumentConverter> ByObject = [];
+    private static readonly Dictionary<Type, IDocumentConverter> ByObject = [];
 
     static DocumentConversionRegistry()
     {
@@ -24,21 +22,17 @@ public static class DocumentConversionRegistry
         if (converter.ObjectTypes.Count == 0 || converter.ObjectTypes.Any(type => !typeof(BObject).IsAssignableFrom(type)))
             throw new ArgumentException("Document converters must declare at least one BObject type.", nameof(converter));
 
-        lock (Sync)
-        {
-            if (ByDocument.TryGetValue(converter.DocumentType, out var previous)) Converters.Remove(previous);
-            ByDocument[converter.DocumentType] = converter;
-            Converters.Add(converter);
-            ByObject.Clear();
-        }
+        if (ByDocument.TryGetValue(converter.DocumentType, out var previous)) Converters.Remove(previous);
+        ByDocument[converter.DocumentType] = converter;
+        Converters.Add(converter);
+        ByObject.Clear();
     }
 
     public static BObject ToBObject(Document document, DocumentConversionContext context)
     {
         ArgumentNullException.ThrowIfNull(document);
         DocumentValidationRegistry.Validate(document);
-        IDocumentConverter? converter;
-        lock (Sync) ByDocument.TryGetValue(document.GetType(), out converter);
+        ByDocument.TryGetValue(document.GetType(), out var converter);
         return converter?.ToBObject(document, context) ?? new DocumentObject(document);
     }
 
@@ -51,7 +45,7 @@ public static class DocumentConversionRegistry
         {
             converter = ResolveObjectConverter(objectType) ?? throw new NotSupportedException(
                 $"No Document converter is registered for {objectType.FullName}.");
-            ByObject.TryAdd(objectType, converter);
+            ByObject[objectType] = converter;
         }
         var document = converter.FromBObject(value, context);
         DocumentValidationRegistry.Validate(document);
@@ -71,8 +65,7 @@ public static class DocumentConversionRegistry
                 $"DocumentObject contains {wrapper.document.GetType().FullName}, not {documentType.FullName}.");
         }
 
-        IDocumentConverter? converter;
-        lock (Sync) ByDocument.TryGetValue(documentType, out converter);
+        ByDocument.TryGetValue(documentType, out var converter);
         if (converter is null || !converter.ObjectTypes.Any(type => type.IsInstanceOfType(value)))
             throw new NotSupportedException(
                 $"No {documentType.FullName} converter is registered for {value.GetType().FullName}.");
@@ -84,17 +77,12 @@ public static class DocumentConversionRegistry
     public static void UnregisterAssembly(Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
-        IDocumentConverter[] snapshot;
-        lock (Sync) snapshot = [.. Converters];
-        foreach (var converter in snapshot) converter.UnregisterAssembly(assembly);
+        foreach (var converter in Converters.ToArray()) converter.UnregisterAssembly(assembly);
     }
 
     private static IDocumentConverter? ResolveObjectConverter(Type objectType)
     {
-        lock (Sync)
-        {
-            return Converters.LastOrDefault(converter =>
-                converter.ObjectTypes.Any(candidate => candidate.IsAssignableFrom(objectType)));
-        }
+        return Converters.LastOrDefault(converter =>
+            converter.ObjectTypes.Any(candidate => candidate.IsAssignableFrom(objectType)));
     }
 }

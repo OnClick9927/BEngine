@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>BEngine.ExampleTests.EditorDataPaths</RootNamespace>
     <AssemblyName>BEngine.ExampleTests.EditorDataPaths</AssemblyName>
     <NuGetAudit>false</NuGetAudit>

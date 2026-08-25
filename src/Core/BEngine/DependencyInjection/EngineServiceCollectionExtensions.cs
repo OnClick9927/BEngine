@@ -1,5 +1,4 @@
 using System.Reflection;
-using BEngine.Entities;
 using BEngine.SceneManagement;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -55,10 +54,6 @@ public static class EngineServiceCollectionExtensions
 
     private static void RegisterRuntimeSystems(IServiceCollection services, IEnumerable<Type> types)
     {
-        foreach (var type in types.Where(IsConcrete<ISystem>)
-                     .OrderBy(type => type.FullName, StringComparer.Ordinal))
-            services.TryAdd(ServiceDescriptor.Transient(type, type));
-
         foreach (var type in types.Where(IsConcrete<ISceneRuntimeSystem>)
                      .OrderBy(type => type.FullName, StringComparer.Ordinal))
         {

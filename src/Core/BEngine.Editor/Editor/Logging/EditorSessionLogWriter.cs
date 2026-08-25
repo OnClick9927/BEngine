@@ -9,7 +9,7 @@ internal sealed class EditorSessionLogWriter : IDisposable
     private readonly string _path;
     private readonly IEditorTaskScheduler _scheduler;
     private readonly ConcurrentQueue<string> _pending = new();
-    private readonly object _writeGate = new();
+    private readonly Lock _writeGate = new();
     private int _drainScheduled;
     private int _disposed;
 

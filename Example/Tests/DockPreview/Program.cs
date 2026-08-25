@@ -1,164 +1,158 @@
 using System.Collections;
 using System.Reflection;
+using BEngine.Editor;
+using BEngine.Editor.Documents;
+using BEngine.Editor.Rendering;
 
 namespace BEngine.ExampleTests.DockPreview;
 
 internal static class Program
 {
-    [STAThread]
+    private const BindingFlags InstanceMembers = BindingFlags.Instance | BindingFlags.Public |
+                                                        BindingFlags.NonPublic;
+
+    private static readonly MethodInfo BeginFrame = typeof(GUI).GetMethod("BeginFrame",
+        BindingFlags.Static | BindingFlags.NonPublic)!;
+    private static readonly MethodInfo EndFrame = typeof(GUI).GetMethod("EndFrame",
+        BindingFlags.Static | BindingFlags.NonPublic)!;
+
     private static int Main()
     {
-        ApplicationConfiguration.Initialize();
-        var assembly = Assembly.Load("BEngine.Editor");
-        var workspaceType = assembly.GetType("BEngine.Editor.DockWorkspace", true)!;
-        using var workspace = (Control)Activator.CreateInstance(workspaceType, nonPublic: true)!;
-        workspace.Size = new Size(900, 600);
-        workspace.PerformLayout();
-
-        var zones = (IDictionary)workspaceType.GetField("_zones", BindingFlags.Instance |
-            BindingFlags.NonPublic)!.GetValue(workspace)!;
-        var targets = zones.Values.Cast<Control>().ToArray();
-        Require(targets.Length == 4, "Dock workspace did not expose four docking targets.");
-
-        var hide = workspaceType.GetMethod("HideDockPreview", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var active = workspaceType.GetProperty("IsDockPreviewActive", BindingFlags.Instance |
-            BindingFlags.NonPublic)!;
-        var activeTarget = workspaceType.GetProperty("DockPreviewTarget", BindingFlags.Instance |
-            BindingFlags.NonPublic)!;
-        var overlay = (Control)workspaceType.GetField("_dockPreview", BindingFlags.Instance |
-            BindingFlags.NonPublic)!.GetValue(workspace)!;
-        var showOverlay = overlay.GetType().GetMethod("ShowFor", BindingFlags.Instance |
-            BindingFlags.NonPublic)!;
-        var updateDropPosition = overlay.GetType().GetMethod("UpdateDropPosition", BindingFlags.Instance |
-            BindingFlags.NonPublic)!;
-        var dropPosition = workspaceType.GetProperty("DockPreviewPosition", BindingFlags.Instance |
-            BindingFlags.NonPublic)!;
-        var previewBounds = workspaceType.GetProperty("DockPreviewBounds", BindingFlags.Instance |
-            BindingFlags.NonPublic)!;
-
-        for (var index = 0; index < targets.Length; index++)
+        try
         {
-            var target = targets[index];
-            var expectedBounds = index switch
-            {
-                0 => new Rectangle(0, 0, 220, 420),
-                1 => new Rectangle(220, 0, 450, 420),
-                2 => new Rectangle(670, 0, 230, 420),
-                _ => new Rectangle(0, 420, 900, 180)
-            };
-            showOverlay.Invoke(overlay, [target, expectedBounds, expectedBounds, $"Target {index}"]);
-            Require((bool)active.GetValue(workspace)!, "A valid docking target did not activate its preview.");
-            Require(ReferenceEquals(activeTarget.GetValue(workspace), target),
-                "Dock preview highlighted a different docking target.");
-            Require(overlay.Visible && overlay.Parent == workspace,
-                "Dock preview is not a visible top-level workspace overlay.");
-            Require(overlay.Bounds == expectedBounds, "Dock preview bounds do not match the destination pane.");
-            Require(ContainsAccentPixels(overlay), "Dock preview did not paint its visible blue docking cue.");
+            VerifyGpuDockPreview();
+            Console.WriteLine(
+                "DOCK_PREVIEW_OK|gpu-imgui,four-areas,five-drop-targets,accent-overlay,split-region,empty-collapse");
+            return 0;
         }
-
-        var centerTarget = targets.Single(target => string.Equals(
-            target.GetType().GetProperty("Zone")!.GetValue(target)!.ToString(), "Center",
-            StringComparison.Ordinal));
-        var previewArea = new Rectangle(0, 0, 600, 400);
-        showOverlay.Invoke(overlay, [centerTarget, previewArea, previewArea, "Scene"]);
-        foreach (var (name, point, expected) in new[]
-                 {
-                     ("Left", new Point(10, 200), new Rectangle(0, 0, 300, 400)),
-                     ("Right", new Point(590, 200), new Rectangle(300, 0, 300, 400)),
-                     ("Top", new Point(300, 10), new Rectangle(0, 0, 600, 200)),
-                     ("Bottom", new Point(300, 390), new Rectangle(0, 200, 600, 200)),
-                     ("Center", new Point(300, 200), new Rectangle(0, 0, 600, 400))
-                 })
+        catch (Exception exception)
         {
-            updateDropPosition.Invoke(overlay, [overlay.PointToScreen(point)]);
-            Require(string.Equals(dropPosition.GetValue(workspace)!.ToString(), name,
-                    StringComparison.Ordinal), $"Dock point {name} selected the wrong drop position.");
-            Require((Rectangle)previewBounds.GetValue(workspace)! == expected,
-                $"Dock point {name} did not preview the expected target sub-region.");
+            Console.Error.WriteLine($"DOCK_PREVIEW_FAILED|{Unwrap(exception)}");
+            return 1;
         }
-
-        hide.Invoke(workspace, null);
-        Require(!(bool)active.GetValue(workspace)! && !overlay.Visible,
-            "Dock preview remained visible after the drag left the docking target.");
-
-        VerifySplitDockingAndEmptyCollapse(workspaceType, workspace, zones);
-
-        Console.WriteLine("DOCK_PREVIEW_OK|four-zones,five-drop-targets,split-region,empty-collapse,blue-overlay,cleanup");
-        return 0;
     }
 
-    private static void VerifySplitDockingAndEmptyCollapse(Type workspaceType, Control workspace, IDictionary zones)
+    private static void VerifyGpuDockPreview()
     {
-        var zoneType = workspaceType.Assembly.GetType("BEngine.Editor.DockZone", true)!;
-        var dropType = workspaceType.Assembly.GetType("BEngine.Editor.DockDropPosition", true)!;
-        var centerZone = Enum.Parse(zoneType, "Center");
-        var rightZone = Enum.Parse(zoneType, "Right");
-        var centerDrop = Enum.Parse(dropType, "Center");
-        var rightDrop = Enum.Parse(dropType, "Right");
-        var addPanel = workspaceType.GetMethod("AddPanel")!;
-        var closePanel = workspaceType.GetMethod("ClosePanel")!;
-        var moveTab = workspaceType.GetMethod("MoveTab", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var dynamicSplits = (IEnumerable)workspaceType.GetField("_dynamicSplits", BindingFlags.Instance |
-            BindingFlags.NonPublic)!.GetValue(workspace)!;
-        var centerTabs = zones.Values.Cast<Control>().Single(target => string.Equals(
-            target.GetType().GetProperty("Zone")!.GetValue(target)!.ToString(), "Center",
-            StringComparison.Ordinal));
+        var editorAssembly = typeof(EditorWindow).Assembly;
+        var workspaceType = editorAssembly.GetType("BEngine.Editor.ImGuiDockWorkspace", true)!;
+        var areaType = editorAssembly.GetType("BEngine.Editor.DockArea", true)!;
+        var workspace = Activator.CreateInstance(workspaceType, nonPublic: true)!;
+        var add = workspaceType.GetMethod("Add", InstanceMembers)!;
+        var remove = workspaceType.GetMethod("Remove", InstanceMembers)!;
+        var dockExternal = workspaceType.GetMethod("DockExternal", InstanceMembers)!;
+        var captureLayout = workspaceType.GetMethod("CaptureLayout", InstanceMembers)!;
+        var setExternalDragPoint = workspaceType.GetMethod("SetExternalDragPoint", InstanceMembers)!;
+        var tryGetDrop = workspaceType.GetMethod("TryGetDrop", InstanceMembers)!;
 
-        addPanel.Invoke(workspace, ["DockA", "Dock A", new Panel(), centerZone, null]);
-        addPanel.Invoke(workspace, ["DockB", "Dock B", new Panel(), centerZone, null]);
-        addPanel.Invoke(workspace, ["KeepRight", "Keep Right", new Panel(), rightZone, null]);
-        var tabPages = (TabControl.TabPageCollection)centerTabs.GetType().GetProperty("TabPages")!
-            .GetValue(centerTabs)!;
-        var tabB = tabPages.Cast<TabPage>().Single(tab => tab.Name == "DockB");
-        moveTab.Invoke(workspace, [tabB, centerTabs, rightDrop]);
-        workspace.PerformLayout();
+        foreach (var areaName in new[] { "Left", "Center", "Right", "Bottom" })
+            add.Invoke(workspace,
+                [areaName, new ProbeWindow(areaName), Enum.Parse(areaType, areaName), true]);
 
-        Require(dynamicSplits.Cast<object>().Count() == 1,
-            "Edge docking did not create a split region inside the target.");
-        var split = dynamicSplits.Cast<SplitContainer>().Single();
-        Require(split.Orientation == Orientation.Vertical,
-            "Right-side docking created a horizontal split instead of a vertical split.");
-        Require(split.Panel1.Controls.Contains(centerTabs) && tabB.Parent != centerTabs,
-            "Right-side docking replaced the target instead of sharing it as a separate region.");
-        Require(Math.Abs(split.Panel1.Width - split.Panel2.Width) <= split.SplitterWidth + 4,
-            "New target regions were not initialized at approximately 50/50 size.");
+        Render(workspaceType, workspace, new Event(EventType.Layout));
+        var panels = ((IEnumerable)workspaceType.GetProperty("Panels", InstanceMembers)!
+            .GetValue(workspace)!).Cast<object>().ToArray();
+        Require(panels.Length == 4, "GPU dock workspace did not retain its four default areas.");
 
-        moveTab.Invoke(workspace, [tabB, centerTabs, centerDrop]);
-        workspace.PerformLayout();
-        System.Windows.Forms.Application.DoEvents();
-        Require(!dynamicSplits.Cast<object>().Any(),
-            "Collapsed split was not removed after the drag/drop message completed.");
-        Require(tabB.Parent == centerTabs && centerTabs.Parent is SplitterPanel,
-            "Remaining dock target did not replace the retired split container.");
+        var centerPanel = panels.Single(panel =>
+            (string)panel.GetType().GetProperty("Id", InstanceMembers)!.GetValue(panel)! == "Center");
+        var centerGroup = centerPanel.GetType().GetProperty("Group", InstanceMembers)!.GetValue(centerPanel)!;
+        var bounds = (Rect)centerGroup.GetType().GetProperty("Bounds", InstanceMembers)!.GetValue(centerGroup)!;
+        Require(bounds.width > 100 && bounds.height > 100,
+            "The center GPU dock group did not receive render bounds.");
 
-        closePanel.Invoke(workspace, ["DockA"]);
-        closePanel.Invoke(workspace, ["DockB"]);
-        System.Windows.Forms.Application.DoEvents();
-        var right = (SplitContainer)workspaceType.GetField("_right", BindingFlags.Instance |
-            BindingFlags.NonPublic)!.GetValue(workspace)!;
-        Require(right.Panel1Collapsed, "Closing the last center tab left a blank center dock region.");
-        closePanel.Invoke(workspace, ["KeepRight"]);
+        var cases = new[]
+        {
+            ("Left", new Vector2(bounds.x + 2, bounds.center.y),
+                new Rect(bounds.x, bounds.y, bounds.width / 2, bounds.height)),
+            ("Right", new Vector2(bounds.xMax - 2, bounds.center.y),
+                new Rect(bounds.x + bounds.width / 2, bounds.y, bounds.width / 2, bounds.height)),
+            ("Top", new Vector2(bounds.center.x, bounds.y + 2),
+                new Rect(bounds.x, bounds.y, bounds.width, bounds.height / 2)),
+            ("Bottom", new Vector2(bounds.center.x, bounds.yMax - 2),
+                new Rect(bounds.x, bounds.y + bounds.height / 2, bounds.width, bounds.height / 2)),
+            ("Center", bounds.center, bounds)
+        };
+
+        foreach (var (name, point, expectedPreview) in cases)
+        {
+            var arguments = new object?[] { point, null, null, null };
+            Require((bool)tryGetDrop.Invoke(workspace, arguments)!,
+                $"The {name} point did not resolve a GPU dock target.");
+            Require(arguments[2]?.ToString() == name,
+                $"The {name} point resolved the '{arguments[2]}' drop position.");
+            Require(((Rect)arguments[3]!).Equals(expectedPreview),
+                $"The {name} point produced the wrong preview rectangle.");
+        }
+
+        setExternalDragPoint.Invoke(workspace, [cases[0].Item2]);
+        var commands = new List<GpuCanvasCommand>();
+        Render(workspaceType, workspace, new Event(EventType.Repaint), commands);
+        Require(commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                        SameRect(command.Rect, cases[0].Item3) &&
+                                        command.Color.A is > 0 and < 255),
+            "External docking did not emit its translucent GPU accent preview.");
+        setExternalDragPoint.Invoke(workspace, [null]);
+
+        var beforeSplit = (EditorDockNodeDocument)captureLayout.Invoke(workspace, null)!;
+        var splitPanel = dockExternal.Invoke(workspace,
+            ["Split", new ProbeWindow("Split"), cases[1].Item2])!;
+        var splitGroup = splitPanel.GetType().GetProperty("Group", InstanceMembers)!.GetValue(splitPanel);
+        Require(splitGroup is not null && !ReferenceEquals(splitGroup, centerGroup),
+            "Right-side docking joined the center tab group instead of creating a split region.");
+        var afterSplit = (EditorDockNodeDocument)captureLayout.Invoke(workspace, null)!;
+        Require(ContainsPanel(afterSplit, "Split") && CountSplits(afterSplit) == CountSplits(beforeSplit) + 1,
+            "Right-side docking did not persist a new 50/50 split node.");
+
+        remove.Invoke(workspace, ["Split"]);
+        var collapsed = (EditorDockNodeDocument)captureLayout.Invoke(workspace, null)!;
+        Require(!ContainsPanel(collapsed, "Split") && CountSplits(collapsed) == CountSplits(beforeSplit),
+            "Removing the last panel did not collapse its empty GPU dock split.");
     }
 
-    private static bool ContainsAccentPixels(Control control)
+    private static void Render(Type workspaceType, object workspace, Event evt,
+        List<GpuCanvasCommand>? commands = null)
     {
-        using var bitmap = new Bitmap(Math.Max(1, control.Width), Math.Max(1, control.Height));
-        using (var graphics = Graphics.FromImage(bitmap))
-        using (var paint = new PaintEventArgs(graphics, new Rectangle(Point.Empty, bitmap.Size)))
-            control.GetType().GetMethod("OnPaint", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(control, [paint]);
-        var matches = 0;
-        for (var y = 0; y < bitmap.Height; y += Math.Max(1, bitmap.Height / 24))
-        for (var x = 0; x < bitmap.Width; x += Math.Max(1, bitmap.Width / 24))
+        BeginFrame.Invoke(null, [evt, 1000, 700, commands ?? []]);
+        try
         {
-            var pixel = bitmap.GetPixel(x, y);
-            if (pixel.B > pixel.R + 20 && pixel.B > pixel.G + 5) matches++;
+            workspaceType.GetMethod("OnGUI", InstanceMembers)!
+                .Invoke(workspace, [new Rect(0, 0, 1000, 700)]);
         }
-        return matches >= 3;
+        finally
+        {
+            EndFrame.Invoke(null, null);
+        }
+    }
+
+    private static bool SameRect(GpuCanvasRect actual, Rect expected) =>
+        MathF.Abs(actual.X - (float)expected.x) < 0.01f &&
+        MathF.Abs(actual.Y - (float)expected.y) < 0.01f &&
+        MathF.Abs(actual.Width - (float)expected.width) < 0.01f &&
+        MathF.Abs(actual.Height - (float)expected.height) < 0.01f;
+
+    private static int CountSplits(EditorDockNodeDocument? node) => node is null ? 0 :
+        node.Type.Equals("Split", StringComparison.OrdinalIgnoreCase)
+            ? 1 + CountSplits(node.First) + CountSplits(node.Second)
+            : 0;
+
+    private static bool ContainsPanel(EditorDockNodeDocument? node, string id) => node is not null &&
+        (node.Panels.Contains(id, StringComparer.Ordinal) || ContainsPanel(node.First, id) ||
+         ContainsPanel(node.Second, id));
+
+    private static Exception Unwrap(Exception exception)
+    {
+        while (exception is TargetInvocationException { InnerException: { } inner }) exception = inner;
+        return exception;
     }
 
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private sealed class ProbeWindow(string title) : EditorWindow
+    {
+        protected override void OnGUI() => GUI.Label(new Rect(4, 4, 100, 20), title);
     }
 }

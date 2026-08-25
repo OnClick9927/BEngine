@@ -88,7 +88,7 @@ internal sealed class AssetBundleTestWorkspace : IDisposable
         var scene = new Scene(sceneName);
         scene.CreateGameObject(rootName);
         Document.SaveBObject<SceneDocument>(scene, path);
-        scene.world.Dispose();
+        scene.Dispose();
     }
 
     public void Dispose()

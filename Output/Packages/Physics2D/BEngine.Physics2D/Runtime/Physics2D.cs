@@ -2,12 +2,31 @@ namespace BEngine.Physics2D;
 
 public static class Physics2D
 {
-    private static readonly HashSet<(Guid Left, Guid Right)> IgnoredPairs = [];
+    private static readonly PhysicsWorld2DState DefaultState = new();
 
-    public static Vector2 gravity { get; set; } = Vector2.down * Fix64.Parse("9.81");
-    public static bool queriesHitTriggers { get; set; } = true;
-    public static bool autoSimulation { get; set; } = true;
-    public static int velocityIterations { get; set; } = 4;
+    public static Vector2 gravity
+    {
+        get => CurrentState.Gravity;
+        set => CurrentState.Gravity = value;
+    }
+
+    public static bool queriesHitTriggers
+    {
+        get => CurrentState.QueriesHitTriggers;
+        set => CurrentState.QueriesHitTriggers = value;
+    }
+
+    public static bool autoSimulation
+    {
+        get => CurrentState.AutoSimulation;
+        set => CurrentState.AutoSimulation = value;
+    }
+
+    public static int velocityIterations
+    {
+        get => CurrentState.VelocityIterations;
+        set => CurrentState.VelocityIterations = value;
+    }
 
     public static bool Raycast(Vector2 origin, Vector2 direction, out RaycastHit2D hitInfo,
         Fix64 maxDistance = default, ulong layerMask = ulong.MaxValue,
@@ -58,18 +77,19 @@ public static class Physics2D
     {
         ArgumentNullException.ThrowIfNull(collider1);
         ArgumentNullException.ThrowIfNull(collider2);
-        var key = Pair(collider1, collider2);
-        if (ignore) IgnoredPairs.Add(key); else IgnoredPairs.Remove(key);
+        PhysicsWorld2D.StateFor(collider1, collider2).SetIgnore(collider1, collider2, ignore);
     }
 
-    public static bool GetIgnoreCollision(Collider2D collider1, Collider2D collider2) =>
-        IgnoredPairs.Contains(Pair(collider1, collider2));
+    public static bool GetIgnoreCollision(Collider2D collider1, Collider2D collider2)
+    {
+        ArgumentNullException.ThrowIfNull(collider1);
+        ArgumentNullException.ThrowIfNull(collider2);
+        return PhysicsWorld2D.StateFor(collider1, collider2).ShouldIgnore(collider1, collider2);
+    }
 
     public static void SyncTransforms() => PhysicsWorld2D.SyncTransforms();
 
-    internal static bool ShouldIgnore(Collider2D left, Collider2D right) =>
-        IgnoredPairs.Contains(Pair(left, right));
+    internal static PhysicsWorld2DState defaultState => DefaultState;
 
-    private static (Guid Left, Guid Right) Pair(Collider2D left, Collider2D right) =>
-        left.Id.CompareTo(right.Id) < 0 ? (left.Id, right.Id) : (right.Id, left.Id);
+    private static PhysicsWorld2DState CurrentState => PhysicsWorld2D.activeState ?? DefaultState;
 }

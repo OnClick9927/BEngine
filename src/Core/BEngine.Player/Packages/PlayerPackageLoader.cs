@@ -21,7 +21,6 @@ internal static class PlayerPackageLoader
             RuntimePackageState.SetEnabled(package.Id, package.Enabled);
 
         var definitions = DiscoverDefinitions(workspace)
-            .Select(path => (Path: path, Document: Document.Load<PlayerPackageDefinition>(path)))
             .Where(item => enabled.Contains(item.Document.Id) && item.Document.Runtime is not null)
             .ToDictionary(item => item.Document.Id, StringComparer.OrdinalIgnoreCase);
         foreach (var definition in definitions.Values)
@@ -94,18 +93,20 @@ internal static class PlayerPackageLoader
     private static bool IsLoaded(string assemblyName) => AppDomain.CurrentDomain.GetAssemblies().Any(assembly =>
         assembly.GetName().Name?.Equals(assemblyName, StringComparison.OrdinalIgnoreCase) == true);
 
-    private static IEnumerable<string> DiscoverDefinitions(ProjectWorkspace workspace)
+    private static IReadOnlyList<(string Path, PlayerPackageDefinition Document)> DiscoverDefinitions(
+        ProjectWorkspace workspace)
     {
-        var projectPaths = DiscoverDefinitionsUnder(workspace.PackagesPath);
+        var projectDefinitions = DiscoverDefinitionsUnder(workspace.PackagesPath)
+            .Select(static path => (Path: path, Document: Document.Load<PlayerPackageDefinition>(path)))
+            .ToArray();
         var installed = Path.Combine(AppContext.BaseDirectory, "Packages");
-        var installedPaths = DiscoverDefinitionsUnder(installed);
-
-        var projectIds = projectPaths
-            .Select(path => Document.Load<PlayerPackageDefinition>(path).Id)
+        var projectIds = projectDefinitions
+            .Select(static item => item.Document.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return installedPaths
-            .Where(path => !projectIds.Contains(Document.Load<PlayerPackageDefinition>(path).Id))
-            .Concat(projectPaths);
+        var installedDefinitions = DiscoverDefinitionsUnder(installed)
+            .Select(static path => (Path: path, Document: Document.Load<PlayerPackageDefinition>(path)))
+            .Where(item => !projectIds.Contains(item.Document.Id));
+        return [.. installedDefinitions, .. projectDefinitions];
     }
 
     private static string[] DiscoverDefinitionsUnder(string root) => Directory.Exists(root)

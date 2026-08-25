@@ -80,10 +80,26 @@ public sealed class SerializedObject : IDisposable
 
     internal void SetValue(string path, object? value)
     {
-        var current = PropertyPath.Resolve(targetObject, path).GetValue();
-        if (Equals(current, value)) return;
+        var accessors = targetObjects.Select(target => PropertyPath.Resolve(target, path)).ToArray();
+        if (accessors.All(accessor => Equals(accessor.GetValue(), value))) return;
+        foreach (var accessor in accessors)
+        {
+            if (!accessor.CanWrite)
+                throw new InvalidOperationException($"Property '{path}' is read-only.");
+            var valueType = accessor.ValueType;
+            if (value is null)
+            {
+                if (valueType.IsValueType && Nullable.GetUnderlyingType(valueType) is null)
+                    throw new ArgumentException($"Null cannot be assigned to {valueType.Name}.", nameof(value));
+            }
+            else if (!valueType.IsInstanceOfType(value))
+                throw new ArgumentException(
+                    $"Object of type {value.GetType().Name} cannot be assigned to {valueType.Name}.",
+                    nameof(value));
+        }
         if (!_modified) Undo.RecordObjects(targetObjects, $"Modify {PropertyPath.LeafName(path)}");
-        foreach (var target in targetObjects) PropertyPath.Resolve(target, path).SetValue(value);
+        foreach (var accessor in accessors)
+            if (!Equals(accessor.GetValue(), value)) accessor.SetValue(value);
         _modified = true;
         _changeVersion++;
         EditorCallbackDispatcher.Invoke(changed, this, nameof(changed));

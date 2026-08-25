@@ -1,12 +1,11 @@
-using BEngine.Entities;
 using BEngine.SceneManagement;
 
 namespace BEngine;
 
 public sealed class SceneRuntime
 {
-    private static readonly object RegistrySync = new();
     private static readonly Dictionary<Scene, SceneRuntime> ActiveRuntimes = [];
+    private static Scene? _currentScene;
 
     private readonly HashSet<MonoBehaviour> _awakened = [];
     private readonly HashSet<MonoBehaviour> _enabled = [];
@@ -14,73 +13,87 @@ public sealed class SceneRuntime
     private readonly List<MonoBehaviour> _behaviours = [];
     private MonoBehaviour[] _enabledSnapshot = [];
     private bool _enabledSnapshotDirty = true;
-    private LegacySceneRuntimeSystemAdapter[] _systemAdapters = [];
+    private ISceneRuntimeSystem[] _systems = [];
     private Fix64 _fixedAccumulator;
     private bool _applicationQuitInvoked;
 
     public Scene Scene { get; }
     public bool IsRunning { get; private set; }
+    public static Scene? currentScene => _currentScene;
 
     public SceneRuntime(Scene scene)
     {
-        MainThreadGuard.Ensure("Create SceneRuntime");
         Scene = scene ?? throw new ArgumentNullException(nameof(scene));
     }
 
     public void Start()
     {
-        MainThreadGuard.Ensure();
         if (IsRunning) return;
-        using var worldContext = Scene.WorldUnchecked.EnterContext();
-
-        if (Scene.WorldUnchecked.Services.GetService(typeof(IRuntimeSceneManager)) is IRuntimeSceneManager sceneManager)
-            sceneManager.RegisterScene(Scene, setActive: sceneManager.ActiveScene is null);
-
-        lock (RegistrySync)
+        Scene.MarkRuntimeOnly();
+        var previousScene = SetCurrentScene(Scene);
+        IRuntimeSceneManager? sceneManager = null;
+        var unregisterSceneOnFailure = false;
+        try
         {
             if (ActiveRuntimes.TryGetValue(Scene, out var existing) && !ReferenceEquals(existing, this))
                 throw new InvalidOperationException("A Scene can only have one active SceneRuntime.");
+
+            sceneManager = Scene.Services.GetService(typeof(IRuntimeSceneManager)) as IRuntimeSceneManager;
+            if (sceneManager is not null)
+            {
+                unregisterSceneOnFailure = !ContainsScene(sceneManager.LoadedScenes, Scene);
+                sceneManager.RegisterScene(Scene, setActive: sceneManager.ActiveScene is null);
+            }
+
+            Time.Reset();
+            _fixedAccumulator = Fix64.Zero;
+            _applicationQuitInvoked = false;
+            _systems = RuntimeSystemRegistry.CreateSystems(Scene.Services);
             ActiveRuntimes[Scene] = this;
+            IsRunning = true;
+            Application.quitting += OnApplicationQuit;
+            Application.focusChanged += OnApplicationFocus;
+            Application.pauseStateChanged += OnApplicationPause;
+
+            RuntimeLifecycle.BeginScene(Scene);
+            foreach (var system in _systems.ToArray())
+            {
+                if (!IsRunning || !Scene.isCreated) break;
+                InvokeSystem(system, "Start", () => system.Start(Scene));
+            }
+            if (!IsRunning || !Scene.isCreated) return;
+            InitializeBehaviours();
+            if (!IsRunning || !Scene.isCreated) return;
+            RuntimeLifecycle.CompleteSceneLoad(Scene);
         }
-
-        Time.Reset();
-        _fixedAccumulator = Fix64.Zero;
-        _applicationQuitInvoked = false;
-        _systemAdapters = RuntimeSystemRegistry.CreateSystems(Scene.WorldUnchecked.Services)
-            .Select(static system => new LegacySceneRuntimeSystemAdapter(system)).ToArray();
-        foreach (var adapter in _systemAdapters) Scene.WorldUnchecked.SimulationSystemGroup.AddSystem(adapter);
-        IsRunning = true;
-        Application.quitting += OnApplicationQuit;
-        Application.focusChanged += OnApplicationFocus;
-        Application.pauseStateChanged += OnApplicationPause;
-
-        RuntimeLifecycle.BeginScene(Scene);
-        Scene.WorldUnchecked.SimulationSystemGroup.Start();
-        InitializeBehaviours();
-        RuntimeLifecycle.CompleteSceneLoad(Scene);
+        catch
+        {
+            RollBackFailedStart(sceneManager, unregisterSceneOnFailure);
+            throw;
+        }
+        finally { SetCurrentScene(previousScene); }
     }
 
     public void Tick(Fix64 deltaTime)
     {
-        MainThreadGuard.Ensure();
         if (!IsRunning)
             throw new InvalidOperationException("The scene runtime has not been started.");
-        using var worldContext = Scene.WorldUnchecked.EnterContext();
-
+        var previousScene = SetCurrentScene(Scene);
         var frameDelta = Time.AdvanceFrameUnchecked(deltaTime);
         var fixedDelta = Time.FixedDeltaTimeUnchecked;
         _fixedAccumulator += frameDelta;
 
-        RuntimeLifecycle.BeginFrame(Scene, frameDelta);
         try
         {
+            RuntimeLifecycle.BeginFrame(Scene, frameDelta);
             while (_fixedAccumulator >= fixedDelta)
             {
                 Time.BeginFixedStepUnchecked();
                 foreach (var behaviour in EnabledBehaviours())
                     if (IsBehaviourActive(behaviour)) InvokeBehaviourFixedUpdate(behaviour);
 
-                Scene.WorldUnchecked.SimulationSystemGroup.FixedUpdate(fixedDelta);
+                foreach (var system in _systems)
+                    InvokeSystem(system, "FixedUpdate", () => system.FixedUpdate(Scene, fixedDelta));
 
                 _fixedAccumulator -= fixedDelta;
                 Time.EndFixedStepUnchecked();
@@ -91,52 +104,56 @@ public sealed class SceneRuntime
 
             CoroutineScheduler.Tick(Scene);
 
-            Scene.WorldUnchecked.SimulationSystemGroup.Update(frameDelta);
+            foreach (var system in _systems)
+                InvokeSystem(system, "Update", () => system.Update(Scene, frameDelta));
 
             foreach (var behaviour in EnabledBehaviours())
                 if (IsBehaviourActive(behaviour)) InvokeBehaviourLateUpdate(behaviour);
+            RuntimeLifecycle.CompleteFrame(Scene, frameDelta);
         }
         finally
         {
-            RuntimeLifecycle.CompleteFrame(Scene, frameDelta);
             Time.EndFixedStepUnchecked();
             Input.BeginFrame();
+            SetCurrentScene(previousScene);
         }
     }
 
     public void Stop()
     {
-        MainThreadGuard.Ensure();
         if (!IsRunning) return;
-        using var worldContext = Scene.WorldUnchecked.EnterContext();
+        var previousScene = SetCurrentScene(Scene);
 
-        RuntimeLifecycle.BeginSceneStop(Scene);
-        for (var index = _behaviours.Count - 1; index >= 0; index--)
-            DisableBehaviour(_behaviours[index]);
-        Scene.WorldUnchecked.SimulationSystemGroup.Stop();
-        foreach (var adapter in _systemAdapters)
-            Scene.WorldUnchecked.SimulationSystemGroup.RemoveSystem(adapter);
-
-        Application.quitting -= OnApplicationQuit;
-        Application.focusChanged -= OnApplicationFocus;
-        Application.pauseStateChanged -= OnApplicationPause;
-        lock (RegistrySync)
+        try
         {
+            RuntimeLifecycle.BeginSceneStop(Scene);
+            for (var index = _behaviours.Count - 1; index >= 0; index--)
+                DisableBehaviour(_behaviours[index]);
+            for (var index = _systems.Length - 1; index >= 0; index--)
+            {
+                var system = _systems[index];
+                InvokeSystem(system, "Stop", () => system.Stop(Scene));
+            }
+
+            Application.quitting -= OnApplicationQuit;
+            Application.focusChanged -= OnApplicationFocus;
+            Application.pauseStateChanged -= OnApplicationPause;
             if (ActiveRuntimes.TryGetValue(Scene, out var runtime) && ReferenceEquals(runtime, this))
                 ActiveRuntimes.Remove(Scene);
-        }
 
-        IsRunning = false;
-        _awakened.Clear();
-        _enabled.Clear();
-        _started.Clear();
-        _behaviours.Clear();
-        _enabledSnapshot = [];
-        _enabledSnapshotDirty = true;
-        _fixedAccumulator = Fix64.Zero;
-        _systemAdapters = [];
-        CoroutineScheduler.StopScene(Scene);
-        RuntimeLifecycle.CompleteSceneStop(Scene);
+            IsRunning = false;
+            _awakened.Clear();
+            _enabled.Clear();
+            _started.Clear();
+            _behaviours.Clear();
+            _enabledSnapshot = [];
+            _enabledSnapshotDirty = true;
+            _fixedAccumulator = Fix64.Zero;
+            _systems = [];
+            CoroutineScheduler.StopScene(Scene);
+            RuntimeLifecycle.CompleteSceneStop(Scene);
+        }
+        finally { SetCurrentScene(previousScene); }
     }
 
     internal static void NotifyComponentStateChanged(Component component)
@@ -182,7 +199,12 @@ public sealed class SceneRuntime
         if (component is not MonoBehaviour behaviour) return;
         CoroutineScheduler.StopAll(behaviour);
         if (TryGetRuntime(component, out var runtime)) runtime.DestroyBehaviour(behaviour);
-        else behaviour.OnDestroy();
+        else
+        {
+            var previousScene = SetCurrentScene(component.GameObjectUnchecked.SceneUnchecked);
+            try { InvokeBehaviour(behaviour, behaviour.OnDestroy, nameof(MonoBehaviour.OnDestroy)); }
+            finally { SetCurrentScene(previousScene); }
+        }
     }
 
     internal static void NotifyTransformParentChanged(
@@ -198,7 +220,7 @@ public sealed class SceneRuntime
     private void InitializeBehaviours()
     {
         _behaviours.Clear();
-        foreach (var behaviour in Scene.WorldUnchecked.EntityManager.QueryManagedComponents<MonoBehaviour>())
+        foreach (var behaviour in Scene.QueryComponents<MonoBehaviour>())
             _behaviours.Add(behaviour);
         foreach (var behaviour in _behaviours.ToArray())
             SynchronizeBehaviour(behaviour, allowStart: true);
@@ -207,7 +229,7 @@ public sealed class SceneRuntime
     private void SynchronizeBehaviour(MonoBehaviour behaviour, bool allowStart)
     {
         var owner = behaviour.GameObjectUnchecked;
-        if (!IsRunning || !Scene.WorldUnchecked.EntityManager.Exists(owner.EntityUnchecked)) return;
+        if (!IsRunning || !ReferenceEquals(owner.SceneUnchecked, Scene) || !Scene.Contains(owner)) return;
 
         if (behaviour.SceneTransferState is { } transferred)
         {
@@ -221,6 +243,7 @@ public sealed class SceneRuntime
         var active = owner.ActiveInHierarchyUnchecked;
         if (active && _awakened.Add(behaviour))
             InvokeBehaviour(behaviour, behaviour.Awake, nameof(MonoBehaviour.Awake));
+        if (!IsRunning || !ReferenceEquals(owner.SceneUnchecked, Scene) || !Scene.Contains(owner)) return;
 
         var shouldEnable = active && behaviour.EnabledUnchecked;
         if (shouldEnable && _enabled.Add(behaviour))
@@ -230,6 +253,7 @@ public sealed class SceneRuntime
         }
         else if (!shouldEnable && _enabled.Contains(behaviour))
             DisableBehaviour(behaviour);
+        if (!IsRunning || !ReferenceEquals(owner.SceneUnchecked, Scene) || !Scene.Contains(owner)) return;
 
         if (allowStart && shouldEnable && _awakened.Contains(behaviour) && _started.Add(behaviour))
             InvokeBehaviour(behaviour, behaviour.Start, nameof(MonoBehaviour.Start));
@@ -343,18 +367,74 @@ public sealed class SceneRuntime
 
     private static bool TryGetRuntime(Scene? scene, out SceneRuntime runtime)
     {
-        lock (RegistrySync)
+        if (scene is not null && ActiveRuntimes.TryGetValue(scene, out var found))
         {
-            if (scene is not null && ActiveRuntimes.TryGetValue(scene, out var found))
-            {
-                runtime = found;
-                return true;
-            }
+            runtime = found;
+            return true;
         }
 
         runtime = null!;
         return false;
     }
+
+    internal static bool IsRunningScene(Scene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        return ActiveRuntimes.ContainsKey(scene);
+    }
+
+    internal static bool IsSceneVisibleInCurrentRuntimeDomain(Scene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        if (_currentScene is not { } current) return true;
+        if (current.Services.GetService(typeof(IRuntimeSceneManager)) is not IRuntimeSceneManager sceneManager)
+            return ReferenceEquals(scene, current);
+        if (!ContainsScene(sceneManager.LoadedScenes, current))
+            return ReferenceEquals(scene, current);
+        return ContainsScene(sceneManager.LoadedScenes, scene);
+    }
+
+    internal static IDisposable EnterSceneContext(Scene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        return new SceneContextScope(SetCurrentScene(scene));
+    }
+
+    private void RollBackFailedStart(IRuntimeSceneManager? sceneManager, bool unregisterScene)
+    {
+        Application.quitting -= OnApplicationQuit;
+        Application.focusChanged -= OnApplicationFocus;
+        Application.pauseStateChanged -= OnApplicationPause;
+        if (ActiveRuntimes.TryGetValue(Scene, out var runtime) && ReferenceEquals(runtime, this))
+            ActiveRuntimes.Remove(Scene);
+
+        for (var index = _systems.Length - 1; index >= 0; index--)
+        {
+            var system = _systems[index];
+            InvokeSystem(system, "Stop after failed start", () => system.Stop(Scene));
+        }
+
+        IsRunning = false;
+        _awakened.Clear();
+        _enabled.Clear();
+        _started.Clear();
+        _behaviours.Clear();
+        _enabledSnapshot = [];
+        _enabledSnapshotDirty = true;
+        _fixedAccumulator = Fix64.Zero;
+        _systems = [];
+        CoroutineScheduler.StopScene(Scene);
+
+        if (!unregisterScene || sceneManager is null || !ContainsScene(sceneManager.LoadedScenes, Scene)) return;
+        try { sceneManager.UnregisterScene(Scene); }
+        catch (Exception exception)
+        {
+            Debug.LogError($"Rolling back failed SceneRuntime registration failed: {exception.Message}");
+        }
+    }
+
+    private static bool ContainsScene(IReadOnlyList<Scene> scenes, Scene target) =>
+        scenes.Any(scene => ReferenceEquals(scene, target));
 
     private static void InvokeBehaviour(MonoBehaviour behaviour, Action callback, string callbackName)
     {
@@ -362,6 +442,34 @@ public sealed class SceneRuntime
         catch (Exception exception)
         {
             Debug.LogError($"{behaviour.GetType().FullName}.{callbackName} failed: {exception.Message}");
+        }
+    }
+
+    private static Scene? SetCurrentScene(Scene? scene)
+    {
+        var previous = _currentScene;
+        _currentScene = scene;
+        return previous;
+    }
+
+    private sealed class SceneContextScope(Scene? previousScene) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            SetCurrentScene(previousScene);
+        }
+    }
+
+    private static void InvokeSystem(ISceneRuntimeSystem system, string callbackName, Action callback)
+    {
+        try { callback(); }
+        catch (Exception exception)
+        {
+            Debug.LogError($"{system.GetType().FullName}.{callbackName} failed: {exception.Message}");
         }
     }
 

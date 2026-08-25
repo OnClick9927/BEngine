@@ -26,12 +26,12 @@ internal sealed class SceneFixture : IDisposable
         var firstChild = first.CreateGameObject("First Child");
         firstChild.transform.SetParent(firstRoot.transform, false);
         Document.SaveBObject<SceneDocument>(first, FirstScenePath);
-        first.world.Dispose();
+        first.Dispose();
 
         var second = new Scene("Second Scene");
         second.CreateGameObject("Second Root");
         Document.SaveBObject<SceneDocument>(second, SecondScenePath);
-        second.world.Dispose();
+        second.Dispose();
     }
 
     public void Dispose()

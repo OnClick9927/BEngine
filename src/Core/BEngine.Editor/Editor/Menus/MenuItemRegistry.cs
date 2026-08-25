@@ -12,6 +12,7 @@ internal sealed class MenuItemRegistry
     {
         _commands = commands;
         Roots = commands.Select(command => command.Segments[0])
+            .Where(root => !root.Equals("CONTEXT", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(root => root, StringComparer.Ordinal)
             .ToArray();

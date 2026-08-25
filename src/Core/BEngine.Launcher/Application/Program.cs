@@ -79,17 +79,58 @@ internal static class Program
     private static string ResolveEditorPath(string[] args)
     {
         var optionIndex = Array.IndexOf(args, "--editor");
-        if (optionIndex >= 0 && optionIndex + 1 < args.Length)
+        if (optionIndex >= 0)
         {
-            return Path.GetFullPath(args[optionIndex + 1]);
+            if (optionIndex + 1 >= args.Length)
+                throw new ArgumentException("The --editor option requires an executable path.", nameof(args));
+            var explicitPath = Path.GetFullPath(args[optionIndex + 1]);
+            return File.Exists(explicitPath)
+                ? explicitPath
+                : throw new FileNotFoundException(
+                    $"The BEngine Editor specified by --editor was not found at '{explicitPath}'.", explicitPath);
         }
 
         var besideLauncher = Path.Combine(AppContext.BaseDirectory, "BEngine.Editor.exe");
         if (File.Exists(besideLauncher)) return besideLauncher;
 
-        var outputDirectory = new DirectoryInfo(AppContext.BaseDirectory);
-        var configuration = outputDirectory.Parent?.Name ?? "Debug";
-        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
-            "BEngine.Editor", "bin", configuration, "net9.0-windows", "BEngine.Editor.exe"));
+        var baseDirectory = new DirectoryInfo(AppContext.BaseDirectory);
+        var configuration = ResolveBuildConfiguration(baseDirectory);
+        var sourceRoot = FindSourceRoot(baseDirectory);
+        var candidates = sourceRoot is null
+            ? Array.Empty<string>()
+            : new[]
+            {
+                Path.Combine(sourceRoot.FullName, ".artifacts", "bin", "BEngine.Editor",
+                    configuration.ToLowerInvariant(), "BEngine.Editor.exe"),
+                Path.Combine(sourceRoot.FullName, "Core", "BEngine.Editor", "bin", configuration,
+                    "net10.0-windows", "BEngine.Editor.exe")
+            };
+        foreach (var candidate in candidates)
+            if (File.Exists(candidate))
+                return Path.GetFullPath(candidate);
+
+        var checkedPaths = new[] { besideLauncher }.Concat(candidates)
+            .Select(static path => $"  {Path.GetFullPath(path)}");
+        throw new FileNotFoundException(
+            "BEngine Editor executable was not found. Build BEngine.Editor or pass --editor <path>." +
+            Environment.NewLine + "Checked:" + Environment.NewLine + string.Join(Environment.NewLine, checkedPaths));
+    }
+
+    private static DirectoryInfo? FindSourceRoot(DirectoryInfo baseDirectory)
+    {
+        for (var directory = baseDirectory; directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "Core", "BEngine.Editor", "BEngine.Editor.csproj")))
+                return directory;
+        return null;
+    }
+
+    private static string ResolveBuildConfiguration(DirectoryInfo baseDirectory)
+    {
+        for (var directory = baseDirectory; directory is not null; directory = directory.Parent)
+        {
+            if (directory.Name.Equals("debug", StringComparison.OrdinalIgnoreCase)) return "Debug";
+            if (directory.Name.Equals("release", StringComparison.OrdinalIgnoreCase)) return "Release";
+        }
+        return "Debug";
     }
 }

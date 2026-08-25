@@ -5,20 +5,17 @@ namespace BEngine.UIElements;
 
 public class SearchField : TextField
 {
-    private string _placeholderText = "Search";
-    private bool _showClearButton = true;
-
     public string placeholderText
     {
-        get => _placeholderText;
-        set => Set(ref _placeholderText, value ?? string.Empty);
-    }
+        get => field;
+        set => Set(ref field, value ?? string.Empty);
+    } = "Search";
 
     public bool showClearButton
     {
-        get => _showClearButton;
-        set => Set(ref _showClearButton, value);
-    }
+        get => field;
+        set => Set(ref field, value);
+    } = true;
 
     public event Action<string> searchChanged
     {

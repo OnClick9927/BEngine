@@ -74,6 +74,7 @@ public static class AssetDatabase
                 definitionAsset = new AssemblyDefinitionAsset { importError = exception.Message };
             }
             definitionAsset.name = Path.GetFileName(record.Value.SourcePath);
+            definitionAsset.Id = record.Value.Guid;
             definitionAsset.assetPath = record.Value.AssetPath;
             definitionAsset.sourcePath = record.Value.SourcePath;
             definitionAsset.guid = record.Value.Guid.ToString("N");
@@ -112,6 +113,7 @@ public static class AssetDatabase
                 ? new TextAsset { text = File.ReadAllText(record.Value.SourcePath) }
                 : new DefaultAsset();
         asset.name = Path.GetFileName(record.Value.SourcePath);
+        asset.Id = record.Value.Guid;
         asset.assetPath = record.Value.AssetPath;
         asset.sourcePath = record.Value.SourcePath;
         asset.guid = record.Value.Guid.ToString("N");
@@ -136,6 +138,7 @@ public static class AssetDatabase
     public static void CreateAsset(BObject asset, string path)
     {
         ArgumentNullException.ThrowIfNull(asset);
+        EditorAssetWritePolicy.EnsureCanWrite("Creating project assets");
         var fullPath = ResolveAssetPath(path);
         if (File.Exists(fullPath) || Directory.Exists(fullPath))
         {
@@ -154,8 +157,11 @@ public static class AssetDatabase
         EditorBridge.Host?.ImportAsset(path);
     }
 
-    public static void ImportAsset(string path, ImportAssetOptions options = ImportAssetOptions.Default) =>
+    public static void ImportAsset(string path, ImportAssetOptions options = ImportAssetOptions.Default)
+    {
+        EditorAssetWritePolicy.EnsureCanWrite("Importing project assets");
         EditorBridge.Host?.ImportAsset(path);
+    }
 
     public static void ExportPackage(string assetPathName, string fileName) =>
         ExportPackage([assetPathName], fileName);
@@ -179,6 +185,7 @@ public static class AssetDatabase
 
     public static void ImportPackage(string packagePath, bool interactive)
     {
+        EditorAssetWritePolicy.EnsureCanWrite("Importing packages");
         var host = EditorBridge.Host ?? throw new InvalidOperationException("No editor project is open.");
         BPackageArchive.ImportPackage(BEngine.ProjectSystem.ProjectWorkspace.Open(host.ProjectRootPath), packagePath,
             new BPackageImportOptions { ConflictPolicy = BPackageConflictPolicy.Fail });
@@ -190,6 +197,7 @@ public static class AssetDatabase
         Action<BPackageProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+        EditorAssetWritePolicy.EnsureCanWrite("Importing packages");
         var host = EditorBridge.Host ?? throw new InvalidOperationException("No editor project is open.");
         return BPackageArchive.ImportPackage(BEngine.ProjectSystem.ProjectWorkspace.Open(host.ProjectRootPath),
             packagePath, options, progress);
@@ -198,11 +206,17 @@ public static class AssetDatabase
     public static BPackageManifest ReadPackageManifest(string packagePath) =>
         BPackageArchive.ReadManifest(packagePath);
 
-    public static void Refresh(ImportAssetOptions options = ImportAssetOptions.Default) =>
+    public static void Refresh(ImportAssetOptions options = ImportAssetOptions.Default)
+    {
+        EditorAssetWritePolicy.EnsureCanWrite("Refreshing project assets");
         EditorBridge.Host?.RefreshAssets();
+    }
 
-    public static void SaveAssets() =>
+    public static void SaveAssets()
+    {
+        EditorAssetWritePolicy.EnsureCanWrite("Saving project assets");
         AssetModificationProcessorDispatcher.OnWillSaveAssets(GetAllAssetPaths());
+    }
     public static void StartAssetEditing() { }
     public static void StopAssetEditing() => Refresh();
 
@@ -218,11 +232,15 @@ public static class AssetDatabase
         }
     }
 
-    public static string CreateFolder(string parentFolder, string newFolderName) =>
-        EditorBridge.Host?.CreateAssetFolder(parentFolder, newFolderName) ?? string.Empty;
+    public static string CreateFolder(string parentFolder, string newFolderName)
+    {
+        EditorAssetWritePolicy.EnsureCanWrite("Creating project folders");
+        return EditorBridge.Host?.CreateAssetFolder(parentFolder, newFolderName) ?? string.Empty;
+    }
 
     public static bool DeleteAsset(string path)
     {
+        EditorAssetWritePolicy.EnsureCanWrite("Deleting project assets");
         var result = AssetModificationProcessorDispatcher.OnWillDeleteAsset(path, RemoveAssetOptions.None);
         if (result == AssetDeleteResult.FailedDelete) return false;
         if (result == AssetDeleteResult.DidDelete) return true;
@@ -231,6 +249,7 @@ public static class AssetDatabase
 
     public static string MoveAsset(string oldPath, string newPath)
     {
+        EditorAssetWritePolicy.EnsureCanWrite("Moving project assets");
         var result = AssetModificationProcessorDispatcher.OnWillMoveAsset(oldPath, newPath);
         if (result == AssetMoveResult.FailedMove) return "Asset move was rejected by a processor.";
         if (result == AssetMoveResult.DidMove) return string.Empty;

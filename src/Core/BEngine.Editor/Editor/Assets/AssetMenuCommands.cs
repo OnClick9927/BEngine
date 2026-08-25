@@ -2,19 +2,6 @@ namespace BEngine.Editor;
 
 internal static class AssetMenuCommands
 {
-    private static readonly (string Label, ProjectAssetCommand Command)[] ContextCommands =
-    [
-        ("Open", ProjectAssetCommand.Open),
-        ("Show in Explorer", ProjectAssetCommand.ShowInExplorer),
-        ("Copy Path", ProjectAssetCommand.CopyPath),
-        ("Copy Full Path", ProjectAssetCommand.CopyFullPath),
-        ("Rename", ProjectAssetCommand.Rename),
-        ("Duplicate", ProjectAssetCommand.Duplicate),
-        ("Delete", ProjectAssetCommand.Delete),
-        ("Reimport", ProjectAssetCommand.Reimport),
-        ("Refresh", ProjectAssetCommand.Refresh)
-    ];
-
     [MenuItem("Assets/Open", false, 500)]
     private static void Open() => Execute(ProjectAssetCommand.Open);
 
@@ -26,6 +13,16 @@ internal static class AssetMenuCommands
 
     [MenuItem("Assets/Show in Explorer", true)]
     private static bool ValidateShowInExplorer() => CanExecute(ProjectAssetCommand.ShowInExplorer);
+
+    [MenuItem("Assets/Open Scene/Additive", false, 510)]
+    private static void OpenSceneAdditive() => OpenScene(OpenSceneMode.Additive);
+
+    [MenuItem("Assets/Open Scene/Additive", true)]
+    [MenuItem("Assets/Open Scene/Additive Without Loading", true)]
+    private static bool ValidateOpenScene() => CanOpenScene();
+
+    [MenuItem("Assets/Open Scene/Additive Without Loading", false, 511)]
+    private static void OpenSceneAdditiveWithoutLoading() => OpenScene(OpenSceneMode.AdditiveWithoutLoading);
 
     [MenuItem("Assets/Copy Path", false, 520)]
     private static void CopyPath() => Execute(ProjectAssetCommand.CopyPath);
@@ -66,25 +63,32 @@ internal static class AssetMenuCommands
     [MenuItem("Assets/Refresh", false, 561)]
     private static void Refresh() => Execute(ProjectAssetCommand.Refresh);
 
+    [MenuItem("Assets/Refresh", true)]
+    private static bool ValidateRefresh() => CanExecute(ProjectAssetCommand.Refresh);
+
     [MenuItem("Assets/Import New Asset...", false, 1080)]
     private static void ImportNewAsset() => Execute(ProjectAssetCommand.ImportNewAsset);
 
     [MenuItem("Assets/Import New Asset...", true)]
     private static bool ValidateImportNewAsset() => CanExecute(ProjectAssetCommand.ImportNewAsset);
 
-    internal static void PopulateContextMenu(GenericMenu menu)
+    private static bool CanOpenScene()
     {
-        ArgumentNullException.ThrowIfNull(menu);
-        foreach (var (label, command) in ContextCommands)
-        {
-            if (CanExecute(command))
-                menu.AddItem(new GUIContent(label), false, () => Execute(command));
-            else
-                menu.AddDisabledItem(new GUIContent(label));
-            if (command is ProjectAssetCommand.ShowInExplorer or ProjectAssetCommand.CopyFullPath or
-                ProjectAssetCommand.Delete)
-                menu.AddSeparator(string.Empty);
-        }
+        var host = EditorBridge.Host;
+        if (host is null || host.IsPlaying || host.IsChangingPlayMode ||
+            host.ActiveProjectAssetPath is not { } assetPath)
+            return false;
+        return host.GetAsset(assetPath) is { IsDirectory: false } asset &&
+               asset.SourcePath.EndsWith(".scene.yaml", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void OpenScene(OpenSceneMode mode)
+    {
+        var host = EditorBridge.Host;
+        if (!CanOpenScene() || host?.ActiveProjectAssetPath is not { } assetPath ||
+            host.GetAsset(assetPath) is not { } asset)
+            return;
+        host.OpenScene(asset.SourcePath, mode);
     }
 
     private static bool CanExecute(ProjectAssetCommand command) =>

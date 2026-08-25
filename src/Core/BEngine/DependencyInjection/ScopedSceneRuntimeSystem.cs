@@ -21,10 +21,13 @@ internal sealed class ScopedSceneRuntimeSystem(
     public void Stop(Scene scene)
     {
         try { system.Stop(scene); }
-        finally
-        {
-            _scope?.Dispose();
-            _scope = null;
-        }
+        finally { DisposeScope(); }
+    }
+
+    internal void DisposeScope()
+    {
+        var scope = _scope;
+        _scope = null;
+        scope?.Dispose();
     }
 }

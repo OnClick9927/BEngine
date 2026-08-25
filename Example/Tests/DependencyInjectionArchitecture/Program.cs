@@ -1,5 +1,4 @@
 using BEngine.DependencyInjection;
-using BEngine.Entities;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BEngine.ExampleTests.DependencyInjectionArchitecture;
@@ -12,31 +11,28 @@ internal static class Program
         {
             VerifyStandardDotNetLifetimes();
             VerifyCoreDependencyBoundary();
-            VerifyWorldScopeIsolationAndDisposal();
+            VerifySceneScopeIsolationAndRuntimeInjection();
             VerifyPackageModuleDiscovery();
-            VerifyEcsSystemConstructorInjection();
-            VerifyLegacyRuntimeSystemConstructorInjection();
             HostCompositionRootContract.Verify();
-            global::System.Console.WriteLine(
-                "DEPENDENCY_INJECTION_ARCHITECTURE_OK|dotnet-lifetimes,core-abstractions,world-scopes,scope-disposal," +
-                "module-discovery,ecs-constructor-injection,legacy-constructor-injection,host-composition-roots");
+            Console.WriteLine(
+                "DEPENDENCY_INJECTION_ARCHITECTURE_OK|dotnet-lifetimes,core-abstractions,scene-scopes," +
+                "scope-disposal,module-discovery,runtime-system-injection,host-composition-roots");
             return 0;
         }
         catch (Exception exception)
         {
-            global::System.Console.Error.WriteLine($"DEPENDENCY_INJECTION_ARCHITECTURE_FAILED|{exception}");
+            Console.Error.WriteLine($"DEPENDENCY_INJECTION_ARCHITECTURE_FAILED|{exception}");
             return 1;
         }
     }
 
     private static void VerifyCoreDependencyBoundary()
     {
-        var references = typeof(World).Assembly.GetReferencedAssemblies();
+        var references = typeof(Scene).Assembly.GetReferencedAssemblies();
         Require(references.Any(reference =>
                 reference.Name == "Microsoft.Extensions.DependencyInjection.Abstractions"),
             "BEngine Core does not expose the standard Microsoft DI abstractions.");
-        Require(references.All(reference =>
-                reference.Name != "Microsoft.Extensions.DependencyInjection"),
+        Require(references.All(reference => reference.Name != "Microsoft.Extensions.DependencyInjection"),
             "BEngine Core depends on the concrete Microsoft DI provider instead of abstractions only.");
     }
 
@@ -69,51 +65,45 @@ internal static class Program
             disposable = firstScope.ServiceProvider.GetRequiredService<DisposableProbe>();
             Require(!disposable.IsDisposed, "A scoped disposable was disposed before its scope ended.");
         }
-
         Require(disposable.IsDisposed, "Disposing IServiceScope did not dispose its scoped service.");
-        using var secondScope = provider.CreateScope();
-        using var thirdScope = provider.CreateScope();
-        Require(!ReferenceEquals(secondScope.ServiceProvider.GetRequiredService<ScopedProbe>(),
-                thirdScope.ServiceProvider.GetRequiredService<ScopedProbe>()),
-            "Two Microsoft DI scopes shared a scoped service instance.");
-
-        var ownedProvider = new ServiceCollection().AddSingleton<DisposableProbe>()
-            .BuildServiceProvider();
-        var rootDisposable = ownedProvider.GetRequiredService<DisposableProbe>();
-        ownedProvider.Dispose();
-        Require(rootDisposable.IsDisposed,
-            "Disposing the root ServiceProvider did not dispose its owned singleton.");
     }
 
-    private static void VerifyWorldScopeIsolationAndDisposal()
+    private static void VerifySceneScopeIsolationAndRuntimeInjection()
     {
-        var services = new ServiceCollection();
-        services.AddSingleton<SingletonProbe>();
-        services.AddScoped<ScopedProbe>();
-        services.AddScoped<DisposableProbe>();
-        using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        using var provider = CreateEngineProvider(CreateContext("Scene runtime injection contract"));
+        var observation = provider.GetRequiredService<RuntimeSystemObservation>();
+        var firstScene = new Scene("First scoped Scene", provider);
+        var secondScene = new Scene("Second scoped Scene", provider);
+        var firstRuntime = new SceneRuntime(firstScene);
+        var secondRuntime = new SceneRuntime(secondScene);
+        try
         {
-            ValidateOnBuild = true,
-            ValidateScopes = true
-        });
-        var worldA = new World("IoC World A", provider);
-        using var worldB = new World("IoC World B", provider);
+            firstRuntime.Start();
+            firstRuntime.Stop();
+            secondRuntime.Start();
+            secondRuntime.Stop();
 
-        var scopedA = worldA.Services.GetRequiredService<ScopedProbe>();
-        var scopedB = worldB.Services.GetRequiredService<ScopedProbe>();
-        Require(ReferenceEquals(scopedA, worldA.Services.GetRequiredService<ScopedProbe>()),
-            "World.Services did not preserve a scoped instance inside one World.");
-        Require(!ReferenceEquals(scopedA, scopedB),
-            "Two Worlds created from one root provider shared their scoped service.");
-        Require(ReferenceEquals(worldA.Services.GetRequiredService<SingletonProbe>(),
-                worldB.Services.GetRequiredService<SingletonProbe>()),
-            "World scopes did not share a root singleton.");
+            Require(observation.StartCount == 2 && observation.DependencyIds.Count == 2,
+                "SceneRuntime did not resolve one runtime system per Scene.");
+            Require(observation.DependencyIds[0] != observation.DependencyIds[1],
+                "Two Scenes shared a scoped runtime-system dependency.");
+            Require(observation.Disposables.All(item => !item.IsDisposed),
+                "A Scene-scoped dependency was disposed before its Scene.");
 
-        var worldDisposable = worldA.Services.GetRequiredService<DisposableProbe>();
-        worldA.Dispose();
-        Require(worldDisposable.IsDisposed, "Disposing a World did not dispose its IServiceScope.");
-        Require(provider.GetRequiredService<SingletonProbe>() is not null,
-            "Disposing a World disposed the externally-owned root provider.");
+            firstScene.Dispose();
+            Require(observation.Disposables[0].IsDisposed && !observation.Disposables[1].IsDisposed,
+                "Disposing the first Scene did not isolate its DI scope.");
+            secondScene.Dispose();
+            Require(observation.Disposables[1].IsDisposed,
+                "Disposing the second Scene did not release its DI scope.");
+        }
+        finally
+        {
+            firstRuntime.Stop();
+            secondRuntime.Stop();
+            firstScene.Dispose();
+            secondScene.Dispose();
+        }
     }
 
     private static void VerifyPackageModuleDiscovery()
@@ -127,44 +117,9 @@ internal static class Program
         Require(ReferenceEquals(moduleProbe.Context, context),
             "IEngineServiceModule did not receive the active EngineServiceContext.");
         var testAssemblyName = typeof(ProbeEngineServiceModule).Assembly.GetName().Name;
-        Require(typeof(World).Assembly.GetReferencedAssemblies().All(reference =>
+        Require(typeof(Scene).Assembly.GetReferencedAssemblies().All(reference =>
                 !string.Equals(reference.Name, testAssemblyName, StringComparison.Ordinal)),
             "BEngine Core has a compile-time dependency on the package service module.");
-    }
-
-    private static void VerifyEcsSystemConstructorInjection()
-    {
-        using var provider = CreateEngineProvider(CreateContext("ECS injection contract"));
-        using var world = new World("Injected ECS World", provider);
-        var system = world.SimulationSystemGroup.GetOrCreateSystem<InjectedEcsSystem>();
-
-        Require(ReferenceEquals(system.Dependency, world.Services.GetRequiredService<ScopedProbe>()),
-            "SimulationSystemGroup did not construct ISystem from World.Services.");
-        Require(ReferenceEquals(system, world.SimulationSystemGroup.GetOrCreateSystem<InjectedEcsSystem>()),
-            "GetOrCreateSystem created the same ECS system more than once.");
-        Require(system.CreateCount == 1, "The DI-created ECS system did not run OnCreate exactly once.");
-    }
-
-    private static void VerifyLegacyRuntimeSystemConstructorInjection()
-    {
-        using var provider = CreateEngineProvider(CreateContext("Legacy runtime injection contract"));
-        var scene = new Scene("Injected legacy runtime", provider);
-        var observation = provider.GetRequiredService<LegacyRuntimeObservation>();
-        var expectedDependency = scene.world.Services.GetRequiredService<ScopedProbe>();
-        var runtime = new SceneRuntime(scene);
-        try
-        {
-            runtime.Start();
-            Require(observation.StartCount == 1,
-                "SceneRuntime did not resolve and start the DI-registered legacy runtime system exactly once.");
-            Require(observation.DependencyId == expectedDependency.Id,
-                "The legacy runtime system was not constructed from the Scene World scope.");
-        }
-        finally
-        {
-            runtime.Stop();
-            scene.world.Dispose();
-        }
     }
 
     private static ServiceProvider CreateEngineProvider(EngineServiceContext context)

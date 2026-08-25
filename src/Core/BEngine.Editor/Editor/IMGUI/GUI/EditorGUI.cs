@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace BEngine.Editor;
 
@@ -23,6 +24,8 @@ public static class EditorGUI
         EnabledStack.Reverse().ToArray(),
         ChangedStack.Reverse().ToArray(),
         new Dictionary<int, int>(PendingPopupSelections),
+        EditorObjectPicker.CaptureState(),
+        DragAndDrop.CaptureState(),
         indentLevel,
         labelWidth,
         fieldWidth,
@@ -40,6 +43,8 @@ public static class EditorGUI
             PendingPopupSelections.Clear();
             foreach (var pair in snapshot.PopupSelections)
                 PendingPopupSelections[pair.Key] = pair.Value;
+            EditorObjectPicker.RestoreState(snapshot.ObjectPickerState);
+            DragAndDrop.RestoreState(snapshot.DragAndDropState);
         }
         indentLevel = snapshot.IndentLevel;
         labelWidth = snapshot.LabelWidth;
@@ -57,6 +62,8 @@ public static class EditorGUI
         bool[] EnabledValues,
         bool[] ChangedValues,
         IReadOnlyDictionary<int, int> PopupSelections,
+        object ObjectPickerState,
+        object DragAndDropState,
         int IndentLevel,
         Fix64 LabelWidth,
         Fix64 FieldWidth,
@@ -142,6 +149,162 @@ public static class EditorGUI
         bool showAlpha = true, bool hdr = false) => DoColorField(position, GUIContent.none, value,
         showEyedropper, showAlpha, hdr, usePrefix: false);
 
+    public static BObject? ObjectField(
+        Rect position,
+        BObject? value,
+        Type objectType,
+        bool allowSceneObjects) =>
+        DoObjectField(position, GUIContent.none, value, objectType, allowSceneObjects,
+            usePrefix: false, showMixedValue, stableIdentity: 0, out _);
+
+    public static BObject? ObjectField(
+        Rect position,
+        string label,
+        BObject? value,
+        Type objectType,
+        bool allowSceneObjects) =>
+        ObjectField(position, new GUIContent(label), value, objectType, allowSceneObjects);
+
+    public static BObject? ObjectField(
+        Rect position,
+        GUIContent label,
+        BObject? value,
+        Type objectType,
+        bool allowSceneObjects)
+    {
+        ArgumentNullException.ThrowIfNull(label);
+        return DoObjectField(position, label, value, objectType, allowSceneObjects,
+            usePrefix: true, showMixedValue, stableIdentity: 0, out _);
+    }
+
+    public static T? ObjectField<T>(Rect position, T? value, bool allowSceneObjects) where T : BObject =>
+        (T?)ObjectField(position, value, typeof(T), allowSceneObjects);
+
+    public static T? ObjectField<T>(Rect position, string label, T? value, bool allowSceneObjects)
+        where T : BObject =>
+        (T?)ObjectField(position, label, value, typeof(T), allowSceneObjects);
+
+    public static T? ObjectField<T>(Rect position, GUIContent label, T? value, bool allowSceneObjects)
+        where T : BObject =>
+        (T?)ObjectField(position, label, value, typeof(T), allowSceneObjects);
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        ObjectField(position, property, objectType,
+            new GUIContent(property.displayName, tooltip: property.tooltip),
+            AllowSceneObjects(property));
+    }
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        bool allowSceneObjects)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        ObjectField(position, property, objectType,
+            new GUIContent(property.displayName, tooltip: property.tooltip),
+            allowSceneObjects);
+    }
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        GUIContent label) =>
+        ObjectField(position, property, objectType, label, AllowSceneObjects(property));
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        string label) =>
+        ObjectField(position, property, objectType, new GUIContent(label));
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        GUIContent label,
+        bool allowSceneObjects)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        ArgumentNullException.ThrowIfNull(label);
+        if (property.propertyType != SerializedPropertyType.ObjectReference)
+            throw new ArgumentException($"SerializedProperty '{property.propertyPath}' is not an object reference.",
+                nameof(property));
+
+        var effectiveType = EffectiveObjectType(property.valueType, objectType);
+        BeginChangeCheck();
+        var value = DoObjectField(position, label, property.objectReferenceValue, effectiveType,
+            allowSceneObjects, usePrefix: true,
+            mixed: property.hasMultipleDifferentValues || showMixedValue,
+            stableIdentity: ObjectFieldIdentity(property), out var committed);
+        _ = EndChangeCheck();
+        if (committed) property.objectReferenceValue = value;
+    }
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        string label,
+        bool allowSceneObjects) =>
+        ObjectField(position, property, objectType, new GUIContent(label), allowSceneObjects);
+
+    private static BObject? DoObjectField(
+        Rect position,
+        GUIContent label,
+        BObject? value,
+        Type objectType,
+        bool allowSceneObjects,
+        bool usePrefix,
+        bool mixed,
+        int stableIdentity,
+        out bool committed)
+    {
+        EditorObjectPicker.ValidateValue(value, objectType);
+        var field = usePrefix ? PrefixLabel(position, label) : position;
+        var id = GUIUtility.GetControlID("ObjectField".GetHashCode(StringComparison.Ordinal),
+            FocusType.Keyboard, field);
+        var owner = EditorWindow.focusedWindow;
+        var ownerIdentity = owner is null ? 0 : RuntimeHelpers.GetHashCode(owner);
+        var token = HashCode.Combine(ControlToken(id, label.text), objectType, ownerIdentity, stableIdentity);
+        committed = false;
+
+        if (EditorObjectPicker.TryConsume(token, objectType, allowSceneObjects, out var picked))
+        {
+            if (mixed || !EditorObjectPicker.SameObject(value, picked))
+            {
+                value = picked;
+                committed = true;
+                GUI.changed = true;
+            }
+        }
+        if (EditorObjectPicker.TryHandleDrag(field, objectType, allowSceneObjects, out var dragged))
+        {
+            if (mixed || !EditorObjectPicker.SameObject(value, dragged))
+            {
+                value = dragged;
+                committed = true;
+                GUI.changed = true;
+            }
+        }
+
+        var content = EditorObjectPicker.Content(value, objectType, mixed && !committed);
+        if (GUI.Button(field, content, EditorStyles.popup))
+            EditorObjectPicker.Open(token, field, value, objectType, allowSceneObjects);
+        var pickerWidth = Fix64.Min(18, field.width);
+        if (pickerWidth > 0)
+            GUI.Label(new Rect(field.xMax - pickerWidth, field.y, pickerWidth, field.height),
+                new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Browse, "Select object"));
+        return value;
+    }
+
     private static Color DoColorField(Rect position, GUIContent label, Color value, bool showEyedropper,
         bool showAlpha, bool hdr, bool usePrefix)
     {
@@ -169,6 +332,14 @@ public static class EditorGUI
     }
 
     public static int Popup(Rect position, string label, int selectedIndex, string[] displayedOptions)
+        => DrawPopup(position, label, selectedIndex, displayedOptions, forceAdvanced: false);
+
+    public static int AdvancedPopup(Rect position, string label, int selectedIndex,
+        string[] displayedOptions)
+        => DrawPopup(position, label, selectedIndex, displayedOptions, forceAdvanced: true);
+
+    private static int DrawPopup(Rect position, string label, int selectedIndex,
+        string[] displayedOptions, bool forceAdvanced)
     {
         var field = PrefixLabel(position, new GUIContent(label));
         selectedIndex = Math.Clamp(selectedIndex, 0, Math.Max(0, displayedOptions.Length - 1));
@@ -192,7 +363,8 @@ public static class EditorGUI
                     EditorApplication.QueuePlayerLoopUpdate();
                 });
             }
-            menu.DropDown(field);
+            if (forceAdvanced) menu.ShowAsAdvancedDropdown(field);
+            else menu.DropDown(field);
         }
         GUI.Label(new Rect(field.xMax - 18, field.y, 16, field.height),
             new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.FoldoutOpen, "Open dropdown"));
@@ -359,6 +531,8 @@ public static class EditorGUI
                     property.vector2Value = Vector2Field(position, label.text, property.vector2Value); break;
                 case SerializedPropertyType.Vector4:
                     property.vector4Value = Vector4Field(position, label.text, property.vector4Value); break;
+                case SerializedPropertyType.ObjectReference:
+                    ObjectField(position, property, property.valueType, label); break;
                 default:
                     GUI.Label(PrefixLabel(position, label), property.boxedValue?.ToString() ?? "None"); break;
             }
@@ -521,6 +695,34 @@ public static class EditorGUI
         Fix64.FromDecimal(blue / 255m), Fix64.FromDecimal(alpha / 255m));
 
     private static int ControlToken(int id, string label) => HashCode.Combine(id, label);
+
+    private static bool AllowSceneObjects(SerializedProperty property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        return property.serializedObject.targetObjects.All(target => !EditorUtility.IsPersistent(target));
+    }
+
+    private static int ObjectFieldIdentity(SerializedProperty property)
+    {
+        var hash = new HashCode();
+        hash.Add(property.propertyPath, StringComparer.Ordinal);
+        foreach (var target in property.serializedObject.targetObjects) hash.Add(target.Id);
+        return hash.ToHashCode();
+    }
+
+    private static Type EffectiveObjectType(Type propertyType, Type requestedType)
+    {
+        ArgumentNullException.ThrowIfNull(propertyType);
+        ArgumentNullException.ThrowIfNull(requestedType);
+        if (!typeof(BObject).IsAssignableFrom(propertyType) ||
+            !typeof(BObject).IsAssignableFrom(requestedType))
+            throw new ArgumentException("ObjectField types must derive from BObject.", nameof(requestedType));
+        if (propertyType.IsAssignableFrom(requestedType)) return requestedType;
+        if (requestedType.IsAssignableFrom(propertyType)) return propertyType;
+        throw new ArgumentException(
+            $"Requested type {requestedType.FullName} is incompatible with property type {propertyType.FullName}.",
+            nameof(requestedType));
+    }
 
     public readonly struct DisabledScope : IDisposable
     {

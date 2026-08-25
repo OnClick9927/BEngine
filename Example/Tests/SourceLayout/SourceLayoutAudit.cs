@@ -33,7 +33,7 @@ internal static class SourceLayoutAudit
         foreach (var sourceFile in sourceFiles)
         {
             var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(sourceFile),
-                CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp13));
+                CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14));
             var errors = tree.GetDiagnostics().Where(item => item.Severity == DiagnosticSeverity.Error).ToArray();
             if (errors.Length > 0)
             {

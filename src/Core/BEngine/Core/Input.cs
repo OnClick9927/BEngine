@@ -13,78 +13,70 @@ public static class Input
 
     public static Fix64 mouseX
     {
-        get { MainThreadGuard.Ensure(); return _mouseX; }
+        get { return _mouseX; }
         internal set => _mouseX = value;
     }
     public static Fix64 mouseY
     {
-        get { MainThreadGuard.Ensure(); return _mouseY; }
+        get { return _mouseY; }
         internal set => _mouseY = value;
     }
     public static Vector2 mousePosition
     {
-        get { MainThreadGuard.Ensure(); return _mousePosition; }
+        get { return _mousePosition; }
         internal set => _mousePosition = value;
     }
     public static Vector2 mouseScrollDelta
     {
-        get { MainThreadGuard.Ensure(); return _mouseScrollDelta; }
+        get { return _mouseScrollDelta; }
         internal set => _mouseScrollDelta = value;
     }
     public static bool anyKey
     {
-        get { MainThreadGuard.Ensure(); return Held.Count > 0; }
+        get { return Held.Count > 0; }
     }
     public static bool anyKeyDown
     {
-        get { MainThreadGuard.Ensure(); return Down.Count > 0; }
+        get { return Down.Count > 0; }
     }
 
     public static bool GetKey(KeyCode key)
     {
-        MainThreadGuard.Ensure();
         return Held.Contains(key);
     }
 
     public static bool GetKeyDown(KeyCode key)
     {
-        MainThreadGuard.Ensure();
         return Down.Contains(key);
     }
 
     public static bool GetKeyUp(KeyCode key)
     {
-        MainThreadGuard.Ensure();
         return Up.Contains(key);
     }
 
     public static bool GetMouseButton(int button)
     {
-        MainThreadGuard.Ensure();
         return Held.Contains(ToMouseKey(button));
     }
 
     public static bool GetMouseButtonDown(int button)
     {
-        MainThreadGuard.Ensure();
         return Down.Contains(ToMouseKey(button));
     }
 
     public static bool GetMouseButtonUp(int button)
     {
-        MainThreadGuard.Ensure();
         return Up.Contains(ToMouseKey(button));
     }
 
     public static Fix64 GetAxis(string axisName)
     {
-        MainThreadGuard.Ensure();
         return GetAxisRawCore(axisName);
     }
 
     public static Fix64 GetAxisRaw(string axisName)
     {
-        MainThreadGuard.Ensure();
         return GetAxisRawCore(axisName);
     }
 
@@ -99,7 +91,6 @@ public static class Input
 
     public static void SetKeyState(KeyCode key, bool isDown)
     {
-        MainThreadGuard.Ensure();
         if (isDown && Held.Add(key))
         {
             Down.Add(key);
@@ -112,27 +103,23 @@ public static class Input
 
     public static void SetMouseDelta(Fix64 x, Fix64 y)
     {
-        MainThreadGuard.Ensure();
         _mouseX = x;
         _mouseY = y;
     }
 
     public static void SetAxis(string axisName, Fix64 value)
     {
-        MainThreadGuard.Ensure();
         ArgumentException.ThrowIfNullOrWhiteSpace(axisName);
         Axes[axisName] = Fix64.Clamp(value, -Fix64.One, Fix64.One);
     }
 
     public static void SetMousePosition(Fix64 x, Fix64 y)
     {
-        MainThreadGuard.Ensure();
         _mousePosition = new Vector2(x, y);
     }
 
     public static void SetMouseScroll(Fix64 x, Fix64 y)
     {
-        MainThreadGuard.Ensure();
         _mouseScrollDelta = new Vector2(x, y);
     }
 

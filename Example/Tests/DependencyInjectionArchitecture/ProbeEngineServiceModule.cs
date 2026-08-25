@@ -8,7 +8,7 @@ public sealed class ProbeEngineServiceModule : IEngineServiceModule
     public void ConfigureServices(IServiceCollection services, EngineServiceContext context)
     {
         services.AddScoped<ScopedProbe>();
-        services.AddSingleton<LegacyRuntimeObservation>();
+        services.AddSingleton<RuntimeSystemObservation>();
         services.AddSingleton(new PackageModuleProbe(context));
     }
 }

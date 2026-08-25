@@ -1,24 +1,22 @@
 {
   "runtimeTarget": {
-    "name": ".NETCoreApp,Version=v9.0",
+    "name": ".NETCoreApp,Version=v10.0",
     "signature": ""
   },
   "compilationOptions": {},
   "targets": {
-    ".NETCoreApp,Version=v9.0": {
+    ".NETCoreApp,Version=v10.0": {
       "BEngine.Player/1.0.0": {
         "dependencies": {
           "BEngine": "1.0.0",
-          "Microsoft.Extensions.DependencyInjection": "9.0.8",
+          "Microsoft.Extensions.DependencyInjection": "10.0.11",
           "Silk.NET.Input": "2.23.0",
-          "Silk.NET.OpenGL": "2.23.0",
-          "Silk.NET.Windowing": "2.23.0"
+          "Silk.NET.OpenGL": "2.23.0"
         },
         "runtime": {
           "BEngine.Player.dll": {}
         }
       },
-      "Microsoft.CSharp/4.7.0": {},
       "Microsoft.DotNet.PlatformAbstractions/3.1.6": {
         "runtime": {
           "lib/netstandard2.0/Microsoft.DotNet.PlatformAbstractions.dll": {
@@ -27,22 +25,22 @@
           }
         }
       },
-      "Microsoft.Extensions.DependencyInjection/9.0.8": {
+      "Microsoft.Extensions.DependencyInjection/10.0.11": {
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.8"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11"
         },
         "runtime": {
-          "lib/net9.0/Microsoft.Extensions.DependencyInjection.dll": {
-            "assemblyVersion": "9.0.0.0",
-            "fileVersion": "9.0.825.36511"
+          "lib/net10.0/Microsoft.Extensions.DependencyInjection.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.1126.37416"
           }
         }
       },
-      "Microsoft.Extensions.DependencyInjection.Abstractions/9.0.8": {
+      "Microsoft.Extensions.DependencyInjection.Abstractions/10.0.11": {
         "runtime": {
-          "lib/net9.0/Microsoft.Extensions.DependencyInjection.Abstractions.dll": {
-            "assemblyVersion": "9.0.0.0",
-            "fileVersion": "9.0.825.36511"
+          "lib/net10.0/Microsoft.Extensions.DependencyInjection.Abstractions.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.1126.37416"
           }
         }
       },
@@ -65,11 +63,7 @@
           }
         }
       },
-      "PolySharp/1.10.0": {},
       "SharpGen.Runtime/2.0.0-beta.13": {
-        "dependencies": {
-          "PolySharp": "1.10.0"
-        },
         "runtime": {
           "lib/net7.0/SharpGen.Runtime.dll": {
             "assemblyVersion": "2.0.0.0",
@@ -79,7 +73,6 @@
       },
       "SharpGen.Runtime.COM/2.0.0-beta.13": {
         "dependencies": {
-          "PolySharp": "1.10.0",
           "SharpGen.Runtime": "2.0.0-beta.13"
         },
         "runtime": {
@@ -91,12 +84,8 @@
       },
       "Silk.NET.Core/2.23.0": {
         "dependencies": {
-          "Microsoft.CSharp": "4.7.0",
           "Microsoft.DotNet.PlatformAbstractions": "3.1.6",
-          "Microsoft.Extensions.DependencyModel": "9.0.9",
-          "System.Memory": "4.6.3",
-          "System.Numerics.Vectors": "4.6.1",
-          "System.Runtime.CompilerServices.Unsafe": "6.1.2"
+          "Microsoft.Extensions.DependencyModel": "9.0.9"
         },
         "runtime": {
           "lib/net6.0/Silk.NET.Core.dll": {
@@ -166,12 +155,6 @@
           }
         }
       },
-      "Silk.NET.Windowing/2.23.0": {
-        "dependencies": {
-          "Silk.NET.Windowing.Common": "2.23.0",
-          "Silk.NET.Windowing.Glfw": "2.23.0"
-        }
-      },
       "Silk.NET.Windowing.Common/2.23.0": {
         "dependencies": {
           "Silk.NET.Core": "2.23.0",
@@ -196,9 +179,6 @@
           }
         }
       },
-      "System.Memory/4.6.3": {},
-      "System.Numerics.Vectors/4.6.1": {},
-      "System.Runtime.CompilerServices.Unsafe/6.1.2": {},
       "Ultz.Native.GLFW/3.4.0": {
         "runtimeTargets": {
           "runtimes/linux-arm/native/libglfw.so.3": {
@@ -260,9 +240,6 @@
         }
       },
       "Veldrid.MetalBindings/4.9.0": {
-        "dependencies": {
-          "System.Runtime.CompilerServices.Unsafe": "6.1.2"
-        },
         "runtime": {
           "lib/netstandard2.0/Veldrid.MetalBindings.dll": {
             "assemblyVersion": "4.9.0.0",
@@ -280,7 +257,6 @@
       },
       "Veldrid.SPIRV/1.0.15": {
         "dependencies": {
-          "System.Runtime.CompilerServices.Unsafe": "6.1.2",
           "Veldrid": "4.9.0"
         },
         "runtime": {
@@ -385,7 +361,7 @@
       },
       "YamlDotNet/18.1.0": {
         "runtime": {
-          "lib/net8.0/YamlDotNet.dll": {
+          "lib/net10.0/YamlDotNet.dll": {
             "assemblyVersion": "18.0.0.0",
             "fileVersion": "18.1.0.0"
           }
@@ -393,10 +369,9 @@
       },
       "BEngine/1.0.0": {
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.8",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11",
           "Silk.NET.Input": "2.23.0",
           "Silk.NET.OpenGL": "2.23.0",
-          "Silk.NET.Windowing": "2.23.0",
           "Veldrid": "4.9.0",
           "Veldrid.SPIRV": "1.0.15",
           "YamlDotNet": "18.1.0"
@@ -416,13 +391,6 @@
       "serviceable": false,
       "sha512": ""
     },
-    "Microsoft.CSharp/4.7.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-pTj+D3uJWyN3My70i2Hqo+OXixq3Os2D1nJ2x92FFo6sk8fYS1m1WLNTs0Dc1uPaViH0YvEEwvzddQ7y4rhXmA==",
-      "path": "microsoft.csharp/4.7.0",
-      "hashPath": "microsoft.csharp.4.7.0.nupkg.sha512"
-    },
     "Microsoft.DotNet.PlatformAbstractions/3.1.6": {
       "type": "package",
       "serviceable": true,
@@ -430,19 +398,19 @@
       "path": "microsoft.dotnet.platformabstractions/3.1.6",
       "hashPath": "microsoft.dotnet.platformabstractions.3.1.6.nupkg.sha512"
     },
-    "Microsoft.Extensions.DependencyInjection/9.0.8": {
+    "Microsoft.Extensions.DependencyInjection/10.0.11": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-JJjI2Fa+QtZcUyuNjbKn04OjIUX5IgFGFu/Xc+qvzh1rXdZHLcnqqVXhR4093bGirTwacRlHiVg1XYI9xum6QQ==",
-      "path": "microsoft.extensions.dependencyinjection/9.0.8",
-      "hashPath": "microsoft.extensions.dependencyinjection.9.0.8.nupkg.sha512"
+      "sha512": "sha512-PSmotV19c7E3lKed++uYo1kSiXFI+uTl37CBSrhq+CfLC3FCHjG7R91+xPnNehQfHS1b0Tzo/CCLPWH3qaEheg==",
+      "path": "microsoft.extensions.dependencyinjection/10.0.11",
+      "hashPath": "microsoft.extensions.dependencyinjection.10.0.11.nupkg.sha512"
     },
-    "Microsoft.Extensions.DependencyInjection.Abstractions/9.0.8": {
+    "Microsoft.Extensions.DependencyInjection.Abstractions/10.0.11": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-xY3lTjj4+ZYmiKIkyWitddrp1uL5uYiweQjqo4BKBw01ZC4HhcfgLghDpPZcUlppgWAFqFy9SgkiYWOMx365pw==",
-      "path": "microsoft.extensions.dependencyinjection.abstractions/9.0.8",
-      "hashPath": "microsoft.extensions.dependencyinjection.abstractions.9.0.8.nupkg.sha512"
+      "sha512": "sha512-/a1aJz4m7ylhEDf25ugQChLQoN5XwoGjWw/BoR/ZWWKsO1v4DdJElS1uyngahz4B/eOzjFk1KNTkarRLE5wsIg==",
+      "path": "microsoft.extensions.dependencyinjection.abstractions/10.0.11",
+      "hashPath": "microsoft.extensions.dependencyinjection.abstractions.10.0.11.nupkg.sha512"
     },
     "Microsoft.Extensions.DependencyModel/9.0.9": {
       "type": "package",
@@ -457,13 +425,6 @@
       "sha512": "sha512-78Lg887CZb4W8ZwmcNuoE75/7x//ljw/wnCuaUnThfe/RcAyuorfK9YkxBBpMWXTqfmjCb/FEsBFniySs+HcOQ==",
       "path": "nativelibraryloader/1.0.13",
       "hashPath": "nativelibraryloader.1.0.13.nupkg.sha512"
-    },
-    "PolySharp/1.10.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-+uNyVhhKOskjJLKOwIQ2qGaA0T507FaMbz5RwLAtmRaMaTAcUAZAiZvSk4Z8z6GkmqOyO1zryYNXmO0Vh7IrYQ==",
-      "path": "polysharp/1.10.0",
-      "hashPath": "polysharp.1.10.0.nupkg.sha512"
     },
     "SharpGen.Runtime/2.0.0-beta.13": {
       "type": "package",
@@ -528,13 +489,6 @@
       "path": "silk.net.opengl/2.23.0",
       "hashPath": "silk.net.opengl.2.23.0.nupkg.sha512"
     },
-    "Silk.NET.Windowing/2.23.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-OPNPmt/lRyUKVYrFLQXVxyATqD3MKLc1iY1oKx1/2GppgmZxVZPwN12tekrQ4C7408kgB1L5JD1Wnirqqeb2kg==",
-      "path": "silk.net.windowing/2.23.0",
-      "hashPath": "silk.net.windowing.2.23.0.nupkg.sha512"
-    },
     "Silk.NET.Windowing.Common/2.23.0": {
       "type": "package",
       "serviceable": true,
@@ -548,27 +502,6 @@
       "sha512": "sha512-aYBudKmENmvLRn9p15HbdvlQTnnXskcDfTfbYwSb/4fr263rGLwYuDw/txUEc2jihHJiWCp5+75Y7z5wTJWl7g==",
       "path": "silk.net.windowing.glfw/2.23.0",
       "hashPath": "silk.net.windowing.glfw.2.23.0.nupkg.sha512"
-    },
-    "System.Memory/4.6.3": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-qdcDOgnFZY40+Q9876JUHnlHu7bosOHX8XISRoH94fwk6hgaeQGSgfZd8srWRZNt5bV9ZW2TljcegDNxsf+96A==",
-      "path": "system.memory/4.6.3",
-      "hashPath": "system.memory.4.6.3.nupkg.sha512"
-    },
-    "System.Numerics.Vectors/4.6.1": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-sQxefTnhagrhoq2ReR0D/6K0zJcr9Hrd6kikeXsA1I8kOCboTavcUC4r7TSfpKFeE163uMuxZcyfO1mGO3EN8Q==",
-      "path": "system.numerics.vectors/4.6.1",
-      "hashPath": "system.numerics.vectors.4.6.1.nupkg.sha512"
-    },
-    "System.Runtime.CompilerServices.Unsafe/6.1.2": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-2hBr6zdbIBTDE3EhK7NSVNdX58uTK6iHW/P/Axmm9sl1xoGSLqDvMtpecn226TNwHByFokYwJmt/aQQNlO5CRw==",
-      "path": "system.runtime.compilerservices.unsafe/6.1.2",
-      "hashPath": "system.runtime.compilerservices.unsafe.6.1.2.nupkg.sha512"
     },
     "Ultz.Native.GLFW/3.4.0": {
       "type": "package",

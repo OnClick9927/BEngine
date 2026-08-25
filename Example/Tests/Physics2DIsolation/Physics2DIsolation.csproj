@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>BEngine.ExampleTests.Physics2DIsolation</RootNamespace>
+    <AssemblyName>BEngine.ExampleTests.Physics2DIsolation</AssemblyName>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
+  </ItemGroup>
+</Project>
