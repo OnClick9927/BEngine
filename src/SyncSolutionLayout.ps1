@@ -85,13 +85,47 @@ foreach ($match in [regex]::Matches($original,
 }
 
 $solutionFolderType = '{2150E333-8FDC-42A3-9474-1A3956D46DE8}'
-$packages = 'Core', 'Animation', 'Navigation2D', 'Physics2D', 'PropertyAttributes', 'TiledMap', 'UIElements'
+$missingProjectPaths = @($projects | Where-Object {
+    $_.Type -ne $solutionFolderType -and
+    -not (Test-Path -LiteralPath (Join-Path $sourceRoot $_.Path) -PathType Leaf)
+} | ForEach-Object { $_.Path })
+if ($missingProjectPaths.Count -gt 0) {
+    throw "BEngine.sln contains missing project paths: $($missingProjectPaths -join ', ')"
+}
+
+$packageLocations = [ordered]@{
+    Core = 'Core'
+    Animation = 'Packages\Animation'
+    Navigation2D = 'Packages\Navigation2D'
+    Physics2D = 'Packages\Physics2D'
+    PropertyAttributes = 'Packages\PropertyAttributes'
+    TiledMap = 'Packages\TiledMap'
+    UIElements = 'Packages\UIElements'
+}
+$packages = @($packageLocations.Keys)
 $obsoletePackages = @()
 $updatedContent = $original
+$packageContainerProjects = @($projects | Where-Object {
+    $_.Type -eq $solutionFolderType -and $_.Name -eq 'Packages' -and $_.Path -eq 'Packages' -and
+    !$nested.ContainsKey($_.Guid)
+})
+if ($packageContainerProjects.Count -ne 1) {
+    throw "Expected one root solution folder 'Packages' in '$solutionPath', found $($packageContainerProjects.Count)."
+}
+$packageContainerGuid = $packageContainerProjects[0].Guid
+
+function Test-PackageSolutionFolder($project, [string] $package) {
+    if ($project.Type -ne $solutionFolderType -or $project.Name -ne $package -or $project.Path -ne $package) {
+        return $false
+    }
+    if ($package -eq 'Core') { return !$nested.ContainsKey($project.Guid) }
+    return $nested.ContainsKey($project.Guid) -and $nested[$project.Guid] -eq $packageContainerGuid
+}
+
 $packageRootGuids = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($project in $projects | Where-Object {
-             $_.Type -eq $solutionFolderType -and !$nested.ContainsKey($_.Guid) -and
-             ($packages + $obsoletePackages) -contains $_.Name
+             ($packages + $obsoletePackages) -contains $_.Name -and
+             (Test-PackageSolutionFolder $_ $_.Name)
          }) {
     [void] $packageRootGuids.Add($project.Guid)
 }
@@ -143,9 +177,9 @@ $newProjectBlocks = [Collections.Generic.List[string]]::new()
 $newMappings = [Collections.Generic.List[string]]::new()
 
 foreach ($package in $packages) {
+    $packageLocation = $packageLocations[$package]
     $packageProjects = @($projects | Where-Object {
-        $_.Type -eq $solutionFolderType -and $_.Name -eq $package -and $_.Path -eq $package -and
-        !$nested.ContainsKey($_.Guid)
+        Test-PackageSolutionFolder $_ $package
     })
     if ($packageProjects.Count -ne 1) {
         throw "Expected one solution folder '$package' in '$solutionPath', found $($packageProjects.Count)."
@@ -153,9 +187,9 @@ foreach ($package in $packages) {
     $packageProject = $packageProjects[0]
 
     $packageItems = @()
-    $packageDefinition = Join-Path (Join-Path $sourceRoot $package) 'package.yaml'
+    $packageDefinition = Join-Path (Join-Path $sourceRoot $packageLocation) 'package.yaml'
     if (Test-Path -LiteralPath $packageDefinition -PathType Leaf) {
-        $packageItems += "$package\package.yaml"
+        $packageItems += "$packageLocation\package.yaml"
     }
     $updatedContent = Set-SolutionItems $updatedContent $packageProject $packageItems
 
@@ -168,7 +202,7 @@ foreach ($package in $packages) {
             throw "Expected one solution folder '$package/$folderName' in '$solutionPath', found $($folderProjects.Count)."
         }
 
-        $physicalFolder = Join-Path (Join-Path $sourceRoot $package) $folderName
+        $physicalFolder = Join-Path (Join-Path $sourceRoot $packageLocation) $folderName
         $folderItems = @(Get-DirectFiles $sourceRoot $physicalFolder)
         if ($folderProjects.Count -eq 0) {
             $folderGuid = Get-DeterministicSolutionGuid "$package\$folderName"

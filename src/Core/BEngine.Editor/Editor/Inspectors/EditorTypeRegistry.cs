@@ -20,12 +20,29 @@ internal static class EditorTypeRegistry
         {
             EnsureFresh();
             if (Resolved.TryGetValue(inspectedType, out var cached)) return cached;
-            cached = _registrations.FirstOrDefault(item =>
-                item.InspectedType == inspectedType || item.EditorForChildClasses &&
-                item.InspectedType.IsAssignableFrom(inspectedType)).EditorType;
+            cached = _registrations.Where(item =>
+                    item.InspectedType == inspectedType || item.EditorForChildClasses &&
+                    item.InspectedType.IsAssignableFrom(inspectedType))
+                .OrderBy(item => item.InspectedType == inspectedType ? 0 : 1)
+                .ThenBy(item => InheritanceDistance(inspectedType, item.InspectedType))
+                .ThenBy(item => item.EditorType.FullName, StringComparer.Ordinal)
+                .Select(item => item.EditorType).FirstOrDefault();
             Resolved[inspectedType] = cached;
             return cached;
         }
+    }
+
+    private static int InheritanceDistance(Type concreteType, Type registeredType)
+    {
+        if (concreteType == registeredType) return 0;
+        if (registeredType.IsInterface) return concreteType.GetInterfaces().Contains(registeredType) ? 1 : int.MaxValue;
+        var distance = 0;
+        for (var current = concreteType; current is not null; current = current.BaseType)
+        {
+            if (current == registeredType) return distance;
+            distance++;
+        }
+        return int.MaxValue;
     }
 
     private static void EnsureFresh()

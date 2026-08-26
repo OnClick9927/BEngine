@@ -33,6 +33,7 @@ public sealed class PortableSceneRenderer : IDisposable
 
     public GraphicsBackend Backend => _device.Backend;
     public GraphicsDeviceCapabilities Capabilities => _device.Capabilities;
+    public SceneRenderStatistics LastRenderStatistics { get; private set; }
 
     public PortableSceneRenderer(IGraphicsDevice device, bool ownsDevice = false)
     {
@@ -64,9 +65,13 @@ public sealed class PortableSceneRenderer : IDisposable
     public void Render(IReadOnlyList<Scene> scenes, Scene activeScene, RenderCamera camera, int width, int height,
         bool drawGrid = false, bool drawUi = true, bool drawExtensions = true, bool drawGizmos = false)
     {
-        RenderCore(scenes, activeScene, camera,
+        var drawStart = CaptureDrawStatistics(out var hasCompleteDrawStatistics);
+        var work = RenderCore(scenes, activeScene, camera,
             new GraphicsRect(0, 0, Math.Max(1, width), Math.Max(1, height)),
             clearTarget: true, initializeColor: false, drawGrid, drawUi, drawExtensions, drawGizmos);
+        LastRenderStatistics = CompleteStatistics(
+            cameraCount: 1, work, Math.Max(1, width), Math.Max(1, height),
+            drawStart, hasCompleteDrawStatistics);
     }
 
     public void RenderViewport(IReadOnlyList<Scene> scenes, Scene activeScene, RenderCamera camera,
@@ -74,8 +79,12 @@ public sealed class PortableSceneRenderer : IDisposable
         bool drawExtensions = true, bool drawGizmos = false,
         Predicate<GameObject>? objectFilter = null)
     {
-        RenderCore(scenes, activeScene, camera, viewport, clearTarget: false, initializeColor,
+        var drawStart = CaptureDrawStatistics(out var hasCompleteDrawStatistics);
+        var work = RenderCore(scenes, activeScene, camera, viewport, clearTarget: false, initializeColor,
             drawGrid, drawUi, drawExtensions, drawGizmos, objectFilter: objectFilter);
+        LastRenderStatistics = CompleteStatistics(
+            cameraCount: 1, work, Math.Max(1, viewport.Width), Math.Max(1, viewport.Height),
+            drawStart, hasCompleteDrawStatistics);
     }
 
     public void RenderCameras(IReadOnlyList<Scene> scenes, Scene activeScene,
@@ -94,9 +103,14 @@ public sealed class PortableSceneRenderer : IDisposable
         ArgumentNullException.ThrowIfNull(activeScene);
         ArgumentNullException.ThrowIfNull(cameras);
         targetViewport.Validate();
+        LastRenderStatistics = default;
         if (targetViewport.Width <= 0 || targetViewport.Height <= 0) return;
         targetWidth = Math.Max(1, targetWidth);
         targetHeight = Math.Max(1, targetHeight);
+        var drawStart = CaptureDrawStatistics(out var hasCompleteDrawStatistics);
+        var renderedCameraCount = 0;
+        var visibleSubmissionCount = 0;
+        var batchCount = 0;
 
         FillViewport(targetViewport, RenderCamera.Default.ClearColor);
         var ordered = cameras.Select((camera, sequence) => (Camera: camera, Sequence: sequence))
@@ -108,6 +122,7 @@ public sealed class PortableSceneRenderer : IDisposable
             var camera = RenderCamera.From(item.Camera);
             var viewport = ResolveViewport(targetViewport, camera.ViewportRect, _device.Backend);
             if (viewport.Width <= 0 || viewport.Height <= 0) continue;
+            renderedCameraCount++;
             var logicalViewport = ResolveViewport(
                 new GraphicsRect(0, 0, targetWidth, targetHeight),
                 camera.ViewportRect, _device.Backend);
@@ -125,12 +140,17 @@ public sealed class PortableSceneRenderer : IDisposable
                 default:
                     throw new ArgumentOutOfRangeException(nameof(camera.ClearMode));
             }
-            RenderCore(scenes, activeScene, camera, viewport, clearTarget: false,
+            var work = RenderCore(scenes, activeScene, camera, viewport, clearTarget: false,
                 initializeColor: false, drawGrid: false, drawUi,
                 drawExtensions: true, drawGizmos: false,
                 logicalWidth: Math.Max(1, logicalViewport.Width),
                 logicalHeight: Math.Max(1, logicalViewport.Height));
+            visibleSubmissionCount += work.VisibleSubmissionCount;
+            batchCount += work.BatchCount;
         }
+        LastRenderStatistics = CompleteStatistics(renderedCameraCount,
+            new RenderWorkStatistics(visibleSubmissionCount, batchCount),
+            targetWidth, targetHeight, drawStart, hasCompleteDrawStatistics);
     }
 
     public static GraphicsRect ResolveViewport(
@@ -201,7 +221,7 @@ public sealed class PortableSceneRenderer : IDisposable
         _device.SetScissor(null);
     }
 
-    private void RenderCore(IReadOnlyList<Scene> scenes, Scene activeScene, RenderCamera camera,
+    private RenderWorkStatistics RenderCore(IReadOnlyList<Scene> scenes, Scene activeScene, RenderCamera camera,
         GraphicsRect viewport, bool clearTarget, bool initializeColor, bool drawGrid, bool drawUi,
         bool drawExtensions, bool drawGizmos,
         int logicalWidth = 0, int logicalHeight = 0, Predicate<GameObject>? objectFilter = null)
@@ -210,7 +230,7 @@ public sealed class PortableSceneRenderer : IDisposable
         ArgumentNullException.ThrowIfNull(scenes);
         ArgumentNullException.ThrowIfNull(activeScene);
         viewport.Validate();
-        if (viewport.Width <= 0 || viewport.Height <= 0) return;
+        if (viewport.Width <= 0 || viewport.Height <= 0) return default;
         var renderWidth = logicalWidth > 0 ? logicalWidth : viewport.Width;
         var renderHeight = logicalHeight > 0 ? logicalHeight : viewport.Height;
 
@@ -226,7 +246,8 @@ public sealed class PortableSceneRenderer : IDisposable
 
         var submissions = Collect(scenes, camera, renderWidth, renderHeight,
             drawUi, drawExtensions, objectFilter);
-        foreach (var batch in RenderBatchBuilder2D.Build(submissions))
+        var batches = RenderBatchBuilder2D.Build(submissions);
+        foreach (var batch in batches)
         {
             if (SceneRenderContributor2DRegistry.TryRender(
                     _device, batch, camera, renderWidth, renderHeight, viewport))
@@ -239,6 +260,39 @@ public sealed class PortableSceneRenderer : IDisposable
 
         if (drawGizmos) DrawCameraGizmos(scenes, camera, renderWidth, renderHeight);
         _device.SetScissor(null);
+        return new RenderWorkStatistics(submissions.Count, batches.Count);
+    }
+
+    private GraphicsDrawStatistics CaptureDrawStatistics(out bool complete)
+    {
+        complete = _device is IGraphicsDeviceStatistics;
+        return complete
+            ? ((IGraphicsDeviceStatistics)_device).DrawStatistics
+            : default;
+    }
+
+    private SceneRenderStatistics CompleteStatistics(
+        int cameraCount,
+        RenderWorkStatistics work,
+        int targetWidth,
+        int targetHeight,
+        GraphicsDrawStatistics drawStart,
+        bool hasCompleteDrawStatistics)
+    {
+        var draw = hasCompleteDrawStatistics
+            ? ((IGraphicsDeviceStatistics)_device).DrawStatistics - drawStart
+            : default;
+        return new SceneRenderStatistics(
+            cameraCount,
+            work.VisibleSubmissionCount,
+            work.BatchCount,
+            draw.DrawCallCount,
+            draw.VertexCount,
+            draw.TriangleCount,
+            draw.LineCount,
+            targetWidth,
+            targetHeight,
+            hasCompleteDrawStatistics);
     }
 
     private IReadOnlyList<RenderSubmission2D> Collect(
@@ -258,9 +312,8 @@ public sealed class PortableSceneRenderer : IDisposable
                 if (!camera.ContainsLayer(renderer.sortingLayer)) continue;
                 var color = WithOpacity(renderer.color, renderer.opacity);
                 var visual = renderer.ResolveSpriteUnchecked();
-                var pivot = renderer.useAtlasPivot && !string.IsNullOrWhiteSpace(renderer.atlas)
-                    ? visual.Pivot
-                    : renderer.pivot;
+                var pivot = renderer.useSpritePivot && renderer.sprite is not null
+                    ? visual.Pivot : renderer.pivot;
                 var localCenter = new Vector2(
                     (Fix64.Half - pivot.x) * renderer.size.x,
                     (Fix64.Half - pivot.y) * renderer.size.y);
@@ -574,5 +627,9 @@ public sealed class PortableSceneRenderer : IDisposable
         bool FlipX,
         bool FlipY,
         bool IsTextured);
+
+    private readonly record struct RenderWorkStatistics(
+        int VisibleSubmissionCount,
+        int BatchCount);
 
 }

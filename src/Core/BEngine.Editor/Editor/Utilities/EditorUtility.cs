@@ -38,6 +38,9 @@ public static class EditorUtility
         if (target is not null) DirtyObjects.Remove(target.GetInstanceID());
     }
 
+    internal static BObject[] GetDirtyObjects() => DirtyObjects.Keys
+        .Select(InstanceIDToObject).Where(target => target is not null).Cast<BObject>().ToArray();
+
     internal static DirtyState CaptureDirtyState() => new(DirtyObjects);
 
     internal static void RestoreDirtyState(DirtyState state)

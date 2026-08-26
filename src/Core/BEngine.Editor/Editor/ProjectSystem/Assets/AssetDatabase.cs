@@ -179,6 +179,7 @@ public sealed class AssetDatabase
         var assetPath = ToProjectPath(sourcePath);
         var hash = isDirectory ? string.Empty : ComputeHash(sourcePath);
         var resolvedAssetType = ResolveAssetType(sourcePath, isDirectory);
+        var resolvedImporter = ResolveImporter(sourcePath, isDirectory);
         var artifactDirectory = Path.Combine(_workspace.AssetArtifactsPath, meta.Guid[..2]);
         Directory.CreateDirectory(artifactDirectory);
         var extension = isDirectory ? ".folder" : Path.GetExtension(sourcePath);
@@ -192,11 +193,12 @@ public sealed class AssetDatabase
         }
 
         if (!string.Equals(meta.SourceHash, hash, StringComparison.Ordinal) ||
-            !string.Equals(meta.AssetType, resolvedAssetType, StringComparison.Ordinal))
+            !string.Equals(meta.AssetType, resolvedAssetType, StringComparison.Ordinal) ||
+            !string.Equals(meta.Importer, resolvedImporter, StringComparison.Ordinal))
         {
             meta.SourceHash = hash;
             meta.AssetType = resolvedAssetType;
-            meta.Importer = ResolveImporter(sourcePath, isDirectory);
+            meta.Importer = resolvedImporter;
             meta.Save(metaPath);
         }
 
@@ -324,17 +326,19 @@ public sealed class AssetDatabase
     }
 
     private static string ResolveImporter(string path, bool isDirectory) => isDirectory ? "FolderImporter" :
-        path.EndsWith(".prefab.yaml", StringComparison.OrdinalIgnoreCase) ? "PrefabImporter" :
-        Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".cs" => "ScriptImporter",
-            ".html" or ".htm" => "HtmlImporter",
-            ".png" or ".jpg" or ".jpeg" or ".bmp" => "TextureImporter",
-            ".shader" or ".glsl" => "ShaderImporter",
-            ".bpackage" => "BPackageImporter",
-            ".yaml" => "YamlImporter",
-            _ => "DefaultImporter"
-        };
+        BEngine.Editor.AssetTypeRegistry.ResolveImporterName(path) is { } registeredImporter
+            ? registeredImporter
+            : path.EndsWith(".prefab.yaml", StringComparison.OrdinalIgnoreCase) ? "PrefabImporter" :
+                Path.GetExtension(path).ToLowerInvariant() switch
+                {
+                    ".cs" => "ScriptImporter",
+                    ".html" or ".htm" => "HtmlImporter",
+                    ".png" or ".jpg" or ".jpeg" or ".bmp" => "TextureImporter",
+                    ".shader" or ".glsl" => "ShaderImporter",
+                    ".bpackage" => "BPackageImporter",
+                    ".yaml" => "YamlImporter",
+                    _ => "DefaultImporter"
+                };
 
     private static string ResolveAssetType(string path, bool isDirectory) => isDirectory ? "Folder" :
         path.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase) ? ResolveManagedAssetType(path) :

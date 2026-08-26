@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using BEngine.ProjectSystem;
 using DrawingColor = System.Drawing.Color;
+using DrawingFont = System.Drawing.Font;
 
 namespace BEngine.Launcher;
 
@@ -80,7 +81,7 @@ internal sealed class ProjectLauncherForm : Form
         Icon = iconPath is null ? SystemIcons.Application : new Icon(iconPath);
         BackColor = WindowBackground;
         ForeColor = PrimaryText;
-        Font = new Font("Segoe UI", 10f);
+        Font = new DrawingFont("Segoe UI", 10f);
         BuildInterface();
         LoadHubState();
         ShowProjectsPage();
@@ -114,7 +115,7 @@ internal sealed class ProjectLauncherForm : Form
         {
             Text = "BENGINE",
             AutoSize = true,
-            Font = new Font("Segoe UI Semibold", 18f),
+            Font = new DrawingFont("Segoe UI Semibold", 18f),
             ForeColor = PrimaryText,
             Location = new Point(28, 25)
         };
@@ -124,7 +125,7 @@ internal sealed class ProjectLauncherForm : Form
         {
             Text = "HUB",
             AutoSize = true,
-            Font = new Font("Segoe UI Semibold", 8f),
+            Font = new DrawingFont("Segoe UI Semibold", 8f),
             ForeColor = Accent,
             Location = new Point(150, 35)
         };
@@ -143,7 +144,7 @@ internal sealed class ProjectLauncherForm : Form
             Text = "BEngine 0.1",
             AutoSize = true,
             ForeColor = DrawingColor.FromArgb(105, 111, 118),
-            Font = new Font("Segoe UI", 8.5f),
+            Font = new DrawingFont("Segoe UI", 8.5f),
             Location = new Point(28, 648),
             Anchor = AnchorStyles.Left | AnchorStyles.Bottom
         };
@@ -162,7 +163,7 @@ internal sealed class ProjectLauncherForm : Form
             Padding = new Padding(30, 0, 30, 0)
         };
         _pageTitle.AutoSize = true;
-        _pageTitle.Font = new Font("Segoe UI Semibold", 17f);
+        _pageTitle.Font = new DrawingFont("Segoe UI Semibold", 17f);
         _pageTitle.ForeColor = PrimaryText;
         _pageTitle.Location = new Point(30, 20);
         header.Controls.Add(_pageTitle);
@@ -823,7 +824,7 @@ internal sealed class ProjectLauncherForm : Form
         list.BorderStyle = BorderStyle.FixedSingle;
         list.BackColor = RaisedBackground;
         list.ForeColor = PrimaryText;
-        list.Font = new Font("Segoe UI", 10f);
+        list.Font = new DrawingFont("Segoe UI", 10f);
     }
 
     private static void ConfigureDetailLabel(Label label, float size, DrawingColor color,
@@ -832,7 +833,7 @@ internal sealed class ProjectLauncherForm : Form
         label.Location = new Point(left, top);
         label.Size = new Size(500, height);
         label.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        label.Font = new Font("Segoe UI", size, size >= 18f ? FontStyle.Bold : FontStyle.Regular);
+        label.Font = new DrawingFont("Segoe UI", size, size >= 18f ? FontStyle.Bold : FontStyle.Regular);
         label.ForeColor = color;
         label.AutoEllipsis = true;
     }

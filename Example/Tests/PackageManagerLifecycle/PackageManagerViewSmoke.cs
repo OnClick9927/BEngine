@@ -234,11 +234,22 @@ internal static class PackageManagerViewSmoke
             SetField(applicationType, application, "_playing", false);
             detachHost.Invoke(null, [application]);
         }
-        foreach (var example in exampleModels) importExample.Invoke(view, [example, false]);
+        var importLogs = new List<LogEntry>();
+        void CaptureImportLog(LogEntry entry) => importLogs.Add(entry);
+        BEngine.Debug.MessageLogged += CaptureImportLog;
+        try
+        {
+            foreach (var example in exampleModels) importExample.Invoke(view, [example, false]);
+        }
+        finally
+        {
+            BEngine.Debug.MessageLogged -= CaptureImportLog;
+        }
 
         examples = DetailText(Render(view));
         Require(examples.Count(text => text.Equals("Reimport", StringComparison.Ordinal)) == archives.Count,
-            $"{packageName} must change every imported example action to Reimport.");
+            $"{packageName} must change every imported example action to Reimport. " +
+            $"Import logs: {string.Join(" | ", importLogs.Select(entry => entry.Message))}");
         Require(examples.Count(text => text.Equals("Import", StringComparison.Ordinal)) == packageImportButtonCount,
             $"{packageName} lost or duplicated its package Import button after example import.");
         VerifyExampleActionLayout(Render(view, NarrowPanelWidth, NarrowPanelHeight), exampleModels,

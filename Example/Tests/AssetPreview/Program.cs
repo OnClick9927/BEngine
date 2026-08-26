@@ -46,6 +46,7 @@ internal static class Program
 
             using var inspector = new InspectorHarness(texture, texture.sourcePath);
             VerifyTexturePreview(inspector, texture);
+            VerifyPreviewHeightSplitter(inspector, texture);
             VerifySelectionSwitchAndLock(inspector, texture, text);
             VerifyInspectorLifecycle(inspector, texture, text);
             VerifyTextCacheRefresh(fixture, inspector, text);
@@ -66,7 +67,8 @@ internal static class Program
                               "locked-inspector,locked-forced-rebuild,locked-reopen,text-cache-refresh," +
                               "atlas-generated-png,material-swatch,jpeg-bmp,missing-fallback,texture-cache-refresh," +
                               "atlas-texture-cache-refresh,typed-basset-previews,custom-editor-preview-protocol," +
-                              "preview-fault-isolation,narrow-clipping,gpu-revision-lifecycle,gpu-cache-capacity," +
+                              "preview-fault-isolation,preview-height-splitter,narrow-clipping," +
+                              "gpu-revision-lifecycle,gpu-cache-capacity," +
                               "gpu-fence-retirement");
             return 0;
         }
@@ -97,6 +99,71 @@ internal static class Program
         TestAssert.Require(image.Rect.X >= image.ClipRect.X - 0.1f &&
                            image.Rect.Right <= image.ClipRect.Right + 0.1f,
             "The fitted texture escaped the preview ClipRect.");
+    }
+
+    private static void VerifyPreviewHeightSplitter(InspectorHarness inspector, DefaultAsset texture)
+    {
+        var initial = TestAssert.Text(inspector.Repaint(WideWidth, WideHeight), "Preview").Rect.Y;
+        var start = new Vector2(120, (Fix64)initial);
+        var expanded = new Vector2(start.x, start.y - 72);
+        inspector.Dispatch(new Event(EventType.MouseDown) { mousePosition = start, button = 0 },
+            WideWidth, WideHeight);
+        inspector.Dispatch(new Event(EventType.MouseDrag)
+        {
+            mousePosition = expanded,
+            delta = expanded - start,
+            button = 0
+        }, WideWidth, WideHeight);
+        inspector.Dispatch(new Event(EventType.MouseUp) { mousePosition = expanded, button = 0 },
+            WideWidth, WideHeight);
+
+        var expandedCommands = inspector.Repaint(WideWidth, WideHeight);
+        var expandedHeader = TestAssert.Text(expandedCommands, "Preview").Rect.Y;
+        TestAssert.Require(expandedHeader < initial - 60,
+            "Dragging the Inspector preview splitter upward did not increase the preview height.");
+        TestAssert.PreviewImage(expandedCommands, texture.sourcePath);
+        TestAssert.Require(GUIUtility.hotControl == 0,
+            "The Inspector preview splitter did not release its hot control.");
+
+        var shrinkStart = new Vector2(120, (Fix64)expandedHeader);
+        var shrinkEnd = new Vector2(shrinkStart.x, shrinkStart.y + 1000);
+        inspector.Dispatch(new Event(EventType.MouseDown) { mousePosition = shrinkStart, button = 0 },
+            WideWidth, WideHeight);
+        inspector.Dispatch(new Event(EventType.MouseDrag)
+        {
+            mousePosition = shrinkEnd,
+            delta = shrinkEnd - shrinkStart,
+            button = 0
+        }, WideWidth, WideHeight);
+        inspector.Dispatch(new Event(EventType.MouseUp) { mousePosition = shrinkEnd, button = 0 },
+            WideWidth, WideHeight);
+
+        var shrunkenCommands = inspector.Repaint(WideWidth, WideHeight);
+        var shrunkenHeader = TestAssert.Text(shrunkenCommands, "Preview").Rect.Y;
+        TestAssert.Require(shrunkenHeader > expandedHeader + 60,
+            "Dragging the Inspector preview splitter downward did not reduce the preview height.");
+        TestAssert.Require(shrunkenHeader <= WideHeight - 118,
+            "The Inspector preview splitter allowed the preview body to become unreadably short.");
+        TestAssert.PreviewImage(shrunkenCommands, texture.sourcePath);
+        TestAssert.Require(GUIUtility.hotControl == 0,
+            "The Inspector preview splitter retained hot control after a clamped drag.");
+
+        var restoreStart = new Vector2(120, (Fix64)shrunkenHeader);
+        var restoreEnd = new Vector2(restoreStart.x,
+            restoreStart.y - (Fix64)(shrunkenHeader - initial));
+        inspector.Dispatch(new Event(EventType.MouseDown) { mousePosition = restoreStart, button = 0 },
+            WideWidth, WideHeight);
+        inspector.Dispatch(new Event(EventType.MouseDrag)
+        {
+            mousePosition = restoreEnd,
+            delta = restoreEnd - restoreStart,
+            button = 0
+        }, WideWidth, WideHeight);
+        inspector.Dispatch(new Event(EventType.MouseUp) { mousePosition = restoreEnd, button = 0 },
+            WideWidth, WideHeight);
+        var restoredHeader = TestAssert.Text(inspector.Repaint(WideWidth, WideHeight), "Preview").Rect.Y;
+        TestAssert.Require(Math.Abs(restoredHeader - initial) < 1,
+            "The Inspector preview splitter did not retain an explicitly restored height.");
     }
 
     private static void VerifySelectionSwitchAndLock(InspectorHarness inspector, DefaultAsset texture,

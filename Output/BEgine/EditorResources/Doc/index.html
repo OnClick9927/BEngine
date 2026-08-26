@@ -2,35 +2,254 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BEngine Core 文档</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BEngine Core 详细文档</title>
   <style>
-    :root{color-scheme:dark;font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;background:#181a1d;color:#eef0f2}*{box-sizing:border-box}body{margin:0;background:#181a1d}.top{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;height:54px;padding:0 22px;background:#25282c;border-bottom:1px solid #42464c}.mark{width:28px;height:28px;display:grid;place-items:center;border:1px solid #58c5b8;color:#58c5b8;font-weight:700}.top small{color:#aeb4bb}.shell{display:grid;grid-template-columns:210px minmax(0,860px);gap:36px;max-width:1160px;margin:auto}nav{position:sticky;top:76px;align-self:start;display:grid;padding:28px 8px}nav a{padding:8px 10px;color:#bbc1c7;text-decoration:none;border-left:2px solid transparent}nav a:hover{color:white;border-left-color:#58c5b8;background:#24272b}main{padding:44px 20px 90px;min-width:0}section{padding-bottom:34px;margin-bottom:34px;border-bottom:1px solid #32363b}h1{font-size:36px;margin:4px 0 10px;letter-spacing:0}h2{font-size:22px;margin-top:0;letter-spacing:0}h3{font-size:15px;letter-spacing:0}.lead,p,li{color:#c8cdd2;line-height:1.7}.eyebrow{color:#58c5b8;font-weight:700;font-size:12px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.panel{padding:16px;border:1px solid #3c4147;background:#222529;border-radius:4px}.panel h3{margin:0 0 8px}code,pre{font-family:"Cascadia Mono",Consolas,monospace}code{color:#f2cb78}pre{overflow:auto;padding:16px;border:1px solid #373c42;background:#111315;border-radius:4px;line-height:1.6}.note{padding:13px 15px;border-left:3px solid #58c5b8;background:#222a2a}@media(max-width:720px){.shell{display:block}nav{position:static;grid-template-columns:repeat(2,1fr);padding:12px;border-bottom:1px solid #32363b}.grid{grid-template-columns:1fr}main{padding-top:28px}}
+    :root{color-scheme:dark;font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;background:#17191c;color:#f1f3f5;--bg:#17191c;--surface:#22252a;--surface2:#292d32;--line:#3b4148;--muted:#b8bec5;--accent:#58c5b8;--accent2:#f2cb78;--danger:#ec8b8b}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg)}.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:12px;height:58px;padding:0 24px;background:#202328;border-bottom:1px solid var(--line)}.mark{display:grid;place-items:center;width:30px;height:30px;border:1px solid var(--accent);color:var(--accent);font-weight:800}.top strong{font-size:16px}.top small{color:var(--muted)}.shell{display:grid;grid-template-columns:230px minmax(0,900px);gap:38px;max-width:1220px;margin:auto}.nav{position:sticky;top:78px;align-self:start;display:grid;padding:26px 10px}.nav a{padding:8px 10px;border-left:2px solid transparent;color:var(--muted);text-decoration:none}.nav a:hover{color:#fff;border-left-color:var(--accent);background:var(--surface)}main{min-width:0;padding:44px 22px 96px}section{scroll-margin-top:78px;padding-bottom:38px;margin-bottom:38px;border-bottom:1px solid #30353a}h1{margin:4px 0 12px;font-size:38px;letter-spacing:0}h2{margin:0 0 16px;font-size:23px;letter-spacing:0}h3{margin:22px 0 10px;font-size:17px;letter-spacing:0}p,li,td{color:#c9ced4;line-height:1.72}.lead{font-size:18px}.eyebrow{color:var(--accent);font-weight:700;font-size:12px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.card{padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:4px}.card h3{margin:0 0 8px}.note,.warning{padding:13px 15px;margin:16px 0;background:#202a2a;border-left:3px solid var(--accent);color:#d8dcdf}.warning{background:#2b2525;border-left-color:var(--danger)}figure{margin:24px 0;background:#111315;border:1px solid var(--line);border-radius:4px;overflow:hidden}figure img{display:block;width:100%;height:auto;min-height:220px;object-fit:contain;background:#111315}figcaption{padding:11px 14px;color:var(--muted);border-top:1px solid var(--line)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:4px}table{width:100%;border-collapse:collapse;min-width:680px}th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid #353a40}th{color:#f0f2f4;background:var(--surface2)}tr:last-child td{border-bottom:0}code,pre{font-family:"Cascadia Mono",Consolas,monospace}code{color:var(--accent2)}pre{overflow:auto;padding:16px;background:#101214;border:1px solid #373c42;border-radius:4px;line-height:1.6}pre code{color:#dce1e5}.steps{counter-reset:step;list-style:none;padding:0}.steps li{position:relative;padding:4px 0 14px 42px;counter-increment:step}.steps li::before{content:counter(step);position:absolute;left:0;top:2px;display:grid;place-items:center;width:27px;height:27px;border:1px solid var(--accent);color:var(--accent);font-weight:700}.pill{display:inline-block;padding:2px 7px;border:1px solid #4e5960;color:#d9dde0;font-size:12px}kbd{padding:1px 6px;background:#30343a;border:1px solid #555c64;border-radius:3px;color:#fff}@media(max-width:780px){.shell{display:block}.nav{position:static;grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 16px;border-bottom:1px solid var(--line)}main{padding-top:28px}.grid{grid-template-columns:1fr}h1{font-size:31px}.top small{display:none}}
   </style>
 </head>
 <body>
-  <header class="top"><span class="mark">B</span><strong>BEngine Core</strong><small>内置引擎与编辑器 API</small></header>
+  <header class="top"><span class="mark">B</span><strong>BEngine Core</strong><small>2D Runtime + Editor Foundation</small></header>
   <div class="shell">
-    <nav aria-label="章节"><a href="#start">开始</a><a href="#project">工程结构</a><a href="#runtime">运行时</a><a href="#services">场景与服务</a><a href="#editor">编辑器扩展</a><a href="#atlas">Texture Atlas</a><a href="#assets">资源与包</a><a href="#examples">示例</a></nav>
+    <nav class="nav" aria-label="章节">
+      <a href="#overview">包概览</a><a href="#install">依赖与目录</a><a href="#examples">可导入示例</a>
+      <a href="#quickstart">快速开始</a><a href="#components">组件字段</a><a href="#assets">资源字段</a>
+      <a href="#runtime">运行时 API</a><a href="#editor">编辑器 API</a><a href="#workflow">完整工作流</a>
+      <a href="#extend">如何扩展</a><a href="#debug">调试与常见问题</a>
+    </nav>
     <main>
-      <section id="start"><p class="eyebrow">CORE MANUAL</p><h1>BEngine Core</h1><p class="lead">Core 提供 Scene、GameObject、Component、序列化、渲染基础和 Unity 风格编辑器扩展 API。运行 <code>Output/BEngine.bat</code> 后，可从 Package Manager 按需启用功能包。</p><div class="note">世界只包含 X/Y 坐标与一个旋转角；Sprite、粒子、Tilemap 与 UI 使用统一的 2D 排序和合批队列。</div></section>
-      <section id="project"><h2>工程结构</h2><pre><code>Project.yaml
-Assets/
-Packages/manifest.yaml
-ProjectSettings/
-Library/        # 可重建缓存
-Logs/
-Temp/           # 临时输出</code></pre><p>业务资源只放入 <code>Assets</code>。包由 Package Manager 管理，包文档、技能和示例分别位于包自身的 <code>EditorResources/Doc</code>、<code>EditorResources/Skills</code> 和 <code>EditorResources/Examples</code>。</p></section>
-      <section id="runtime"><h2>运行时对象</h2><div class="grid"><article class="panel"><h3>场景与层级</h3><p><code>Scene</code> 管理根对象；<code>Transform</code> 维护父子关系。加载模式支持 Single 和 Additive，持久对象通过 <code>DontDestroyOnLoad</code> 保留。</p></article><article class="panel"><h3>生命周期</h3><p><code>Awake → OnEnable → Start → Update → LateUpdate → OnDisable → OnDestroy</code>。固定步长逻辑在 <code>FixedUpdate</code> 执行。</p></article><article class="panel"><h3>Scene 与 Game</h3><p>Scene 视图使用唯一的 2D 编辑器相机；Game 视图使用场景中的 <code>Camera2D</code>，并可按渲染优先级叠加多个相机。</p></article><article class="panel"><h3>单线程运行</h3><p>SceneRuntime 在同一线程依次执行脚本、协程、包运行系统与渲染；编辑器扫描、编译、哈希和文件 IO 可在后台执行。</p></article></div></section>
-      <section id="services"><h2>托管场景与依赖注入</h2><p>Scene 直接拥有 GameObject，GameObject 直接拥有 Component；统一通过托管查询访问场景组件。</p><pre><code>var player = scene.CreateGameObject("Player");
-player.AddComponent&lt;PlayerController&gt;();
-foreach (var controller in scene.QueryComponents&lt;PlayerController&gt;())
-    controller.ResetState();</code></pre><p>有状态服务通过 <code>Microsoft.Extensions.DependencyInjection</code> 注册。项目、Scene 和窗口分别拥有明确 scope；扩展包实现 <code>IEngineServiceModule</code> 添加服务。</p></section>
-      <section id="editor"><h2>编辑器扩展</h2><div class="grid"><article class="panel"><h3>常用入口</h3><p><code>MenuItem</code>、<code>EditorWindow</code>、<code>CustomEditor</code>、<code>CustomPropertyDrawer</code>、<code>SettingsProvider</code>。</p></article><article class="panel"><h3>编辑器生命周期</h3><p><code>InitializeOnLoad</code>、<code>DidReloadScripts</code>、<code>CompilationPipeline</code>、<code>AssemblyReloadEvents</code> 和资源处理器回调。</p></article></div><p>包的菜单项应归入与功能相关的标准菜单；示例扩展命令统一放在 <code>Tools</code> 下。一个扩展报错会被功能边界隔离，不应阻断其他窗口或菜单。</p></section>
-      <section id="atlas"><h2>Texture Atlas</h2><p>从 <code>Assets/Create/2D/Texture Atlas</code> 创建 <code>.atlas.yaml</code>，在 <code>Window/2D/Texture Atlas</code> 添加 PNG 来源并 Build。打包器会确定性生成 2 的整数次方 PNG，Padding 和 Extrude 用于隔离相邻区域。</p><pre><code>renderer.atlas = "Assets/Art/Characters.atlas.yaml";
-renderer.sprite = "hero_idle";</code></pre><p><code>SpriteRenderer</code> 与 <code>ParticleSystem2D</code> 会读取区域 UV 和 pivot。共享 Material、Shader、Atlas 且排序后相邻的项目合并为一次绘制；TiledMap 的 Tile Palette 也可直接导入 Texture Atlas 区域。</p></section>
-      <section id="assets"><h2>资源与包</h2><p><code>AssetDatabase</code> 负责 GUID、meta、导入和打开资源；<code>Resources</code> 是运行时兼容入口。AssetBundle 使用确定性构建、内容哈希缓存、依赖清单、原子激活和回滚实现资源热更。</p><p><code>.bpackage</code> 用于把示例或资源集合导入工程；包示例默认不进入新工程，应由使用者在 Package Manager 的 Examples 页签主动 Import 或 Reimport。</p></section>
-      <section id="examples"><h2>可导入示例</h2><p><strong>Core Getting Started</strong> 展示场景、生命周期、输入、Transform、渲染与编辑器扩展。打开 Package Manager，选择 BEngine Core，再进入 Examples 页签导入。</p></section>
+      <section id="overview">
+        <p class="eyebrow">CORE MANUAL</p>
+        <h1>BEngine Core</h1>
+        <p class="lead">Core 是 BEngine 始终启用的 2D 基础层，负责 Scene、GameObject、Component、Transform、Camera2D、Sprite、粒子、资源、输入、序列化和编辑器扩展协议。</p>
+        <div class="grid">
+          <article class="card"><h3>纯 2D 世界</h3><p>位置和缩放使用 Vector2，旋转使用单一 Fix64 角度。Camera2D 仅支持正交投影。</p></article>
+          <article class="card"><h3>运行镜像隔离</h3><p>Play 在 Scene 镜像上运行；停止后直接丢弃镜像，编辑态 Scene 与组件资产不被运行时写回。</p></article>
+          <article class="card"><h3>统一渲染队列</h3><p>世界、粒子与 UI 按 Layer、Order、Hierarchy、透明度排序，Material、Shader、Atlas 决定合批。</p></article>
+          <article class="card"><h3>可卸载扩展</h3><p>包可注入 Scene System、菜单、Inspector、Drawer、资源类型和 Scene Picking Provider。</p></article>
+        </div>
+        <figure>
+          <img src="images/overview.png" alt="BEngine Core 编辑器的 Scene、Game、Hierarchy、Project 与 Inspector 概览">
+          <figcaption>Core 编辑器概览：Hierarchy 管理 Scene 对象，Scene 用于编辑与 Gizmo，Game 显示 Camera2D 输出，Project 与 Inspector 管理资源和字段。</figcaption>
+        </figure>
+      </section>
+
+      <section id="install">
+        <h2>依赖与目录</h2>
+        <p>Core 不是可选扩展包，没有 `package.yaml`，无需在工程包清单中启用。可选包只允许依赖 Core，Core 不反向记录具体扩展包。</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>程序集/目录</th><th>职责</th><th>运行时</th></tr></thead>
+          <tbody>
+            <tr><td><code>BEngine</code></td><td>运行时对象、资源、渲染、输入、数学、Scene scope</td><td>是</td></tr>
+            <tr><td><code>BEngine.Editor</code></td><td>编辑器宿主、IMGUI、窗口、菜单、导入器、Package Manager</td><td>否</td></tr>
+            <tr><td><code>BEngine.Launcher</code></td><td>工程选择和启动</td><td>否</td></tr>
+            <tr><td><code>BEngine.Player</code></td><td>导出游戏的通用宿主</td><td>是</td></tr>
+            <tr><td><code>Resources</code></td><td>运行时默认 Shader 与资源</td><td>是</td></tr>
+            <tr><td><code>EditorResources</code></td><td>图标、文档、示例、Skill</td><td>否</td></tr>
+          </tbody>
+        </table></div>
+        <p>运行时使用单线程 SceneRuntime。编辑器可在后台扫描、编译和读取文件，但 Scene、GameObject 与 Component 只能由主编辑循环修改。</p>
+      </section>
+
+      <section id="examples">
+        <h2>可导入示例</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>示例</th><th>导入目录</th><th>场景</th><th>覆盖内容</th></tr></thead>
+          <tbody><tr><td>Core Getting Started</td><td><code>Assets/Examples/CoreGettingStarted</code></td><td><code>res/Core.scene.yaml</code></td><td>生命周期、输入、协程、Transform、Sprite、Camera2D、EditorWindow</td></tr></tbody>
+        </table></div>
+        <p>示例不会自动进入工程。Package Manager 的 Import 会创建独立 Assets 目录；再次导入显示 Reimport，并按导入回执复用未修改文件。</p>
+      </section>
+
+      <section id="quickstart">
+        <h2>快速开始：从 Import 到 Play</h2>
+        <ol class="steps">
+          <li>打开 <strong>Window &gt; Package Manager</strong>，在左侧选择 <strong>BEngine Core</strong>。</li>
+          <li>进入 <strong>Examples</strong> 页签，在 Core Getting Started 行点击 <strong>Import</strong>。</li>
+          <li>等待脚本编译完成，在 Project 打开 <code>Assets/Examples/CoreGettingStarted/res/Core.scene.yaml</code>。</li>
+          <li>确认 Console 无错误，点击顶部 Play；Game 窗口打开时会立即获得一次焦点。</li>
+          <li>使用 Horizontal/Vertical 输入轴移动对象，按 <kbd>Space</kbd> 切换颜色；观察伴随 Sprite 和 Console 生命周期日志。</li>
+          <li>停止 Play，确认运行时创建的对象消失而原 Scene 恢复。再打开 <strong>Tools &gt; Examples &gt; BEngine Editor Window</strong> 学习编辑器扩展。</li>
+        </ol>
+        <div class="note">Play 期间 Scene 与组件变更不允许保存到源 Asset。需要持久化的修改必须停止 Play 后在编辑态完成。</div>
+      </section>
+
+      <section id="components">
+        <h2>组件字段表</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>组件</th><th>字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>Transform</td><td><code>localPosition/localRotation/localScale</code></td><td>二维本地变换；世界值由父层级计算</td></tr>
+            <tr><td>Transform</td><td><code>position/rotation/lossyScale</code></td><td>世界值；使用 SetParent、SetSiblingIndex 管理层级</td></tr>
+            <tr><td>Camera2D</td><td><code>size</code></td><td>正交半高，最小 0.001</td></tr>
+            <tr><td>Camera2D</td><td><code>backgroundColor/clearMode</code></td><td>Color、DepthOnly、Nothing</td></tr>
+            <tr><td>Camera2D</td><td><code>priority/isMain</code></td><td>多相机按 priority 从小到大稳定渲染</td></tr>
+            <tr><td>Camera2D</td><td><code>cullingMask/viewportRect</code></td><td>层掩码与左下角原点的归一化视口</td></tr>
+            <tr><td>Renderer2D</td><td><code>sortingLayer/orderInLayer/opacity</code></td><td>通用 2D 排序字段</td></tr>
+            <tr><td>SpriteRenderer</td><td><code>sprite/size/pivot/useSpritePivot</code></td><td>Sprite 引用、尺寸和轴心</td></tr>
+            <tr><td>SpriteRenderer</td><td><code>color/flipX/flipY/material</code></td><td>视觉与批次资源</td></tr>
+            <tr><td>ParticleSystem2D</td><td><code>duration/loop/playOnAwake/emissionRate</code></td><td>播放与发射</td></tr>
+            <tr><td>ParticleSystem2D</td><td><code>startLifetime/startSpeed/startDirection/startSize</code></td><td>新粒子的基础状态</td></tr>
+            <tr><td>ParticleSystem2D</td><td><code>startColor/startRotation/startAngularVelocity/maxParticles</code></td><td>颜色、角运动与容量</td></tr>
+          </tbody>
+        </table></div>
+        <p>Layer 值必须是 <code>2^1</code> 到 <code>2^63</code>。世界使用前 58 层，最高五层保留给 UI；ParticleSystem2D 可进入 UI 层以实现粒子穿插。</p>
+      </section>
+
+      <section id="assets">
+        <h2>资源与导入字段表</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>资源</th><th>字段/后缀</th><th>工作流</th></tr></thead>
+          <tbody>
+            <tr><td>Scene</td><td><code>*.scene.yaml</code></td><td>保存 GameObject、Transform、Component；支持 Single/Additive</td></tr>
+            <tr><td>PrefabAsset</td><td><code>*.prefab.yaml</code></td><td>实例化后可 Apply、Revert、Unpack</td></tr>
+            <tr><td>Sprite</td><td><code>Texture/PivotX/PivotY</code></td><td>创建 `.sprite.yaml`，SpriteRenderer 只引用 Sprite</td></tr>
+            <tr><td>TextureAtlas</td><td><code>MaxSize/Padding/Extrude/SpriteReferences</code></td><td>在 Texture Atlas 窗口 Build</td></tr>
+            <tr><td>Material</td><td><code>shader/color/renderQueue</code></td><td>保存 `.material.yaml` 和材质属性</td></tr>
+            <tr><td>TextureImporter</td><td><code>compressionFormat/filterMode/wrapMode</code></td><td>写入源图旁 `.meta`</td></tr>
+            <tr><td>TextureImporter</td><td><code>generateMipMaps/maxTextureSize/pixelsPerUnit</code></td><td>修改后点击 Apply；Revert 重新读 meta</td></tr>
+            <tr><td>BAsset</td><td><code>assetPath/guid</code></td><td>加载后绑定稳定工程路径和 GUID</td></tr>
+          </tbody>
+        </table></div>
+        <div class="warning">Texture 压缩格式是请求值。后端尚未实现的 GPU 转码不会被报告为成功，但设置会稳定 round-trip 到 `.meta`。</div>
+      </section>
+
+      <section id="runtime">
+        <h2>运行时 API</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>API</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td><code>Scene.CreateGameObject</code></td><td>在 Scene 创建对象</td></tr>
+            <tr><td><code>GameObject.AddComponent&lt;T&gt;</code></td><td>添加组件并满足 RequireComponent</td></tr>
+            <tr><td><code>GetComponent/TryGetComponent</code></td><td>查询对象组件</td></tr>
+            <tr><td><code>Scene.QueryComponents&lt;T&gt;</code></td><td>查询 Scene 中匹配组件</td></tr>
+            <tr><td><code>Transform.Translate/Rotate/SetParent</code></td><td>2D 变换与层级</td></tr>
+            <tr><td><code>StartCoroutine/Invoke</code></td><td>协程与延迟调用</td></tr>
+            <tr><td><code>BAsset.Load&lt;T&gt;</code></td><td>按 Assets/Packages 路径加载资源</td></tr>
+            <tr><td><code>SceneManager.LoadScene</code></td><td>Single 或 Additive 场景加载</td></tr>
+          </tbody>
+        </table></div>
+        <pre><code>using BEngine;
+
+[AddComponentMenu("Gameplay/Player Mover")]
+public sealed class PlayerMover : MonoBehaviour
+{
+    public Fix64 speed = 4;
+
+    public override void Update()
+    {
+        var input = new Vector2(
+            Input.GetAxisRaw("Horizontal"),
+            Input.GetAxisRaw("Vertical"));
+        transform.Translate(input * speed * Time.deltaTime, Space.World);
+    }
+}</code></pre>
+        <p>生命周期依次为 Awake、OnEnable、Start、FixedUpdate/Update/LateUpdate、OnDisable、OnDestroy。Runtime System 与脚本均在同一 SceneRuntime 线程串行执行。</p>
+      </section>
+
+      <section id="editor">
+        <h2>编辑器 API</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>API/特性</th><th>注册与用途</th></tr></thead>
+          <tbody>
+            <tr><td><code>[MenuItem]</code></td><td>程序集加载后自动扫描；同路径 bool 方法作为验证函数</td></tr>
+            <tr><td><code>EditorWindow.GetWindow&lt;T&gt;</code></td><td>创建或聚焦可停靠窗口</td></tr>
+            <tr><td><code>[CustomEditor]</code></td><td>为 BObject 类型注册 Inspector</td></tr>
+            <tr><td><code>[CustomPropertyDrawer]</code></td><td>为类型或 PropertyAttribute 注册字段 Drawer</td></tr>
+            <tr><td><code>SerializedObject/SerializedProperty</code></td><td>多选、Undo 与统一字段访问</td></tr>
+            <tr><td><code>EditorGUI.ObjectField</code></td><td>BObject/BAsset 的选择、搜索和拖放</td></tr>
+            <tr><td><code>Undo.RecordObject + SetDirty</code></td><td>记录编辑态变更并请求保存</td></tr>
+            <tr><td><code>AssetDatabase</code></td><td>加载、创建、导入、刷新与保存资源</td></tr>
+            <tr><td><code>ScenePickingProviderRegistry.Register</code></td><td>外部 Renderer 参与 Scene 点选</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="workflow">
+        <h2>编辑器完整工作流</h2>
+        <ol class="steps">
+          <li>File &gt; New Scene 后立即保存到 <code>Assets/Scenes</code>。</li>
+          <li>GameObject &gt; Camera 2D 创建相机，设置 size、priority、clearMode、cullingMask、viewportRect。</li>
+          <li>GameObject &gt; 2D Object &gt; Sprite 创建对象，把 `.sprite.yaml` 拖入 SpriteRenderer。</li>
+          <li>需要 Atlas 时创建 Texture Atlas，在 Window &gt; 2D &gt; Texture Atlas 添加 Sprite 并 Build。</li>
+          <li>Edit &gt; Project Settings &gt; Tags and Layers 配置 Tag 与 63 个 Layer。</li>
+          <li>在 Scene 使用 W/E/R Handle 编辑位置、旋转和缩放，使用眼睛/锁控制可见与可选。</li>
+          <li>进入 Play 验证；Game View 选择逻辑分辨率并展开 Status 检查 Camera、Batch、Draw Call。</li>
+          <li>停止 Play，在 Edit Mode 执行 File &gt; Save Scene 保存原数据。</li>
+        </ol>
+      </section>
+
+      <section id="extend">
+        <h2>如何扩展</h2>
+        <h3>自动注册 EditorWindow</h3>
+        <pre><code>using BEngine;
+using BEngine.Editor;
+
+public sealed class SelectionInfoWindow : EditorWindow
+{
+    [MenuItem("Tools/My Package/Selection Info")]
+    private static void Open() =&gt;
+        GetWindow&lt;SelectionInfoWindow&gt;("Selection Info");
+
+    protected override void OnEnable() =&gt;
+        Selection.selectionChanged += Repaint;
+    protected override void OnDisable() =&gt;
+        Selection.selectionChanged -= Repaint;
+
+    protected override void OnGUI() =&gt;
+        EditorGUILayout.LabelField(
+            Selection.activeObject?.name ?? "None");
+}</code></pre>
+        <p>脚本必须放在 Editor 程序集；<code>[MenuItem]</code> 是注册入口，无需手工初始化。</p>
+        <h3>注入 Scene Runtime System</h3>
+        <pre><code>using BEngine;
+using BEngine.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+public sealed class PulseSystem : ISceneRuntimeSystem
+{
+    public string packageId =&gt; "com.example.pulse";
+    public int order =&gt; 200;
+    public void Update(Scene scene, Fix64 deltaTime)
+    {
+        foreach (var pulse in scene.QueryComponents&lt;PulseComponent&gt;())
+            pulse.Tick(deltaTime);
+    }
+}
+
+public sealed class PulseComponent : MonoBehaviour
+{
+    public void Tick(Fix64 deltaTime) =&gt;
+        transform.Rotate(deltaTime * 30);
+}
+
+public sealed class PulseModule : IEngineServiceModule
+{
+    public void ConfigureServices(
+        IServiceCollection services, EngineServiceContext context) =&gt;
+        services.TryAddEnumerable(
+            ServiceDescriptor.Transient&lt;ISceneRuntimeSystem, PulseSystem&gt;());
+}</code></pre>
+        <p><code>IEngineServiceModule</code> 由包程序集自动发现；包禁用时 Provider 和 Scene scope 会释放。</p>
+      </section>
+
+      <section id="debug">
+        <h2>调试与常见问题</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>现象</th><th>检查顺序</th></tr></thead>
+          <tbody>
+            <tr><td>Game 无画面</td><td>Camera2D enabled → cullingMask → viewportRect → Transform 范围 → clearMode</td></tr>
+            <tr><td>Scene 可见、Game 不可见</td><td>Renderer sortingLayer 是否被 Camera 收集，opacity 是否为 0</td></tr>
+            <tr><td>Sprite 只显示纯色</td><td>Sprite.Texture、源图 meta、Atlas Build；Sprite 为空时纯色 Quad 正常</td></tr>
+            <tr><td>不能合批</td><td>Material、Shader、解析 Atlas 必须相同，且排序后相邻</td></tr>
+            <tr><td>Texture 设置丢失</td><td>点击 Apply，确认 `.meta` 可写，再 Reimport 查看 Console</td></tr>
+            <tr><td>Play 停止后对象消失</td><td>Play 创建对象属于镜像，这是预期行为</td></tr>
+            <tr><td>Play 变更写入 Scene</td><td>记录日志并检查自定义 Editor 是否直接写 YAML；运行时不应保存</td></tr>
+            <tr><td>菜单/Drawer 不出现</td><td>确认代码在 Editor 程序集、无编译错误、包已启用</td></tr>
+            <tr><td>示例 Import 禁用</td><td>退出 Play、等待编译和包切换结束</td></tr>
+          </tbody>
+        </table></div>
+      </section>
     </main>
   </div>
 </body>

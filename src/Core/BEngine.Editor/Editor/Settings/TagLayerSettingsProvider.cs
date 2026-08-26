@@ -51,8 +51,7 @@ internal static class TagLayerSettingsProvider
         EnsureProject();
         DrawTabs();
         GUILayout.Space(6);
-        var error = _operationError.Length > 0 ? _operationError : Draft.Error;
-        if (error.Length > 0) EditorGUILayout.HelpBox(error, MessageType.Error);
+        DrawError();
 
         if (_page == TagLayerSettingsPage.Tags) DrawTags();
         else DrawLayers();
@@ -62,22 +61,33 @@ internal static class TagLayerSettingsProvider
     {
         GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.dockTab.fixedHeight));
         var tabWidth = Fix64.Max(44, (GUILayout.CurrentGroupWidth - 12) / 2);
-        if (GUILayout.Button("Tags",
-                _page == TagLayerSettingsPage.Tags ? EditorStyles.dockTabActive : EditorStyles.dockTab,
-                GUILayout.Width(tabWidth)))
-            _page = TagLayerSettingsPage.Tags;
-        if (GUILayout.Button("Layers",
-                _page == TagLayerSettingsPage.Layers ? EditorStyles.dockTabActive : EditorStyles.dockTab,
-                GUILayout.Width(tabWidth)))
-            _page = TagLayerSettingsPage.Layers;
+        DrawTab(TagLayerSettingsPage.Tags, "Tags", "Edit the project's GameObject tags", tabWidth);
+        DrawTab(TagLayerSettingsPage.Layers, "Layers", "Edit the project's rendering layers", tabWidth);
         GUILayout.EndHorizontal();
+    }
+
+    private static void DrawTab(TagLayerSettingsPage page, string label, string tooltip, Fix64 width)
+    {
+        var selected = _page == page;
+        if (GUILayout.Button(new GUIContent(label, tooltip: tooltip),
+                selected ? EditorStyles.dockTabActive : EditorStyles.dockTab,
+                GUILayout.Width(width)))
+            _page = page;
+
+        if (!selected) return;
+        var rect = GUILayoutUtility.GetLastRect();
+        GUI.DrawRect(new Rect(rect.x, Fix64.Max(rect.y, rect.yMax - 2), rect.width, 2),
+            EditorAppearance.palette.Accent);
+    }
+
+    private static void DrawError()
+    {
+        var error = _operationError.Length > 0 ? _operationError : Draft.Error;
+        if (error.Length > 0) EditorGUILayout.HelpBox(error, MessageType.Error);
     }
 
     private static void DrawTags()
     {
-        GUILayout.Label("Tags", EditorStyles.largeLabel);
-        GUILayout.Space(4);
-
         var tags = Draft.EditableTags;
         for (var index = 0; index < tags.Count; index++)
         {
@@ -116,7 +126,6 @@ internal static class TagLayerSettingsProvider
 
     private static void DrawLayers()
     {
-        GUILayout.Label("Layers", EditorStyles.largeLabel);
         GUILayout.Label("World: 2^1 - 2^58    UI: 2^59 - 2^63", EditorStyles.miniLabel);
         GUILayout.Space(4);
 

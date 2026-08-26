@@ -27,6 +27,8 @@ internal sealed class EditorApplicationHarness : IDisposable
     public object SceneWindow { get; }
     public object GameWindow { get; }
     public object InspectorWindow { get; }
+    public object ConsoleWindow { get; }
+    public object PackageManagerWindow { get; }
     public object DockWorkspace { get; }
     public Scene InitialScene { get; }
     public Scene ActiveScene => EditorSceneManager.activeScene ??
@@ -72,7 +74,13 @@ internal sealed class EditorApplicationHarness : IDisposable
         GameWindow = CreateNested("ImGuiGameWindow", Application);
         ProjectWindow = CreateNested("ImGuiProjectWindow", Application);
         InspectorWindow = CreateNested("ImGuiInspectorWindow", Application);
-        _windows = [HierarchyWindow, SceneWindow, GameWindow, ProjectWindow, InspectorWindow];
+        ConsoleWindow = CreateNested("ImGuiConsoleWindow", Application);
+        PackageManagerWindow = CreateNested("ImGuiPackageManagerWindow", Application);
+        _windows =
+        [
+            HierarchyWindow, SceneWindow, GameWindow, ProjectWindow, InspectorWindow, ConsoleWindow,
+            PackageManagerWindow
+        ];
 
         SetField("_workspace", fixture.Workspace);
         SetField("_services", services);
@@ -91,6 +99,8 @@ internal sealed class EditorApplicationHarness : IDisposable
         SetField("_gameView", GameWindow);
         SetField("_project", ProjectWindow);
         SetField("_inspector", InspectorWindow);
+        SetField("_console", ConsoleWindow);
+        SetField("_packageManager", PackageManagerWindow);
         SetField("_layoutStore", Create("BEngine.Editor.EditorLayoutStore", fixture.Workspace));
         SetField("_activeLayoutName", "Last Session");
         var instanceLogPath = Path.Combine(fixture.Workspace.LibraryPath, "Logs", "HierarchyMultiScene.log");
@@ -109,6 +119,8 @@ internal sealed class EditorApplicationHarness : IDisposable
         AddBuiltIn(GameWindow, "Center", true);
         AddBuiltIn(InspectorWindow, "Right", true);
         AddBuiltIn(ProjectWindow, "Bottom", true);
+        AddBuiltIn(ConsoleWindow, "Bottom", false);
+        AddBuiltIn(PackageManagerWindow, "Center", false);
         AttachBridge();
     }
 
@@ -117,6 +129,33 @@ internal sealed class EditorApplicationHarness : IDisposable
         var expanded = GetField(HierarchyWindow, "_expandedScenes") ??
                        throw new InvalidOperationException("Hierarchy has no expanded Scene state.");
         expanded.GetType().GetMethod("Add", [typeof(Guid)])!.Invoke(expanded, [scene.Id]);
+    }
+
+    public void ExpandGameObject(GameObject gameObject)
+    {
+        ArgumentNullException.ThrowIfNull(gameObject);
+        var expanded = GetField(HierarchyWindow, "_expanded") ??
+                       throw new InvalidOperationException("Hierarchy has no expanded GameObject state.");
+        expanded.GetType().GetMethod("Add", [typeof(Guid)])!.Invoke(expanded, [gameObject.Id]);
+    }
+
+    public bool IsGameObjectExpanded(GameObject gameObject)
+    {
+        ArgumentNullException.ThrowIfNull(gameObject);
+        var expanded = GetField(HierarchyWindow, "_expanded") ??
+                       throw new InvalidOperationException("Hierarchy has no expanded GameObject state.");
+        return (bool)(expanded.GetType().GetMethod("Contains", [typeof(Guid)])!
+            .Invoke(expanded, [gameObject.Id]) ?? false);
+    }
+
+    public Vector2 HierarchyScrollPosition
+    {
+        get
+        {
+            var scroll = GetField(HierarchyWindow, "_scroll") ??
+                         throw new InvalidOperationException("Hierarchy has no scroll region.");
+            return (Vector2)(GetField(scroll, "_position") ?? Vector2.zero);
+        }
     }
 
     public void SetPlaying(bool value) => SetField("_playing", value);

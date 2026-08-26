@@ -1,0 +1,8 @@
+format: BEngine.Sprite
+version: 1
+texture: Assets/Art/Sources/BEngine.png
+pivotX: 0.5
+pivotY: 0.5
+id: c7909819-9759-4f6d-ad79-b52ec2f462e9
+name: Brand
+hideFlags: None

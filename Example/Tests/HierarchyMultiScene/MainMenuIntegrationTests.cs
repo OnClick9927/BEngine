@@ -60,9 +60,11 @@ internal static class MainMenuIntegrationTests
             ],
             ["Window"] =
             [
-                "Layouts/Save Current", "Layouts/Save As...", "Hierarchy", "Scene", "Game", "Inspector",
-                "Project", "Panels/Close Focused Tab", "Panels/Lock Focused Window",
-                "Panels/Maximize Focused Tab", "Panels/Next Window", "Panels/Previous Window"
+                "Layouts/Save Current", "Layouts/Save As...", "General/Console", "General/Game",
+                "General/Hierarchy", "General/Inspector", "General/Project", "General/Scene",
+                "General/External Extension Probe", "Package Manager", "Panels/Close Focused Tab",
+                "Panels/Lock Focused Window", "Panels/Maximize Focused Tab", "Panels/Next Window",
+                "Panels/Previous Window"
             ],
             ["Help"] =
             [
@@ -99,6 +101,20 @@ internal static class MainMenuIntegrationTests
         RequireShortcut(edit, "Play", "Ctrl+P");
         RequireShortcut(edit, "Pause", "Ctrl+Shift+P");
         RequireShortcut(edit, "Step", "Ctrl+Alt+P");
+
+        var window = Capture(harness, "Window");
+        foreach (var title in new[] { "Console", "Game", "Hierarchy", "Inspector", "Project", "Scene" })
+        {
+            TestAssert.Require(window.All(item => item.Path != title),
+                $"The legacy Window/{title} item is still present at the Window root.");
+            var item = RequireItem(window, $"General/{title}", "Window/General built-in windows");
+            TestAssert.Require(item.Enabled && item.Action is not null,
+                $"Window/General/{title} did not preserve its window-opening action.");
+        }
+        TestAssert.Require(RequireItem(window, "General/Hierarchy", "an open Hierarchy window").Checked,
+            "Window/General/Hierarchy did not preserve its open-window checked state.");
+        TestAssert.Require(window.All(item => item.Path != "General/Package Manager"),
+            "Package Manager was incorrectly moved into Window/General.");
     }
 
     private static void VerifyValidators(SceneFixture fixture)
@@ -270,6 +286,11 @@ internal static class MainMenuIntegrationTests
                            GUIUtility.systemCopyBuffer.Contains(".NET", StringComparison.OrdinalIgnoreCase),
             "Help/Copy System Info did not copy useful engine and runtime information.");
 
+        WindowGeneralExtensionProbe.Reset();
+        Execute(WindowGeneralExtensionProbe.Path);
+        TestAssert.Require(WindowGeneralExtensionProbe.Calls == 1,
+            "An external Window/General MenuItem did not remain executable beside the built-in windows.");
+
         root.name = "Saved Through File Menu";
         TestAssert.Require(EditorSceneManager.MarkSceneDirty(scene),
             "The File menu test could not mark its Scene dirty.");
@@ -348,6 +369,21 @@ internal static class MainMenuIntegrationTests
          throw new MissingFieldException(target.GetType().FullName, fieldName)).SetValue(target, value);
 
     private sealed record MenuSnapshot(string Label, string Path, bool Enabled, bool Checked, Action? Action);
+}
+
+internal static class WindowGeneralExtensionProbe
+{
+    internal const string Path = "Window/General/External Extension Probe";
+
+    internal static int Calls { get; private set; }
+
+    [MenuItem(Path, false, 250)]
+    private static void Execute() => Calls++;
+
+    [MenuItem(Path, true)]
+    private static bool Validate() => true;
+
+    internal static void Reset() => Calls = 0;
 }
 
 internal static class MainMenuFaultProbe

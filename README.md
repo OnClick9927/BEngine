@@ -35,18 +35,20 @@ src/
     EditorResources/
       Doc/index.html
       Readme.md
-  Animation/
-    BEngine.Animation/
-    BEngine.Animation.Editor/
-    Resources/
-    EditorResources/
-      Doc/index.html
-      Readme.md
-    package.yaml
-  Physics2D/
-  Navigation2D/
-  TiledMap/
-  UIElements/
+  Packages/
+    Animation/
+      BEngine.Animation/
+      BEngine.Animation.Editor/
+      Resources/
+      EditorResources/
+        Doc/index.html
+        Readme.md
+      package.yaml
+    Physics2D/
+    Navigation2D/
+    PropertyAttributes/
+    TiledMap/
+    UIElements/
 ```
 
 - `BEngine.dll` 是纯运行时公共程序集，不包含 PackageManager、Codex 或具体扩展包引用。
@@ -70,7 +72,7 @@ Core 内置 Texture Atlas：通过 `Assets/Create/2D/Texture Atlas` 创建 `.atl
 每个包包含独立的 Runtime 与 Editor 程序集；`package.yaml` 位于包根，说明文件和离线网页位于 `EditorResources`：
 
 ```text
-src/Animation/
+src/Packages/Animation/
   BEngine.Animation/
   BEngine.Animation.Editor/
   EditorResources/

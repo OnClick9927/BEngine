@@ -119,7 +119,7 @@ internal static class Program
     {
         var repository = FindRepositoryRoot();
         Resources.RegisterResourceRoot(Path.Combine(repository, "src", "Core"));
-        Resources.RegisterResourceRoot(Path.Combine(repository, "src", "TiledMap"));
+        Resources.RegisterResourceRoot(Path.Combine(repository, "src", "Packages", "TiledMap"));
         using var device = new RecordingGraphicsDevice();
         using var renderer = new PortableSceneRenderer(device);
         var scene = new Scene("Tiled Map Rendering");

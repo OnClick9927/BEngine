@@ -5,6 +5,8 @@ namespace BEngine.Documents;
 
 public static class ComponentFieldSerializer
 {
+    private const string AssetTypeSuffix = ".$type";
+
     public static Dictionary<string, string> Serialize(BEngine.Component component)
     {
         if (component is BEngine.MissingComponent missing)
@@ -19,6 +21,9 @@ public static class ComponentFieldSerializer
             if (TryFormat(value, GetMemberType(member), out var text))
             {
                 result[member.Name] = text;
+                if (value is BEngine.BAsset asset && asset.GetType() != GetMemberType(member))
+                    result[member.Name + AssetTypeSuffix] = asset.GetType().AssemblyQualifiedName ??
+                                                            asset.GetType().FullName ?? asset.GetType().Name;
             }
         }
 
@@ -32,18 +37,32 @@ public static class ComponentFieldSerializer
             missing.serializedFields = new Dictionary<string, string>(fields, StringComparer.Ordinal);
             return;
         }
+        if (component is BEngine.SpriteRenderer spriteRenderer &&
+            fields.TryGetValue(nameof(BEngine.SpriteRenderer.sprite), out var spriteReference))
+        {
+            fields.TryGetValue("atlas", out var legacyAtlas);
+            spriteRenderer.sprite = BEngine.TextureAtlasResolver.LoadSpriteReference(
+                spriteReference, legacyAtlas ?? string.Empty);
+        }
         foreach (var member in GetSerializableMembers(component.GetType()))
         {
+            if (component is BEngine.SpriteRenderer &&
+                member.Name.Equals(nameof(BEngine.SpriteRenderer.sprite), StringComparison.Ordinal))
+                continue;
             if (!TryGetSerializedValue(member, fields, out var text))
             {
                 continue;
             }
 
+            var memberType = GetMemberType(member);
             try
             {
-                SetMemberValue(member, component, Parse(text, GetMemberType(member)));
+                var assetType = typeof(BEngine.BAsset).IsAssignableFrom(memberType)
+                    ? ResolveAssetType(member, fields, memberType)
+                    : memberType;
+                SetMemberValue(member, component, Parse(text, assetType));
             }
-            catch (Exception exception) when (exception is FormatException or OverflowException or ArgumentException)
+            catch (Exception exception) when (IsRecoverableReadException(exception))
             {
                 BEngine.Debug.LogWarning($"Could not restore {component.GetType().Name}.{member.Name}: {exception.Message}");
             }
@@ -92,6 +111,11 @@ public static class ComponentFieldSerializer
         }
 
         if (type == typeof(string)) text = (string)value;
+        else if (typeof(BEngine.BAsset).IsAssignableFrom(type))
+        {
+            text = ((BEngine.BAsset)value).assetPath;
+            if (string.IsNullOrWhiteSpace(text)) return false;
+        }
         else if (type == typeof(bool)) text = ((bool)value) ? "true" : "false";
         else if (type == typeof(int)) text = ((int)value).ToString(CultureInfo.InvariantCulture);
         else if (type == typeof(long)) text = ((long)value).ToString(CultureInfo.InvariantCulture);
@@ -110,6 +134,12 @@ public static class ComponentFieldSerializer
     private static object? Parse(string value, Type type)
     {
         if (type == typeof(string)) return value;
+        if (typeof(BEngine.BAsset).IsAssignableFrom(type))
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            return BEngine.BAsset.Load(value, type) ??
+                   throw new InvalidDataException($"Asset reference '{value}' could not be loaded.");
+        }
         if (type == typeof(bool)) return bool.Parse(value);
         if (type == typeof(int)) return int.Parse(value, CultureInfo.InvariantCulture);
         if (type == typeof(long)) return long.Parse(value, CultureInfo.InvariantCulture);
@@ -123,6 +153,30 @@ public static class ComponentFieldSerializer
         if (type.IsEnum) return Enum.Parse(type, value, ignoreCase: false);
         throw new NotSupportedException($"Serialized component field type {type.FullName} is not supported.");
     }
+
+    private static Type ResolveAssetType(
+        MemberInfo member, IReadOnlyDictionary<string, string> fields, Type declaredType)
+    {
+        string? typeName = null;
+        if (!fields.TryGetValue(member.Name + AssetTypeSuffix, out typeName))
+        {
+            foreach (var alias in member.GetCustomAttributes<BEngine.FormerlySerializedAsAttribute>(inherit: true))
+                if (fields.TryGetValue(alias.oldName + AssetTypeSuffix, out typeName))
+                    break;
+        }
+        if (string.IsNullOrWhiteSpace(typeName)) return declaredType;
+        var resolved = BEngine.BAssetReferenceLoader.ResolveType(typeName) ??
+                       throw new InvalidDataException($"Asset reference type '{typeName}' is not loaded.");
+        if (!declaredType.IsAssignableFrom(resolved) || !typeof(BEngine.BAsset).IsAssignableFrom(resolved) ||
+            resolved.IsAbstract)
+            throw new InvalidDataException(
+                $"Asset reference type '{resolved.FullName}' is not assignable to {declaredType.FullName}.");
+        return resolved;
+    }
+
+    private static bool IsRecoverableReadException(Exception exception) => exception is IOException or
+        UnauthorizedAccessException or InvalidDataException or FormatException or OverflowException or
+        ArgumentException or YamlDotNet.Core.YamlException;
 
     private static string Format(BEngine.Vector2 value) => $"{value.x},{value.y}";
     private static string Format(BEngine.Vector4 value) => $"{value.x},{value.y},{value.z},{value.w}";

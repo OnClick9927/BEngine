@@ -18,6 +18,8 @@ public static class EditorAssetIcons
 
         if (AssetTypeRegistry.ResolveIconPath(assetPath) is { } registeredIcon) return registeredIcon;
         var normalized = assetPath.Replace('\\', '/');
+        if (normalized.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase) &&
+            ResolveManagedAssetIcon(assetPath) is { } managedIcon) return managedIcon;
         return normalized.ToLowerInvariant() switch
         {
             var path when path.EndsWith(".prefab.yaml") => EditorBuiltinIcons.Assets.Prefab,
@@ -49,6 +51,26 @@ public static class EditorAssetIcons
                 EditorBuiltinIcons.Assets.Text,
             _ => DefaultAsset
         };
+    }
+
+    private static string? ResolveManagedAssetIcon(string assetPath)
+    {
+        try
+        {
+            var fullPath = Path.IsPathRooted(assetPath)
+                ? assetPath
+                : AssetDatabase.ResolveAssetPath(assetPath);
+            if (!File.Exists(fullPath)) return null;
+            var document = BEngine.Documents.Document.Load<BEngine.Documents.ManagedAssetDocument>(fullPath);
+            var typeName = document.TypeName.Split(',')[0];
+            var type = Type.GetType(document.TypeName, throwOnError: false) ?? TypeCache.GetAllTypes()
+                .FirstOrDefault(candidate => string.Equals(candidate.FullName, typeName, StringComparison.Ordinal));
+            return type is null ? null : EditorIconRegistry.GetIconPath(type);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or ArgumentException)
+        {
+            return null;
+        }
     }
 
     public static bool ContainsVisibleEntry(string directory)

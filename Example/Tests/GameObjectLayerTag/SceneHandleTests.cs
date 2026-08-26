@@ -21,7 +21,7 @@ internal static class SceneHandleTests
             var sprite = spriteObject.AddComponent<SpriteRenderer>();
             sprite.size = new Vector2(4, 2);
             sprite.pivot = Vector2.zero;
-            sprite.useAtlasPivot = false;
+            sprite.useSpritePivot = false;
             var actual = SceneHandleUtility.GetHandlePosition(spriteObject);
             var expected = spriteObject.transform.TransformPoint(new Vector2(2, 1));
             TestAssert.Require((actual - expected).sqrMagnitude <= Fix64.Parse("0.00000001"),

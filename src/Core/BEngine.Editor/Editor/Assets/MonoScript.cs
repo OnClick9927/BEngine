@@ -3,11 +3,8 @@ using BEngine.Serialization;
 
 namespace BEngine.Editor;
 
-public sealed class MonoScript : TextAsset
+public sealed class MonoScript : Script
 {
-    internal Type? scriptClass { get; set; }
-    public Type? GetClass() => scriptClass;
-
     public static MonoScript? FromMonoBehaviour(MonoBehaviour behaviour) => FromType(behaviour?.GetType());
     public static MonoScript? FromScriptableObject(ScriptableObject scriptableObject) =>
         FromType(scriptableObject?.GetType());

@@ -26,6 +26,7 @@ internal static class ScenePickingVisibilityTests
             harness.ExpandScene(harness.InitialScene);
 
             VerifyRenderOrderCycling(harness, top, bottom);
+            VerifySceneSelectionRevealsHierarchy(harness, top);
             VerifyTiledMapPicking(harness, top, visibility);
             VerifyPickingAndVisibilityFilters(harness, top, bottom, visibility);
             VerifyHierarchyControls(harness, top, child, visibility);
@@ -135,6 +136,62 @@ internal static class ScenePickingVisibilityTests
             "Restoring Scene visibility/picking did not restore normal picking.");
     }
 
+    private static void VerifySceneSelectionRevealsHierarchy(
+        EditorApplicationHarness harness,
+        GameObject restoreSelection)
+    {
+        const int hierarchyWidth = 240;
+        const int hierarchyHeight = 180;
+        var created = new List<GameObject>();
+        try
+        {
+            for (var index = 0; index < 36; index++)
+                created.Add(harness.InitialScene.CreateGameObject($"Scene Pick Filler {index:D2}"));
+            var parent = harness.InitialScene.CreateGameObject("Scene Pick Reveal Parent");
+            created.Add(parent);
+            var target = harness.InitialScene.CreateGameObject("Scene Pick Reveal Child");
+            target.transform.SetParent(parent.transform, false);
+            var renderer = target.AddComponent<SpriteRenderer>();
+            renderer.size = new Vector2(2, 2);
+            renderer.orderInLayer = 100;
+
+            harness.RenderHierarchy(new Event(EventType.Layout), hierarchyWidth, hierarchyHeight);
+            var collapsed = harness.RenderHierarchy(
+                new Event(EventType.Repaint), hierarchyWidth, hierarchyHeight);
+            TestAssert.Require(!collapsed.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                                         command.Content == target.name),
+                "The Scene-picking reveal fixture unexpectedly started expanded.");
+
+            ClickScene(harness, SceneCenter());
+            TestAssert.Require(ReferenceEquals(Selection.activeGameObject, target) &&
+                               ReferenceEquals(harness.SelectedGameObject, target),
+                "Scene picking did not synchronize the selected GameObject to editor Selection.");
+            TestAssert.Require(harness.IsGameObjectExpanded(parent),
+                "Scene picking did not expand the selected GameObject's Hierarchy ancestors.");
+
+            harness.RenderHierarchy(new Event(EventType.Layout), hierarchyWidth, hierarchyHeight);
+            var revealed = harness.RenderHierarchy(
+                new Event(EventType.Repaint), hierarchyWidth, hierarchyHeight);
+            var row = Text(revealed, target.name);
+            TestAssert.Require(harness.HierarchyScrollPosition.y > 0 &&
+                               row.Rect.Y >= row.ClipRect.Y - 0.5f &&
+                               row.Rect.Bottom <= row.ClipRect.Bottom + 0.5f,
+                "Scene picking did not scroll the selected GameObject into the visible Hierarchy viewport.");
+            var inactiveSelection = GpuCanvasColor.FromColor(EditorAppearance.palette.SelectionInactive);
+            TestAssert.Require(revealed.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                                       command.Color == inactiveSelection &&
+                                                       command.Rect.Y <= row.Rect.Y + 0.5f &&
+                                                       command.Rect.Bottom >= row.Rect.Bottom - 0.5f),
+                "The Hierarchy did not render Scene-picked Selection on its corresponding row.");
+        }
+        finally
+        {
+            foreach (var gameObject in created)
+                if (gameObject.scene is { } scene) scene.Destroy(gameObject);
+            harness.SelectGameObject(restoreSelection);
+        }
+    }
+
     private static void VerifyHierarchyControls(
         EditorApplicationHarness harness,
         GameObject target,
@@ -143,17 +200,42 @@ internal static class ScenePickingVisibilityTests
     {
         visibility.Show(target, includeDescendants: false);
         visibility.EnablePicking(target, includeDescendants: false);
+        harness.ExpandGameObject(target);
         harness.RenderHierarchy(new Event(EventType.Layout));
         var commands = harness.RenderHierarchy(new Event(EventType.Repaint));
         var row = Text(commands, target.name);
         var visible = RowImage(commands, row, "Visible.png");
+        var childRow = Text(commands, child.name);
+        var childVisible = RowImage(commands, childRow, "Visible.png");
+        var unlocked = RowImage(commands, row, "Unlock.png");
+        var childUnlocked = RowImage(commands, childRow, "Unlock.png");
+        TestAssert.Require(MathF.Abs(visible.Rect.X - childVisible.Rect.X) < 0.1f &&
+                           MathF.Abs(unlocked.Rect.X - childUnlocked.Rect.X) < 0.1f &&
+                           visible.Rect.X < unlocked.Rect.X && unlocked.Rect.Right <= row.Rect.X,
+            "Hierarchy Scene visibility/picking buttons are not fixed left columns independent of tree depth.");
+
+        const int narrowWidth = 96;
+        harness.RenderHierarchy(new Event(EventType.Layout), narrowWidth);
+        var narrow = harness.RenderHierarchy(new Event(EventType.Repaint), narrowWidth);
+        var narrowRow = Text(narrow, target.name);
+        var narrowChildRow = Text(narrow, child.name);
+        TestAssert.Require(MathF.Abs(RowImage(narrow, narrowRow, "Visible.png").Rect.X -
+                                     RowImage(narrow, narrowChildRow, "Visible.png").Rect.X) < 0.1f &&
+                           MathF.Abs(RowImage(narrow, narrowRow, "Unlock.png").Rect.X -
+                                     RowImage(narrow, narrowChildRow, "Unlock.png").Rect.X) < 0.1f,
+            "Narrow Hierarchy layout hid or indented its fixed Scene state columns.");
+
+        harness.RenderHierarchy(new Event(EventType.Layout));
+        commands = harness.RenderHierarchy(new Event(EventType.Repaint));
+        row = Text(commands, target.name);
+        visible = RowImage(commands, row, "Visible.png");
         ClickHierarchy(harness, Center(visible.Rect));
         TestAssert.Require(visibility.IsHidden(target) && visibility.IsHidden(child),
             "The Hierarchy eye button did not hide its GameObject and existing child hierarchy in Scene view.");
 
         commands = harness.RenderHierarchy(new Event(EventType.Repaint));
         row = Text(commands, target.name);
-        var unlocked = RowImage(commands, row, "Unlock.png");
+        unlocked = RowImage(commands, row, "Unlock.png");
         ClickHierarchy(harness, Center(unlocked.Rect));
         TestAssert.Require(visibility.IsPickingDisabled(target) && visibility.IsPickingDisabled(child),
             "The Hierarchy picking button did not disable picking for its GameObject and existing child hierarchy.");

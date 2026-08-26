@@ -44,7 +44,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: ''
       color: 0.03499999991618096828460693359375,0.0469999997876584529876708984375,0.06599999987520277500152587890625,1
       flipX: false
       flipY: false
@@ -54,8 +53,7 @@ gameObjects:
       runInEditMode: false
       size: 18,10
       sortingLayer: 2
-      sprite: ''
-      useAtlasPivot: true
+      useSpritePivot: true
 - id: 4d2c371e-bd0a-4533-96f4-7458f005e2c9
   name: Lower Field
   active: true
@@ -79,7 +77,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: ''
       color: 0.07499999995343387126922607421875,0.1049999999813735485076904296875,0.13499999977648258209228515625,1
       flipX: false
       flipY: false
@@ -89,8 +86,7 @@ gameObjects:
       runInEditMode: false
       size: 18,3.69999999995343387126922607421875
       sortingLayer: 2
-      sprite: ''
-      useAtlasPivot: true
+      useSpritePivot: true
 - id: 67b0097a-dc1f-43ce-93ed-16589c37c2ee
   name: Left Accent
   active: true
@@ -114,7 +110,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: ''
       color: 0.1099999998696148395538330078125,0.41999999992549419403076171875,0.379999999888241291046142578125,0.23999999999068677425384521484375
       flipX: false
       flipY: false
@@ -124,8 +119,7 @@ gameObjects:
       runInEditMode: false
       size: 2.799999999813735485076904296875,8
       sortingLayer: 2
-      sprite: ''
-      useAtlasPivot: true
+      useSpritePivot: true
 - id: 9302f7f6-f261-442a-9bc8-f00b0169b5fe
   name: Right Accent
   active: true
@@ -149,7 +143,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: ''
       color: 0.8599999998696148395538330078125,0.55999999982304871082305908203125,0.15999999991618096828460693359375,0.19999999995343387126922607421875
       flipX: false
       flipY: false
@@ -159,8 +152,7 @@ gameObjects:
       runInEditMode: false
       size: 2.799999999813735485076904296875,8
       sortingLayer: 2
-      sprite: ''
-      useAtlasPivot: true
+      useSpritePivot: true
 - id: 8f55da12-d071-40a0-8645-28c5942a72f9
   name: Showcase
   active: true
@@ -202,7 +194,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: Assets/Art/Showcase.atlas.yaml
       color: 1,1,1,1
       flipX: false
       flipY: false
@@ -212,8 +203,8 @@ gameObjects:
       runInEditMode: false
       size: 3.25,3.25
       sortingLayer: 4
-      sprite: Brand
-      useAtlasPivot: true
+      sprite: Assets/Art/Sprites/Brand.sprite.yaml
+      useSpritePivot: true
   - id: d10e21c5-e811-44ef-90fe-9c7b170ea38d
     type: Game.ShowcaseMotion
     enabled: true
@@ -246,7 +237,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: Assets/Art/Showcase.atlas.yaml
       color: 1,1,1,1
       flipX: false
       flipY: false
@@ -256,8 +246,8 @@ gameObjects:
       runInEditMode: false
       size: 1.049999999813735485076904296875,1.049999999813735485076904296875
       sortingLayer: 4
-      sprite: Animation
-      useAtlasPivot: true
+      sprite: Assets/Art/Sprites/Animation.sprite.yaml
+      useSpritePivot: true
   - id: d160dec8-0146-477a-a64e-998b6a01effb
     type: Game.ShowcaseMotion
     enabled: true
@@ -290,7 +280,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: Assets/Art/Showcase.atlas.yaml
       color: 1,1,1,1
       flipX: false
       flipY: false
@@ -300,8 +289,8 @@ gameObjects:
       runInEditMode: false
       size: 1.19999999995343387126922607421875,1.19999999995343387126922607421875
       sortingLayer: 4
-      sprite: Physics2D
-      useAtlasPivot: true
+      sprite: Assets/Art/Sprites/Physics2D.sprite.yaml
+      useSpritePivot: true
   - id: 867de2eb-8ac6-4430-bae2-062800861933
     type: Game.ShowcaseMotion
     enabled: true
@@ -334,7 +323,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: Assets/Art/Showcase.atlas.yaml
       color: 1,1,1,1
       flipX: false
       flipY: false
@@ -344,8 +332,8 @@ gameObjects:
       runInEditMode: false
       size: 0.94999999995343387126922607421875,0.94999999995343387126922607421875
       sortingLayer: 4
-      sprite: Navigation2D
-      useAtlasPivot: true
+      sprite: Assets/Art/Sprites/Navigation2D.sprite.yaml
+      useSpritePivot: true
   - id: 8236caa2-b6a5-4658-bec0-2c888f037ee2
     type: Game.ShowcaseMotion
     enabled: true
@@ -378,7 +366,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: Assets/Art/Showcase.atlas.yaml
       color: 1,1,1,1
       flipX: false
       flipY: false
@@ -388,8 +375,8 @@ gameObjects:
       runInEditMode: false
       size: 1.25,1.25
       sortingLayer: 4
-      sprite: Navigation2D
-      useAtlasPivot: true
+      sprite: Assets/Art/Sprites/Navigation2D.sprite.yaml
+      useSpritePivot: true
   - id: 24168131-df7d-4eb4-b80d-75e499f7b0ee
     type: Game.PlayerMover
     enabled: true
@@ -519,7 +506,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: ''
       color: 0.17999999993480741977691650390625,0.71999999997206032276153564453125,0.67999999993480741977691650390625,0.17999999993480741977691650390625
       flipX: false
       flipY: false
@@ -529,8 +515,7 @@ gameObjects:
       runInEditMode: false
       size: 1.19999999995343387126922607421875,8.799999999813735485076904296875
       sortingLayer: 8
-      sprite: ''
-      useAtlasPivot: true
+      useSpritePivot: true
 - id: cdf33a6a-4d5c-40cf-99db-df232a00d342
   name: Foreground Glass Right
   active: true
@@ -554,7 +539,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: ''
       color: 1,0.61999999987892806529998779296875,0.19999999995343387126922607421875,0.15999999991618096828460693359375
       flipX: false
       flipY: false
@@ -564,8 +548,7 @@ gameObjects:
       runInEditMode: false
       size: 1.19999999995343387126922607421875,8.799999999813735485076904296875
       sortingLayer: 8
-      sprite: ''
-      useAtlasPivot: true
+      useSpritePivot: true
 - id: 45ed0c79-9365-4621-b0f4-74e76c3119de
   name: Inset Camera Layer
   active: true
@@ -607,7 +590,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: ''
       color: 0.03999999980442225933074951171875,0.05499999993480741977691650390625,0.07499999995343387126922607421875,1
       flipX: false
       flipY: false
@@ -617,8 +599,7 @@ gameObjects:
       runInEditMode: false
       size: 6.5,5
       sortingLayer: 16
-      sprite: ''
-      useAtlasPivot: true
+      useSpritePivot: true
 - id: a985c0e8-8cd1-40e8-a7a5-ffcbbf408daa
   name: Inset Brand
   active: true
@@ -642,7 +623,6 @@ gameObjects:
     type: BEngine.SpriteRenderer
     enabled: true
     fields:
-      atlas: Assets/Art/Showcase.atlas.yaml
       color: 1,1,1,1
       flipX: false
       flipY: false
@@ -652,8 +632,8 @@ gameObjects:
       runInEditMode: false
       size: 2.19999999995343387126922607421875,2.19999999995343387126922607421875
       sortingLayer: 16
-      sprite: Brand
-      useAtlasPivot: true
+      sprite: Assets/Art/Sprites/Brand.sprite.yaml
+      useSpritePivot: true
   - id: 6ace5840-2b1b-4d3f-a1f4-d6d3bb3f9790
     type: Game.ShowcaseMotion
     enabled: true

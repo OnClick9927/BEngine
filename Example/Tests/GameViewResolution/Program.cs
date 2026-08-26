@@ -1,6 +1,9 @@
 using BEngine.Editor;
+using BEngine.Editor.Rendering;
 using BEngine.Rendering;
 using BEngine.Rendering.Rhi;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace BEngine.ExampleTests.GameViewResolution;
 
@@ -18,10 +21,13 @@ internal static class Program
             VerifyBuiltInsAndFreeAspect();
             VerifyFixedViewportAndScreenSemantics();
             VerifyLogicalRenderSizeIsIndependentFromPreviewViewport();
+            VerifyFrameTiming();
+            VerifyExpandableStatusPresentation();
             VerifyCustomResolutionLifecycle();
             Console.WriteLine(
                 "GAME_VIEW_RESOLUTION_OK|presets,search-menu-data,free-aspect,fixed-letterbox," +
-                "logical-screen-size,logical-render-size,editor-prefs,custom-add-delete");
+                "logical-screen-size,logical-render-size,render-statistics,status-toggle," +
+                "frame-timing,editor-prefs,custom-add-delete");
             return 0;
         }
         catch (Exception exception)
@@ -131,11 +137,99 @@ internal static class Program
             Require(device.FloatUniforms.Contains(("uViewportWidth", 1920f)) &&
                     device.FloatUniforms.Contains(("uViewportHeight", 1080f)),
                 "Camera rendering did not use the selected logical Game View dimensions.");
+            var statistics = renderer.LastRenderStatistics;
+            Require(statistics is
+                    {
+                        CameraCount: 1,
+                        VisibleSubmissionCount: 1,
+                        BatchCount: 1,
+                        DrawCallCount: 3,
+                        VertexCount: 18,
+                        TriangleCount: 6,
+                        TargetWidth: 1920,
+                        TargetHeight: 1080,
+                        HasCompleteDrawStatistics: true
+                    },
+                $"Game rendering did not expose its actual draw statistics: {statistics}.");
         }
         finally
         {
             if (scene.isCreated) scene.Dispose();
         }
+    }
+
+    private static void VerifyFrameTiming()
+    {
+        var timing = new GameViewFrameTiming();
+        timing.RecordSample(double.NaN);
+        timing.RecordSample(-1);
+        Require(!timing.snapshot.HasValue,
+            "Invalid render intervals polluted the Game View frame timing.");
+        timing.RecordSample(1d / 60d);
+        var first = timing.snapshot;
+        Require(first.HasValue && Math.Abs(first.FramesPerSecond - 60) < 0.01 &&
+                Math.Abs(first.FrameTimeMilliseconds - 16.6667) < 0.01,
+            "The Game View did not derive FPS and frame time from the render interval.");
+        timing.RecordSample(1d / 30d);
+        var smoothed = timing.snapshot;
+        Require(smoothed.SampleCount == 2 && smoothed.FramesPerSecond is > 30 and < 60,
+            "Game View frame timing was not smoothed across real render samples.");
+    }
+
+    private static void VerifyExpandableStatusPresentation()
+    {
+        var editorAssembly = typeof(EditorWindow).Assembly;
+        var appType = editorAssembly.GetType("BEngine.Editor.GpuEditorApplication", true)!;
+        var app = RuntimeHelpers.GetUninitializedObject(appType);
+        var windowType = appType.GetNestedType("ImGuiGameWindow", BindingFlags.NonPublic) ??
+                         throw new TypeLoadException("ImGuiGameWindow was not found.");
+        var window = (EditorWindow)(Activator.CreateInstance(windowType,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null, [app], culture: null) ??
+                                    throw new InvalidOperationException("Could not create the Game View."));
+        windowType.GetField("_statusExpanded", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(window, true);
+        windowType.GetField("_renderStatistics", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(window, new SceneRenderStatistics(2, 7, 3, 5, 42, 14, 0,
+                1920, 1080, true));
+        windowType.GetField("_hasRenderStatistics", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(window, true);
+
+        static IReadOnlyList<GpuCanvasCommand> Render(EditorWindow target, int width)
+        {
+            var output = new List<GpuCanvasCommand>();
+            GUI.BeginFrame(new Event(EventType.Repaint), width, 320, output);
+            try { target.OnGUIInternal(); }
+            finally { GUI.EndFrame(); }
+            return output;
+        }
+
+        var commands = Render(window, 480);
+        var text = commands.Where(command => command.Type == GpuCanvasCommandType.Text)
+            .Select(command => command.Content).ToArray();
+        Require(text.Contains("Status", StringComparer.Ordinal) &&
+                text.Contains("Statistics", StringComparer.Ordinal) &&
+                text.Contains("Cameras: 2   Visible: 7", StringComparer.Ordinal) &&
+                text.Contains("Batches: 3   Draw calls: 5", StringComparer.Ordinal) &&
+                text.Contains("Tris: 14   Verts: 42", StringComparer.Ordinal) &&
+                text.Contains("Screen: 1,920 x 1,080", StringComparer.Ordinal),
+            "The expandable Game View Status panel did not render its real graphics metrics.");
+
+        windowType.GetField("_renderStatistics", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(window, new SceneRenderStatistics(2, 7, 3, 0, 0, 0, 0,
+                1920, 1080, false));
+        var narrow = Render(window, 160);
+        var narrowText = narrow.Where(command => command.Type == GpuCanvasCommandType.Text)
+            .Select(command => command.Content).ToArray();
+        Require(narrowText.Contains("Status", StringComparer.Ordinal) &&
+                narrowText.Contains("Draw: unavailable", StringComparer.Ordinal) &&
+                narrowText.Contains("Tris: unavailable", StringComparer.Ordinal),
+            "A Game View without device counters displayed invented graphics statistics.");
+        Require(narrow.All(command => command.Rect.X >= -0.01f &&
+                                      command.Rect.Right <= 160.01f &&
+                                      command.ClipRect.X >= -0.01f &&
+                                      command.ClipRect.Right <= 160.01f),
+            "The Status toolbar control or overlay escaped a narrow Game View.");
     }
 
     private static string FindRepositoryRoot()
@@ -152,7 +246,7 @@ internal static class Program
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private sealed class RecordingGraphicsDevice : IGraphicsDevice
+    private sealed class RecordingGraphicsDevice : IGraphicsDevice, IGraphicsDeviceStatistics
     {
         public GraphicsBackend Backend => GraphicsBackend.OpenGL;
         public GraphicsDeviceCapabilities Capabilities { get; } = new(
@@ -163,6 +257,7 @@ internal static class Program
             [GraphicsShaderLanguage.Glsl]);
         public List<GraphicsRect> Viewports { get; } = [];
         public List<(string Name, float Value)> FloatUniforms { get; } = [];
+        public GraphicsDrawStatistics DrawStatistics { get; private set; }
         public IGraphicsProgram CreateProgram(GraphicsShaderProgramDescription description) =>
             new RecordingProgram(this, description.Label);
         public IGraphicsMesh CreateMesh(GraphicsMeshDescription description) =>
@@ -180,10 +275,20 @@ internal static class Program
         public void SetBlendMode(GraphicsBlendMode mode) { }
         public void SetRasterizerState(GraphicsRasterizerState state) { }
         public void BindTexture(int slot, IGraphicsTexture2D texture) { }
-        public void Draw(IGraphicsMesh mesh) { }
-        public void Draw(IGraphicsMesh mesh, int vertexCount, int firstVertex = 0) { }
-        public void Draw(int vertexCount, GraphicsPrimitiveTopology topology, int firstVertex = 0) { }
+        public void Draw(IGraphicsMesh mesh) => RecordDraw(mesh.VertexCount, mesh.Topology);
+        public void Draw(IGraphicsMesh mesh, int vertexCount, int firstVertex = 0) =>
+            RecordDraw(vertexCount, mesh.Topology);
+        public void Draw(int vertexCount, GraphicsPrimitiveTopology topology, int firstVertex = 0) =>
+            RecordDraw(vertexCount, topology);
         public void Dispose() { }
+        private void RecordDraw(int vertexCount, GraphicsPrimitiveTopology topology) =>
+            DrawStatistics = new GraphicsDrawStatistics(
+                DrawStatistics.DrawCallCount + 1,
+                DrawStatistics.VertexCount + vertexCount,
+                DrawStatistics.TriangleCount +
+                (topology == GraphicsPrimitiveTopology.TriangleList ? vertexCount / 3 : 0),
+                DrawStatistics.LineCount +
+                (topology == GraphicsPrimitiveTopology.LineList ? vertexCount / 2 : 0));
     }
 
     private sealed class RecordingProgram(RecordingGraphicsDevice device, string label) : IGraphicsProgram

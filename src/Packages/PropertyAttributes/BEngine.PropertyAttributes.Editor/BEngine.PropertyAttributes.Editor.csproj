@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>BEngine.PropertyAttributes.Editor</RootNamespace>
+    <AssemblyName>BEngine.PropertyAttributes.Editor</AssemblyName>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../BEngine.PropertyAttributes/BEngine.PropertyAttributes.csproj" />
+  </ItemGroup>
+</Project>

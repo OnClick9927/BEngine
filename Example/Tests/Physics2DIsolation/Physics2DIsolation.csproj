@@ -6,6 +6,6 @@
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../src/Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
+    <ProjectReference Include="../../../src/Packages/Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
   </ItemGroup>
 </Project>

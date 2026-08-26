@@ -8,7 +8,8 @@ using NVector4 = System.Numerics.Vector4;
 
 namespace BEngine.Rendering.Rhi.Vulkan;
 
-public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphicsResourceRetirement
+public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphicsResourceRetirement,
+    IGraphicsDeviceStatistics
 {
     private const GraphicsDeviceFeatures SupportedFeatures =
         GraphicsDeviceFeatures.Rasterization |
@@ -34,6 +35,7 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
     private GraphicsRect _viewport;
     private int _frameWidth;
     private int _frameHeight;
+    private GraphicsDrawStatistics _drawStatistics;
     private bool _frameOpen;
     private bool _frameSubmitted;
     private bool _disposed;
@@ -46,6 +48,7 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
     {
         get { return _capabilities; }
     }
+    public GraphicsDrawStatistics DrawStatistics => _drawStatistics;
 
     internal Vd.GraphicsDevice NativeDevice => _device;
     internal ResourceFactory Factory => _factory;
@@ -220,6 +223,7 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
         program.Prepare(vkMesh, _boundTexture);
         _commands.SetVertexBuffer(0, vkMesh.Buffer);
         _commands.Draw((uint)vertexCount, 1, (uint)firstVertex, 0);
+        _drawStatistics = _drawStatistics.AddDraw(vertexCount, vkMesh.TopologyUnchecked);
     }
 
     public void Draw(int vertexCount, GraphicsPrimitiveTopology topology, int firstVertex = 0)
@@ -413,7 +417,7 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
         {
             get { return _description; }
         }
-        public Texture Texture { get; }
+        public Vd.Texture Texture { get; }
         public TextureView View { get; }
         public Sampler Sampler { get; }
 

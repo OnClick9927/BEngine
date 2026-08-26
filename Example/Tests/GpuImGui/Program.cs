@@ -18,13 +18,14 @@ internal static class Program
             VerifyEventApi();
             VerifyGpuCommandsAndTextEditing();
             VerifyNumericEditingBuffers();
+            VerifyNativeMouseMoveClassification();
             VerifyWindowCoordinatesAndScrolling();
             VerifyEditorWindowRoutingAndDockTabs();
             VerifyProjectTreeVisualLayout();
             VerifyIconToolbarLanguage();
             VerifyPrefabWorkflow();
             VerifyAssemblyBoundary();
-            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,double-click,numeric-edit-buffer,window-local-input,scroll,dock-tabs,focus,mouse-over,border,project-tree-row-clip,assets-packages-separator,icon-toolbar,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
+            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,double-click,numeric-edit-buffer,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,project-tree-row-clip,assets-packages-separator,icon-toolbar,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
             return 0;
         }
         catch (Exception exception)
@@ -240,6 +241,131 @@ internal static class Program
         finally { GUI.EndFrame(); }
         Require(scroll.y == (Fix64)24 && wheel.type == EventType.Used,
             "GPU scroll view did not consume and apply the wheel event.");
+
+        scroll = Vector2.zero;
+        void DrawWindowScroll(Event evt)
+        {
+            GUI.BeginFrame(evt, 500, 300, []);
+            try
+            {
+                using (GUI.BeginWindow(new Rect(100, 50, 200, 120)))
+                {
+                    scroll = GUI.BeginScrollView(new Rect(10, 10, 120, 60), scroll,
+                        new Rect(0, 0, 109, 300));
+                    GUI.EndScrollView();
+                }
+            }
+            finally { GUI.EndFrame(); }
+        }
+
+        var thumbDown = new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(225, 72), button = 0
+        };
+        DrawWindowScroll(thumbDown);
+        Require(GUIUtility.hotControl != 0 && thumbDown.type == EventType.Used,
+            "Vertical scrollbar thumb did not capture the mouse on press.");
+        var thumbDrag = new Event(EventType.MouseDrag)
+        {
+            mousePosition = new Vector2(225, 102), delta = new Vector2(0, 30), button = 0
+        };
+        DrawWindowScroll(thumbDrag);
+        Require(Fix64.Abs(scroll.y - 200) <= Fix64.Parse("0.001") && thumbDrag.type == EventType.Used,
+            $"Vertical scrollbar drag produced {scroll.y} instead of 200 in window-local coordinates.");
+        var thumbUp = new Event(EventType.MouseUp)
+        {
+            mousePosition = new Vector2(225, 102), button = 0
+        };
+        DrawWindowScroll(thumbUp);
+        Require(GUIUtility.hotControl == 0 && thumbUp.type == EventType.Used,
+            "Vertical scrollbar thumb did not release its mouse capture.");
+
+        scroll = Vector2.zero;
+        DrawWindowScroll(new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(225, 72), button = 0
+        });
+        Require(GUIUtility.hotControl != 0,
+            "Vertical scrollbar did not capture before the disappearing-range test.");
+        var rangeDisappearedUp = new Event(EventType.MouseUp)
+        {
+            mousePosition = new Vector2(225, 72), button = 0
+        };
+        GUI.BeginFrame(rangeDisappearedUp, 500, 300, []);
+        try
+        {
+            using (GUI.BeginWindow(new Rect(100, 50, 200, 120)))
+            {
+                scroll = GUI.BeginScrollView(new Rect(10, 10, 120, 60), scroll,
+                    new Rect(0, 0, 109, 49));
+                GUI.EndScrollView();
+            }
+        }
+        finally { GUI.EndFrame(); }
+        Require(GUIUtility.hotControl == 0 && rangeDisappearedUp.type == EventType.Used,
+            "A scrollbar whose range disappeared did not release hotControl on MouseUp.");
+
+        scroll = Vector2.zero;
+        DrawWindowScroll(new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(225, 72), button = 0
+        });
+        Require(GUIUtility.hotControl != 0,
+            "Vertical scrollbar did not capture before the disabled-control test.");
+        var disabledUp = new Event(EventType.MouseUp)
+        {
+            mousePosition = new Vector2(225, 72), button = 0
+        };
+        GUI.enabled = false;
+        try { DrawWindowScroll(disabledUp); }
+        finally { GUI.enabled = true; }
+        Require(GUIUtility.hotControl == 0 && disabledUp.type == EventType.Used,
+            "A disabled scrollbar did not release hotControl on MouseUp.");
+
+        scroll = Vector2.zero;
+        void DrawHorizontalScroll(Event evt)
+        {
+            GUI.BeginFrame(evt, 500, 300, []);
+            try
+            {
+                using (GUI.BeginWindow(new Rect(100, 50, 200, 120)))
+                {
+                    scroll = GUI.BeginScrollView(new Rect(10, 10, 120, 60), scroll,
+                        new Rect(0, 0, 300, 49));
+                    GUI.EndScrollView();
+                }
+            }
+            finally { GUI.EndFrame(); }
+        }
+
+        DrawHorizontalScroll(new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(130, 115), button = 0
+        });
+        DrawHorizontalScroll(new Event(EventType.MouseDrag)
+        {
+            mousePosition = new Vector2(166, 115), delta = new Vector2(36, 0), button = 0
+        });
+        Require(Fix64.Abs(scroll.x - 90) <= Fix64.Parse("0.001"),
+            $"Horizontal scrollbar drag produced {scroll.x} instead of 90.");
+        DrawHorizontalScroll(new Event(EventType.MouseUp)
+        {
+            mousePosition = new Vector2(166, 115), button = 0
+        });
+        Require(GUIUtility.hotControl == 0,
+            "Horizontal scrollbar thumb did not release its mouse capture.");
+    }
+
+    private static void VerifyNativeMouseMoveClassification()
+    {
+        GUIUtility.hotControl = 0;
+        Require(ImGuiNativeWindow.ResolveMouseMoveEventType(anyMouseButtonPressed: true) ==
+                EventType.MouseDrag,
+            "A move queued immediately after MouseDown was not classified as MouseDrag.");
+        GUIUtility.hotControl = 123;
+        Require(ImGuiNativeWindow.ResolveMouseMoveEventType(anyMouseButtonPressed: false) ==
+                    EventType.MouseMove && GUIUtility.hotControl == 0,
+            "Native mouse move routing did not clear stale capture after button release.");
     }
 
     private static void VerifyEditorWindowRoutingAndDockTabs()

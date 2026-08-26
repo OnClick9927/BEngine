@@ -6,20 +6,26 @@ internal sealed class ImGuiAdvancedDropdown
     private const int MaximumVisibleRows = 14;
     private static readonly int ControlScope = SearchControlName.GetHashCode(StringComparison.Ordinal);
     private readonly List<AdvancedItem> _items = [];
-    private readonly List<AdvancedItem> _filtered = [];
+    private readonly List<AdvancedRow> _filtered = [];
+    private readonly AdvancedNode _root = new(0, string.Empty, string.Empty, null);
+    private AdvancedNode _currentNode;
     private Vector2 _position;
     private Rect? _anchor;
     private Vector2 _scrollPosition;
     private string _search = string.Empty;
     private int _selectedIndex = -1;
     private int _searchControlId;
+    private int _nextNodeId;
     private bool _focusSearch;
     private bool _scrollToSelection;
     private bool _isOpen;
 
+    public ImGuiAdvancedDropdown() => _currentNode = _root;
+
     public bool isOpen => _isOpen;
 
     internal string search => _search;
+    internal string currentPath => _currentNode.FullPath;
     internal IReadOnlyList<string> visiblePaths => _filtered.Select(static item => item.Path).ToArray();
 
     public void Open(IEnumerable<GenericMenuItem> items, Vector2 position, Rect? anchor = null)
@@ -27,13 +33,18 @@ internal sealed class ImGuiAdvancedDropdown
         ArgumentNullException.ThrowIfNull(items);
         if (isOpen || _searchControlId != 0) Close();
         _items.Clear();
+        _root.Clear();
+        _currentNode = _root;
+        _nextNodeId = 0;
         var index = 0;
         foreach (var item in items)
         {
             if (item.Separator) continue;
             var path = NormalizePath(item.Path);
             if (path.Length == 0) continue;
-            _items.Add(new AdvancedItem(index++, path, item.On, item.Enabled, item.Action));
+            var advancedItem = new AdvancedItem(index++, path, item.On, item.Enabled, item.Action);
+            _items.Add(advancedItem);
+            AddToHierarchy(advancedItem);
         }
 
         _position = position;
@@ -53,6 +64,8 @@ internal sealed class ImGuiAdvancedDropdown
         _isOpen = false;
         _items.Clear();
         _filtered.Clear();
+        _root.Clear();
+        _currentNode = _root;
         _anchor = null;
         _search = string.Empty;
         _scrollPosition = Vector2.zero;
@@ -82,17 +95,20 @@ internal sealed class ImGuiAdvancedDropdown
     {
         var rowHeight = Fix64.Max(20, EditorStyles.menuItem.fixedHeight);
         var searchHeight = Fix64.Max(22, EditorStyles.toolbarSearchField.fixedHeight + 4);
+        var headerHeight = rowHeight;
         var width = CalculateWidth();
-        var availableHeight = Fix64.Max(searchHeight + rowHeight + 12,
+        var availableHeight = Fix64.Max(searchHeight + headerHeight + rowHeight + 15,
             GUIUtility.currentViewHeight - 4);
-        var desiredRows = Math.Clamp(_items.Count, 1, MaximumVisibleRows);
+        var desiredRows = Math.Clamp(_filtered.Count, 1, MaximumVisibleRows);
         var listHeight = Fix64.Min(rowHeight * desiredRows,
-            Fix64.Max(rowHeight, availableHeight - searchHeight - 12));
-        var height = searchHeight + listHeight + 12;
+            Fix64.Max(rowHeight, availableHeight - searchHeight - headerHeight - 15));
+        var height = searchHeight + headerHeight + listHeight + 15;
         var menuRect = Place(width, height);
         var searchRect = new Rect(menuRect.x + 6, menuRect.y + 6,
             Fix64.Max(1, menuRect.width - 12), searchHeight - 2);
-        var listRect = new Rect(menuRect.x + 3, searchRect.yMax + 3,
+        var headerRect = new Rect(menuRect.x + 3, searchRect.yMax + 3,
+            Fix64.Max(1, menuRect.width - 6), headerHeight);
+        var listRect = new Rect(menuRect.x + 3, headerRect.yMax + 1,
             Fix64.Max(1, menuRect.width - 6), listHeight);
 
         var evt = Event.current;
@@ -133,6 +149,7 @@ internal sealed class ImGuiAdvancedDropdown
                 "Search...", EditorStyles.miniLabel);
         }
 
+        DrawHierarchyHeader(headerRect);
         if (_scrollToSelection)
         {
             EnsureSelectionVisible(rowHeight, listRect.height);
@@ -173,13 +190,52 @@ internal sealed class ImGuiAdvancedDropdown
                 EnsureSelectionVisible(rowHeight, listHeight);
                 evt.Use();
                 return false;
+            case KeyCode.LeftArrow when _search.Length == 0 && _currentNode.Parent is not null:
+                NavigateBack();
+                evt.Use();
+                return false;
+            case KeyCode.Backspace when _search.Length == 0 && _currentNode.Parent is not null:
+                NavigateBack();
+                evt.Use();
+                return false;
+            case KeyCode.RightArrow when SelectedRow is { IsGroup: true }:
+                EnterSelectedGroup();
+                evt.Use();
+                return false;
             case KeyCode.Return:
                 evt.Use();
-                InvokeSelected();
+                ActivateSelected();
                 return true;
             default:
                 return false;
         }
+    }
+
+    private void DrawHierarchyHeader(Rect rect)
+    {
+        if (Event.current.type == EventType.Repaint)
+            GUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1),
+                EditorAppearance.palette.Border);
+
+        if (_search.Length > 0)
+        {
+            GUI.Label(new Rect(rect.x + 9, rect.y, Fix64.Max(1, rect.width - 18), rect.height),
+                "Search Results", EditorStyles.boldLabel);
+            return;
+        }
+
+        if (_currentNode.Parent is null)
+        {
+            GUI.Label(new Rect(rect.x + 9, rect.y, Fix64.Max(1, rect.width - 18), rect.height),
+                "All", EditorStyles.boldLabel);
+            return;
+        }
+
+        var clicked = GUI.Button(rect, GUIContent.none, EditorStyles.menuItem);
+        GUI.Label(new Rect(rect.x + 7, rect.y, 18, rect.height), "<", EditorStyles.boldLabel);
+        GUI.Label(new Rect(rect.x + 25, rect.y, Fix64.Max(1, rect.width - 32), rect.height),
+            _currentNode.FullPath, EditorStyles.boldLabel);
+        if (clicked) NavigateBack();
     }
 
     private void DrawItems(Rect listRect, Fix64 rowHeight)
@@ -214,13 +270,17 @@ internal sealed class ImGuiAdvancedDropdown
                 if (item.On)
                     GUI.Label(new Rect(row.x + 5, row.y, 16, row.height),
                         new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Check, "Checked"));
-                GUI.Label(new Rect(row.x + 27, row.y, Fix64.Max(0, row.width - 34), row.height),
-                    item.Path, style);
+                var rightPadding = item.IsGroup ? 51 : 34;
+                GUI.Label(new Rect(row.x + 27, row.y,
+                        Fix64.Max(0, row.width - rightPadding), row.height),
+                    item.Label, style);
+                if (item.IsGroup)
+                    GUI.Label(new Rect(row.xMax - 17, row.y, 14, row.height), ">", style);
                 GUI.enabled = previousEnabled;
 
                 if (!clicked || !item.Enabled) continue;
                 _selectedIndex = index;
-                InvokeSelected();
+                ActivateSelected();
                 return;
             }
         }
@@ -230,15 +290,46 @@ internal sealed class ImGuiAdvancedDropdown
         }
     }
 
-    private void InvokeSelected()
+    private AdvancedRow? SelectedRow => _selectedIndex >= 0 && _selectedIndex < _filtered.Count
+        ? _filtered[_selectedIndex]
+        : null;
+
+    private void ActivateSelected()
     {
-        if (_selectedIndex < 0 || _selectedIndex >= _filtered.Count) return;
-        var item = _filtered[_selectedIndex];
-        if (!item.Enabled || item.Action is null) return;
+        if (SelectedRow is not { Enabled: true } item) return;
+        if (item.IsGroup)
+        {
+            EnterGroup(item);
+            return;
+        }
+
+        if (item.Action is null) return;
         var action = item.Action;
         var path = item.Path;
         Close();
         EditorFeatureGuard.Invoke($"AdvancedDropdown {path}", action);
+    }
+
+    private void EnterSelectedGroup()
+    {
+        if (SelectedRow is { IsGroup: true, Enabled: true } item)
+            EnterGroup(item);
+    }
+
+    private void EnterGroup(AdvancedRow item)
+    {
+        if (item.Node is null) return;
+        _currentNode = item.Node;
+        _focusSearch = true;
+        Refilter();
+    }
+
+    private void NavigateBack()
+    {
+        if (_currentNode.Parent is null) return;
+        _currentNode = _currentNode.Parent;
+        _focusSearch = true;
+        Refilter();
     }
 
     private void MoveSelection(int delta)
@@ -277,25 +368,49 @@ internal sealed class ImGuiAdvancedDropdown
 
     private void Refilter()
     {
-        var previousId = _selectedIndex >= 0 && _selectedIndex < _filtered.Count
-            ? _filtered[_selectedIndex].Id
-            : -1;
+        var previousId = SelectedRow?.SelectionId ?? int.MinValue;
         _filtered.Clear();
-        foreach (var item in _items)
+        if (string.IsNullOrWhiteSpace(_search))
         {
-            if (MatchesSearch(item.Path, _search))
-                _filtered.Add(item);
+            foreach (var node in _currentNode.Children)
+                _filtered.Add(AdvancedRow.FromNode(node));
+        }
+        else
+        {
+            foreach (var item in _items)
+            {
+                if (MatchesSearch(item.Path, _search))
+                    _filtered.Add(AdvancedRow.FromSearch(item));
+            }
         }
 
-        _selectedIndex = previousId < 0
+        _selectedIndex = previousId == int.MinValue
             ? -1
-            : _filtered.FindIndex(item => item.Id == previousId && item.Enabled);
+            : _filtered.FindIndex(item => item.SelectionId == previousId && item.Enabled);
         if (_selectedIndex < 0)
             _selectedIndex = _filtered.FindIndex(static item => item.Enabled && item.On);
         if (_selectedIndex < 0)
             _selectedIndex = _filtered.FindIndex(static item => item.Enabled);
         _scrollPosition = Vector2.zero;
         _scrollToSelection = true;
+    }
+
+    private void AddToHierarchy(AdvancedItem item)
+    {
+        var level = _root;
+        foreach (var segment in SplitPath(item.Path))
+        {
+            var child = level.Children.FirstOrDefault(candidate =>
+                candidate.Name.Equals(segment, StringComparison.Ordinal));
+            if (child is null)
+            {
+                var path = level.Parent is null ? segment : $"{level.FullPath}/{segment}";
+                child = new AdvancedNode(++_nextNodeId, segment, path, level);
+                level.Children.Add(child);
+            }
+            level = child;
+        }
+        level.Item = item;
     }
 
     private Rect Place(Fix64 width, Fix64 height)
@@ -332,8 +447,10 @@ internal sealed class ImGuiAdvancedDropdown
         GUI.DrawRect(new Rect(rect.xMax - 1, rect.y, 1, rect.height), EditorAppearance.palette.Border);
     }
 
-    private static string NormalizePath(string path) =>
-        (path ?? string.Empty).Replace('\\', '/').Trim().Trim('/');
+    private static string NormalizePath(string path) => string.Join('/', SplitPath(path));
+
+    private static string[] SplitPath(string path) => (path ?? string.Empty).Replace('\\', '/').Split('/',
+        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     private static bool MatchesSearch(string path, string search)
     {
@@ -342,5 +459,55 @@ internal sealed class ImGuiAdvancedDropdown
             .All(term => path.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
-    private sealed record AdvancedItem(int Id, string Path, bool On, bool Enabled, Action? Action);
+    private sealed record AdvancedItem(
+        int Id,
+        string Path,
+        bool On,
+        bool Enabled,
+        Action? Action);
+
+    private sealed class AdvancedNode(
+        int id,
+        string name,
+        string fullPath,
+        AdvancedNode? parent)
+    {
+        public int Id { get; } = id;
+        public string Name { get; } = name;
+        public string FullPath { get; } = fullPath;
+        public AdvancedNode? Parent { get; } = parent;
+        public List<AdvancedNode> Children { get; } = [];
+        public AdvancedItem? Item { get; set; }
+        public bool IsEnabled => Children.Count > 0
+            ? Children.Any(static child => child.IsEnabled)
+            : Item is { Enabled: true };
+
+        public void Clear()
+        {
+            Children.Clear();
+            Item = null;
+        }
+    }
+
+    private sealed record AdvancedRow(
+        int SelectionId,
+        string Label,
+        string Path,
+        bool On,
+        bool Enabled,
+        Action? Action,
+        AdvancedNode? Node,
+        bool IsGroup)
+    {
+        public static AdvancedRow FromNode(AdvancedNode node)
+        {
+            var item = node.Item;
+            var isGroup = node.Children.Count > 0;
+            return new AdvancedRow(-(node.Id + 1), node.Name, node.FullPath,
+                item?.On ?? false, node.IsEnabled, isGroup ? null : item?.Action, node, isGroup);
+        }
+
+        public static AdvancedRow FromSearch(AdvancedItem item) => new(item.Id, item.Path,
+            item.Path, item.On, item.Enabled, item.Action, null, false);
+    }
 }

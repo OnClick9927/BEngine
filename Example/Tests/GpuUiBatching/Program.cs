@@ -11,7 +11,7 @@ internal static class Program
     {
         var repository = FindRepositoryRoot();
         Resources.RegisterResourceRoot(Path.Combine(repository, "src", "Core"));
-        Resources.RegisterResourceRoot(Path.Combine(repository, "src", "UIElements"));
+        Resources.RegisterResourceRoot(Path.Combine(repository, "src", "Packages", "UIElements"));
         using var device = new RecordingGraphicsDevice();
         using var renderer = new UIElementsRenderer(device, new TextResources());
         var root = new VisualElement();

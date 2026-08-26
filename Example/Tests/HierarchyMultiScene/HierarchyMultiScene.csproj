@@ -9,11 +9,11 @@
   <ItemGroup>
     <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
     <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
-    <ProjectReference Include="../../../src/Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
-    <ProjectReference Include="../../../src/Physics2D/BEngine.Physics2D.Editor/BEngine.Physics2D.Editor.csproj" />
-    <ProjectReference Include="../../../src/Navigation2D/BEngine.Navigation2D/BEngine.Navigation2D.csproj" />
-    <ProjectReference Include="../../../src/Navigation2D/BEngine.Navigation2D.Editor/BEngine.Navigation2D.Editor.csproj" />
-    <ProjectReference Include="../../../src/TiledMap/BEngine.TiledMap/BEngine.TiledMap.csproj" />
-    <ProjectReference Include="../../../src/TiledMap/BEngine.TiledMap.Editor/BEngine.TiledMap.Editor.csproj" />
+    <ProjectReference Include="../../../src/Packages/Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
+    <ProjectReference Include="../../../src/Packages/Physics2D/BEngine.Physics2D.Editor/BEngine.Physics2D.Editor.csproj" />
+    <ProjectReference Include="../../../src/Packages/Navigation2D/BEngine.Navigation2D/BEngine.Navigation2D.csproj" />
+    <ProjectReference Include="../../../src/Packages/Navigation2D/BEngine.Navigation2D.Editor/BEngine.Navigation2D.Editor.csproj" />
+    <ProjectReference Include="../../../src/Packages/TiledMap/BEngine.TiledMap/BEngine.TiledMap.csproj" />
+    <ProjectReference Include="../../../src/Packages/TiledMap/BEngine.TiledMap.Editor/BEngine.TiledMap.Editor.csproj" />
   </ItemGroup>
 </Project>

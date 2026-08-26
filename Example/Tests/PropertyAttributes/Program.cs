@@ -46,7 +46,7 @@ internal static class Program
     private static void VerifyPackageDefinition()
     {
         var repositoryRoot = FindRepositoryRoot();
-        var path = Path.Combine(repositoryRoot, "src", "PropertyAttributes", "package.yaml");
+        var path = Path.Combine(repositoryRoot, "src", "Packages", "PropertyAttributes", "package.yaml");
         var definition = PackageDefinitionLoader.Load(path);
         Assert(definition.Id == "com.bengine.property-attributes", "The package id is invalid.");
         Assert(definition.Runtime?.Assembly == "BEngine.PropertyAttributes", "The runtime assembly is not registered.");
@@ -125,7 +125,7 @@ internal static class Program
     private static void RegisterEditorResources()
     {
         var root = Directory.GetCurrentDirectory();
-        var packageRoot = Path.Combine(root, "src", "PropertyAttributes");
+        var packageRoot = Path.Combine(root, "src", "Packages", "PropertyAttributes");
         if (Directory.Exists(packageRoot)) EditorResources.RegisterResourceRoot(packageRoot);
     }
 

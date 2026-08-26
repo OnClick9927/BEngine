@@ -16,6 +16,7 @@ public static class PlayerServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         var workspace = ProjectWorkspace.Open(Path.GetFullPath(projectPath));
+        PlayerAssetEnvironment.Initialize(workspace);
         var projectSettings = ProjectRuntimeSettings.LoadAndApply(workspace);
         var assetBundleSettingsPath = Path.Combine(
             workspace.ProjectSettingsPath, AssetBundleSettingsDocument.FileName);

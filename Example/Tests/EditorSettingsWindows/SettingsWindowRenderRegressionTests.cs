@@ -41,7 +41,7 @@ internal static class SettingsWindowRenderRegressionTests
             markers.AddRange(["preferences-render", "selection", "search", "navigation-scroll",
                 "content-scroll", "narrow", "multi-frame", "provider-fault", "preferences-persist"]);
             VerifyProjectSettingsWindow(projectSettingsPath);
-            markers.AddRange(["project-render", "tag-layer-tabs", "apply-persist"]);
+            markers.AddRange(["project-render", "tag-layer-tabs", "layers-scrollbar-drag", "apply-persist"]);
             return markers;
         }
         finally
@@ -153,22 +153,101 @@ internal static class SettingsWindowRenderRegressionTests
 
     private static void VerifyTagLayerTabs(ProjectSettingsWindow window)
     {
+        TagLayerSettingsProvider.Open(TagLayerSettingsPage.Tags);
         Select(window, "Project/Tags and Layers");
         var tags = Render(window, WideWidth, WideHeight);
         Require(HasVisibleText(tags, "Tags") && HasVisibleText(tags, "Layers") &&
-                HasVisibleText(tags, "Untagged") && HasVisibleText(tags, "Add Tag"),
-            "The unified Tags and Layers provider did not render its Tags page and both tabs.");
+                HasVisibleText(tags, "Untagged") && HasVisibleText(tags, "Add Tag") &&
+                HasActiveTabIndicator(tags, "Tags") && !HasActiveTabIndicator(tags, "Layers") &&
+                !HasVisibleText(tags, "World: 2^1 - 2^58    UI: 2^59 - 2^63"),
+            "The Tags tab did not render its exclusive content or stable selected indicator.");
 
         ClickText(window, WideWidth, WideHeight, tags, "Layers");
         var layers = Render(window, WideWidth, WideHeight);
         Require(HasVisibleText(layers, "Tags") && HasVisibleText(layers, "Layers") &&
                 HasVisibleText(layers, "World: 2^1 - 2^58    UI: 2^59 - 2^63") &&
-                HasVisibleText(layers, "2^1"),
-            "Selecting the Layers tab did not render the layer editor.");
+                HasVisibleText(layers, "2^1") && HasActiveTabIndicator(layers, "Layers") &&
+                !HasActiveTabIndicator(layers, "Tags") &&
+                !HasVisibleText(layers, "Add Tag"),
+            "The Layers tab did not render its exclusive content or stable selected indicator.");
 
         ClickText(window, WideWidth, WideHeight, layers, "Tags");
-        Require(HasVisibleText(Render(window, WideWidth, WideHeight), "Add Tag"),
-            "Selecting the Tags tab did not restore the tag editor.");
+        var restoredTags = Render(window, WideWidth, WideHeight);
+        Require(HasVisibleText(restoredTags, "Add Tag") &&
+                HasActiveTabIndicator(restoredTags, "Tags") &&
+                !HasActiveTabIndicator(restoredTags, "Layers"),
+            "Returning to the Tags tab did not restore its content and selected indicator.");
+
+        ClickText(window, WideWidth, WideHeight, restoredTags, "Layers");
+        VerifyLayersScrollbarDrag(window, Render(window, WideWidth, WideHeight));
+    }
+
+    private static void VerifyLayersScrollbarDrag(
+        ProjectSettingsWindow window,
+        IReadOnlyList<GpuCanvasCommand> initial)
+    {
+        Require(!HasVisibleText(initial, "2^63"),
+            "Layers fixture unexpectedly exposed its last row before scrollbar dragging.");
+        var footerBefore = FindVisibleText(initial, "Revert");
+        var trackColor = GpuCanvasColor.FromColor(EditorAppearance.palette.ScrollTrack);
+        var thumbColor = GpuCanvasColor.FromColor(EditorAppearance.palette.ScrollThumb);
+        var hoverColor = GpuCanvasColor.FromColor(EditorAppearance.palette.ScrollThumbHover);
+        var track = initial.Where(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                             command.Color == trackColor &&
+                                             Math.Abs(command.Rect.Width - 9) < 0.01f &&
+                                             command.Rect.X > WideWidth / 2f &&
+                                             command.Rect.Height > 100)
+            .OrderByDescending(command => command.Rect.X)
+            .FirstOrDefault();
+        Require(track.Rect.Width > 0,
+            "Layers provider did not render its right-side vertical scrollbar track.");
+        var thumb = initial.FirstOrDefault(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                                      (command.Color == thumbColor ||
+                                                       command.Color == hoverColor) &&
+                                                      Math.Abs(command.Rect.Width - 5) < 0.01f &&
+                                                      Math.Abs(command.Rect.X - track.Rect.X - 2) < 0.01f &&
+                                                      command.Rect.Y >= track.Rect.Y &&
+                                                      command.Rect.Bottom <= track.Rect.Bottom);
+        Require(thumb.Rect.Width > 0,
+            "Layers provider did not render a draggable vertical scrollbar thumb.");
+
+        var start = Center(thumb.Rect);
+        var travel = track.Rect.Height - thumb.Rect.Height;
+        var down = new Event(EventType.MouseDown)
+        {
+            mousePosition = start,
+            button = 0,
+            clickCount = 1
+        };
+        Dispatch(window, WideWidth, WideHeight, down, []);
+        Require(down.type == EventType.Used && GUIUtility.hotControl != 0,
+            "Layers scrollbar thumb did not capture the mouse.");
+
+        var end = new Vector2(start.x, start.y + (Fix64)travel);
+        var drag = new Event(EventType.MouseDrag)
+        {
+            mousePosition = end,
+            delta = new Vector2(0, (Fix64)travel),
+            button = 0
+        };
+        Dispatch(window, WideWidth, WideHeight, drag, []);
+        Require(drag.type == EventType.Used,
+            "Layers scrollbar thumb did not consume its drag event.");
+        var up = new Event(EventType.MouseUp)
+        {
+            mousePosition = end,
+            button = 0
+        };
+        Dispatch(window, WideWidth, WideHeight, up, []);
+        Require(up.type == EventType.Used && GUIUtility.hotControl == 0,
+            "Layers scrollbar thumb did not release hotControl on MouseUp.");
+
+        var scrolled = Render(window, WideWidth, WideHeight);
+        Require(HasVisibleText(scrolled, "2^63"),
+            "Dragging the Layers scrollbar to the bottom did not reveal layer 2^63.");
+        var footerAfter = FindVisibleText(scrolled, "Revert");
+        Require(Math.Abs(footerAfter.Rect.Y - footerBefore.Rect.Y) < 0.01f,
+            "Layers footer moved with the scrollable provider content.");
     }
 
     private static void VerifyContentScroll(
@@ -453,6 +532,22 @@ internal static class SettingsWindowRenderRegressionTests
     private static bool HasVisibleText(IReadOnlyList<GpuCanvasCommand> commands, string text) =>
         commands.Any(command => command.Type == GpuCanvasCommandType.Text && command.Content == text &&
                                 IsVisible(command));
+
+    private static bool HasActiveTabIndicator(
+        IReadOnlyList<GpuCanvasCommand> commands,
+        string tabLabel)
+    {
+        var tab = FindVisibleText(commands, tabLabel);
+        var accent = GpuCanvasColor.FromColor(EditorAppearance.palette.Accent);
+        return commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                       command.Color == accent &&
+                                       command.Rect.Height is > 0 and <= 2.01f &&
+                                       command.Rect.X <= tab.Rect.X + 0.01f &&
+                                       command.Rect.Right >= tab.Rect.Right - 0.01f &&
+                                       command.Rect.Y >= tab.Rect.Y &&
+                                       command.Rect.Bottom <= tab.Rect.Bottom + 0.01f &&
+                                       IsContained(command.Rect, command.ClipRect));
+    }
 
     private static bool HasSelectedRowBackground(
         IReadOnlyList<GpuCanvasCommand> commands,

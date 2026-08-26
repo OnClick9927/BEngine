@@ -46,9 +46,9 @@ internal static class Program
                      "UIBuilder", "HtmlConverter", "SceneCamera" })
             Save(Path.Combine(icons, "Windows", $"{name}.png"), g => DrawWindow(g, name));
 
-        DrawPackageIcon(Path.Combine(root, "src", "Animation", "EditorResources", "Animation.png"), "Animation");
-        DrawPackageIcon(Path.Combine(root, "src", "Navigation2D", "EditorResources", "Navigation2D.png"), "Navigation2D");
-        DrawPackageIcon(Path.Combine(root, "src", "Physics2D", "EditorResources", "Physics2D.png"), "Physics2D");
+        DrawPackageIcon(Path.Combine(root, "src", "Packages", "Animation", "EditorResources", "Animation.png"), "Animation");
+        DrawPackageIcon(Path.Combine(root, "src", "Packages", "Navigation2D", "EditorResources", "Navigation2D.png"), "Navigation2D");
+        DrawPackageIcon(Path.Combine(root, "src", "Packages", "Physics2D", "EditorResources", "Physics2D.png"), "Physics2D");
 
         var expected = Directory.EnumerateFiles(icons, "*.png", SearchOption.AllDirectories).ToArray();
         if (expected.Length < 70) throw new InvalidOperationException($"Only {expected.Length} built-in icons were generated.");

@@ -12,7 +12,21 @@ internal static class EditorPlayModeAssetWriteTests
         var createdAssetPath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrier.asset.yaml");
         var createdFolderPath = Path.Combine(fixture.Workspace.AssetsPath, "PlayWriteBarrierFolder");
         var prefabPath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrier.prefab.yaml");
+        var atlasSourcePath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrierSource.png");
+        var spritePath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrier.sprite.yaml");
+        var atlasPath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrier.atlas.yaml");
+        var atlasOutputPath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrier.png");
         File.WriteAllText(seedPath, "Play Mode project write barrier seed");
+        File.WriteAllBytes(atlasSourcePath, Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+AvzZVwAAAABJRU5ErkJggg=="));
+        new Sprite { name = "PlayWriteBarrier", Texture = "Assets/Scenes/PlayWriteBarrierSource.png" }
+            .Save(spritePath);
+        var atlas = new TextureAtlas
+        {
+            MaxSize = 32,
+            SpriteReferences = ["Assets/Scenes/PlayWriteBarrier.sprite.yaml"]
+        };
+        atlas.Save(atlasPath);
 
         try
         {
@@ -41,11 +55,14 @@ internal static class EditorPlayModeAssetWriteTests
                 var saveAssetsBlocked = IsPlayModeWriteRejected(AssetDatabase.SaveAssets);
                 var prefabBlocked = IsPlayModeWriteRejected(() =>
                     PrefabUtility.SaveAsPrefabAsset(runtimeRoot, "Assets/Scenes/PlayWriteBarrier.prefab.yaml"));
+                var atlasBuildBlocked = IsPlayModeWriteRejected(() =>
+                    TextureAtlasBuilder.Build(atlas, atlasPath));
 
                 assetsBeforePlay.RequireCurrent(fixture.Workspace.AssetsPath,
                     "Play Mode project and Prefab write attempts");
                 TestAssert.Require(createAssetBlocked && createFolderBlocked && deleteBlocked && moveBlocked &&
-                                   refreshBlocked && saveAssetsBlocked && prefabBlocked,
+                                   refreshBlocked && saveAssetsBlocked && prefabBlocked && atlasBuildBlocked &&
+                                   !File.Exists(atlasOutputPath) && atlas.Width == 0 && atlas.Height == 0,
                     "A project or Prefab write API did not explicitly reject its Play Mode operation.");
             }
             finally
@@ -62,6 +79,10 @@ internal static class EditorPlayModeAssetWriteTests
             DeleteFileAndMeta(movedSeedPath);
             DeleteFileAndMeta(createdAssetPath);
             DeleteFileAndMeta(prefabPath);
+            DeleteFileAndMeta(atlasSourcePath);
+            DeleteFileAndMeta(spritePath);
+            DeleteFileAndMeta(atlasPath);
+            DeleteFileAndMeta(atlasOutputPath);
             DeleteDirectoryAndMeta(createdFolderPath);
             assetsBeforeFixture.RequireCurrent(fixture.Workspace.AssetsPath,
                 "Project write-barrier fixture cleanup");

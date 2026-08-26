@@ -9,7 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
     <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
-    <ProjectReference Include="../../../src/PropertyAttributes/BEngine.PropertyAttributes/BEngine.PropertyAttributes.csproj" />
-    <ProjectReference Include="../../../src/PropertyAttributes/BEngine.PropertyAttributes.Editor/BEngine.PropertyAttributes.Editor.csproj" />
+    <ProjectReference Include="../../../src/Packages/PropertyAttributes/BEngine.PropertyAttributes/BEngine.PropertyAttributes.csproj" />
+    <ProjectReference Include="../../../src/Packages/PropertyAttributes/BEngine.PropertyAttributes.Editor/BEngine.PropertyAttributes.Editor.csproj" />
   </ItemGroup>
 </Project>

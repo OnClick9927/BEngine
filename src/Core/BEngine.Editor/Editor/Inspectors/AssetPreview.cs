@@ -28,6 +28,8 @@ public static class AssetPreview
                 ? GetAtlasImage(atlas, SourcePath(defaultAsset))
                 : null,
             DefaultAsset defaultAsset when IsTexture(defaultAsset) => GetImage(SourcePath(defaultAsset)),
+            Texture texture => GetImage(texture.sourcePath),
+            Sprite sprite => GetSpriteImage(sprite),
             TextureAtlas atlas => GetAtlasImage(atlas, AssetDatabase.GetAssetPath(atlas)),
             _ => null
         };
@@ -44,8 +46,14 @@ public static class AssetPreview
             Scene => EditorBuiltinIcons.Assets.Scene,
             Material => EditorBuiltinIcons.Assets.Material,
             Shader => EditorBuiltinIcons.Assets.Shader,
+            Texture => EditorBuiltinIcons.Assets.Image,
+            Sprite => EditorBuiltinIcons.Assets.Image,
+            Font => EditorBuiltinIcons.Assets.Font,
+            Script => EditorBuiltinIcons.Assets.Script,
             RuntimeTextAsset => EditorBuiltinIcons.Assets.Text,
             TextureAtlas => EditorBuiltinIcons.Assets.Image,
+            ScriptableObject scriptable => EditorIconRegistry.GetIconPath(scriptable.GetType()) ??
+                                           EditorBuiltinIcons.Assets.Default,
             _ => EditorBuiltinIcons.Assets.Default
         };
     }
@@ -90,6 +98,20 @@ public static class AssetPreview
             case Material material:
                 DrawMaterial(material, previewArea);
                 break;
+            case Texture texture:
+                if (GetAssetPreview(texture) is { } image) DrawImage(previewArea, image);
+                else DrawUnavailable(previewArea, EditorBuiltinIcons.Assets.Image, "Texture preview unavailable");
+                break;
+            case Sprite sprite:
+                DrawSprite(sprite, previewArea);
+                break;
+            case Script script:
+                DrawText(script.text, previewArea);
+                break;
+            case Font font:
+                DrawIconSummary(previewArea, EditorBuiltinIcons.Assets.Font, font.name,
+                    $"Font | Default size {font.defaultSize}");
+                break;
             case TextureAtlas atlas:
                 DrawAtlas(atlas, AssetDatabase.GetAssetPath(atlas), previewArea);
                 break;
@@ -108,7 +130,9 @@ public static class AssetPreview
                     $"{scene.gameObjects.Count} objects  |  {scene.rootCount} roots");
                 break;
             case ScriptableObject scriptable:
-                DrawIconSummary(previewArea, EditorBuiltinIcons.Assets.Default, scriptable.name,
+                DrawIconSummary(previewArea,
+                    EditorIconRegistry.GetIconPath(scriptable.GetType()) ?? EditorBuiltinIcons.Assets.Default,
+                    scriptable.name,
                     ObjectNames.NicifyVariableName(scriptable.GetType().Name));
                 break;
             default:
@@ -130,6 +154,14 @@ public static class AssetPreview
                 $"Assembly Definition | {assembly.definition.References.Count} references",
             DefaultAsset defaultAsset => FileInfo(defaultAsset),
             Material material => $"Material | Shader: {material.shader.shaderName}",
+            Texture texture => texture.width > 0 && texture.height > 0
+                ? $"{texture.width} x {texture.height} | {texture.compressionFormat}"
+                : $"Texture | {texture.compressionFormat}",
+            Sprite sprite => TextureAtlasResolver.TryGetPackedAtlas(sprite, out var atlasPath, out _, out _)
+                ? $"Sprite | Packed in {atlasPath} | Pivot {sprite.PivotX:0.###}, {sprite.PivotY:0.###}"
+                : $"Sprite | {sprite.Texture} | Pivot {sprite.PivotX:0.###}, {sprite.PivotY:0.###}",
+            Font font => $"Font | Default size {font.defaultSize} | {font.characterSet}",
+            Script script => TextInfo(script.text, "Script"),
             TextureAtlas atlas => $"{atlas.Width} x {atlas.Height} | {atlas.Sprites.Count} sprites",
             RuntimeTextAsset text => TextInfo(text.text, "Text"),
             Shader shader => $"Shader | {shader.shaderName}",
@@ -203,6 +235,25 @@ public static class AssetPreview
                 fitted.height * sprite.Height / atlas.Height);
             DrawBorder(spriteRect, outline);
         }
+    }
+
+    private static void DrawSprite(Sprite sprite, Rect area)
+    {
+        var image = GetSpriteImage(sprite);
+        if (image is null)
+        {
+            DrawUnavailable(area, EditorBuiltinIcons.Assets.Image, "Sprite texture unavailable");
+            return;
+        }
+        var fitted = DrawImage(area, image.Value);
+        if (!TextureAtlasResolver.TryGetPackedAtlas(sprite, out _, out var atlas, out var region) ||
+            atlas.Width <= 0 || atlas.Height <= 0) return;
+        var regionRect = new Rect(
+            fitted.x + fitted.width * region.X / atlas.Width,
+            fitted.y + fitted.height * region.Y / atlas.Height,
+            fitted.width * region.Width / atlas.Width,
+            fitted.height * region.Height / atlas.Height);
+        DrawBorder(regionRect, EditorAppearance.palette.Accent);
     }
 
     private static Rect DrawImage(Rect area, AssetPreviewImage image)
@@ -345,6 +396,14 @@ public static class AssetPreview
         return GetImage(ResolveReference(atlas.Texture, contextPath));
     }
 
+    private static AssetPreviewImage? GetSpriteImage(Sprite sprite)
+    {
+        if (TextureAtlasResolver.TryGetPackedAtlas(sprite, out var atlasPath, out var atlas, out _))
+            return GetAtlasImage(atlas, ResolvePath(atlasPath));
+        if (string.IsNullOrWhiteSpace(sprite.Texture)) return null;
+        return GetImage(ResolveReference(sprite.Texture, sprite.sourcePath));
+    }
+
     private static AssetPreviewImage? GetImage(string path)
     {
         path = ResolvePath(path);
@@ -463,6 +522,12 @@ public static class AssetPreview
     private static string ResolveReference(string reference, string contextPath)
     {
         if (Path.IsPathRooted(reference)) return ResolvePath(reference);
+        try
+        {
+            var runtimeAssetPath = AssetReferencePath.Resolve(reference);
+            if (File.Exists(runtimeAssetPath)) return runtimeAssetPath;
+        }
+        catch (ArgumentException) { }
         try
         {
             var assetPath = AssetDatabase.ResolveAssetPath(reference);

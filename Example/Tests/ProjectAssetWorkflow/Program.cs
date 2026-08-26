@@ -25,9 +25,13 @@ internal static class Program
             AssetMenuIntegrationTests.Run(editorAssembly, applicationType, projectWindowType, itemType);
             VerifyProjectSelectionsFeedInspector(editorAssembly, itemType);
             VerifyItemContextMenuHasVisibleText(editorAssembly, applicationType, projectWindowType, itemType);
+            BAssetTypeSystemTests.Run();
 
             Console.WriteLine(
-                "PROJECT_ASSET_WORKFLOW_OK|assets-folder-inspector,assets-file-inspector,package-folder-inspector,package-file-inspector,full-metadata,context-menu-text,type-search,unified-assets-create,extended-create-types,assets-utilities,scene,script");
+                "PROJECT_ASSET_WORKFLOW_OK|assets-folder-inspector,assets-file-inspector,package-folder-inspector," +
+                "package-file-inspector,full-metadata,context-menu-text,type-search,unified-assets-create," +
+                "extended-create-types,assets-utilities,scene,script,typed-load,importer-meta-roundtrip," +
+                "dynamic-icon,basset-reference-roundtrip");
             return 0;
         }
         catch (Exception exception)

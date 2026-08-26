@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace BEngine.Editor;
 
 public static class EditorIconRegistry
@@ -28,7 +30,11 @@ public static class EditorIconRegistry
                 .Where(item => item.Type == type || item.UseForChildren && item.Type.IsAssignableFrom(type))
                 .OrderByDescending(item => item.Type == type)
                 .Cast<Registration?>().FirstOrDefault();
-            return Resolved[type] = registration is null ? null : EditorResources.FindPath(registration.Value.ResourcePath);
+            var resourcePath = registration?.ResourcePath ??
+                               type.GetCustomAttribute<EditorIconAttribute>(inherit: true)?.resourcePath;
+            return Resolved[type] = string.IsNullOrWhiteSpace(resourcePath)
+                ? null
+                : EditorResources.FindPath(resourcePath) ?? resourcePath;
         }
     }
 

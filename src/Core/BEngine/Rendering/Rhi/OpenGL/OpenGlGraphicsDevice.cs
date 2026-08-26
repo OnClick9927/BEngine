@@ -4,7 +4,7 @@ using NumericsVector4 = System.Numerics.Vector4;
 
 namespace BEngine.Rendering.Rhi.OpenGL;
 
-public sealed class OpenGlGraphicsDevice : IGraphicsDevice
+public sealed class OpenGlGraphicsDevice : IGraphicsDevice, IGraphicsDeviceStatistics
 {
     private const GraphicsDeviceFeatures SupportedFeatures =
         GraphicsDeviceFeatures.Rasterization |
@@ -22,6 +22,7 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
     private readonly GraphicsDeviceCapabilities _capabilities;
     private uint _emptyVertexArray;
     private GraphicsRect _viewport;
+    private GraphicsDrawStatistics _drawStatistics;
     private bool _disposed;
 
     public GraphicsBackend Backend
@@ -32,6 +33,7 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
     {
         get { return _capabilities; }
     }
+    public GraphicsDrawStatistics DrawStatistics => _drawStatistics;
 
     internal GL Api => _api;
 
@@ -201,6 +203,8 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
         var openGlMesh = RequireResource<OpenGlMesh>(mesh);
         _api.BindVertexArray(openGlMesh.VertexArray);
         _api.DrawArrays(ToOpenGl(openGlMesh.TopologyUnchecked), 0, (uint)openGlMesh.VertexCountUnchecked);
+        _drawStatistics = _drawStatistics.AddDraw(
+            openGlMesh.VertexCountUnchecked, openGlMesh.TopologyUnchecked);
     }
 
     public void Draw(IGraphicsMesh mesh, int vertexCount, int firstVertex = 0)
@@ -213,6 +217,7 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
             throw new ArgumentOutOfRangeException(nameof(vertexCount), "The draw range exceeds the mesh vertex count.");
         _api.BindVertexArray(openGlMesh.VertexArray);
         _api.DrawArrays(ToOpenGl(openGlMesh.TopologyUnchecked), firstVertex, (uint)vertexCount);
+        _drawStatistics = _drawStatistics.AddDraw(vertexCount, openGlMesh.TopologyUnchecked);
     }
 
     public void Draw(int vertexCount, GraphicsPrimitiveTopology topology, int firstVertex = 0)
@@ -223,6 +228,7 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice
         if (_emptyVertexArray == 0) _emptyVertexArray = _api.GenVertexArray();
         _api.BindVertexArray(_emptyVertexArray);
         _api.DrawArrays(ToOpenGl(topology), firstVertex, (uint)vertexCount);
+        _drawStatistics = _drawStatistics.AddDraw(vertexCount, topology);
     }
 
     public void Dispose()

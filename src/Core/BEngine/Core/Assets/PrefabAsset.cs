@@ -6,7 +6,6 @@ namespace BEngine;
 public sealed class PrefabAsset : BAsset
 {
     private readonly PrefabDocument _document;
-    private string _assetPath;
 
     internal PrefabDocument Document
     {
@@ -17,18 +16,13 @@ public sealed class PrefabAsset : BAsset
     internal PrefabAsset(PrefabDocument document, string sourcePath)
     {
         _document = document ?? throw new ArgumentNullException(nameof(document));
-        _assetPath = sourcePath ?? string.Empty;
+        assetPath = sourcePath ?? string.Empty;
         name = document.Name;
     }
 
     public Guid assetId
     {
         get { return _document.Id; }
-    }
-    public string assetPath
-    {
-        get { return _assetPath; }
-        internal set => _assetPath = value;
     }
     public int objectCount
     {

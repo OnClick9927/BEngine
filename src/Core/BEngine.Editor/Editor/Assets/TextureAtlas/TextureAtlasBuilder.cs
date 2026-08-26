@@ -8,6 +8,7 @@ public static class TextureAtlasBuilder
 
     public static TextureAtlasBuildResult Build(string atlasAssetPath)
     {
+        EditorAssetWritePolicy.EnsureCanWrite("Building texture atlases");
         ArgumentException.ThrowIfNullOrWhiteSpace(atlasAssetPath);
         var manifestPath = ResolveManifestPath(atlasAssetPath);
         var atlas = TextureAtlas.Load(manifestPath);
@@ -16,18 +17,23 @@ public static class TextureAtlasBuilder
 
     public static TextureAtlasBuildResult Build(TextureAtlas atlas, string manifestPath)
     {
+        EditorAssetWritePolicy.EnsureCanWrite("Building texture atlases");
         ArgumentNullException.ThrowIfNull(atlas);
         ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);
         manifestPath = Path.GetFullPath(manifestPath);
         atlas.Validate();
-        if (atlas.Sources.Count == 0)
-            throw new InvalidDataException("Add at least one PNG source before building a texture atlas.");
+        if (atlas.SpriteReferences.Count == 0 && atlas.Sources.Count == 0)
+            throw new InvalidDataException("Add at least one Sprite before building a texture atlas.");
 
-        var images = atlas.Sources.Select(source => LoadSource(source, manifestPath))
+        var images = atlas.SpriteReferences.Select(reference => LoadSprite(reference, manifestPath))
+            .Concat(atlas.Sources.Select(source => LoadLegacySource(source, manifestPath)))
             .OrderByDescending(image => Math.Max(image.Width, image.Height))
             .ThenByDescending(image => image.Width * (long)image.Height)
             .ThenBy(image => image.Source.Name, StringComparer.Ordinal)
             .ToArray();
+        RejectDuplicateInputs(images, static image => image.Source.Name, "Sprite name");
+        RejectDuplicateInputs(images, static image => image.Source.Reference, "Sprite reference",
+            StringComparer.OrdinalIgnoreCase);
         var packed = Pack(images, atlas.Padding, atlas.MaxSize);
         var texturePath = OutputTexturePath(manifestPath);
         if (images.Any(image => image.FullPath.Equals(texturePath, StringComparison.OrdinalIgnoreCase)))
@@ -47,7 +53,7 @@ public static class TextureAtlasBuilder
             .Select(item => new TextureAtlasSprite
             {
                 Name = item.Image.Source.Name,
-                Source = item.Image.Source.Path,
+                Source = item.Image.Source.Reference,
                 X = item.X,
                 Y = item.Y,
                 Width = item.Image.Width,
@@ -55,6 +61,7 @@ public static class TextureAtlasBuilder
                 PivotX = item.Image.Source.PivotX,
                 PivotY = item.Image.Source.PivotY
             }).ToList();
+        if (atlas.SpriteReferences.Count > 0) atlas.Version = 2;
         atlas.Save(manifestPath);
         TextureAtlasResolver.Clear();
 
@@ -69,17 +76,47 @@ public static class TextureAtlasBuilder
             packed.Width, packed.Height, atlas.Sprites.Count);
     }
 
-    private static SourceImage LoadSource(TextureAtlasSource source, string manifestPath)
+    private static SourceImage LoadSprite(string reference, string manifestPath)
     {
-        var path = ResolveSourcePath(source.Path, manifestPath);
+        var spritePath = ResolveSourcePath(reference, manifestPath);
+        if (!File.Exists(spritePath)) throw new FileNotFoundException(
+            $"Texture atlas Sprite '{reference}' does not exist.", spritePath);
+        var sprite = Sprite.Load(spritePath);
+        var source = new AtlasSource(
+            string.IsNullOrWhiteSpace(sprite.name)
+                ? Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(spritePath))
+                : sprite.name,
+            reference.Replace('\\', '/').Trim(), sprite.Texture, sprite.PivotX, sprite.PivotY);
+        return LoadSource(source, spritePath);
+    }
+
+    private static SourceImage LoadLegacySource(TextureAtlasSource legacy, string manifestPath) =>
+        LoadSource(new AtlasSource(legacy.Name, legacy.Path, legacy.Path,
+            legacy.PivotX, legacy.PivotY), manifestPath);
+
+    private static SourceImage LoadSource(AtlasSource source, string ownerPath)
+    {
+        var path = ResolveSourcePath(source.Texture, ownerPath);
         if (!File.Exists(path)) throw new FileNotFoundException(
-            $"Texture atlas source '{source.Path}' does not exist.", path);
+            $"Texture atlas Sprite texture '{source.Texture}' does not exist.", path);
         if (!Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"Texture atlas source '{source.Path}' must be a PNG file.");
+            throw new InvalidDataException($"Texture atlas Sprite texture '{source.Texture}' must be a PNG file.");
         var bytes = File.ReadAllBytes(path);
         if (!PngImageCodec.TryDecode(bytes, out var width, out var height, out var pixels))
-            throw new InvalidDataException($"Texture atlas source '{source.Path}' is not a supported PNG.");
+            throw new InvalidDataException($"Texture atlas Sprite texture '{source.Texture}' is not a supported PNG.");
         return new SourceImage(source, path, width, height, pixels);
+    }
+
+    private static void RejectDuplicateInputs(
+        IEnumerable<SourceImage> images,
+        Func<SourceImage, string> selector,
+        string label,
+        IEqualityComparer<string>? comparer = null)
+    {
+        var duplicate = images.GroupBy(selector, comparer ?? StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+            throw new InvalidDataException($"Texture atlas {label} '{duplicate.Key}' is duplicated.");
     }
 
     private static PackedAtlas Pack(IReadOnlyList<SourceImage> images, int padding, int maxSize)
@@ -230,8 +267,10 @@ public static class TextureAtlasBuilder
         return path + ".png";
     }
 
+    private sealed record AtlasSource(
+        string Name, string Reference, string Texture, float PivotX, float PivotY);
     private sealed record SourceImage(
-        TextureAtlasSource Source, string FullPath, int Width, int Height, byte[] Pixels);
+        AtlasSource Source, string FullPath, int Width, int Height, byte[] Pixels);
     private sealed record Placement(SourceImage Image, int X, int Y);
     private sealed record PackedAtlas(int Width, int Height, List<Placement> Placements);
     private readonly record struct IntRect(int X, int Y, int Width, int Height)

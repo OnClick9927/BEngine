@@ -29,6 +29,8 @@ public static class RuntimeTypeCache
     private static int _generation;
     private static long _assembliesScanned;
     private static long _typesScanned;
+    private static bool _rebuildingIndexes;
+    private static bool _rebuildRequested;
 
     static RuntimeTypeCache() => AppDomain.CurrentDomain.AssemblyLoad += (_, args) =>
     {
@@ -246,6 +248,29 @@ public static class RuntimeTypeCache
 
     private static void RebuildIndexes()
     {
+        if (_rebuildingIndexes)
+        {
+            _rebuildRequested = true;
+            return;
+        }
+
+        _rebuildingIndexes = true;
+        try
+        {
+            do
+            {
+                _rebuildRequested = false;
+                RebuildIndexesCore(Assemblies.Values.ToArray());
+            } while (_rebuildRequested);
+        }
+        finally
+        {
+            _rebuildingIndexes = false;
+        }
+    }
+
+    private static void RebuildIndexesCore(AssemblyIndex[] assemblyIndexes)
+    {
         TypesByName.Clear();
         DerivedTypes.Clear();
         Factories.Clear();
@@ -258,8 +283,8 @@ public static class RuntimeTypeCache
         CoroutineFactories.Clear();
         RuntimeInitializers.Clear();
         InitializersByPhase.Clear();
-        _allTypes = Assemblies.Values.SelectMany(index => index.Types).Distinct().ToArray();
-        foreach (var index in Assemblies.Values)
+        _allTypes = assemblyIndexes.SelectMany(index => index.Types).Distinct().ToArray();
+        foreach (var index in assemblyIndexes)
         {
             RuntimeInitializers.AddRange(index.Initializers);
             foreach (var pair in index.MethodsByType) MethodsByType[pair.Key] = pair.Value;

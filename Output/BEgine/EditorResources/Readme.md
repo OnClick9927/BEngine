@@ -1,64 +1,217 @@
 # BEngine Core
 
-核心目录包含四个入口程序集：
+BEngine Core 是引擎与编辑器的内置基础层，提供 2D Scene、GameObject、Component、Transform、Camera2D、Sprite、粒子、资源系统、序列化、输入、生命周期和 Unity 风格编辑器扩展 API。Core 始终可用，不需要在 `Packages.yaml` 中启用，也不依赖 Animation、Physics2D、Navigation2D、TiledMap 或 UIElements。
 
-- `BEngine`：纯运行时引擎 API，不包含 PackageManager，也不记录任何具体包。
-- `BEngine.Editor`：编辑器宿主、扩展 API、PackageManager 和 Codex。
-- `BEngine.Launcher`：工程选择与启动器。
-- `BEngine.Player`：通用运行时入口，按导出内容装载扩展程序集。
+![Core 编辑器概览](Doc/images/overview.png)
 
-`Resources` 存放引擎运行时默认资源；`EditorResources` 存放编辑器图标、样式和其他编辑器专用资源。离线网页文档位于 `EditorResources/Doc/index.html`，可从 Package Manager 直接打开；AI Skill 统一放在 `EditorResources/Skills/<skill-name>/`。内置 Codex 会提供 Core Skill，并发现当前工程已启用包中的 Skill；它只传递 `SKILL.md` 路径，相关任务才读取正文。核心不是扩展包，因此本目录没有 `package.yaml`。
+## 包概览与依赖
 
-四个程序集项目目录内只存放 C# 代码和 `.csproj`。窗口图标等资源也不嵌入程序集：Editor/Launcher 从 `EditorResources` 加载，Player 从 `Resources` 加载。
+Core 是所有工程与扩展包的共同依赖，也是唯一不通过 Package Manager 卸载的功能集合。扩展包只允许从自身指向 Core；Core 不保存具体扩展包注册，保证运行时可按工程清单组合。
 
-## 2D 世界与渲染层
+### 程序集与目录
 
-BEngine 世界只包含 X/Y 坐标与单一旋转角。`Transform` 使用 `Vector2` 位置和缩放，`Camera2D` 使用正交尺寸；Sprite、ParticleSystem2D 与 UIElements 进入同一排序和合批队列。
+| 项目 | 用途 | 运行时可用 |
+| --- | --- | --- |
+| `BEngine` | Scene、GameObject、组件、资源、渲染、输入和数学 API | 是 |
+| `BEngine.Editor` | 编辑器宿主、Inspector、菜单、窗口、Package Manager 和资源导入 | 否 |
+| `BEngine.Launcher` | 工程选择与编辑器启动 | 否 |
+| `BEngine.Player` | 导出游戏的通用运行时入口 | 是 |
+| `Resources` | 默认 Shader 等运行时资源 | 是 |
+| `EditorResources` | 图标、离线文档、示例和 AI Skill | 否 |
 
-一个 Scene 可以包含多台启用的 `Camera2D`。相机按 `priority` 从小到大稳定渲染，并分别支持 `Color`、`DepthOnly`、`Nothing` 清屏模式、63 位 Sorting Layer 遮罩以及左下角原点的归一化 `viewportRect`。每台相机只收集遮罩允许的提交，Sprite 与粒子先做旋转包围盒视锥剔除，三角形绘制再做背面剔除；剩余提交继续遵循全局排序和合批规则。旧场景的 `depth` 字段在载入时自动迁移到 `priority`。
+Core 使用 `Microsoft.Extensions.DependencyInjection` 管理宿主与 Scene scope，并使用 YAML 文档保存工程、场景、Prefab 和资源元数据。运行时是单线程模型；编辑器可以在后台执行扫描、编译、哈希和文件 IO，但不能从后台线程修改场景对象。
 
-Sorting Layer 值只能是 `2^1` 到 `2^63`。低 58 层属于世界，最高 5 层固定属于 UI；编辑器只显示指数和层名。最终顺序由 Layer、Order in Layer、Hierarchy、透明度与提交顺序确定，Material、Shader、Atlas 共同决定相邻项目能否合批。
+## 可导入示例
 
-## Scene 选取与可见性
+| 示例 | 导入目录 | 场景 | 内容 |
+| --- | --- | --- | --- |
+| Core Getting Started | `Assets/Examples/CoreGettingStarted` | `res/Core.scene.yaml` | MonoBehaviour 生命周期、输入、协程、Transform、SpriteRenderer、Camera2D 和 EditorWindow |
 
-Scene 窗口左键按最终 `RenderSortKey2D` 从最上层选取对象；同一位置存在多个对象时，重复点击会依次循环。Hierarchy 行末的眼睛和锁按钮分别控制对象及其现有子层级是否在 Scene 中显示、是否允许 Scene 点击选取。这两个状态仅属于编辑器会话，不修改 `activeSelf`，不会标脏或序列化到 Scene，并会在 Play Mode 镜像与编辑态对象之间映射。
+### 快速开始：从 Import 到 Play
 
-外部 Editor 包可通过 `ScenePickingProviderRegistry.Register` 提交 `ScenePickCandidate`，让自定义渲染组件参与同一排序、循环和可见/可选过滤。包卸载时编辑器会按提供器所属程序集清理注册，避免阻止可回收加载上下文释放。Core 的 Sprite/Particle 与 TiledMap 包均使用该选取契约。
+1. 启动编辑器，打开 `Window > Package Manager`。
+2. 在左侧选择 `BEngine Core`，切换到 `Examples` 页签。
+3. 在 `Core Getting Started` 行点击 `Import`。导入完成后按钮会变为 `Reimport`。
+4. 在 Project 窗口打开 `Assets/Examples/CoreGettingStarted/res/Core.scene.yaml`。
+5. 等待脚本编译完成，确认 Console 没有错误，然后点击顶部 Play 按钮。
+6. 使用 Horizontal/Vertical 输入轴移动前景 Sprite，按 `Space` 切换颜色；Console 会显示 Awake、OnEnable、Start 和协程日志。
+7. 停止 Play。运行时创建的 Camera、背景和伴随 Sprite 会随运行镜像丢弃，原始 Scene 资产不会被改写。
+8. 打开 `Tools > Examples > BEngine Editor Window` 查看 `MenuItem`、EditorWindow 生命周期、Selection 和 GenericMenu 示例。
 
-## Texture Atlas
+`Reimport` 默认复用未变化文件，并保留本地修改。需要一份干净参考时，先复制导入目录，再按 Package Manager 的提示选择覆盖策略。
 
-使用 `Assets/Create/2D/Texture Atlas` 创建 `.atlas.yaml`，再从 `Window/2D/Texture Atlas` 添加 PNG 来源并执行 Build。打包器使用确定性的无旋转 MaxRects，输出 2 的整数次方 PNG，并支持 Padding 与 Extrude 防止边缘采样渗色。
+## 组件字段表
 
-`SpriteRenderer` 和 `ParticleSystem2D` 的 `atlas` 填写 `.atlas.yaml` 路径，`sprite` 填写区域名称；两者会使用生成的归一化 UV 和 pivot。未填写 Atlas 时，`sprite` 可直接填写 PNG 路径。相邻项目只有共享 Material、Shader 和 Atlas 才会合批。
+| 组件 | 字段 | 说明 |
+| --- | --- | --- |
+| `Transform` | `localPosition`, `localRotation`, `localScale` | 本地二维位置、角度和缩放 |
+| `Transform` | `position`, `rotation`, `lossyScale` | 计算后的世界值；层级变化由 `SetParent` 管理 |
+| `Camera2D` | `size` | 正交相机半高，最小值为 0.001 |
+| `Camera2D` | `backgroundColor`, `clearMode` | Color、DepthOnly 或 Nothing 清屏策略 |
+| `Camera2D` | `priority`, `isMain` | 多相机按 priority 从小到大稳定渲染 |
+| `Camera2D` | `cullingMask` | 63 个 Sorting Layer 的位掩码 |
+| `Camera2D` | `viewportRect` | 左下角原点、0 到 1 的归一化视口 |
+| `Renderer2D` | `sortingLayer`, `orderInLayer`, `opacity` | 所有 2D Renderer 共用的排序与透明度字段 |
+| `SpriteRenderer` | `sprite`, `size`, `pivot`, `useSpritePivot` | Sprite 资源、尺寸与轴心 |
+| `SpriteRenderer` | `color`, `flipX`, `flipY`, `material` | 着色、翻转与材质；Atlas 由 Sprite 引用自动反查 |
+| `ParticleSystem2D` | `duration`, `loop`, `playOnAwake`, `emissionRate` | 发射周期与自动播放 |
+| `ParticleSystem2D` | `startLifetime`, `startSpeed`, `startDirection`, `startSize` | 新生粒子的寿命、速度、方向和尺寸 |
+| `ParticleSystem2D` | `startColor`, `startRotation`, `startAngularVelocity` | 新生粒子的颜色和旋转 |
+| `ParticleSystem2D` | `maxParticles`, `sprite`, `atlas`, `material` | 容量、视觉资源与合批键 |
 
-`Scene` 直接拥有 `GameObject` 集合，`GameObject` 直接拥有 Component；`Scene.QueryComponents<T>()` 提供统一的托管组件查询。对象持久身份使用 `BObject.Id`，场景 YAML 只保存 GameObject、Transform 和 Component 数据，不包含额外的实体映射。
+世界 Renderer 只能使用 `2^1` 到 `2^58`；最高五层 `2^59` 到 `2^63` 保留给 UI。最终顺序由 Layer、Order in Layer、Hierarchy、透明度和提交顺序共同决定，Material、Shader、Atlas 决定相邻提交能否合批。
 
-运行时只支持单线程。`SceneRuntime` 在当前线程依次执行 MonoBehaviour 生命周期、协程和 `ISceneRuntimeSystem`，没有 World、Entity、SystemGroup 或主线程守卫层。动画、Navigation2D、Physics2D、UIElements 和场景渲染均通过 `Scene.QueryComponents<T>()` 查询组件。
+## 资源字段表与导入参数
 
-有状态服务统一使用 `Microsoft.Extensions.DependencyInjection`：`BEngine` 只依赖 DI Abstractions，Editor、Launcher、Player 分别通过 `AddBEngineEditor`、`AddBEngineLauncher`、`AddBEnginePlayer` 建立组合根。项目是 scope，每个 Scene 再创建独立的场景 scope，运行时系统支持构造器注入。扩展包可实现 `IEngineServiceModule` 注册服务；编辑器为每个动态包建立独立 Provider，卸载包前先释放场景 scope 和包 Provider，避免可回收程序集被根容器持有。
+| 资源 | 关键字段或扩展名 | 说明 |
+| --- | --- | --- |
+| `Scene` | `*.scene.yaml` | 保存 GameObject、Transform 和 Component 数据 |
+| `PrefabAsset` | `*.prefab.yaml` | 可实例化并 Apply/Revert 的对象层级 |
+| `Sprite` | `*.sprite.yaml`: `Texture`, `PivotX`, `PivotY` | 引用一张纹理；SpriteRenderer 不直接保存 Atlas |
+| `TextureAtlas` | `*.atlas.yaml`: `MaxSize`, `Padding`, `Extrude`, `SpriteReferences` | 在 `Window > 2D > Texture Atlas` 构建 |
+| `Material` | `*.material.yaml`: `shader`, `color`, `renderQueue` | 可保存 Color、Fix64、Vector4 和 Int 属性 |
+| `Texture` | `.png/.jpg/...` | Inspector Import Settings 写入相邻 `.meta` |
+| `TextureImporter` | `compressionFormat`, `filterMode`, `wrapMode` | 请求的压缩、过滤和寻址模式 |
+| `TextureImporter` | `generateMipMaps`, `maxTextureSize`, `pixelsPerUnit` | MipMap、32 到 16384 的 2 次幂尺寸和 PPU |
+| `Font`, `Shader`, `Script`, `TextAsset` | 对应源文件 | 均遵循 BAsset 的稳定路径和 GUID 契约 |
 
-`Application`、`Selection`、`AssetDatabase` 等 Unity 风格静态 API 仅作为兼容外观保留。纯数学、定点运算和无状态 YAML 转换不会为了 IoC 而包装成服务。
+Inspector 中修改 Texture 导入参数后必须点击 `Apply`；`Revert` 会重新读取 `.meta`。压缩格式是导入请求，当前后端不支持的 GPU 转码不会伪装为已完成，但请求会稳定保留。
 
-## 编辑器对象字段
+## 运行时 API
 
-自定义 Inspector 和 EditorWindow 可以使用 `EditorGUI.ObjectField` 或 `EditorGUILayout.ObjectField` 为任意 `BObject` 派生类型赋值。API 提供无标签、`string`、`GUIContent`、泛型和 `SerializedProperty` 重载；默认 Inspector 也会自动为 `BObject` 字段绘制同样的控件。
+| API | 用途 |
+| --- | --- |
+| `scene.CreateGameObject(name)` | 在指定 Scene 创建对象 |
+| `gameObject.AddComponent<T>()` | 添加组件并自动满足 `RequireComponent` |
+| `GetComponent<T>()` / `TryGetComponent<T>()` | 查询当前对象组件 |
+| `scene.QueryComponents<T>()` | 查询 Scene 中所有匹配组件 |
+| `transform.Translate/Rotate/SetParent` | 2D 空间变换与层级操作 |
+| `SceneManager.LoadScene` | Single 或 Additive 加载场景 |
+| `StartCoroutine`, `Invoke`, `CancelInvoke` | MonoBehaviour 定时与协程 |
+| `BAsset.Load<T>(path)` | 按 Assets/Packages 稳定路径加载资源 |
+| `Object.Instantiate`, `Object.Destroy` | 复制与销毁运行时对象 |
 
 ```csharp
-target = EditorGUILayout.ObjectField("Target", target, typeof(SpriteRenderer), true)
-    as SpriteRenderer;
-camera = EditorGUILayout.ObjectField("Camera", camera, allowSceneObjects: true);
-EditorGUILayout.ObjectField(serializedObject.FindProperty("target")!,
-    typeof(SpriteRenderer), allowSceneObjects: true);
+using BEngine;
+
+[AddComponentMenu("Gameplay/Player Mover")]
+public sealed class PlayerMover : MonoBehaviour
+{
+    public Fix64 speed = 4;
+    private SpriteRenderer? _renderer;
+
+    public override void Awake() => _renderer = GetComponent<SpriteRenderer>();
+
+    public override void Update()
+    {
+        var input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        transform.Translate(input * speed * Time.deltaTime, Space.World);
+        if (Input.GetKeyDown(KeyCode.Space) && _renderer is not null)
+            _renderer.color = _renderer.color == Color.white ? Color.red : Color.white;
+    }
+}
 ```
 
-对象选择器支持搜索、`None`、使用当前 Selection，以及从 Project 和 Hierarchy 拖入对象。类型会在候选列表、Selection 和拖放三个入口统一校验；`allowSceneObjects: false` 只接受已经导入工程的持久资源。
+生命周期顺序为 `Awake -> OnEnable -> Start -> FixedUpdate/Update/LateUpdate -> OnDisable -> OnDestroy`。运行时修改只发生在 Play 镜像；停止 Play 后编辑器继续显示播放前的 Scene 和组件数据。
 
-## Game View 分辨率
+## 编辑器 API
 
-Game 窗口工具栏可以搜索并切换常用横屏、竖屏分辨率，也可以新增或删除自定义分辨率。Free Aspect 使用 Game 面板当前像素尺寸；固定分辨率保持所选宽高比并在面板内居中显示，空余区域使用 letterbox，不会改变编辑器主窗口尺寸。
+| API/特性 | 用途与注册方式 |
+| --- | --- |
+| `[MenuItem("Tools/...")]` | 程序集加载时自动发现静态菜单方法；同路径布尔方法用于验证 |
+| `EditorWindow.GetWindow<T>()` | 创建或聚焦可停靠窗口 |
+| `[CustomEditor(typeof(T), true)]` | 为目标类型及可选子类注册 Inspector |
+| `[CustomPropertyDrawer(typeof(T))]` | 为字段类型或 PropertyAttribute 注册 Drawer |
+| `SerializedObject`, `SerializedProperty` | 统一多选、Undo 和字段绘制 |
+| `EditorGUI.ObjectField` | 为 BObject/BAsset 字段提供选择、拖放和类型校验 |
+| `Undo.RecordObject`, `EditorUtility.SetDirty` | 正确记录编辑态修改 |
+| `AssetDatabase.LoadAssetAtPath<T>()` | 通过工程路径加载编辑器资源 |
+| `Selection.activeObject` | 同步 Project、Hierarchy、Scene 和 Inspector 选择 |
+| `ScenePickingProviderRegistry.Register` | 让外部 Renderer 参与 Scene 点击选取 |
 
-固定模式下，相机剔除、UI 布局以及 `Screen.width`、`Screen.height` 使用所选逻辑分辨率，最终画面再缩放到 Game 面板内的实际 GPU viewport。当前预设与自定义项保存在 `EditorPrefs.yaml`，不会写入 Scene 或 Project Settings。
+## 完整编辑器工作流
 
-此外，`BEngine` 提供完整的 SceneRuntime、MonoBehaviour、RuntimeLifecycle、初始化特性和 YAML 序列化回调。`BEngine.Editor` 提供 EditorApplication、EditorWindow、CustomEditor、ObjectFactory、CompilationPipeline、AssemblyReloadEvents 与资源处理器生命周期。
+1. 从 `File > New Scene` 创建场景，并立刻保存到 `Assets/Scenes`。
+2. 使用 `GameObject > Camera 2D` 创建相机；在 Inspector 设置 size、priority、clearMode、cullingMask 和 viewportRect。
+3. 使用 `GameObject > 2D Object > Sprite` 创建 Sprite 对象，将 `.sprite.yaml` 拖入 SpriteRenderer。
+4. 需要 Atlas 时，先创建 Sprite，再从 `Assets > Create > 2D > Texture Atlas` 创建 Atlas，在 `Window > 2D > Texture Atlas` 添加 Sprite 并 Build。
+5. 在 `Edit > Project Settings > Tags and Layers` 管理 Tag 与全部 Sorting Layer。
+6. 用 W/E/R 切换移动、旋转、缩放 Handle；Scene 点击对象会同步 Hierarchy 选择。
+7. 进入 Play 验证运行时行为。Play 期间不要尝试保存 Scene 或组件变更；停止后原数据会恢复。
+8. 检查 Game View 的分辨率和 Status 统计，再通过 `File > Save Scene` 保存编辑态修改。
 
-可导入示例位于 `EditorResources/Examples`：`CoreGettingStarted.bpackage` 展示场景、生命周期、输入、渲染和编辑器扩展，可在 Package Manager 的 `BEngine Core` 详情中导入。
+## 扩展 Core
+
+### 可运行 EditorWindow
+
+把以下脚本放入 Editor 程序集。`MenuItem` 和 `EditorWindow` 不需要手工调用注册器，编辑器在程序集加载后自动发现。
+
+```csharp
+using BEngine;
+using BEngine.Editor;
+
+public sealed class SelectionInfoWindow : EditorWindow
+{
+    [MenuItem("Tools/My Package/Selection Info")]
+    private static void Open() => GetWindow<SelectionInfoWindow>("Selection Info");
+
+    protected override void OnEnable() => Selection.selectionChanged += Repaint;
+    protected override void OnDisable() => Selection.selectionChanged -= Repaint;
+
+    protected override void OnGUI()
+    {
+        EditorGUILayout.LabelField("当前选择", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField(Selection.activeObject?.name ?? "None");
+    }
+}
+```
+
+### 注册 Scene 运行系统
+
+实现 `ISceneRuntimeSystem` 后可通过扩展包的 `IEngineServiceModule` 注入。模块会在包程序集启用时发现，禁用包时作用域和注册会被清理。
+
+```csharp
+using BEngine;
+using BEngine.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+public sealed class CombatActor : MonoBehaviour
+{
+    public void Tick(Fix64 deltaTime) => transform.Rotate(deltaTime * 45);
+}
+
+public sealed class CombatSystem : ISceneRuntimeSystem
+{
+    public string packageId => "com.example.combat";
+    public int order => 200;
+    public void Update(Scene scene, Fix64 deltaTime)
+    {
+        foreach (var actor in scene.QueryComponents<CombatActor>())
+            actor.Tick(deltaTime);
+    }
+}
+
+public sealed class CombatModule : IEngineServiceModule
+{
+    public void ConfigureServices(IServiceCollection services, EngineServiceContext context) =>
+        services.TryAddEnumerable(ServiceDescriptor.Transient<ISceneRuntimeSystem, CombatSystem>());
+}
+```
+
+## 调试与常见问题
+
+| 问题 | 检查与处理 |
+| --- | --- |
+| Game 窗口没有画面 | 确认 Scene 中有启用的 Camera2D、cullingMask 包含对象层、viewportRect 非零且对象位于正交范围内 |
+| Scene 能看到但 Game 看不到 | 检查 Renderer sortingLayer、Camera cullingMask、Transform、opacity 和 Camera size |
+| Sprite 只显示纯色 | 检查 Sprite 的 Texture 路径、源纹理 `.meta`、Atlas 是否已 Build；未指定 Sprite 时纯色 Quad 是正常行为 |
+| 不能合批 | Material、Shader、解析后的 Atlas 必须相同，而且排序后必须相邻 |
+| Texture 参数重选后丢失 | 修改后点击 Apply，并确认源文件旁 `.meta` 可写；Reimport 后查看 Console |
+| Play 停止后对象消失 | Play 中创建的对象属于运行镜像，停止后丢弃是设计行为 |
+| Play 中修改被保存 | 不应发生；记录 Editor 日志并检查自定义工具是否绕过 Play 状态直接写 YAML |
+| Add Component 找不到脚本 | 检查编译错误、程序集定义依赖和脚本类型是否为非抽象 Component |
+| 包菜单或 Drawer 不出现 | 确认代码位于 Editor 程序集，等待编译完成并查看 Console 的功能边界错误 |
+| 文档或示例按钮不可用 | Play Mode、编译或包切换期间会禁用导入；回到 Edit Mode 后重试 |
+
+离线网页手册位于 `EditorResources/Doc/index.html`，可从 `Help > Documentation` 或 Package Manager 打开。

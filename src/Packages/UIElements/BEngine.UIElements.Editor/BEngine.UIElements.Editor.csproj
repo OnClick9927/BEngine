@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>BEngine.UIElements.Editor</RootNamespace>
+    <AssemblyName>BEngine.UIElements.Editor</AssemblyName>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine.UIElements/BEngine.UIElements.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <PackageReference Include="AngleSharp" />
+    <PackageReference Include="AngleSharp.Css" />
+  </ItemGroup>
+</Project>

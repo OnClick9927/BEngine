@@ -30,8 +30,16 @@ internal static class Program
             Require(projectProviders.Any(item => item.settingsPath == "Project/Player"),
                 "Built-in Player project provider was not discovered.");
             Require(projectProviders.Count(item => item.settingsPath.Equals(
-                        "Project/Tags and Layers", StringComparison.OrdinalIgnoreCase)) == 1,
-                "Project Settings must expose exactly one unified Tags and Layers provider.");
+                        "Project/Tags and Layers", StringComparison.OrdinalIgnoreCase)) == 1 &&
+                    projectProviders.All(item => !item.settingsPath.Equals(
+                        "Project/Tags", StringComparison.OrdinalIgnoreCase) &&
+                        !item.settingsPath.Equals("Project/Layers", StringComparison.OrdinalIgnoreCase)),
+                "Project Settings must expose one unified Tags and Layers provider.");
+            Require(TagLayerSettingsProvider.ResolveSettingsPath("Project/Tags") ==
+                        "Project/Tags and Layers" &&
+                    TagLayerSettingsProvider.ResolveSettingsPath("Project/Sorting Layers") ==
+                        "Project/Tags and Layers",
+                "Legacy Tags or Sorting Layers paths did not resolve to the unified provider tabs.");
             Require(userProviders.Any(item => item.settingsPath == "Preferences/Packages/Test Package" &&
                                               item.isPackageProvider),
                 "Reflected package preferences provider was not discovered.");

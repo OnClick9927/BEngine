@@ -108,7 +108,7 @@ internal static class SceneHandleVisualTests
     {
         var offsetPivotObject = harness.InitialScene.CreateGameObject("Offset Pivot Handle Test");
         var renderer = offsetPivotObject.AddComponent<SpriteRenderer>();
-        renderer.useAtlasPivot = false;
+        renderer.useSpritePivot = false;
         renderer.pivot = new Vector2(0, Fix64.Half);
         renderer.size = new Vector2(2, 1);
         var transform = offsetPivotObject.transform;

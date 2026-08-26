@@ -37,6 +37,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
     private long _lastClickTime;
     private BVector2 _lastClickPosition;
     private int _clickCount;
+    private readonly GameViewFrameTiming _frameTiming = new();
 
     public event Action<double>? updating;
     public event Action? closing;
@@ -49,6 +50,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
     public int width => Math.Max(1, _window.FramebufferSize.X);
     public int height => Math.Max(1, _window.FramebufferSize.Y);
     public Fix64 renderScale { get; private set; } = Fix64.One;
+    internal GameViewFrameTimingSnapshot frameTiming => _frameTiming.snapshot;
     public IntPtr nativeHandle => _window.Native?.Win32?.Hwnd ?? IntPtr.Zero;
     public BVector2 screenPosition => new(_window.Position.X, _window.Position.Y);
     public BVector2 windowSize => new(_window.Size.X, _window.Size.Y);
@@ -224,9 +226,10 @@ internal sealed class ImGuiNativeWindow : IDisposable
     private void OnUpdate(double delta) =>
         EditorCallbackDispatcher.Invoke(updating, delta, nameof(updating));
 
-    private void OnRender(double _)
+    private void OnRender(double deltaSeconds)
     {
         if (_device is null || _canvas is null) return;
+        _frameTiming.RecordSample(deltaSeconds);
         var framebufferSize = _window.FramebufferSize;
         var frameWidth = Math.Max(1, framebufferSize.X);
         var frameHeight = Math.Max(1, framebufferSize.Y);
@@ -326,12 +329,17 @@ internal sealed class ImGuiNativeWindow : IDisposable
     {
         _lastMousePosition = _mousePosition;
         _mousePosition = new BVector2((Fix64)position.X, (Fix64)position.Y);
-        if (GUIUtility.hotControl != 0 && !anyNavigationMouseButtonPressed)
-            GUIUtility.hotControl = 0;
-        var type = GUIUtility.hotControl == 0 ? EventType.MouseMove : EventType.MouseDrag;
+        var type = ResolveMouseMoveEventType(anyNavigationMouseButtonPressed);
         Enqueue(new BEvent(type) { mousePosition = _mousePosition,
             delta = _mousePosition - _lastMousePosition, modifiers = _modifiers,
             pointerType = PointerType.Mouse });
+    }
+
+    internal static EventType ResolveMouseMoveEventType(bool anyMouseButtonPressed)
+    {
+        if (GUIUtility.hotControl != 0 && !anyMouseButtonPressed)
+            GUIUtility.hotControl = 0;
+        return anyMouseButtonPressed ? EventType.MouseDrag : EventType.MouseMove;
     }
 
     private void OnMouseDown(IMouse _, MouseButton button)

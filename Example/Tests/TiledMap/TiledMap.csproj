@@ -8,6 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
-    <ProjectReference Include="../../../src/TiledMap/BEngine.TiledMap/BEngine.TiledMap.csproj" />
+    <ProjectReference Include="../../../src/Packages/TiledMap/BEngine.TiledMap/BEngine.TiledMap.csproj" />
   </ItemGroup>
 </Project>

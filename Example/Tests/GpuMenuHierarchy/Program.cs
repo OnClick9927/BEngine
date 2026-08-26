@@ -136,7 +136,7 @@ internal static class Program
             Menu.SetEnabled("Window/Test", true);
 
             Console.WriteLine(
-                "GPU_MENU_HIERARCHY_OK|component-root,submenus,checked,disabled,input-blocking,popup-anchor,advanced-search,advanced-mouse-reset,advanced-keyboard,advanced-scroll");
+                "GPU_MENU_HIERARCHY_OK|component-root,submenus,checked,disabled,input-blocking,popup-anchor,advanced-hierarchy,advanced-search,advanced-mouse-reset,advanced-keyboard,advanced-scroll");
             return 0;
         }
         catch (Exception exception)
@@ -157,17 +157,75 @@ internal static class Program
 
         var filteredInvoked = false;
         var searchMenu = new GenericMenu();
-        searchMenu.AddItem(new GUIContent("Rendering/Sprite"), false, () => { });
+        searchMenu.AddItem(new GUIContent("Rendering/Sprite"), true, () => { });
         searchMenu.AddItem(new GUIContent("Rendering/UI/Panel"), false,
             () => filteredInvoked = true);
         searchMenu.AddItem(new GUIContent("Physics/Body"), false, () => { });
+        searchMenu.AddItem(new GUIContent("Audio/UI/Panel"), false, () => { });
         open.Invoke(popup, [Items(searchMenu), new Vector2(20, 20), null]);
 
-        DispatchAdvanced(draw, popup, new Event(EventType.Repaint), []);
+        var rootCommands = new List<GpuCanvasCommand>();
+        DispatchAdvanced(draw, popup, new Event(EventType.Repaint), rootCommands);
         var focusedControl = (string?)typeof(GUI).GetField("_focusedControlName",
             BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null);
         Require(focusedControl == "BEngine.AdvancedDropdown.Search",
             "Advanced dropdown did not focus its search field when opened.");
+        Require(Get<IReadOnlyList<string>>(popup, "visiblePaths").SequenceEqual(
+                ["Rendering", "Physics", "Audio"], StringComparer.Ordinal),
+            "Advanced dropdown did not collapse slash paths into root-level groups.");
+        Require(rootCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                            command.Content == "Rendering") &&
+                !rootCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                             command.Content == "Rendering/Sprite"),
+            "Advanced dropdown rendered complete paths instead of the current hierarchy level.");
+
+        var renderingPoint = PointForText(rootCommands, "Rendering");
+        DispatchAdvanced(draw, popup, new Event(EventType.MouseMove)
+        {
+            mousePosition = renderingPoint
+        }, []);
+        Require(GetField<int>(popup, "_selectedIndex") == 0,
+            "Hovering an advanced-dropdown group did not update its selection.");
+        ClickAdvanced(draw, popup, renderingPoint);
+        Require(Get<string>(popup, "currentPath") == "Rendering" &&
+                Get<IReadOnlyList<string>>(popup, "visiblePaths").SequenceEqual(
+                    ["Rendering/Sprite", "Rendering/UI"], StringComparer.Ordinal),
+            "Clicking an advanced-dropdown group did not enter its child level.");
+
+        var renderingCommands = new List<GpuCanvasCommand>();
+        DispatchAdvanced(draw, popup, new Event(EventType.Repaint), renderingCommands);
+        Require(renderingCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                                 command.Content == "Sprite") &&
+                renderingCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                                 command.Content == "UI"),
+            "The advanced-dropdown child level did not render leaf and group labels.");
+        Require(renderingCommands.Any(command => command.Type == GpuCanvasCommandType.Image &&
+                                                 command.Content.EndsWith("Check.png",
+                                                     StringComparison.Ordinal)),
+            "A checked nested advanced-dropdown item did not render its check mark.");
+        ClickAdvanced(draw, popup, PointForText(renderingCommands, "UI"));
+        Require(Get<string>(popup, "currentPath") == "Rendering/UI" &&
+                Get<IReadOnlyList<string>>(popup, "visiblePaths").SequenceEqual(
+                    ["Rendering/UI/Panel"], StringComparer.Ordinal),
+            "Advanced dropdown did not support a second slash-delimited child level.");
+
+        var nestedCommands = new List<GpuCanvasCommand>();
+        DispatchAdvanced(draw, popup, new Event(EventType.Repaint), nestedCommands);
+        ClickAdvanced(draw, popup, PointForText(nestedCommands, "Rendering/UI"));
+        Require(Get<string>(popup, "currentPath") == "Rendering",
+            "Clicking the advanced-dropdown path header did not return to its parent level.");
+        renderingCommands.Clear();
+        DispatchAdvanced(draw, popup, new Event(EventType.Repaint), renderingCommands);
+        ClickAdvanced(draw, popup, PointForText(renderingCommands, "UI"));
+
+        var backspace = new Event(EventType.KeyDown) { keyCode = KeyCode.Backspace };
+        DispatchAdvanced(draw, popup, backspace, []);
+        Require(backspace.type == EventType.Used && Get<string>(popup, "currentPath") == "Rendering",
+            "Backspace did not navigate to the parent advanced-dropdown level.");
+        var left = Event.KeyboardEvent("left");
+        DispatchAdvanced(draw, popup, left, []);
+        Require(left.type == EventType.Used && Get<string>(popup, "currentPath").Length == 0,
+            "Left Arrow did not navigate to the root advanced-dropdown level.");
 
         TypeText(draw, popup, "rEnDeRiNg/uI");
         var enteredSearch = Get<string>(popup, "search");
@@ -206,6 +264,11 @@ internal static class Program
                 Get<IReadOnlyList<string>>(popup, "visiblePaths").Count == 3,
             "Reopening an advanced dropdown restored stale text from the previous search.");
 
+        TypeText(draw, popup, "Panel");
+        Require(Get<IReadOnlyList<string>>(popup, "visiblePaths").SequenceEqual(
+                ["Rendering/UI/Panel", "Audio/UI/Panel"], StringComparer.Ordinal),
+            "Search results did not retain complete paths for duplicate leaf names.");
+
         var escape = Event.KeyboardEvent("escape");
         DispatchAdvanced(draw, popup, escape, []);
         Require(escape.type == EventType.Used && !Get<bool>(popup, "isOpen"),
@@ -239,6 +302,30 @@ internal static class Program
             $"(event: {enter.type}, first: {firstInvoked}, target: {targetInvoked}, " +
             $"open: {Get<bool>(popup, "isOpen")}).");
 
+        var externalInvoked = false;
+        var hierarchyMenu = new GenericMenu();
+        hierarchyMenu.AddItem(new GUIContent("External/Create/Sprite"), false, () => { });
+        hierarchyMenu.AddItem(new GUIContent("External/Create/Tile"), false,
+            () => externalInvoked = true);
+        hierarchyMenu.AddDisabledItem(new GUIContent("External/Disabled"));
+        open.Invoke(popup, [Items(hierarchyMenu), new Vector2(20, 20), null]);
+        var enterGroup = Event.KeyboardEvent("enter");
+        DispatchAdvanced(draw, popup, enterGroup, []);
+        Require(enterGroup.type == EventType.Used && Get<string>(popup, "currentPath") == "External",
+            "Enter did not open the selected root group from external menu data.");
+        var rightGroup = Event.KeyboardEvent("right");
+        DispatchAdvanced(draw, popup, rightGroup, []);
+        Require(rightGroup.type == EventType.Used &&
+                Get<string>(popup, "currentPath") == "External/Create",
+            "Right Arrow did not open the selected nested group.");
+        var selectTile = Event.KeyboardEvent("down");
+        DispatchAdvanced(draw, popup, selectTile, []);
+        var invokeTile = Event.KeyboardEvent("enter");
+        DispatchAdvanced(draw, popup, invokeTile, []);
+        Require(selectTile.type == EventType.Used && invokeTile.type == EventType.Used &&
+                externalInvoked && !Get<bool>(popup, "isOpen"),
+            "Keyboard navigation did not execute a nested item supplied through GenericMenu.");
+
         var longMenu = new GenericMenu();
         for (var index = 0; index < 63; index++)
         {
@@ -261,8 +348,21 @@ internal static class Program
                 panel.Rect.X + panel.Rect.Width <= 800 &&
                 panel.Rect.Y + panel.Rect.Height <= 600,
             "Advanced dropdown was not clamped inside the editor window.");
-        Require(panel.Rect.Height < 400 && panel.Rect.Y + panel.Rect.Height <= (float)anchor.y,
-            "A long advanced dropdown was not height-limited or placed above its bottom-edge anchor.");
+        ClickAdvanced(draw, popup, PointForText(commands, "Layers"));
+        commands.Clear();
+        DispatchAdvanced(draw, popup,
+            new Event(EventType.Repaint) { mousePosition = new Vector2(790, 590) }, commands);
+        panel = commands
+            .Where(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                              command.Color == GpuCanvasColor.FromColor(
+                                  EditorAppearance.palette.PanelRaised))
+            .OrderByDescending(command => command.Rect.Width * command.Rect.Height)
+            .First();
+        Require(panel.Rect.X >= 0 && panel.Rect.Y >= 0 &&
+                panel.Rect.X + panel.Rect.Width <= 800 &&
+                panel.Rect.Y + panel.Rect.Height <= 600 &&
+                panel.Rect.Height < 400 && panel.Rect.Y + panel.Rect.Height <= (float)anchor.y,
+            "The expanded child level was not height-limited or clamped above its bottom-edge anchor.");
 
         var scroll = new Event(EventType.ScrollWheel)
         {
@@ -274,6 +374,28 @@ internal static class Program
                 Get<bool>(popup, "isOpen"),
             "A long advanced dropdown did not consume wheel input and scroll its bounded list.");
         close.Invoke(popup, null);
+    }
+
+    private static Vector2 PointForText(IEnumerable<GpuCanvasCommand> commands, string text)
+    {
+        var command = commands.Single(candidate => candidate.Type == GpuCanvasCommandType.Text &&
+                                                   candidate.Content == text);
+        return new Vector2((Fix64)(command.Rect.X + 8),
+            (Fix64)(command.Rect.Y + command.Rect.Height / 2));
+    }
+
+    private static void ClickAdvanced(MethodInfo draw, object popup, Vector2 point)
+    {
+        DispatchAdvanced(draw, popup, new Event(EventType.MouseDown)
+        {
+            mousePosition = point,
+            button = 0
+        }, []);
+        DispatchAdvanced(draw, popup, new Event(EventType.MouseUp)
+        {
+            mousePosition = point,
+            button = 0
+        }, []);
     }
 
     private static void Dispatch(MethodInfo draw, object popup, Event evt,

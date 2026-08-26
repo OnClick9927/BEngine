@@ -14,9 +14,11 @@ internal static class Program
             VerifySceneScopeIsolationAndRuntimeInjection();
             VerifyPackageModuleDiscovery();
             HostCompositionRootContract.Verify();
+            PlayerAssetEnvironmentTests.Verify();
             Console.WriteLine(
                 "DEPENDENCY_INJECTION_ARCHITECTURE_OK|dotnet-lifetimes,core-abstractions,scene-scopes," +
-                "scope-disposal,module-discovery,runtime-system-injection,host-composition-roots");
+                "scope-disposal,module-discovery,runtime-system-injection,host-composition-roots," +
+                "player-asset-environment");
             return 0;
         }
         catch (Exception exception)

@@ -24,9 +24,8 @@ internal static class CoreBuiltInGizmoDrawers
     private static void DrawSprite(SpriteRenderer renderer, GizmoType state)
     {
         var visual = renderer.ResolveSpriteUnchecked();
-        var pivot = renderer.useAtlasPivot && !string.IsNullOrWhiteSpace(renderer.atlas)
-            ? visual.Pivot
-            : renderer.pivot;
+        var pivot = renderer.useSpritePivot && renderer.sprite is not null
+            ? visual.Pivot : renderer.pivot;
         var localCenter = new Vector2(
             (Fix64.Half - pivot.x) * renderer.size.x,
             (Fix64.Half - pivot.y) * renderer.size.y);

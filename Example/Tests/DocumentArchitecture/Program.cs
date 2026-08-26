@@ -18,9 +18,11 @@ internal static class Program
             VerifyGenericDocumentObject(directory);
             VerifySceneConversion(directory);
             VerifyPackageConversions(directory);
+            VerifyUiAssetReferenceContract(directory);
             VerifyDocumentComposition();
             VerifySourceBoundary();
-            Console.WriteLine("DOCUMENT_ARCHITECTURE_OK|base,object,yaml,disk,scene,packages,composition,boundary");
+            Console.WriteLine("DOCUMENT_ARCHITECTURE_OK|base,object,yaml,disk,scene,packages," +
+                              "ui-basset-reference,composition,boundary");
             return 0;
         }
         catch (Exception exception)
@@ -48,6 +50,46 @@ internal static class Program
         Require(Document.LoadBObject<UIAssetDocument, VisualTreeAsset>(uiPath).Instantiate() is Label label &&
                 label.text == "Document UI",
             "UIElements package did not register its Document converter.");
+    }
+
+    private static void VerifyUiAssetReferenceContract(string directory)
+    {
+        var previousDataPath = Application.dataPath;
+        var assetsPath = Path.Combine(directory, "Assets");
+        Directory.CreateDirectory(assetsPath);
+        try
+        {
+            SetDataPath(assetsPath);
+            var treePath = Path.Combine(assetsPath, "Document.uxml");
+            VisualTreeAsset.Create(new Label("Portable UI")).Save(treePath);
+            var direct = VisualTreeAsset.Load(treePath);
+            Require(direct.assetPath == "Assets/Document.uxml",
+                "VisualTreeAsset retained an absolute project path.");
+
+            var stylePath = Path.Combine(assetsPath, "Document.uss");
+            File.WriteAllText(stylePath, ".root { color: white; }");
+            Require(StyleSheet.Load(stylePath).assetPath == "Assets/Document.uss",
+                "StyleSheet retained an absolute project path.");
+
+            var scene = new Scene("UI Asset Reference");
+            var probe = scene.CreateGameObject("Probe").AddComponent<UiAssetReferenceProbe>();
+            probe.asset = direct;
+            var fields = ComponentFieldSerializer.Serialize(probe);
+            Require(fields[nameof(UiAssetReferenceProbe.asset)] == "Assets/Document.uxml",
+                "A UI BAsset component reference serialized an absolute path.");
+
+            var first = BAsset.Load<VisualTreeAsset>("Assets/Document.uxml");
+            BAsset.ClearLoadedAssets();
+            var second = BAsset.Load<VisualTreeAsset>("Assets/Document.uxml");
+            Require(first is not null && second is not null && !ReferenceEquals(first, second),
+                "VisualTreeAsset bypassed the unified BAsset cache invalidation contract.");
+            scene.Dispose();
+        }
+        finally
+        {
+            BAsset.ClearLoadedAssets();
+            SetDataPath(previousDataPath);
+        }
     }
 
     private static void VerifyDocumentComposition()
@@ -143,4 +185,13 @@ internal static class Program
     {
         if (!condition) throw new InvalidOperationException(message);
     }
+
+    private static void SetDataPath(string value) => typeof(Application).GetProperty(
+        nameof(Application.dataPath))!.GetSetMethod(nonPublic: true)!.Invoke(null, [value]);
+}
+
+internal sealed class UiAssetReferenceProbe : MonoBehaviour
+{
+    public UiAssetReferenceProbe() { }
+    public BAsset? asset { get; set; }
 }

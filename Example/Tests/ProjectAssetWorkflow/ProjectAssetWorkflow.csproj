@@ -8,5 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../../src/Packages/Animation/BEngine.Animation/BEngine.Animation.csproj" />
+    <ProjectReference Include="../../../src/Packages/Animation/BEngine.Animation.Editor/BEngine.Animation.Editor.csproj" />
   </ItemGroup>
 </Project>

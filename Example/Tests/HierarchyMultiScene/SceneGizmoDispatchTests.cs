@@ -43,9 +43,15 @@ internal static class SceneGizmoDispatchTests
     {
         var previousResolution = Screen.currentResolution;
         var previousMode = Screen.fullScreenMode;
+        var cameraWasVisible = IsVisible(typeof(Camera2D));
+        var spriteWasVisible = IsVisible(typeof(SpriteRenderer));
+        var particlesWereVisible = IsVisible(typeof(ParticleSystem2D));
         var scene = new Scene("Built-in Gizmo dispatch");
         try
         {
+            SetVisible(typeof(Camera2D), true);
+            SetVisible(typeof(SpriteRenderer), true);
+            SetVisible(typeof(ParticleSystem2D), true);
             Screen.SetResolution(1200, 800, previousMode, previousResolution.refreshRate);
             var cameraObject = scene.CreateGameObject("Camera Gizmo");
             var camera = cameraObject.AddComponent<Camera2D>();
@@ -62,15 +68,22 @@ internal static class SceneGizmoDispatchTests
             TestAssert.Require(wideCameraLines.Length == 4,
                 "A non-Camera2D built-in Gizmo was drawn without selecting its GameObject.");
 
-            TestAssert.Require(LineCount(Collect([scene], spriteObject, 640, 360)) == 8,
-                "The selected SpriteRenderer did not draw its four-line Gizmo beside the Camera2D Gizmo.");
-            TestAssert.Require(LineCount(Collect([scene], particleObject, 640, 360)) == 7,
-                "The selected ParticleSystem2D did not draw its three-line direction Gizmo.");
+            var selectedSpriteLineCount = LineCount(Collect([scene], spriteObject, 640, 360));
+            TestAssert.Require(selectedSpriteLineCount == 8,
+                $"The selected SpriteRenderer emitted {selectedSpriteLineCount} lines instead of its " +
+                "four-line Gizmo beside the Camera2D Gizmo.");
+            var selectedParticleLineCount = LineCount(Collect([scene], particleObject, 640, 360));
+            TestAssert.Require(selectedParticleLineCount == 7,
+                $"The selected ParticleSystem2D emitted {selectedParticleLineCount} lines instead of its " +
+                "three-line direction Gizmo beside the Camera2D Gizmo.");
             TestAssert.Require(LineCount(Collect([scene], cameraObject, 640, 360)) == 4,
                 "Selecting Camera2D changed the number of lines in its always-visible Gizmo.");
         }
         finally
         {
+            SetVisible(typeof(Camera2D), cameraWasVisible);
+            SetVisible(typeof(SpriteRenderer), spriteWasVisible);
+            SetVisible(typeof(ParticleSystem2D), particlesWereVisible);
             Screen.SetResolution(previousResolution.width, previousResolution.height,
                 previousMode, previousResolution.refreshRate);
             scene.Dispose();

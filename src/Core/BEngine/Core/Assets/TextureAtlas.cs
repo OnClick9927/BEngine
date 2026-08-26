@@ -6,13 +6,15 @@ namespace BEngine;
 public sealed class TextureAtlas : BAsset
 {
     public string Format { get; set; } = "BEngine.TextureAtlas";
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public string Texture { get; set; } = string.Empty;
     public int Width { get; set; }
     public int Height { get; set; }
     public int MaxSize { get; set; } = 2048;
     public int Padding { get; set; } = 2;
     public int Extrude { get; set; } = 1;
+    public List<string> SpriteReferences { get; set; } = [];
+    // Kept so version 1 atlases continue to load and can be rebuilt without rewriting source assets.
     public List<TextureAtlasSource> Sources { get; set; } = [];
     public List<TextureAtlasSprite> Sprites { get; set; } = [];
 
@@ -23,6 +25,10 @@ public sealed class TextureAtlas : BAsset
         return Sprites.FirstOrDefault(sprite => sprite.Name.Equals(value, StringComparison.Ordinal)) ??
                Sprites.FirstOrDefault(sprite => sprite.Source.Equals(value, StringComparison.OrdinalIgnoreCase));
     }
+
+    public IReadOnlyList<Sprite> LoadReferencedSprites() => SpriteReferences
+        .Select(Sprite.Load)
+        .ToArray();
 
     public bool TryGetUv(string nameOrSource, out Rect uv)
     {
@@ -38,13 +44,22 @@ public sealed class TextureAtlas : BAsset
 
     public void Validate()
     {
-        if (!Format.Equals("BEngine.TextureAtlas", StringComparison.Ordinal) || Version != 1)
+        if (!Format.Equals("BEngine.TextureAtlas", StringComparison.Ordinal) || Version is < 1 or > 2)
             throw new InvalidDataException($"Unsupported texture atlas format/version '{Format}' v{Version}.");
         MaxSize = Math.Clamp(MaxSize, 32, 16384);
         Padding = Math.Clamp(Padding, 0, 64);
         Extrude = Math.Clamp(Extrude, 0, Padding);
+        SpriteReferences ??= [];
         Sources ??= [];
         Sprites ??= [];
+        for (var index = 0; index < SpriteReferences.Count; index++)
+        {
+            var reference = SpriteReferences[index]?.Replace('\\', '/').Trim() ?? string.Empty;
+            if (reference.Length == 0)
+                throw new InvalidDataException("Texture atlas Sprite references cannot be empty.");
+            SpriteReferences[index] = reference;
+        }
+        RejectDuplicates(SpriteReferences, "Sprite reference", StringComparer.OrdinalIgnoreCase);
         foreach (var source in Sources) source.Validate();
         RejectDuplicates(Sources.Select(source => source.Name), "source name");
         RejectDuplicates(Sources.Select(source => source.Path), "source path", StringComparer.OrdinalIgnoreCase);

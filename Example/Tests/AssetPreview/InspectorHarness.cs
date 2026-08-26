@@ -64,6 +64,9 @@ internal sealed class InspectorHarness : IDisposable
         return Render(new Event(EventType.Repaint), width, height);
     }
 
+    internal IReadOnlyList<GpuCanvasCommand> Dispatch(Event evt, int width = 500, int height = 520) =>
+        Render(evt, width, height);
+
     internal static bool IsEnabled(AssetEditor editor) =>
         (bool)typeof(AssetEditor).GetField("_enabled", Members)!.GetValue(editor)!;
 

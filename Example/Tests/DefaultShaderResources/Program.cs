@@ -10,7 +10,7 @@ internal static class Program
         {
             var repository = FindRepositoryRoot();
             var core = Path.Combine(repository, "src", "Core");
-            var uiElements = Path.Combine(repository, "src", "UIElements");
+            var uiElements = Path.Combine(repository, "src", "Packages", "UIElements");
             Resources.RegisterResourceRoot(core);
             Resources.RegisterResourceRoot(uiElements);
             var coreShaders = EnumerateShaders(Path.Combine(core, "Resources", "Shaders"));

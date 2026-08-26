@@ -1,35 +1,21 @@
 format: BEngine.TextureAtlas
-version: 1
+version: 2
 texture: Assets/Art/Showcase.png
 width: 512
 height: 512
 maxSize: 1024
 padding: 4
 extrude: 2
-sources:
-- name: Brand
-  path: Assets/Art/Sources/BEngine.png
-  pivotX: 0.5
-  pivotY: 0.5
-- name: Animation
-  path: Assets/Art/Sources/Animation.png
-  pivotX: 0.5
-  pivotY: 0.5
-- name: Physics2D
-  path: Assets/Art/Sources/Physics2D.png
-  pivotX: 0.5
-  pivotY: 0.5
-- name: Navigation2D
-  path: Assets/Art/Sources/Navigation2D.png
-  pivotX: 0.5
-  pivotY: 0.5
-- name: Spark
-  path: Assets/Art/Sources/Spark.png
-  pivotX: 0.5
-  pivotY: 0.5
+spriteReferences:
+- Assets/Art/Sprites/Brand.sprite.yaml
+- Assets/Art/Sprites/Animation.sprite.yaml
+- Assets/Art/Sprites/Physics2D.sprite.yaml
+- Assets/Art/Sprites/Navigation2D.sprite.yaml
+- Assets/Art/Sprites/Spark.sprite.yaml
+sources: []
 sprites:
 - name: Animation
-  source: Assets/Art/Sources/Animation.png
+  source: Assets/Art/Sprites/Animation.sprite.yaml
   x: 268
   y: 4
   width: 32
@@ -37,7 +23,7 @@ sprites:
   pivotX: 0.5
   pivotY: 0.5
 - name: Brand
-  source: Assets/Art/Sources/BEngine.png
+  source: Assets/Art/Sprites/Brand.sprite.yaml
   x: 4
   y: 4
   width: 256
@@ -45,7 +31,7 @@ sprites:
   pivotX: 0.5
   pivotY: 0.5
 - name: Navigation2D
-  source: Assets/Art/Sources/Navigation2D.png
+  source: Assets/Art/Sprites/Navigation2D.sprite.yaml
   x: 308
   y: 4
   width: 32
@@ -53,7 +39,7 @@ sprites:
   pivotX: 0.5
   pivotY: 0.5
 - name: Physics2D
-  source: Assets/Art/Sources/Physics2D.png
+  source: Assets/Art/Sprites/Physics2D.sprite.yaml
   x: 348
   y: 4
   width: 32
@@ -61,7 +47,7 @@ sprites:
   pivotX: 0.5
   pivotY: 0.5
 - name: Spark
-  source: Assets/Art/Sources/Spark.png
+  source: Assets/Art/Sprites/Spark.sprite.yaml
   x: 388
   y: 4
   width: 32

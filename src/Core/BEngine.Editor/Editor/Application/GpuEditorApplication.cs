@@ -506,13 +506,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     _activeLayoutName.Equals(name, StringComparison.OrdinalIgnoreCase));
                 yield return new($"Layouts/Delete/{name}", true, () => DeleteNamedLayout(capturedName));
             }
-            foreach (var builtIn in _builtInWindows.OrderBy(item => item.Window.titleContent.text,
+            foreach (var builtIn in _builtInWindows.OrderBy(item => BuiltInWindowMenuPath(item.Window),
                          StringComparer.OrdinalIgnoreCase))
             {
                 var captured = builtIn;
                 var visible = _editorPanels.ContainsKey(captured.Window) ||
                               _windowLayer.Contains(captured.Window);
-                yield return new(captured.Window.titleContent.text, true,
+                yield return new(BuiltInWindowMenuPath(captured.Window), true,
                     () => ShowBuiltIn(captured.Window, captured.Area), visible);
             }
             var builtInSet = _builtInWindows.Select(item => item.Window).ToHashSet();
@@ -550,6 +550,15 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _ => string.Empty
         };
         return shortcut.Length == 0 ? label : $"{label.PadRight(30)}{shortcut}";
+    }
+
+    private static string BuiltInWindowMenuPath(EditorWindow window)
+    {
+        var title = window.titleContent.text;
+        return window is ImGuiConsoleWindow or ImGuiGameWindow or ImGuiHierarchyWindow or
+            ImGuiProjectWindow or ImGuiInspectorWindow or ImGuiSceneWindow
+            ? $"General/{title}"
+            : title;
     }
 
     private static IEnumerable<MenuEntry> FlattenMenu(IEnumerable<MenuItemRegistry.MenuNode> nodes,
@@ -835,6 +844,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         var cameras = EngineRenderer.ResolveGameCameras(LoadedScenes());
         _sceneRenderer!.RenderCameras(LoadedScenes(), _scene, cameras, viewport,
             targetSize.Width, targetSize.Height, drawUi: true);
+        _gameView.UpdateRenderStatistics(_sceneRenderer.LastRenderStatistics);
     }
 
     private bool TryGetRenderViewport(EditorWindow window, IGraphicsDevice device,
@@ -928,6 +938,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     }
     private void OnAssetsChanged(IReadOnlyList<AssetChange> changes)
     {
+        BAsset.ClearLoadedAssets();
+        TextureAtlasResolver.Clear();
         AssetPreview.ClearTemporaryAssetPreviews();
         ReloadChangedAssetSelection(changes);
         _scriptSourceCache.Clear();
@@ -1066,6 +1078,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         ArgumentNullException.ThrowIfNull(gameObject);
         _selected = gameObject; _selectedAsset = null; _selectedAssetPath = null;
+        _hierarchy?.RevealSelection(gameObject);
         Selection.NotifyHostSelectionChanged(gameObject); _inspector.RebuildEditor();
     }
 
@@ -3462,16 +3475,32 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         private Vector2 _position;
         private Fix64 _contentHeight = 1;
+        private Fix64 _viewportHeight = 1;
         public void Begin(Fix64 minimumContentWidth = default)
         {
             var viewport = GUILayoutUtility.GetControlRect(60, GUILayout.ExpandWidth(true),
                 GUILayout.ExpandHeight(true));
+            _viewportHeight = Fix64.Max(1, viewport.height);
             var contentWidth = Fix64.Max(Fix64.Max(1, viewport.width - 11), minimumContentWidth);
             var contentHeight = Fix64.Max(viewport.height, _contentHeight);
             _position = GUI.BeginScrollView(viewport, _position,
                 new Rect(0, 0, contentWidth, contentHeight));
             GUILayout.BeginContainer(new Rect(0, 0, contentWidth, contentHeight));
         }
+
+        public bool Reveal(Rect contentRect)
+        {
+            var nextY = _position.y;
+            if (contentRect.y < nextY)
+                nextY = contentRect.y;
+            else if (contentRect.yMax > nextY + _viewportHeight)
+                nextY = contentRect.yMax - _viewportHeight;
+            nextY = Fix64.Max(0, nextY);
+            if (nextY == _position.y) return false;
+            _position = new Vector2(_position.x, nextY);
+            return true;
+        }
+
         public void End()
         {
             _contentHeight = Fix64.Max(1, GUILayout.CurrentContentHeight + 4);
@@ -3504,7 +3533,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private Guid? _dropTargetId;
         private Vector2 _dragStart;
         private bool _showRowActions = true;
-        private bool _showSceneStateActions = true;
+        private Guid? _pendingRevealId;
         public ImGuiHierarchyWindow() : this(null!) { }
         protected override void OnGUI()
         {
@@ -3648,11 +3677,24 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (!MatchesSearch(item)) return;
             var rowHeight = EditorTreeViewGUI.rowHeight;
             var rowRect = GUILayoutUtility.GetControlRect(rowHeight, GUILayout.ExpandWidth(true));
+            if (_pendingRevealId == item.Id)
+            {
+                if (_scroll.Reveal(rowRect)) Repaint();
+                _pendingRevealId = null;
+            }
             var selected = ReferenceEquals(app.Selected, item) || _dropTargetId == item.Id;
             DrawObjectRowBackground(rowRect, selected);
             HandleDrag(item, rowRect);
             var children = item.transform.children.ToArray();
-            var foldoutRect = new Rect(rowRect.x + depth * 14, rowRect.y, 18, rowHeight);
+            const int sceneStateButtonWidth = 18;
+            const int sceneStateActionWidth = sceneStateButtonWidth * 2;
+            var rightActionWidth = _showRowActions ? (Fix64)22 : Fix64.Zero;
+            var treeLeft = rowRect.x + sceneStateActionWidth;
+            const int minimumLabelWidth = 13;
+            var desiredFoldoutX = treeLeft + depth * 14;
+            var maximumFoldoutX = Fix64.Max(treeLeft,
+                rowRect.xMax - rightActionWidth - 18 - minimumLabelWidth);
+            var foldoutRect = new Rect(Fix64.Min(desiredFoldoutX, maximumFoldoutX), rowRect.y, 18, rowHeight);
             if (children.Length > 0)
             {
                 var isExpanded = _expanded.Contains(item.Id);
@@ -3667,10 +3709,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
             var itemIcon = PrefabUtility.IsPartOfPrefabInstance(item)
                 ? EditorBuiltinIcons.Assets.Prefab : EditorBuiltinIcons.Components.GameObject;
-            var stateActionWidth = _showSceneStateActions ? (Fix64)44 : Fix64.Zero;
-            var actionWidth = stateActionWidth + (_showRowActions ? 22 : 0);
             var itemLabelRect = new Rect(foldoutRect.xMax, rowRect.y,
-                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax - actionWidth), rowHeight);
+                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax - rightActionWidth), rowHeight);
             var itemLabelWidth = itemLabelRect.width;
             var visibleItemIcon = itemLabelWidth >= 28 ? itemIcon : string.Empty;
             var morePressed = false;
@@ -3694,35 +3734,33 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     : item.activeInHierarchy && !sceneHidden
                         ? EditorStyles.hierarchyRow
                         : EditorStyles.hierarchyRowInactive;
-                if (GUI.Button(itemLabelRect, new GUIContent(item.name, visibleItemIcon,
-                        PrefabUtility.IsPartOfPrefabInstance(item) ? "Prefab instance" : "GameObject"),
-                        rowStyle))
+                var itemContent = new GUIContent(item.name, visibleItemIcon,
+                    PrefabUtility.IsPartOfPrefabInstance(item) ? "Prefab instance" : "GameObject");
+                if (GUI.Button(itemLabelRect, GUIContent.none, rowStyle))
                 {
                     app.Select(item);
                     if (doubleClick) app.FrameSelectedInScene();
                 }
+                GUI.Label(itemLabelRect, itemContent, rowStyle);
             }
 
-            if (_showSceneStateActions)
-            {
-                var sceneVisibility = SceneVisibilityManager.instance;
-                var hidden = sceneVisibility.IsHidden(item);
-                var visibilityRect = new Rect(rowRect.xMax - actionWidth, rowRect.y, 22, rowHeight);
-                if (GUI.Button(visibilityRect, new GUIContent(string.Empty,
-                        hidden ? EditorBuiltinIcons.Toolbar.Hidden : EditorBuiltinIcons.Toolbar.Visible,
-                        hidden ? $"Show {item.name} in Scene view" : $"Hide {item.name} in Scene view"),
-                        EditorStyles.hierarchyAction))
-                    sceneVisibility.ToggleVisibility(item, includeDescendants: true);
+            var sceneVisibility = SceneVisibilityManager.instance;
+            var hidden = sceneVisibility.IsHidden(item);
+            var visibilityRect = new Rect(rowRect.x, rowRect.y, sceneStateButtonWidth, rowHeight);
+            if (GUI.Button(visibilityRect, new GUIContent(string.Empty,
+                    hidden ? EditorBuiltinIcons.Toolbar.Hidden : EditorBuiltinIcons.Toolbar.Visible,
+                    hidden ? $"Show {item.name} in Scene view" : $"Hide {item.name} in Scene view"),
+                    EditorStyles.hierarchyAction))
+                sceneVisibility.ToggleVisibility(item, includeDescendants: true);
 
-                var pickingDisabled = sceneVisibility.IsPickingDisabled(item);
-                var pickingRect = new Rect(visibilityRect.xMax, rowRect.y, 22, rowHeight);
-                if (GUI.Button(pickingRect, new GUIContent(string.Empty,
-                        pickingDisabled ? EditorBuiltinIcons.Toolbar.Lock : EditorBuiltinIcons.Toolbar.Unlock,
-                        pickingDisabled
-                            ? $"Enable Scene picking for {item.name}"
-                            : $"Disable Scene picking for {item.name}"), EditorStyles.hierarchyAction))
-                    sceneVisibility.TogglePicking(item, includeDescendants: true);
-            }
+            var pickingDisabled = sceneVisibility.IsPickingDisabled(item);
+            var pickingRect = new Rect(visibilityRect.xMax, rowRect.y, sceneStateButtonWidth, rowHeight);
+            if (GUI.Button(pickingRect, new GUIContent(string.Empty,
+                    pickingDisabled ? EditorBuiltinIcons.Toolbar.Lock : EditorBuiltinIcons.Toolbar.Unlock,
+                    pickingDisabled
+                        ? $"Enable Scene picking for {item.name}"
+                        : $"Disable Scene picking for {item.name}"), EditorStyles.hierarchyAction))
+                sceneVisibility.TogglePicking(item, includeDescendants: true);
             if (_showRowActions)
             {
                 moreRect = new Rect(rowRect.xMax - 22, rowRect.y, 22, rowHeight);
@@ -3814,8 +3852,17 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var width = GUI.visibleViewWidth;
             if (_showRowActions && width < 128) _showRowActions = false;
             else if (!_showRowActions && width > 144) _showRowActions = true;
-            if (_showSceneStateActions && width < 112) _showSceneStateActions = false;
-            else if (!_showSceneStateActions && width > 128) _showSceneStateActions = true;
+        }
+
+        internal void RevealSelection(GameObject item)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            if (item.scene is { } scene) _expandedScenes.Add(scene.Id);
+            if (item.isDontDestroyOnLoad) _expandedScenes.Add(DontDestroyOnLoadId);
+            for (var parent = item.transform.parent; parent is not null; parent = parent.parent)
+                _expanded.Add(parent.gameObject.Id);
+            _pendingRevealId = item.Id;
+            Repaint();
         }
 
         private void HandleKeyboard()
@@ -4636,6 +4683,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         private readonly GameViewResolutionSettings _resolutions = new();
         private GraphicsRect _lastFittedViewport;
+        private SceneRenderStatistics _renderStatistics;
+        private bool _hasRenderStatistics;
+        private bool _statusExpanded;
 
         public ImGuiGameWindow() : this(null!) { }
 
@@ -4650,14 +4700,27 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _resolutions.ApplyScreenSize(fittedViewport);
             return _resolutions.ResolveTargetSize(fittedViewport);
         }
+        internal void UpdateRenderStatistics(SceneRenderStatistics statistics)
+        {
+            _renderStatistics = statistics;
+            _hasRenderStatistics = true;
+        }
 
         protected override void OnGUI()
         {
             DrawWindowToolbarBackground();
+            var toolbarWidth = GUI.visibleViewWidth;
+            var showDisplay = toolbarWidth >= 310;
+            var statusWidth = toolbarWidth >= 190 ? (Fix64)62 : (Fix64)52;
+            var displayWidth = showDisplay ? (Fix64)80 : Fix64.Zero;
+            var resolutionWidth = Fix64.Max(44, Fix64.Min(132,
+                toolbarWidth - displayWidth - statusWidth - (showDisplay ? 20 : 12)));
             GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.toolbar.fixedHeight));
-            GUILayout.Label("Display 1", EditorStyles.toolbarButton, GUILayout.Width(76));
+            if (showDisplay)
+                GUILayout.Label("Display 1", EditorStyles.toolbarButton, GUILayout.Width(76));
             if (GUILayout.Button(new GUIContent(_resolutions.selected.SizeLabel,
-                    _resolutions.selected.MenuLabel), EditorStyles.toolbarButton, GUILayout.Width(132)))
+                    _resolutions.selected.MenuLabel), EditorStyles.toolbarButton,
+                    GUILayout.Width(resolutionWidth)))
             {
                 var anchor = GUILayout.LastRect;
                 var topLeft = GUI.GUIToRootPoint(anchor.position);
@@ -4665,10 +4728,117 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 ShowResolutionMenu(anchor, new Rect(topLeft.x, topLeft.y,
                     bottomRight.x - topLeft.x, bottomRight.y - topLeft.y));
             }
-            GUILayout.Label(app._playing ? "Playing" : "Preview", EditorStyles.miniLabel,
-                GUILayout.ExpandWidth(true));
+            if (GUILayout.Button(new GUIContent("Status", "Show Game rendering statistics"),
+                    _statusExpanded ? EditorStyles.toolbarIconButtonSelected : EditorStyles.toolbarButton,
+                    GUILayout.Width(statusWidth)))
+                _statusExpanded = !_statusExpanded;
+            if (toolbarWidth >= 260)
+                GUILayout.Label(app._playing ? "Playing" : "Preview", EditorStyles.miniLabel,
+                    GUILayout.ExpandWidth(true));
             GUILayout.EndHorizontal();
+            if (_statusExpanded) DrawStatusOverlay();
         }
+
+        private void DrawStatusOverlay()
+        {
+            var availableWidth = Fix64.Max(0, GUIUtility.currentViewWidth - 12);
+            var availableHeight = Fix64.Max(0,
+                GUIUtility.currentViewHeight - EditorStyles.toolbar.fixedHeight - 12);
+            if (availableWidth < 112 || availableHeight < 44) return;
+
+            var panelWidth = Fix64.Min(310, availableWidth);
+            var compact = panelWidth < 250;
+            var lines = StatusLines(compact);
+            var lineHeight = Fix64.Max(16,
+                GUITextMetrics.MeasureLineHeight(EditorStyles.miniLabel.fontSize, GUIUtility.fontFamily) + 2);
+            var maximumLineCount = Math.Max(1,
+                (int)((availableHeight - 12) / lineHeight) - 1);
+            if (lines.Count > maximumLineCount) lines.RemoveRange(maximumLineCount,
+                lines.Count - maximumLineCount);
+            var panelHeight = Fix64.Min(availableHeight, 12 + lineHeight * (lines.Count + 1));
+            var panel = new Rect(
+                Fix64.Max(6, GUIUtility.currentViewWidth - panelWidth - 6),
+                EditorStyles.toolbar.fixedHeight + 6,
+                panelWidth,
+                panelHeight);
+            GUI.DrawRect(panel, EditorAppearance.palette.PanelRaised);
+            GUI.DrawRect(new Rect(panel.x, panel.y, panel.width, 1), EditorAppearance.palette.Border);
+            GUI.DrawRect(new Rect(panel.x, panel.yMax - 1, panel.width, 1), EditorAppearance.palette.Border);
+            GUI.DrawRect(new Rect(panel.x, panel.y, 1, panel.height), EditorAppearance.palette.Border);
+            GUI.DrawRect(new Rect(panel.xMax - 1, panel.y, 1, panel.height), EditorAppearance.palette.Border);
+
+            var titleStyle = new GUIStyle(EditorStyles.boldLabel) { alignment = TextAnchor.MiddleCenter };
+            GUI.Label(new Rect(panel.x + 6, panel.y + 4, panel.width - 12, lineHeight),
+                "Statistics", titleStyle);
+            var y = panel.y + 4 + lineHeight;
+            foreach (var (text, heading) in lines)
+            {
+                GUI.Label(new Rect(panel.x + 10, y, panel.width - 20, lineHeight), text,
+                    heading ? EditorStyles.boldLabel : EditorStyles.miniLabel);
+                y += lineHeight;
+            }
+        }
+
+        private List<(string Text, bool Heading)> StatusLines(bool compact)
+        {
+            var timing = app?._mainWindow?.frameTiming ?? default;
+            var backend = app?._mainWindow?.backend.ToString() ?? "Unavailable";
+            var lines = new List<(string, bool)>
+            {
+                ("Frame", true),
+                (timing.HasValue
+                    ? $"{timing.FramesPerSecond:F1} FPS ({timing.FrameTimeMilliseconds:F1} ms)"
+                    : "FPS: warming up", false)
+            };
+            if (compact)
+            {
+                lines.Add(("Graphics", true));
+                lines.Add(($"Backend: {backend}", false));
+            }
+            else
+                lines.Add(($"Graphics | {backend}", true));
+            if (!_hasRenderStatistics)
+            {
+                lines.Add(("Waiting for Game rendering", false));
+                return lines;
+            }
+
+            if (compact)
+            {
+                lines.Add(($"Cameras: {CompactNumber(_renderStatistics.CameraCount)}", false));
+                lines.Add(($"Visible: {CompactNumber(_renderStatistics.VisibleSubmissionCount)}", false));
+                lines.Add(($"Batches: {CompactNumber(_renderStatistics.BatchCount)}", false));
+                lines.Add((DrawMetric("Draw", _renderStatistics.DrawCallCount, true), false));
+                lines.Add((DrawMetric("Tris", _renderStatistics.TriangleCount, true), false));
+                lines.Add((DrawMetric("Verts", _renderStatistics.VertexCount, true), false));
+            }
+            else
+            {
+                lines.Add(($"Cameras: {_renderStatistics.CameraCount:N0}   " +
+                           $"Visible: {_renderStatistics.VisibleSubmissionCount:N0}", false));
+                lines.Add(($"Batches: {_renderStatistics.BatchCount:N0}   " +
+                           DrawMetric("Draw calls", _renderStatistics.DrawCallCount), false));
+                lines.Add(($"{DrawMetric("Tris", _renderStatistics.TriangleCount)}   " +
+                           DrawMetric("Verts", _renderStatistics.VertexCount), false));
+            }
+            lines.Add((compact
+                ? $"Screen: {_renderStatistics.TargetWidth}x{_renderStatistics.TargetHeight}"
+                : $"Screen: {_renderStatistics.TargetWidth:N0} x {_renderStatistics.TargetHeight:N0}", false));
+            return lines;
+        }
+
+        private string DrawMetric(string label, long value, bool compact = false) =>
+            _renderStatistics.HasCompleteDrawStatistics
+                ? $"{label}: {(compact ? CompactNumber(value) : $"{value:N0}")}"
+                : $"{label}: unavailable";
+
+        private static string CompactNumber(long value) => value switch
+        {
+            >= 1_000_000_000 => $"{value / 1_000_000_000d:F1}B",
+            >= 1_000_000 => $"{value / 1_000_000d:F1}M",
+            >= 10_000 => $"{value / 1_000d:F1}K",
+            _ => value.ToString()
+        };
 
         private void ShowResolutionMenu(Rect anchor, Rect rootAnchor)
         {
@@ -4746,6 +4916,10 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private (string Name, ulong Value)[] _layerOptions = [];
         private string[] _layerLabels = [];
         private bool _previewExpanded = true;
+        private bool _previewHeightInitialized;
+        private Fix64 _previewHeight;
+        private Fix64 _previewDragStartY;
+        private Fix64 _previewDragStartHeight;
         public ImGuiInspectorWindow() : this(null!) { }
         internal BObject? LockedTarget => isLocked ? _lastTarget : null;
         internal void RebuildEditor(bool force = false)
@@ -4779,6 +4953,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var hasPreview = target is not null && target is not GameObject &&
                              _editor?.HasPreviewGUIInternal() is true;
             var previewHeight = PreviewPaneHeight(hasPreview);
+            if (hasPreview && _previewExpanded)
+            {
+                var splitter = new Rect(0,
+                    Fix64.Max(0, GUIUtility.currentViewHeight - previewHeight - 3),
+                    GUIUtility.currentViewWidth, 6);
+                previewHeight = HandlePreviewSplitter(splitter, previewHeight);
+            }
             var inspectorHeight = Fix64.Max(0, GUIUtility.currentViewHeight - previewHeight);
 
             using (GUILayout.Area(new Rect(0, 0, GUIUtility.currentViewWidth, inspectorHeight)))
@@ -4984,10 +5165,61 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (!hasPreview) return 0;
             var header = Fix64.Max(22, EditorStyles.inspectorTitlebar.fixedHeight);
             if (!_previewExpanded) return header + 2;
-            var desired = Fix64.Clamp(GUIUtility.currentViewHeight * Fix64.FromDecimal(0.36m),
-                header + 96, 260);
-            var maximum = Fix64.Max(header + 36, GUIUtility.currentViewHeight - 72);
-            return Fix64.Min(GUIUtility.currentViewHeight, Fix64.Min(desired, maximum));
+            var (minimum, maximum) = PreviewHeightRange(header);
+            if (!_previewHeightInitialized)
+            {
+                _previewHeight = Fix64.Clamp(
+                    GUIUtility.currentViewHeight * Fix64.FromDecimal(0.36m), minimum,
+                    Fix64.Min(260, maximum));
+                _previewHeightInitialized = true;
+            }
+            _previewHeight = Fix64.Clamp(_previewHeight, minimum, maximum);
+            return _previewHeight;
+        }
+
+        private (Fix64 Minimum, Fix64 Maximum) PreviewHeightRange(Fix64 header)
+        {
+            var maximum = Fix64.Min(GUIUtility.currentViewHeight,
+                Fix64.Max(header + 36, GUIUtility.currentViewHeight - 72));
+            return (Fix64.Min(header + 96, maximum), maximum);
+        }
+
+        private Fix64 HandlePreviewSplitter(Rect splitter, Fix64 currentHeight)
+        {
+            var header = Fix64.Max(22, EditorStyles.inspectorTitlebar.fixedHeight);
+            var (minimum, maximum) = PreviewHeightRange(header);
+            currentHeight = Fix64.Clamp(currentHeight, minimum, maximum);
+            var id = GUIUtility.GetControlID("InspectorPreviewSplitter".GetHashCode(StringComparison.Ordinal),
+                FocusType.Passive, splitter);
+            var evt = Event.current;
+            EditorGUIUtility.AddCursorRect(GUIUtility.hotControl == id
+                    ? new Rect(0, 0, GUIUtility.currentViewWidth, GUIUtility.currentViewHeight)
+                    : splitter,
+                MouseCursor.ResizeVertical);
+            switch (evt.GetTypeForControl(id))
+            {
+                case EventType.MouseDown when evt.button == 0 && splitter.Contains(evt.mousePosition):
+                    GUIUtility.hotControl = id;
+                    _previewDragStartY = evt.mousePosition.y;
+                    _previewDragStartHeight = currentHeight;
+                    evt.Use();
+                    break;
+                case EventType.MouseDrag when GUIUtility.hotControl == id:
+                    currentHeight = Fix64.Clamp(
+                        _previewDragStartHeight - (evt.mousePosition.y - _previewDragStartY),
+                        minimum, maximum);
+                    _previewHeight = currentHeight;
+                    _previewHeightInitialized = true;
+                    evt.Use();
+                    Repaint();
+                    break;
+                case EventType.MouseUp when GUIUtility.hotControl == id:
+                    GUIUtility.hotControl = 0;
+                    evt.Use();
+                    break;
+            }
+            _previewHeight = currentHeight;
+            return currentHeight;
         }
 
         private void DrawPreviewPane(Editor editor, BObject target, Fix64 paneHeight)

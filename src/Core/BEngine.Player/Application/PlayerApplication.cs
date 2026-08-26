@@ -51,6 +51,7 @@ internal sealed class PlayerApplication : IDisposable
         ArgumentNullException.ThrowIfNull(services);
         _sceneRuntimeFactory = sceneRuntimeFactory ?? throw new ArgumentNullException(nameof(sceneRuntimeFactory));
         _sceneManager = sceneManager ?? throw new ArgumentNullException(nameof(sceneManager));
+        PlayerAssetEnvironment.Initialize(workspace);
         Directory.SetCurrentDirectory(workspace.RootPath);
         RegisterCoreResourceRoot();
         _uiElementsEnabled = true;

@@ -157,7 +157,7 @@ public static class GUI
         }
         scrollPosition = new Vector2(Fix64.Clamp(scrollPosition.x, 0, maxX),
             Fix64.Clamp(scrollPosition.y, 0, maxY));
-        DrawScrollbars(position, scrollPosition, viewRect);
+        scrollPosition = HandleAndDrawScrollbars(position, scrollPosition, viewRect);
 
         var contentOrigin = new Vector2(viewport.x - scrollPosition.x, viewport.y - scrollPosition.y);
         _context.PushScrollView(position, scrollPosition);
@@ -570,29 +570,101 @@ public static class GUI
         GUIUtility.currentViewHeight = state.ViewHeight;
     }
 
-    private static void DrawScrollbars(Rect viewport, Vector2 scroll, Rect content)
+    private static Vector2 HandleAndDrawScrollbars(Rect viewport, Vector2 scroll, Rect content)
     {
-        if (Event.current.type != EventType.Repaint) return;
+        var verticalId = GUIUtility.GetControlID(
+            "VerticalScrollbar".GetHashCode(StringComparison.Ordinal), FocusType.Passive, viewport);
+        var horizontalId = GUIUtility.GetControlID(
+            "HorizontalScrollbar".GetHashCode(StringComparison.Ordinal), FocusType.Passive, viewport);
+        ReleaseScrollbarOnMouseUp(verticalId);
+        ReleaseScrollbarOnMouseUp(horizontalId);
         var verticalRange = Fix64.Max(0, content.height - viewport.height);
         if (verticalRange > 0)
         {
             var track = new Rect(viewport.xMax - 9, viewport.y, 9, viewport.height);
-            DrawRect(track, EditorAppearance.palette.ScrollTrack);
-            var thumbHeight = Fix64.Max(24, viewport.height * viewport.height / content.height);
+            var thumbHeight = Fix64.Min(viewport.height,
+                Fix64.Max(Fix64.Min(24, viewport.height), viewport.height * viewport.height / content.height));
             var thumbY = viewport.y + scroll.y / verticalRange * Fix64.Max(0, viewport.height - thumbHeight);
             var thumb = new Rect(track.x + 2, thumbY, 5, thumbHeight);
-            DrawRect(thumb, (_context?.Translate(thumb) ?? thumb).Contains(PointerPosition)
+            scroll = new Vector2(scroll.x,
+                HandleScrollbar(verticalId, track, thumb, scroll.y, verticalRange, true));
+            DrawRect(track, EditorAppearance.palette.ScrollTrack);
+            DrawRect(thumb, IsScrollbarHovered(verticalId, thumb)
                 ? EditorAppearance.palette.ScrollThumbHover : EditorAppearance.palette.ScrollThumb);
         }
         var horizontalRange = Fix64.Max(0, content.width - viewport.width);
-        if (horizontalRange <= 0) return;
-        var horizontal = new Rect(viewport.x, viewport.yMax - 9, viewport.width, 9);
-        DrawRect(horizontal, EditorAppearance.palette.ScrollTrack);
-        var thumbWidth = Fix64.Max(24, viewport.width * viewport.width / content.width);
-        var thumbX = viewport.x + scroll.x / horizontalRange * Fix64.Max(0, viewport.width - thumbWidth);
-        var horizontalThumb = new Rect(thumbX, horizontal.y + 2, thumbWidth, 5);
-        DrawRect(horizontalThumb, (_context?.Translate(horizontalThumb) ?? horizontalThumb).Contains(PointerPosition)
-            ? EditorAppearance.palette.ScrollThumbHover : EditorAppearance.palette.ScrollThumb);
+        if (horizontalRange > 0)
+        {
+            var track = new Rect(viewport.x, viewport.yMax - 9, viewport.width, 9);
+            var thumbWidth = Fix64.Min(viewport.width,
+                Fix64.Max(Fix64.Min(24, viewport.width), viewport.width * viewport.width / content.width));
+            var thumbX = viewport.x + scroll.x / horizontalRange * Fix64.Max(0, viewport.width - thumbWidth);
+            var thumb = new Rect(thumbX, track.y + 2, thumbWidth, 5);
+            scroll = new Vector2(
+                HandleScrollbar(horizontalId, track, thumb, scroll.x, horizontalRange, false), scroll.y);
+            DrawRect(track, EditorAppearance.palette.ScrollTrack);
+            DrawRect(thumb, IsScrollbarHovered(horizontalId, thumb)
+                ? EditorAppearance.palette.ScrollThumbHover : EditorAppearance.palette.ScrollThumb);
+        }
+        return scroll;
+    }
+
+    private static Fix64 HandleScrollbar(int id, Rect track, Rect thumb, Fix64 value,
+        Fix64 range, bool vertical)
+    {
+        if (!enabled || _context is null || range <= 0) return value;
+        var evt = Event.current;
+        var absoluteTrack = _context.Translate(track);
+        var absoluteThumb = _context.Translate(thumb);
+        var pointer = PointerPosition;
+        var trackContains = absoluteTrack.Contains(pointer) && PointerInsideClip(pointer);
+        var thumbContains = absoluteThumb.Contains(pointer) && PointerInsideClip(pointer);
+        var trackLength = vertical ? track.height : track.width;
+        var thumbLength = vertical ? thumb.height : thumb.width;
+        var travel = Fix64.Max(0, trackLength - thumbLength);
+        switch (evt.GetTypeForControl(id))
+        {
+            case EventType.MouseDown when evt.button == 0 && trackContains:
+                GUIUtility.hotControl = id;
+                if (!thumbContains && travel > 0)
+                {
+                    var pointerAxis = vertical ? pointer.y : pointer.x;
+                    var trackAxis = vertical ? absoluteTrack.y : absoluteTrack.x;
+                    value = Fix64.Clamp((pointerAxis - trackAxis - thumbLength / 2) / travel * range,
+                        0, range);
+                    changed = true;
+                }
+                evt.Use();
+                break;
+            case EventType.MouseDrag when GUIUtility.hotControl == id:
+                if (travel > 0)
+                {
+                    var delta = vertical ? evt.delta.y : evt.delta.x;
+                    var next = Fix64.Clamp(value + delta / travel * range, 0, range);
+                    if (next != value) changed = true;
+                    value = next;
+                }
+                evt.Use();
+                break;
+        }
+        return value;
+    }
+
+    private static void ReleaseScrollbarOnMouseUp(int id)
+    {
+        if (GUIUtility.hotControl != id) return;
+        var evt = Event.current;
+        if (evt.GetTypeForControl(id) != EventType.MouseUp) return;
+        GUIUtility.hotControl = 0;
+        evt.Use();
+    }
+
+    private static bool IsScrollbarHovered(int id, Rect thumb)
+    {
+        if (GUIUtility.hotControl == id) return true;
+        if (_context is null) return false;
+        var pointer = PointerPosition;
+        return _context.Translate(thumb).Contains(pointer) && PointerInsideClip(pointer);
     }
 
     private static Rect AlignTextRect(Rect rect, string text, GUIStyle style)

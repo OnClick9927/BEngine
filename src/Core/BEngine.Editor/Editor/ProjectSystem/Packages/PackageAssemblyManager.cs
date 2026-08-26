@@ -226,6 +226,8 @@ internal sealed class PackageAssemblyManager : IDisposable
     private void Unload(string packageId)
     {
         if (!_loaded.Remove(packageId, out var package)) return;
+        BAsset.ClearLoadedAssets();
+        TextureAtlasResolver.Clear();
         foreach (var registration in package.RuntimeSystemRegistrations)
             RuntimeSystemRegistry.Unregister(registration);
         package.Services.Dispose();

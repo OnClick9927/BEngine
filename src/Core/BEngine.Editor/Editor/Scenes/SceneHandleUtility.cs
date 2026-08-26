@@ -13,9 +13,8 @@ public static class SceneHandleUtility
         foreach (var renderer in gameObject.GetComponents<SpriteRenderer>())
         {
             var visual = renderer.ResolveSpriteUnchecked();
-            var pivot = renderer.useAtlasPivot && !string.IsNullOrWhiteSpace(renderer.atlas)
-                ? visual.Pivot
-                : renderer.pivot;
+            var pivot = renderer.useSpritePivot && renderer.sprite is not null
+                ? visual.Pivot : renderer.pivot;
             var center = new Vector2(
                 (Fix64.Half - pivot.x) * renderer.size.x,
                 (Fix64.Half - pivot.y) * renderer.size.y);

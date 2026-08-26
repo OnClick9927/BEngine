@@ -9,17 +9,17 @@ internal static class Program
     private static readonly Module[] Modules =
     [
         new("Core", "Core", true, ["CoreGettingStarted.bpackage"]),
-        new("Animation", "Animation", false,
+        new("Animation", "Packages/Animation", false,
             ["AnimationGettingStarted.bpackage", "StateMachine.bpackage"]),
-        new("Navigation2D", "Navigation2D", false,
+        new("Navigation2D", "Packages/Navigation2D", false,
             ["DynamicRebake.bpackage", "NavigationSurfaceAndAgent.bpackage"]),
-        new("Physics2D", "Physics2D", false,
+        new("Physics2D", "Packages/Physics2D", false,
             ["RigidbodyAndQueries.bpackage", "TriggersAndQueries.bpackage"]),
-        new("PropertyAttributes", "PropertyAttributes", false,
+        new("PropertyAttributes", "Packages/PropertyAttributes", false,
             ["AttributesGallery.bpackage", "InspectorAttributesAndDrawer.bpackage"]),
-        new("TiledMap", "TiledMap", false,
+        new("TiledMap", "Packages/TiledMap", false,
             ["AtlasPalette.bpackage", "RuntimePainting.bpackage"]),
-        new("UIElements", "UIElements", false,
+        new("UIElements", "Packages/UIElements", false,
             ["ControlsGallery.bpackage", "RuntimeHud.bpackage"])
     ];
 
@@ -49,7 +49,7 @@ internal static class Program
         var legacySourceExamples = Path.Combine(sourceRoot, "Examples");
         var releasedRoot = module.IsCore
             ? Path.Combine(repositoryRoot, "Output", "BEgine")
-            : Path.Combine(repositoryRoot, "Output", "Packages", module.SourceDirectory);
+            : Path.Combine(repositoryRoot, "Output", "Packages", module.Name);
         var releasedExamples = Path.Combine(releasedRoot, "EditorResources", "Examples");
         var legacyReleasedExamples = Path.Combine(releasedRoot, "Examples");
 

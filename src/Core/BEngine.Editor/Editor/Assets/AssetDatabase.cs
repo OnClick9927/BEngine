@@ -43,8 +43,7 @@ public static class AssetDatabase
         if (asset is null) return string.Empty;
         return asset switch
         {
-            DefaultAsset reference => reference.assetPath,
-            PrefabAsset prefab => prefab.assetPath,
+            BAsset reference when !string.IsNullOrWhiteSpace(reference.assetPath) => reference.assetPath,
             _ => EditorBridge.Host?.GetAsset(asset.Id)?.AssetPath ?? string.Empty
         };
     }
@@ -59,6 +58,7 @@ public static class AssetDatabase
             prefab.Id = record.Value.Guid;
             prefab.Document.Id = record.Value.Guid;
             prefab.assetPath = record.Value.AssetPath;
+            prefab.BindAssetReference(record.Value.AssetPath, record.Value.Guid);
             return prefab;
         }
         if (record.Value.AssetType == "AssemblyDefinition" && File.Exists(record.Value.SourcePath))
@@ -91,6 +91,8 @@ public static class AssetDatabase
                 if (type is not null && YamlUtility.Deserialize(document.Data, type) is BObject managed)
                 {
                     managed.Id = record.Value.Guid;
+                    if (managed is BAsset managedAsset)
+                        managedAsset.BindAssetReference(record.Value.AssetPath, record.Value.Guid);
                     if (string.IsNullOrWhiteSpace(managed.name))
                         managed.name = AssetPathUtility.SplitNameAndExtension(record.Value.AssetPath).Name;
                     return managed;
@@ -101,23 +103,40 @@ public static class AssetDatabase
                 Debug.LogWarning($"Could not load managed asset {record.Value.AssetPath}: {exception.Message}");
             }
         }
+        if (File.Exists(record.Value.SourcePath))
+        {
+            try
+            {
+                var context = new AssetLoadContext(record.Value.Guid, record.Value.AssetPath,
+                    record.Value.SourcePath, record.Value.AssetType);
+                if (AssetTypeRegistry.Load(context) is { } registered)
+                {
+                    registered.Id = record.Value.Guid;
+                    if (registered is BAsset registeredAsset)
+                        registeredAsset.BindAssetReference(record.Value.AssetPath, record.Value.Guid);
+                    if (registered is FileAsset fileAsset)
+                        fileAsset.BindAssetFile(record.Value.AssetPath, record.Value.SourcePath,
+                            record.Value.Guid, record.Value.AssetType);
+                    if (string.IsNullOrWhiteSpace(registered.name))
+                        registered.name = AssetPathUtility.SplitNameAndExtension(record.Value.AssetPath).Name;
+                    return registered;
+                }
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException)
+            {
+                Debug.LogWarning($"Could not load typed asset {record.Value.AssetPath}: {exception.Message}");
+            }
+        }
         var isText = record.Value.AssetType is "Script" or "YamlAsset" or "Shader" or "JSON" or "XML" or
             "Markdown" or "Text" or "UI Document" or "UI Style Sheet" or "HTML Document";
-        DefaultAsset asset = record.Value.AssetType == "Script" && File.Exists(record.Value.SourcePath)
-            ? new MonoScript
-            {
-                text = File.ReadAllText(record.Value.SourcePath),
-                scriptClass = FindScriptClass(Path.GetFileNameWithoutExtension(record.Value.SourcePath))
-            }
+        FileAsset asset = record.Value.AssetType == "Script" && File.Exists(record.Value.SourcePath)
+            ? CreateLegacyScript(record.Value.SourcePath)
             : isText && File.Exists(record.Value.SourcePath)
                 ? new TextAsset { text = File.ReadAllText(record.Value.SourcePath) }
                 : new DefaultAsset();
         asset.name = Path.GetFileName(record.Value.SourcePath);
-        asset.Id = record.Value.Guid;
-        asset.assetPath = record.Value.AssetPath;
-        asset.sourcePath = record.Value.SourcePath;
-        asset.guid = record.Value.Guid.ToString("N");
-        asset.assetType = record.Value.AssetType;
+        asset.BindAssetFile(record.Value.AssetPath, record.Value.SourcePath,
+            record.Value.Guid, record.Value.AssetType);
         return asset;
     }
 
@@ -153,14 +172,31 @@ public static class AssetDatabase
                 Data = YamlUtility.Serialize(asset)
             }.Save(fullPath);
         }
-        else YamlUtility.Save(asset, fullPath);
+        else
+        {
+            var save = asset.GetType().GetMethod("Save", BindingFlags.Instance | BindingFlags.Public,
+                binder: null, types: [typeof(string)], modifiers: null);
+            if (save is not null)
+            {
+                try { save.Invoke(asset, [fullPath]); }
+                catch (TargetInvocationException exception) { throw exception.InnerException ?? exception; }
+            }
+            else YamlUtility.Save(asset, fullPath);
+        }
+        BAsset.Invalidate(fullPath);
         EditorBridge.Host?.ImportAsset(path);
+        if (asset is BAsset createdAsset && Guid.TryParse(AssetPathToGUID(path), out var createdId))
+            createdAsset.BindAssetReference(path, createdId);
     }
 
     public static void ImportAsset(string path, ImportAssetOptions options = ImportAssetOptions.Default)
     {
         EditorAssetWritePolicy.EnsureCanWrite("Importing project assets");
+        try { BAsset.Invalidate(ResolveAssetPath(path)); }
+        catch (InvalidDataException) { BAsset.Invalidate(path); }
         EditorBridge.Host?.ImportAsset(path);
+        if (path.EndsWith(".atlas.yaml", StringComparison.OrdinalIgnoreCase))
+            TextureAtlasResolver.Clear();
     }
 
     public static void ExportPackage(string assetPathName, string fileName) =>
@@ -209,13 +245,81 @@ public static class AssetDatabase
     public static void Refresh(ImportAssetOptions options = ImportAssetOptions.Default)
     {
         EditorAssetWritePolicy.EnsureCanWrite("Refreshing project assets");
+        BAsset.ClearLoadedAssets();
+        TextureAtlasResolver.Clear();
         EditorBridge.Host?.RefreshAssets();
     }
 
     public static void SaveAssets()
     {
         EditorAssetWritePolicy.EnsureCanWrite("Saving project assets");
-        AssetModificationProcessorDispatcher.OnWillSaveAssets(GetAllAssetPaths());
+        var dirtyAssets = EditorUtility.GetDirtyObjects().OfType<BAsset>()
+            .Where(Contains).ToArray();
+        var requested = dirtyAssets.Select(GetAssetPath)
+            .Concat(GetAllAssetPaths()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var approved = AssetModificationProcessorDispatcher.OnWillSaveAssets(requested)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var asset in dirtyAssets)
+        {
+            var path = GetAssetPath(asset);
+            if (approved.Contains(path)) SaveAsset(asset);
+        }
+    }
+
+    public static bool SaveAsset(BAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        EditorAssetWritePolicy.EnsureCanWrite("Saving project assets");
+        var assetPath = GetAssetPath(asset);
+        if (string.IsNullOrWhiteSpace(assetPath)) return false;
+        var fullPath = ResolveAssetPath(assetPath);
+        if (!File.Exists(fullPath)) return false;
+        if (asset is BEngine.Texture or BEngine.Font or Script or Shader or DefaultAsset) return false;
+
+        AssetModificationProcessorDispatcher.OnWillSaveAssets([assetPath]);
+        if (fullPath.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase))
+        {
+            new ManagedAssetDocument
+            {
+                TypeName = asset.GetType().AssemblyQualifiedName ?? asset.GetType().FullName ?? asset.GetType().Name,
+                Data = YamlUtility.Serialize(asset)
+            }.Save(fullPath);
+        }
+        else
+        {
+            var save = asset.GetType().GetMethod("Save", BindingFlags.Instance | BindingFlags.Public,
+                binder: null, types: [typeof(string)], modifiers: null);
+            if (save is not null)
+            {
+                try { save.Invoke(asset, [fullPath]); }
+                catch (TargetInvocationException exception) { throw exception.InnerException ?? exception; }
+            }
+            else
+            {
+                try { Document.SaveBObject(asset, fullPath); }
+                catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException)
+                {
+                    YamlUtility.Save(asset, fullPath);
+                }
+            }
+        }
+        ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+        EditorUtility.ClearDirty(asset);
+        return true;
+    }
+
+    public static bool RevertAsset(BAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        var path = GetAssetPath(asset);
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        BAsset.Invalidate(path);
+        if (LoadMainAssetAtPath(path) is not BAsset restored ||
+            restored.GetType() != asset.GetType()) return false;
+        EditorUtility.CopySerialized(restored, asset);
+        asset.name = restored.name;
+        EditorUtility.ClearDirty(asset);
+        return true;
     }
     public static void StartAssetEditing() { }
     public static void StopAssetEditing() => Refresh();
@@ -441,4 +545,12 @@ public static class AssetDatabase
         .FirstOrDefault(type => type.Name.Equals(typeName, StringComparison.Ordinal) &&
                                 (typeof(MonoBehaviour).IsAssignableFrom(type) ||
                                  typeof(ScriptableObject).IsAssignableFrom(type)));
+
+    private static MonoScript CreateLegacyScript(string sourcePath)
+    {
+        var script = new MonoScript { name = Path.GetFileName(sourcePath) };
+        script.SetImportedContents(File.ReadAllText(sourcePath),
+            FindScriptClass(Path.GetFileNameWithoutExtension(sourcePath)));
+        return script;
+    }
 }

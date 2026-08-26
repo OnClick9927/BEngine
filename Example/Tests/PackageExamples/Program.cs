@@ -9,11 +9,12 @@ using BEngine.ProjectSystem.Editor;
 var repositoryRoot = FindRepositoryRoot();
 ValidateDefaultProject(repositoryRoot);
 ValidateArchives(repositoryRoot);
+ValidateCompiledExamples(repositoryRoot);
 
 Console.WriteLine(
     "PACKAGE_EXAMPLES_OK|default-project-empty,on-demand-import,partial-repair,reimport-preserve," +
     "reimport-overwrite," +
-    "no-duplicate-import,readme,scene,asmdef,tools-menuitems,core-no-ecs");
+    "no-duplicate-import,readme,scene,asmdef,tools-menuitems,core-no-ecs,runtime-editor-compilation");
 
 static void ValidateDefaultProject(string repositoryRoot)
 {
@@ -31,22 +32,16 @@ static void ValidateDefaultProject(string repositoryRoot)
 
 static void ValidateArchives(string repositoryRoot)
 {
-    (string Name, string[] ExpectedArchives)[] modules =
-    [
-        ("Core", ["CoreGettingStarted.bpackage"]),
-        ("Animation", ["AnimationGettingStarted.bpackage", "StateMachine.bpackage"]),
-        ("Navigation2D", ["DynamicRebake.bpackage", "NavigationSurfaceAndAgent.bpackage"]),
-        ("Physics2D", ["RigidbodyAndQueries.bpackage", "TriggersAndQueries.bpackage"]),
-        ("PropertyAttributes", ["AttributesGallery.bpackage", "InspectorAttributesAndDrawer.bpackage"]),
-        ("TiledMap", ["AtlasPalette.bpackage", "RuntimePainting.bpackage"]),
-        ("UIElements", ["ControlsGallery.bpackage", "RuntimeHud.bpackage"])
-    ];
+    var modules = PublishedModules();
     var temporaryRoot = Path.Combine(Path.GetTempPath(), $"BEngine.PackageExamples.{Guid.NewGuid():N}");
     try
     {
         foreach (var module in modules)
         {
-            var examplesDirectory = Path.Combine(repositoryRoot, "src", module.Name, "EditorResources", "Examples");
+            var sourceDirectory = module.Name == "Core"
+                ? Path.Combine(repositoryRoot, "src", "Core")
+                : Path.Combine(repositoryRoot, "src", "Packages", module.Name);
+            var examplesDirectory = Path.Combine(sourceDirectory, "EditorResources", "Examples");
             var archives = Directory.EnumerateFiles(examplesDirectory, "*.bpackage", SearchOption.TopDirectoryOnly)
                 .OrderBy(path => path, StringComparer.Ordinal).ToArray();
             Require(archives.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase)
@@ -125,6 +120,10 @@ static void ValidateArchives(string repositoryRoot)
     }
     finally
     {
+        ProjectScriptCompiler.ReleaseLoadContexts();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
         try
         {
             if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
@@ -135,6 +134,81 @@ static void ValidateArchives(string repositoryRoot)
         }
     }
 }
+
+static void ValidateCompiledExamples(string repositoryRoot)
+{
+    var temporaryRoot = Path.Combine(Path.GetTempPath(), $"BEngine.CompiledExamples.{Guid.NewGuid():N}");
+    try
+    {
+        foreach (var module in PublishedModules())
+        {
+            var workspace = ProjectWorkspaceFactory.Create(
+                Path.Combine(temporaryRoot, module.Name), $"Compiled {module.Name} Examples");
+            using var packageManager = new BPackageManager(workspace);
+            if (module.PackageId is not null) packageManager.SetEnabled(module.PackageId, true);
+
+            var sourceDirectory = module.Name == "Core"
+                ? Path.Combine(repositoryRoot, "src", "Core")
+                : Path.Combine(repositoryRoot, "src", "Packages", module.Name);
+            var hasEditorSources = false;
+            foreach (var archiveName in module.ExpectedArchives)
+            {
+                var archive = Path.Combine(sourceDirectory, "EditorResources", "Examples", archiveName);
+                var manifest = BPackageArchive.ReadManifest(archive);
+                var exampleName = Path.GetFileNameWithoutExtension(archiveName);
+                hasEditorSources |= manifest.Entries.Any(entry => !entry.IsDirectory &&
+                    entry.RelativePath.StartsWith("Editor/", StringComparison.Ordinal) &&
+                    entry.RelativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase));
+                _ = BPackageArchive.ImportPackage(workspace, archive,
+                    new BPackageImportOptions
+                    {
+                        DestinationDirectory = $"Examples/{exampleName}",
+                        InstallationId = $"tests.compile.{module.Name}.{exampleName}"
+                    });
+            }
+
+            var runtime = ProjectScriptCompiler.CompileAndLoad(workspace) ??
+                          throw new InvalidOperationException(
+                              $"{module.Name} examples produced no runtime assembly.");
+            var editor = EditorProjectScriptCompiler.CompileAndLoad(
+                workspace, runtime, typeof(BEngine.Editor.EditorWindow).Assembly.Location);
+            Require(!hasEditorSources || editor is not null,
+                $"{module.Name} examples contain Editor scripts but produced no editor assembly.");
+            Console.WriteLine(
+                $"PACKAGE_EXAMPLES_COMPILED|{module.Name}|runtime=yes|editor={(editor is null ? "none" : "yes")}");
+        }
+    }
+    finally
+    {
+        try
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Collectible load contexts or antivirus scanners can briefly retain compiled files.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Windows can report a package DLL as locked until the process finishes unloading it.
+        }
+    }
+}
+
+static (string Name, string? PackageId, string[] ExpectedArchives)[] PublishedModules() =>
+[
+    ("Core", null, ["CoreGettingStarted.bpackage"]),
+    ("Animation", "com.bengine.animation",
+        ["AnimationGettingStarted.bpackage", "StateMachine.bpackage"]),
+    ("Navigation2D", "com.bengine.navigation2d",
+        ["DynamicRebake.bpackage", "NavigationSurfaceAndAgent.bpackage"]),
+    ("Physics2D", "com.bengine.physics2d",
+        ["RigidbodyAndQueries.bpackage", "TriggersAndQueries.bpackage"]),
+    ("PropertyAttributes", "com.bengine.property-attributes",
+        ["AttributesGallery.bpackage", "InspectorAttributesAndDrawer.bpackage"]),
+    ("TiledMap", "com.bengine.tiledmap", ["AtlasPalette.bpackage", "RuntimePainting.bpackage"]),
+    ("UIElements", "com.bengine.ui-elements", ["ControlsGallery.bpackage", "RuntimeHud.bpackage"])
+];
 
 static void ValidateCoreExample(
     ProjectWorkspace workspace,

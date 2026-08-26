@@ -5,3 +5,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("BEngine.Tests")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.GpuImGui")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.TextureAtlas")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.ProjectAssetWorkflow")]

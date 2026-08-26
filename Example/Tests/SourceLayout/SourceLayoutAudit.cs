@@ -91,15 +91,21 @@ internal static class SourceLayoutAudit
 
     private static void ValidatePackageLayout(string sourceRoot, ICollection<string> violations)
     {
-        var packages = new[]
+        var packages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Core", "Animation", "Navigation2D", "Physics2D", "PropertyAttributes", "TiledMap", "UIElements"
+            ["Core"] = "Core",
+            ["Animation"] = Path.Combine("Packages", "Animation"),
+            ["Navigation2D"] = Path.Combine("Packages", "Navigation2D"),
+            ["Physics2D"] = Path.Combine("Packages", "Physics2D"),
+            ["PropertyAttributes"] = Path.Combine("Packages", "PropertyAttributes"),
+            ["TiledMap"] = Path.Combine("Packages", "TiledMap"),
+            ["UIElements"] = Path.Combine("Packages", "UIElements")
         };
         var expectedItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var expectedFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var package in packages)
+        foreach (var (package, relativeRoot) in packages)
         {
-            var packageRoot = Path.Combine(sourceRoot, package);
+            var packageRoot = Path.Combine(sourceRoot, relativeRoot);
             var rootReadme = Path.Combine(packageRoot, "Readme.md");
             var editorReadme = Path.Combine(packageRoot, "EditorResources", "Readme.md");
             if (File.Exists(rootReadme))
@@ -121,8 +127,11 @@ internal static class SourceLayoutAudit
         }
 
         var solutionPath = Path.Combine(sourceRoot, "BEngine.sln");
+        var packagePrefixes = packages.Values
+            .Select(path => path.Replace('/', '\\') + "\\")
+            .ToArray();
         var actualItems = ReadSolutionItems(solutionPath)
-            .Where(path => packages.Any(package => path.StartsWith(package + "\\",
+            .Where(path => packagePrefixes.Any(prefix => path.StartsWith(prefix,
                 StringComparison.OrdinalIgnoreCase)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var missing in expectedItems.Except(actualItems, StringComparer.OrdinalIgnoreCase))
@@ -135,9 +144,11 @@ internal static class SourceLayoutAudit
                 "(?m)^Project\\(\"\\{2150E333-8FDC-42A3-9474-1A3956D46DE8\\}\"\\) = " +
                 "\"[^\"]+\", \"(?<path>[^\"]+)\", \"\\{[0-9A-F-]+\\}\"\\r?$")
             .Select(match => match.Groups["path"].Value)
-            .Where(path => packages.Any(package =>
-                path.StartsWith(package + "\\Resources\\", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith(package + "\\EditorResources\\", StringComparison.OrdinalIgnoreCase)))
+            .Where(path => packages.Values.Any(packageRoot =>
+                path.StartsWith(packageRoot.Replace('/', '\\') + "\\Resources\\",
+                    StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith(packageRoot.Replace('/', '\\') + "\\EditorResources\\",
+                    StringComparison.OrdinalIgnoreCase)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var missing in expectedFolders.Except(actualFolders, StringComparer.OrdinalIgnoreCase))
             violations.Add($"BEngine.sln has no explicit solution folder for: {missing}");

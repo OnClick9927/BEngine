@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>BEngine.Physics2D.Editor</RootNamespace>
+    <AssemblyName>BEngine.Physics2D.Editor</AssemblyName>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../BEngine.Physics2D/BEngine.Physics2D.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,68 @@
+format: BEngine.BPackageImportReceipt
+version: 1
+installationId: example:com.bengine.core:CoreGettingStarted
+packageName: Core Getting Started
+packageVersion: 1.0.0
+destinationDirectory: Examples/CoreGettingStarted
+archiveSha256: c06794c18360222770c3a3b1b2fcb61605179a902f13aff3c88e9026f246a888
+entries:
+- relativePath: Editor
+  sha256: ''
+  isDirectory: true
+- relativePath: Editor.meta
+  sha256: 26338a37e8e7985db484ff2925a3c2809a2c0a70d2521e757aac3f9e55256f1b
+  isDirectory: false
+- relativePath: Editor/BEngine.Examples.Core.Editor.asmdef.yaml
+  sha256: a226a46ced5335e3f46cb4800e994d438e60620f3e13e13962f312e2466c85d8
+  isDirectory: false
+- relativePath: Editor/BEngine.Examples.Core.Editor.asmdef.yaml.meta
+  sha256: ef08baa9f955105998ed8015ca91a110bc8ab9edf4c6f6ef0038bafdfdf3412b
+  isDirectory: false
+- relativePath: Editor/CoreEditorWindowExample.cs
+  sha256: a60678a525730701e86664a464462eeb238967621945ad183aae3569fec68028
+  isDirectory: false
+- relativePath: Editor/CoreEditorWindowExample.cs.meta
+  sha256: bd47b7c20e3406f222fdb069e8491095ed2650b9a7dc32a17ffef20478cbde81
+  isDirectory: false
+- relativePath: Readme.md
+  sha256: 17e4fe45b6b0d5eee14a5e1dd861ff961d54ac086876de0bf017bdd1e842d664
+  isDirectory: false
+- relativePath: Readme.md.meta
+  sha256: 6ab1c179184c17ce0dc195047ed2f604ce5d5c6439c11c76817c69b6787e1344
+  isDirectory: false
+- relativePath: res
+  sha256: ''
+  isDirectory: true
+- relativePath: res.meta
+  sha256: 1dd9548b93089a3c94ecb20c09cd3b02316f495201c0704bd03273fa08be46af
+  isDirectory: false
+- relativePath: res/Core.scene.yaml
+  sha256: 1270bb3059ecd5820c1ee6e378e3493ddbbc4acadd6e681abdc3e33bbf49a4d3
+  isDirectory: false
+- relativePath: res/Core.scene.yaml.meta
+  sha256: 7d2870fc10fa0c26b8f671c80f563addc354e14161f856d2c9d0ff603c8cf1a7
+  isDirectory: false
+- relativePath: runtime
+  sha256: ''
+  isDirectory: true
+- relativePath: runtime.meta
+  sha256: 6a9908559fdffa1d99b95e2fee4dd164cb20f95a28e9f752ed7dde106458da75
+  isDirectory: false
+- relativePath: runtime/BEngine.Examples.Core.asmdef.yaml
+  sha256: 050a434bbe3dfce5254185bf8f5875f829ce3cbff04c16ab171c9e9077b58623
+  isDirectory: false
+- relativePath: runtime/BEngine.Examples.Core.asmdef.yaml.meta
+  sha256: 4f521ccc5e8bf8b63851a19eaf1e2b51107aed0b5b753f93dd4693c949bea114
+  isDirectory: false
+- relativePath: runtime/CoreRuntimeExample.cs
+  sha256: ab045ff9a9ae2caf86e38772e4ad7b68df420def6355290ba89d5d308938f406
+  isDirectory: false
+- relativePath: runtime/CoreRuntimeExample.cs.meta
+  sha256: aff71b13db10220797f4fb8d34ccf3a800a9cdb933ce97f3ee244dd70082cefb
+  isDirectory: false
+- relativePath: runtime/ExampleSceneUtility.cs
+  sha256: a2f094080b588a70725709634c2b35d4546cff74420922c04eb5a89fc6692af4
+  isDirectory: false
+- relativePath: runtime/ExampleSceneUtility.cs.meta
+  sha256: a753e59d85cb6a45664309629e03cf4810543afb9b87f59eb3187e12ee82beb1
+  isDirectory: false

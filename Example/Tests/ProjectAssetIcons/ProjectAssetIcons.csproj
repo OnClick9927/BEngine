@@ -8,6 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
     <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
-    <ProjectReference Include="../../../src/UIElements/BEngine.UIElements/BEngine.UIElements.csproj" />
+    <ProjectReference Include="../../../src/Packages/UIElements/BEngine.UIElements/BEngine.UIElements.csproj" />
   </ItemGroup>
 </Project>
