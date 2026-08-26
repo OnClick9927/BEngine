@@ -32,7 +32,7 @@ internal static class PackageDocumentationCatalog
     public static string? FindAtPackageRoot(string packageRoot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageRoot);
-        var path = Path.Combine(packageRoot, "EditorResources", "Doc", DocumentationFileName);
+        var path = Path.Combine(packageRoot, EditorResource.DirectoryName, "Doc", DocumentationFileName);
         return File.Exists(path) ? Path.GetFullPath(path) : null;
     }
 }

@@ -12,6 +12,7 @@ internal static class CatalogSerializationTests
     {
         EquivalentCatalogsSerializeByteForByteIdentically();
         CatalogRoundTripsWithoutLosingCanonicalOrder();
+        LegacyCatalogWithoutImporterDescriptionsStillLoads();
         StrictJsonRejectsAmbiguousOrUnknownProperties();
         HashingIsStableAcrossBufferingModes();
     }
@@ -23,6 +24,22 @@ internal static class CatalogSerializationTests
         second.Bundles.Reverse();
         second.Assets.Reverse();
         second.Bundles.Single(item => item.Name == "main").Dependencies.Reverse();
+        var firstImported = first.Assets.Single(item => item.Address == "Assets/Data/config.txt");
+        firstImported.Importer = "TextureImporter";
+        firstImported.ImporterSettings = new Dictionary<string, string>
+        {
+            ["textureType"] = "Sprite",
+            ["spritePivotY"] = "0.75",
+            ["spritePivotX"] = "0.25"
+        };
+        var secondImported = second.Assets.Single(item => item.Address == "Assets/Data/config.txt");
+        secondImported.Importer = "TextureImporter";
+        secondImported.ImporterSettings = new Dictionary<string, string>
+        {
+            ["spritePivotX"] = "0.25",
+            ["spritePivotY"] = "0.75",
+            ["textureType"] = "Sprite"
+        };
         foreach (var bundle in second.Bundles)
         {
             bundle.Sha256 = bundle.Sha256.ToUpperInvariant();
@@ -72,6 +89,19 @@ internal static class CatalogSerializationTests
         TestAssert.Throws<Exception>(
             () => AssetBundleCatalogSerializer.DeserializeCatalog(unknownProperty),
             "unexpected");
+    }
+
+    private static void LegacyCatalogWithoutImporterDescriptionsStillLoads()
+    {
+        var json = Encoding.UTF8.GetString(
+                AssetBundleCatalogSerializer.SerializeCatalog(CatalogValidationTests.CreateCatalog()))
+            .Replace("\"schemaVersion\":2", "\"schemaVersion\":1", StringComparison.Ordinal)
+            .Replace(",\"importer\":\"\",\"importerSettings\":{}", string.Empty,
+                StringComparison.Ordinal);
+        var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(json);
+        TestAssert.That(catalog.SchemaVersion == 1 && catalog.Assets.All(asset =>
+                            asset.Importer.Length == 0 && asset.ImporterSettings.Count == 0),
+            "A schema v1 catalog without importer descriptions no longer loads.");
     }
 
     private static void HashingIsStableAcrossBufferingModes()

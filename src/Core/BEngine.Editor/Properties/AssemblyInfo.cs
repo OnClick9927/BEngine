@@ -13,3 +13,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.GameViewResolution")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.ProjectAssetWorkflow")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.PackageExamples")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.EditorProgress")]

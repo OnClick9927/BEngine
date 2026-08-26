@@ -154,7 +154,7 @@ internal static class PackageManagerViewSmoke
         Require(description.Count(text => text.Equals("Documentation", StringComparison.Ordinal)) == 1,
             $"{package.Document.DisplayName} does not expose its Documentation button.");
         var documentationPath = Path.Combine(Path.GetDirectoryName(package.Path)!,
-            "EditorResources", "Doc", "index.html");
+            "Editor", "Doc", "index.html");
         Require(File.Exists(documentationPath),
             $"{package.Document.DisplayName} documentation is missing at {documentationPath}.");
 
@@ -171,7 +171,7 @@ internal static class PackageManagerViewSmoke
                     $"{package.Document.DisplayName} omitted dependency {dependency.Document.DisplayName}.");
 
         var examplesDirectory = Path.Combine(Path.GetDirectoryName(package.Path)!,
-            "EditorResources", "Examples");
+            "Editor", "Examples");
         var archives = FindExampleArchives(examplesDirectory);
         Require(archives.Length > 0, $"{package.Document.DisplayName} has no examples to present.");
         VerifyExampleView(view, windowType, selectedTab, package.Document.DisplayName, archives, 1,

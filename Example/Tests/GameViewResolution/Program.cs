@@ -27,6 +27,7 @@ internal static class Program
             Console.WriteLine(
                 "GAME_VIEW_RESOLUTION_OK|presets,search-menu-data,free-aspect,fixed-letterbox," +
                 "logical-screen-size,logical-render-size,render-statistics,status-toggle," +
+                "status-right-edge,batching-savings," +
                 "frame-timing,editor-prefs,custom-add-delete");
             return 0;
         }
@@ -207,13 +208,19 @@ internal static class Program
         var commands = Render(window, 480);
         var text = commands.Where(command => command.Type == GpuCanvasCommandType.Text)
             .Select(command => command.Content).ToArray();
+        Require(!text.Contains("Display 1", StringComparer.Ordinal) &&
+                !text.Contains("Preview", StringComparer.Ordinal) &&
+                !text.Contains("Playing", StringComparer.Ordinal),
+            "The Game View toolbar still rendered its removed Display or play-state labels.");
         Require(text.Contains("Status", StringComparer.Ordinal) &&
                 text.Contains("Statistics", StringComparer.Ordinal) &&
                 text.Contains("Cameras: 2   Visible: 7", StringComparer.Ordinal) &&
                 text.Contains("Batches: 3   Draw calls: 5", StringComparer.Ordinal) &&
+                text.Contains("Saved by batching: 4", StringComparer.Ordinal) &&
                 text.Contains("Tris: 14   Verts: 42", StringComparer.Ordinal) &&
                 text.Contains("Screen: 1,920 x 1,080", StringComparer.Ordinal),
             "The expandable Game View Status panel did not render its real graphics metrics.");
+        VerifyStatusButtonLayout(commands, 480);
 
         windowType.GetField("_renderStatistics", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(window, new SceneRenderStatistics(2, 7, 3, 0, 0, 0, 0,
@@ -221,15 +228,32 @@ internal static class Program
         var narrow = Render(window, 160);
         var narrowText = narrow.Where(command => command.Type == GpuCanvasCommandType.Text)
             .Select(command => command.Content).ToArray();
+        Require(!narrowText.Contains("Display 1", StringComparer.Ordinal) &&
+                !narrowText.Contains("Preview", StringComparer.Ordinal) &&
+                !narrowText.Contains("Playing", StringComparer.Ordinal),
+            "The narrow Game View toolbar restored a removed Display or play-state label.");
         Require(narrowText.Contains("Status", StringComparer.Ordinal) &&
+                narrowText.Contains("Saved by batching: 4", StringComparer.Ordinal) &&
                 narrowText.Contains("Draw: unavailable", StringComparer.Ordinal) &&
                 narrowText.Contains("Tris: unavailable", StringComparer.Ordinal),
             "A Game View without device counters displayed invented graphics statistics.");
+        VerifyStatusButtonLayout(narrow, 160);
+        VerifyStatusButtonLayout(Render(window, 120), 120);
+        VerifyStatusButtonLayout(Render(window, 340), 340);
         Require(narrow.All(command => command.Rect.X >= -0.01f &&
                                       command.Rect.Right <= 160.01f &&
                                       command.ClipRect.X >= -0.01f &&
                                       command.ClipRect.Right <= 160.01f),
             "The Status toolbar control or overlay escaped a narrow Game View.");
+    }
+
+    private static void VerifyStatusButtonLayout(IReadOnlyList<GpuCanvasCommand> commands, int viewWidth)
+    {
+        var status = commands.Single(command =>
+            command.Type == GpuCanvasCommandType.Text && command.Content == "Status");
+        Require(status.Rect.Width >= 46 && viewWidth - status.Rect.Right is >= 0 and <= 12 &&
+                status.Rect.X >= status.ClipRect.X && status.Rect.Right <= status.ClipRect.Right,
+            $"The complete Status button was not fixed to the Game toolbar's right edge: {status.Rect}.");
     }
 
     private static string FindRepositoryRoot()

@@ -25,7 +25,7 @@ internal static class Program
         try
         {
             EditorAppearance.Apply(new EditorPreferencesDocument());
-            EditorResources.RegisterResourceRoot(Path.GetFullPath(Path.Combine("src", "Core")));
+            EditorResource.RegisterResourceRoot(Path.GetFullPath(Path.Combine("src", "Core")));
 
             var statusType = typeof(EditorWindow).Assembly.GetType("BEngine.Editor.EditorStatusWindow",
                                  throwOnError: true)!;

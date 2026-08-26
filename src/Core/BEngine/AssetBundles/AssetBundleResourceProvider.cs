@@ -3,6 +3,7 @@ namespace BEngine.AssetBundles;
 /// <summary>Exposes an active asset bundle catalog through the Resources API.</summary>
 public sealed class AssetBundleResourceProvider : IResourceProvider
 {
+    internal const string VirtualPathPrefix = "@bundle/";
     private readonly IAssetBundleManager _manager;
 
     public AssetBundleResourceProvider(IAssetBundleManager manager) =>
@@ -35,6 +36,14 @@ public sealed class AssetBundleResourceProvider : IResourceProvider
     private string? ResolveAddress(string path, string folderName)
     {
         var requested = Normalize(path);
+        if (requested.StartsWith(VirtualPathPrefix, StringComparison.OrdinalIgnoreCase))
+            requested = requested[VirtualPathPrefix.Length..];
+        if (requested.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+        {
+            var direct = AssetBundleValidation.NormalizeAddress(requested);
+            if (_manager.EnumerateAddresses(direct).Any(address =>
+                    address.Equals(direct, StringComparison.OrdinalIgnoreCase))) return direct;
+        }
         var candidates = ResourceEntries(folderName).Where(item =>
                 item.ResourcePath.Equals(requested, StringComparison.OrdinalIgnoreCase) ||
                 MatchesWithoutExtension(item.ResourcePath, requested))
@@ -71,6 +80,9 @@ public sealed class AssetBundleResourceProvider : IResourceProvider
     }
 
     private static string Normalize(string path) => path.Replace('\\', '/').Trim('/');
+
+    internal static string ToVirtualPath(string address) =>
+        VirtualPathPrefix + AssetBundleValidation.NormalizeAddress(address);
 
     private static string NormalizeFolder(string folderName)
     {

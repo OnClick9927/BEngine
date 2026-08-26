@@ -10,8 +10,9 @@ public static class GUILayoutUtility
         params GUILayoutOption[] options) => GUILayout.Next(minHeight,
         [GUILayout.MinWidth(minWidth), GUILayout.MaxWidth(maxWidth), GUILayout.MinHeight(minHeight),
             GUILayout.MaxHeight(maxHeight), .. options]);
-    public static Rect GetRect(GUIContent content, GUIStyle style, params GUILayoutOption[] options)
+    public static Rect GetRect(GUIContent content, GUIStyle? style, params GUILayoutOption[] options)
     {
+        style ??= GUI.skin.label;
         var size = style.CalcSize(content);
         return GUILayout.Next(size.y, [GUILayout.MinWidth(size.x), .. options]);
     }

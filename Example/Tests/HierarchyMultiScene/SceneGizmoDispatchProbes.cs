@@ -11,6 +11,7 @@ internal class BaseSceneGizmoProbe : Component
     {
         DrawCalls++;
         Gizmos.color = Color.red;
+        Gizmos.lineWidth = 6;
         Gizmos.DrawLine(transform.position, transform.position + Vector2.right);
     }
 
@@ -18,6 +19,7 @@ internal class BaseSceneGizmoProbe : Component
     {
         SelectedCalls++;
         Gizmos.color = Color.blue;
+        Gizmos.lineWidth = 6;
         Gizmos.DrawLine(transform.position, transform.position + Vector2.up);
     }
 }
@@ -30,6 +32,7 @@ internal static class SceneGizmoDrawerProbe
     internal static int SelectedCalls { get; private set; }
     internal static int NonSelectedCalls { get; private set; }
     internal static bool ColorWasReset { get; private set; } = true;
+    internal static bool LineWidthWasReset { get; private set; } = true;
 
     [DrawGizmo(GizmoType.Selected | GizmoType.NonSelected)]
     public static void Draw(BaseSceneGizmoProbe component, GizmoType state)
@@ -38,6 +41,7 @@ internal static class SceneGizmoDrawerProbe
         if ((state & GizmoType.Selected) != 0) SelectedCalls++;
         if ((state & GizmoType.NonSelected) != 0) NonSelectedCalls++;
         ColorWasReset &= Gizmos.color.Equals(Color.white);
+        LineWidthWasReset &= Gizmos.lineWidth == 2;
         Gizmos.DrawLine(component.transform.position, component.transform.position + Vector2.left);
     }
 
@@ -47,5 +51,6 @@ internal static class SceneGizmoDrawerProbe
         SelectedCalls = 0;
         NonSelectedCalls = 0;
         ColorWasReset = true;
+        LineWidthWasReset = true;
     }
 }

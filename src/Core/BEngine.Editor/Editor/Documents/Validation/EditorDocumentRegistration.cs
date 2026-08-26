@@ -77,6 +77,8 @@ internal static class EditorDocumentRegistration
         if (document.Format != "BEngine.Preferences" || document.Version != 1)
             throw new InvalidDataException(
                 $"Unsupported editor preferences '{document.Format}' v{document.Version}.");
+        // Legacy files may contain a different positive size. They are migrated to the
+        // fixed editor font size when loaded, while malformed values remain invalid.
         if (document.EditorFontSize <= 0)
             throw new InvalidDataException("Editor font size must be positive.");
         if (!float.IsFinite(document.EditorScale) || document.EditorScale is < 0.75f or > 2f)

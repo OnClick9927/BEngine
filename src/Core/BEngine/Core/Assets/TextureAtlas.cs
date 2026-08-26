@@ -27,7 +27,8 @@ public sealed class TextureAtlas : BAsset
     }
 
     public IReadOnlyList<Sprite> LoadReferencedSprites() => SpriteReferences
-        .Select(Sprite.Load)
+        .Select(reference => BAsset.Load<Sprite>(reference) ?? throw new InvalidDataException(
+            $"Texture atlas Sprite reference '{reference}' is not a legacy Sprite asset or a texture imported as Sprite."))
         .ToArray();
 
     public bool TryGetUv(string nameOrSource, out Rect uv)

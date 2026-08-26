@@ -14,5 +14,8 @@ public readonly record struct GraphicsTextureDescription(
         if (Width <= 0) throw new ArgumentOutOfRangeException(nameof(Width));
         if (Height <= 0) throw new ArgumentOutOfRangeException(nameof(Height));
         if (Usage == GraphicsTextureUsage.None) throw new ArgumentOutOfRangeException(nameof(Usage));
+        if (!Enum.IsDefined(MinFilter)) throw new ArgumentOutOfRangeException(nameof(MinFilter));
+        if (!Enum.IsDefined(MagFilter)) throw new ArgumentOutOfRangeException(nameof(MagFilter));
+        if (!Enum.IsDefined(AddressMode)) throw new ArgumentOutOfRangeException(nameof(AddressMode));
     }
 }

@@ -45,7 +45,7 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     {
         var conventionalIcon = $"Icons/Windows/{GetType().Name.Replace("Window", string.Empty)}.png";
         var icon = EditorWindowMetadataRegistry.GetIcon(GetType()) ??
-                   (EditorResources.FindPath(conventionalIcon) is not null
+                   (EditorResource.FindPath(conventionalIcon) is not null
                        ? conventionalIcon
                        : "Icons/Windows/Window.png");
         titleContent = new GUIContent(GetType().Name.Replace("Window", string.Empty), icon,

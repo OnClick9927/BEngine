@@ -106,7 +106,7 @@ public static class AssetTypeRegistry
             var iconResourcePath = ResolveRegistrationUnchecked(assetPath)?.IconResourcePath;
             return string.IsNullOrWhiteSpace(iconResourcePath)
                 ? null
-                : EditorResources.FindPath(iconResourcePath) ?? iconResourcePath;
+                : EditorResource.FindPath(iconResourcePath) ?? iconResourcePath;
         }
     }
 

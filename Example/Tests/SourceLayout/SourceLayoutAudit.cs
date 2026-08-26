@@ -107,15 +107,25 @@ internal static class SourceLayoutAudit
         {
             var packageRoot = Path.Combine(sourceRoot, relativeRoot);
             var rootReadme = Path.Combine(packageRoot, "Readme.md");
-            var editorReadme = Path.Combine(packageRoot, "EditorResources", "Readme.md");
+            var editorReadme = Path.Combine(packageRoot, "Editor", "Readme.md");
+            var legacyEditorDirectory = Path.Combine(packageRoot, "EditorResources");
             if (File.Exists(rootReadme))
-                violations.Add($"Package Readme must be in EditorResources: {package}/Readme.md");
+                violations.Add($"Package Readme must be in Editor: {package}/Readme.md");
             if (!File.Exists(editorReadme))
-                violations.Add($"Package has no EditorResources/Readme.md: {package}");
+                violations.Add($"Package has no Editor/Readme.md: {package}");
+            if (Directory.Exists(legacyEditorDirectory))
+                violations.Add($"Package retained legacy EditorResources directory: {package}");
 
             var packageDefinition = Path.Combine(packageRoot, "package.yaml");
-            if (File.Exists(packageDefinition)) expectedItems.Add(ToSolutionPath(sourceRoot, packageDefinition));
-            foreach (var folder in new[] { "Resources", "EditorResources" })
+            if (File.Exists(packageDefinition))
+            {
+                expectedItems.Add(ToSolutionPath(sourceRoot, packageDefinition));
+                var definition = File.ReadAllText(packageDefinition);
+                if (!Regex.IsMatch(definition,
+                        "(?m)^content:\\r?$\\n^  runtime: Resources\\r?$\\n^  editor: Editor\\r?$"))
+                    violations.Add($"Package content mapping must be Resources/Editor: {package}");
+            }
+            foreach (var folder in new[] { "Resources", "Editor" })
             {
                 foreach (var directory in Directory.EnumerateDirectories(Path.Combine(packageRoot, folder), "*",
                              SearchOption.AllDirectories))
@@ -147,7 +157,7 @@ internal static class SourceLayoutAudit
             .Where(path => packages.Values.Any(packageRoot =>
                 path.StartsWith(packageRoot.Replace('/', '\\') + "\\Resources\\",
                     StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith(packageRoot.Replace('/', '\\') + "\\EditorResources\\",
+                path.StartsWith(packageRoot.Replace('/', '\\') + "\\Editor\\",
                     StringComparison.OrdinalIgnoreCase)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var missing in expectedFolders.Except(actualFolders, StringComparer.OrdinalIgnoreCase))

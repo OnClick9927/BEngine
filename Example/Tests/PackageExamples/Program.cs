@@ -41,7 +41,7 @@ static void ValidateArchives(string repositoryRoot)
             var sourceDirectory = module.Name == "Core"
                 ? Path.Combine(repositoryRoot, "src", "Core")
                 : Path.Combine(repositoryRoot, "src", "Packages", module.Name);
-            var examplesDirectory = Path.Combine(sourceDirectory, "EditorResources", "Examples");
+            var examplesDirectory = Path.Combine(sourceDirectory, "Editor", "Examples");
             var archives = Directory.EnumerateFiles(examplesDirectory, "*.bpackage", SearchOption.TopDirectoryOnly)
                 .OrderBy(path => path, StringComparer.Ordinal).ToArray();
             Require(archives.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase)
@@ -153,7 +153,7 @@ static void ValidateCompiledExamples(string repositoryRoot)
             var hasEditorSources = false;
             foreach (var archiveName in module.ExpectedArchives)
             {
-                var archive = Path.Combine(sourceDirectory, "EditorResources", "Examples", archiveName);
+                var archive = Path.Combine(sourceDirectory, "Editor", "Examples", archiveName);
                 var manifest = BPackageArchive.ReadManifest(archive);
                 var exampleName = Path.GetFileNameWithoutExtension(archiveName);
                 hasEditorSources |= manifest.Entries.Any(entry => !entry.IsDirectory &&

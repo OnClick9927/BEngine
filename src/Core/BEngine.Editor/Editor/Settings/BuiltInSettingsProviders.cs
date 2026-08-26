@@ -1,4 +1,5 @@
 using BEngine.Rendering.Rhi;
+using BEngine.Editor.Documents;
 
 namespace BEngine.Editor;
 
@@ -6,7 +7,6 @@ internal static class BuiltInSettingsProviders
 {
     private static readonly string[] Locales = ["中文 (简体)", "English"];
     private static readonly string[] LocaleValues = ["zh-CN", "en-US"];
-    private static readonly string[] Themes = ["Dark", "Light", "Classic"];
     private static readonly string[] Fonts = ["BEngine Built-in", "Segoe UI", "Microsoft YaHei"];
     private static readonly string[] Backends = Enum.GetNames<GraphicsBackend>();
     private static string _scriptingSettingsPath = string.Empty;
@@ -82,12 +82,10 @@ internal static class BuiltInSettingsProviders
         var font = Math.Max(0, Array.IndexOf(Fonts, value.EditorFont));
         var nextFont = EditorGUILayout.Popup(EditorLocalization.Tr("Font"), font, Fonts);
         if (nextFont != font) { value.EditorFont = Fonts[nextFont]; changed = true; }
-        var fontSize = Math.Clamp(EditorGUILayout.IntField(EditorLocalization.Tr("Font Size"),
-            value.EditorFontSize), 10, 24);
-        if (fontSize != value.EditorFontSize) { value.EditorFontSize = fontSize; changed = true; }
-        var theme = Math.Max(0, Array.IndexOf(Themes, value.EditorTheme));
-        var nextTheme = EditorGUILayout.Popup(EditorLocalization.Tr("Theme"), theme, Themes);
-        if (nextTheme != theme) { value.EditorTheme = Themes[nextTheme]; changed = true; }
+        EditorGUI.BeginDisabledGroup(true);
+        _ = EditorGUILayout.IntField(EditorLocalization.Tr("Font Size"), EditorAppearance.DefaultFontSize);
+        EditorGUI.EndDisabledGroup();
+        changed |= EditorSkinPreferences.Draw(value);
         var refresh = EditorGUILayout.Toggle(EditorLocalization.Tr("Auto Refresh Assets"), value.AutoRefreshAssets);
         if (refresh != value.AutoRefreshAssets) { value.AutoRefreshAssets = refresh; changed = true; }
         var meta = EditorGUILayout.Toggle(EditorLocalization.Tr("Show Meta Files"), value.ShowAssetMetaFiles);

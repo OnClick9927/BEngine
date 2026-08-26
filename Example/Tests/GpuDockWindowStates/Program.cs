@@ -1,3 +1,4 @@
+using System.Reflection;
 using BEngine.Editor;
 using BEngine.Editor.Rendering;
 
@@ -109,6 +110,17 @@ internal static class Program
             command.Content.EndsWith("More.png", StringComparison.Ordinal));
         var titlePoint = Center(firstTitle.Rect);
         var morePoint = Center(moreButton.Rect);
+        var maximizePoint = Center(commands.Single(command =>
+            command.Type == GpuCanvasCommandType.Text && command.Content == "[]").Rect);
+        var closePoint = Center(commands.Single(command =>
+            command.Type == GpuCanvasCommandType.Text && command.Content == "x").Rect);
+
+        foreach (var point in new[] { morePoint, maximizePoint, closePoint })
+        {
+            RenderDock(dock, new Event(EventType.Repaint) { mousePosition = point });
+            Require(TooltipCandidate() is null,
+                "A docked window options, maximize, or close button still registered a tooltip.");
+        }
 
         IReadOnlyList<GenericMenuItem>? captured = null;
         GenericMenuDispatcher.Handler = items => captured = items.ToArray();
@@ -250,6 +262,9 @@ internal static class Program
 
     private static string MenuSignature(IEnumerable<GenericMenuItem> items) => string.Join('|',
         items.Select(item => $"{item.Path}:{item.On}:{item.Enabled}:{item.Separator}"));
+
+    private static string? TooltipCandidate() => typeof(GUI).GetField("_tooltipCandidate",
+        BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null) as string;
 
     private readonly record struct TitleSnapshot(
         string Content,

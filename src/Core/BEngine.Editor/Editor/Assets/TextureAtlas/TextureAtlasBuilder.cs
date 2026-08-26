@@ -1,3 +1,6 @@
+using System.Globalization;
+using BEngine.Documents;
+using BEngine.ProjectSystem.Editor;
 using BEngine.Rendering;
 
 namespace BEngine.Editor;
@@ -81,6 +84,9 @@ public static class TextureAtlasBuilder
         var spritePath = ResolveSourcePath(reference, manifestPath);
         if (!File.Exists(spritePath)) throw new FileNotFoundException(
             $"Texture atlas Sprite '{reference}' does not exist.", spritePath);
+        if (!spritePath.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase))
+            return LoadImportedSprite(reference, spritePath);
+
         var sprite = Sprite.Load(spritePath);
         var source = new AtlasSource(
             string.IsNullOrWhiteSpace(sprite.name)
@@ -89,6 +95,51 @@ public static class TextureAtlasBuilder
             reference.Replace('\\', '/').Trim(), sprite.Texture, sprite.PivotX, sprite.PivotY);
         return LoadSource(source, spritePath);
     }
+
+    private static SourceImage LoadImportedSprite(string reference, string texturePath)
+    {
+        if (!Path.GetExtension(texturePath).Equals(".png", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException(
+                $"Texture atlas Sprite reference '{reference}' must be a PNG imported as Sprite or a legacy .sprite.yaml asset.");
+
+        var metaPath = texturePath + ".meta";
+        if (!File.Exists(metaPath))
+            throw new InvalidDataException(
+                $"Texture atlas image '{reference}' has no importer metadata and is not imported as Sprite.");
+
+        AssetMetaDocument meta;
+        try
+        {
+            meta = Document.Load<AssetMetaDocument>(metaPath);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException or
+                                          YamlDotNet.Core.YamlException)
+        {
+            throw new InvalidDataException(
+                $"Texture atlas image '{reference}' has invalid importer metadata.", exception);
+        }
+
+        var settings = meta.Settings ?? [];
+        if (!string.Equals(meta.Importer, nameof(TextureImporter), StringComparison.OrdinalIgnoreCase) ||
+            !settings.TryGetValue(nameof(TextureImporter.textureType), out var textureType) ||
+            !string.Equals(textureType, nameof(TextureImporterType.Sprite), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException(
+                $"Texture atlas image '{reference}' must use TextureImporter with Texture Type set to Sprite.");
+
+        var normalizedReference = reference.Replace('\\', '/').Trim();
+        var source = new AtlasSource(Path.GetFileNameWithoutExtension(texturePath), normalizedReference,
+            normalizedReference,
+            ReadPivot(settings, nameof(TextureImporter.spritePivotX)),
+            ReadPivot(settings, nameof(TextureImporter.spritePivotY)));
+        return LoadSource(source, texturePath);
+    }
+
+    private static float ReadPivot(IReadOnlyDictionary<string, string> settings, string key) =>
+        settings.TryGetValue(key, out var value) &&
+        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var pivot) &&
+        float.IsFinite(pivot)
+            ? Math.Clamp(pivot, 0, 1)
+            : 0.5f;
 
     private static SourceImage LoadLegacySource(TextureAtlasSource legacy, string manifestPath) =>
         LoadSource(new AtlasSource(legacy.Name, legacy.Path, legacy.Path,

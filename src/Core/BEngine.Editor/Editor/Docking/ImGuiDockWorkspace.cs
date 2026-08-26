@@ -345,15 +345,14 @@ internal sealed class ImGuiDockWorkspace
 
         var menuRect = new Rect(rect.xMax - actionsWidth, actionY, actionWidth, actionHeight);
         if (EditorToolbar.Button(menuRect,
-                new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More, "Window options")))
+                new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More, string.Empty)))
             ShowWindowContextMenu(selected, new Vector2(menuRect.x, menuRect.yMax));
         var maximizeRect = new Rect(menuRect.xMax + 2, actionY, actionWidth, actionHeight);
         if (EditorToolbar.Button(maximizeRect, new GUIContent(
-                ReferenceEquals(_maximizedGroup, group) ? "-" : "[]",
-                tooltip: ReferenceEquals(_maximizedGroup, group) ? "Restore dock layout" : "Maximize window")))
+                ReferenceEquals(_maximizedGroup, group) ? "-" : "[]")))
             _maximizedGroup = ReferenceEquals(_maximizedGroup, group) ? null : group;
         var closeRect = new Rect(maximizeRect.xMax + 2, actionY, actionWidth, actionHeight);
-        if (EditorToolbar.Button(closeRect, new GUIContent("x", tooltip: "Close window")))
+        if (EditorToolbar.Button(closeRect, new GUIContent("x")))
         {
             selected.Window.Close();
             return;

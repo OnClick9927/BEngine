@@ -5,6 +5,9 @@ packageVersion: 1.0.0
 displayName: 2D Physics
 description: Deterministic fixed-point 2D rigidbodies, colliders, queries and collision callbacks.
 enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
 runtime:
   assembly: BEngine.Physics2D
   rootNamespace: BEngine.Physics2D

@@ -3,7 +3,6 @@ using YamlDotNet.Serialization;
 
 namespace BEngine;
 
-[CreateAssetMenu(fileName = "New Sprite", menuName = "2D/Sprite", order = 240)]
 [EditorIcon("Icons/Assets/AssetImage.png")]
 public sealed class Sprite : FileAsset
 {

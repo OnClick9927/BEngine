@@ -10,10 +10,10 @@ $outputRoot = Join-Path $repositoryRoot 'Output'
 $engineOutput = Join-Path $outputRoot 'BEgine'
 $stageOutput = Join-Path $outputRoot '.BEgine.publish-staging'
 $backupOutput = Join-Path $outputRoot '.BEgine.publish-backup'
-$launcherProject = Join-Path $PSScriptRoot 'Core\BEngine.Launcher\BEngine.Launcher.csproj'
+$launcherProject = Join-Path $PSScriptRoot 'Hub\BEngine.Launcher\BEngine.Launcher.csproj'
 $playerProject = Join-Path $PSScriptRoot 'Core\BEngine.Player\BEngine.Player.csproj'
 $coreResources = Join-Path $PSScriptRoot 'Core\Resources'
-$coreEditorResources = Join-Path $PSScriptRoot 'Core\EditorResources'
+$coreEditor = Join-Path $PSScriptRoot 'Core\Editor'
 
 foreach ($path in @($engineOutput, $stageOutput, $backupOutput)) {
     $parent = Split-Path -Parent $path
@@ -56,7 +56,7 @@ if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed with exit code $LASTEX
 if ($LASTEXITCODE -ne 0) { throw "Player publish failed with exit code $LASTEXITCODE." }
 
 Copy-Item -LiteralPath $coreResources -Destination (Join-Path $stageOutput 'Resources') -Recurse
-Copy-Item -LiteralPath $coreEditorResources -Destination (Join-Path $stageOutput 'EditorResources') -Recurse
+Copy-Item -LiteralPath $coreEditor -Destination (Join-Path $stageOutput 'Editor') -Recurse
 
 foreach ($required in @('BEngine.Launcher.exe', 'BEngine.Editor.exe', 'BEngine.Player.exe')) {
     if (-not (Test-Path -LiteralPath (Join-Path $stageOutput $required))) {

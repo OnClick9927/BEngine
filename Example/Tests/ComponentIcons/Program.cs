@@ -12,7 +12,7 @@ internal static class Program
         try
         {
             var repository = FindRepositoryRoot();
-            EditorResources.RegisterResourceRoot(Path.Combine(repository, "src", "Core"));
+            EditorResource.RegisterResourceRoot(Path.Combine(repository, "src", "Core"));
 
             Require(EditorIconRegistry.GetComponentIconPath(typeof(Camera2D)).EndsWith(
                     EditorBuiltinIcons.Components.Camera2D, StringComparison.OrdinalIgnoreCase),
@@ -36,7 +36,7 @@ internal static class Program
 
             Require(FileGpuCanvasResourceResolver.Shared.TryResolveTexture(
                     EditorBuiltinIcons.Components.Script, out var texture),
-                "The GPU Canvas did not resolve the component PNG from EditorResources.");
+                "The GPU Canvas did not resolve the component PNG from Editor.");
             Require(texture.Width > 0 && texture.Height > 0 &&
                     texture.Format == GraphicsTextureFormat.Rgba8Unorm &&
                     texture.Pixels.Length == texture.Width * texture.Height * 4,

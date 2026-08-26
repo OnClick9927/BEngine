@@ -39,7 +39,8 @@ internal static class SettingsWindowRenderRegressionTests
         {
             VerifyPreferencesWindow(testDirectory);
             markers.AddRange(["preferences-render", "selection", "search", "navigation-scroll",
-                "content-scroll", "narrow", "multi-frame", "provider-fault", "preferences-persist"]);
+                "content-scroll", "narrow", "multi-frame", "provider-fault", "preferences-persist",
+                "skin-list-ui", "skin-set-persist", "fixed-font-ui"]);
             VerifyProjectSettingsWindow(projectSettingsPath);
             markers.AddRange(["project-render", "tag-layer-tabs", "layers-scrollbar-drag", "apply-persist"]);
             return markers;
@@ -79,7 +80,7 @@ internal static class SettingsWindowRenderRegressionTests
                 SettingsWindowRegressionState.UserSecondaryMarker, "User Fault", "User Overview",
                 SettingsWindowRegressionState.UserBodyMarker);
             VerifySearchAndNavigationScroll(window);
-            VerifyLargeFontLayout(window);
+            VerifyFixedFontLayout(window);
 
             Select(window, SettingsWindowRegressionState.UserSecondaryPath);
             Select(window, SettingsWindowRegressionState.UserOverviewPath);
@@ -90,7 +91,37 @@ internal static class SettingsWindowRenderRegressionTests
             Require(narrow.SequenceEqual(Render(window, NarrowWidth, NarrowHeight)),
                 "Narrow Preferences layout changed between unchanged repaint frames.");
 
+            EditorAppearance.SetCustomThemePreset(EditorPreferences.current, EditorTheme.Classic);
+            EditorPreferences.Save();
             Select(window, "Preferences/General");
+            var customGeneral = Render(window, WideWidth, WideHeight);
+            Require(HasVisibleText(customGeneral, "Theme") &&
+                    HasVisibleText(customGeneral, "New") &&
+                    HasVisibleText(customGeneral, "Light") &&
+                    HasVisibleText(customGeneral, "Dark") &&
+                    HasVisibleText(customGeneral, "Classic") &&
+                    HasVisibleText(customGeneral, "Set"),
+                "General Preferences did not expose the GUISkin list, New, and all built-in skins.");
+            Require(customGeneral.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                                 command.Content == "14" && IsVisible(command) &&
+                                                 command.Color == GpuCanvasColor.FromColor(
+                                                     EditorAppearance.palette.DisabledText)),
+                "General Preferences did not show the fixed 14px font as a read-only value.");
+
+            var firstSet = customGeneral.Where(command => command.Type == GpuCanvasCommandType.Text &&
+                                                           command.Content == "Set" && IsVisible(command))
+                .OrderBy(command => command.Rect.Y).First();
+            Click(window, WideWidth, WideHeight, Center(firstSet.Rect));
+            Require(EditorPreferences.current.EditorSkin == "builtin:Light" &&
+                    EditorAppearance.activeSkin.name == nameof(EditorTheme.Light),
+                "Clicking the Light GUISkin Set button did not apply it globally.");
+            Require(Document.Load<EditorPreferencesDocument>(EditorDataPaths.preferencesPath).EditorSkin ==
+                    "builtin:Light",
+                "The selected GUISkin was not persisted to Preferences.");
+
+            EditorPreferences.current.EditorTheme = nameof(EditorTheme.Dark);
+            EditorPreferences.current.EditorSkin = "builtin:Dark";
+            EditorPreferences.Save();
             var general = Render(window, WideWidth, WideHeight);
             var toggleLabel = FindVisibleText(general, "Auto Refresh Assets");
             var togglePoint = new Vector2((Fix64)(toggleLabel.Rect.Right + 12),
@@ -376,17 +407,17 @@ internal static class SettingsWindowRenderRegressionTests
         ClearFocusedText(window, WideWidth, WideHeight);
     }
 
-    private static void VerifyLargeFontLayout(EditorWindow window)
+    private static void VerifyFixedFontLayout(EditorWindow window)
     {
         var normal = new EditorPreferencesDocument
         {
             Locale = "en-US",
             EditorScale = 1,
             EditorFont = "BEngine Built-in",
-            EditorFontSize = 13,
+            EditorFontSize = 10,
             EditorTheme = "Dark"
         };
-        var large = new EditorPreferencesDocument
+        var legacyLarge = new EditorPreferencesDocument
         {
             Locale = "en-US",
             EditorScale = 1,
@@ -394,9 +425,12 @@ internal static class SettingsWindowRenderRegressionTests
             EditorFontSize = 24,
             EditorTheme = "Dark"
         };
-        EditorAppearance.Apply(large);
+        EditorAppearance.Apply(legacyLarge);
         try
         {
+            Require(EditorAppearance.fontSize == EditorAppearance.DefaultFontSize &&
+                    legacyLarge.EditorFontSize == EditorAppearance.DefaultFontSize,
+                "A legacy font size changed the fixed 14px editor font.");
             Select(window, SettingsWindowRegressionState.UserOverviewPath);
             Click(window, WideWidth, WideHeight, new Vector2(40, 20));
             TypeText(window, WideWidth, WideHeight, "overview");
@@ -407,10 +441,10 @@ internal static class SettingsWindowRenderRegressionTests
             var footer = FindVisibleText(commands, SettingsWindowRegressionState.UserFooterMarker);
             foreach (var command in new[] { search, navigation, body, footer })
                 Require(command.Rect.Height >= command.FontSize + 4,
-                    $"Large-font settings text '{command.Content}' is clipped by a fixed-height control.");
+                    $"Fixed-font settings text '{command.Content}' is clipped by its control.");
 
-            VerifyNoVerticalTextOverlap(commands, navigation.ClipRect, "large-font navigation");
-            VerifyNoVerticalTextOverlap(commands, body.ClipRect, "large-font provider content");
+            VerifyNoVerticalTextOverlap(commands, navigation.ClipRect, "fixed-font navigation");
+            VerifyNoVerticalTextOverlap(commands, body.ClipRect, "fixed-font provider content");
             ClearFocusedText(window, WideWidth, WideHeight);
         }
         finally

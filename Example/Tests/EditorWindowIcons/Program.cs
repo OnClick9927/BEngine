@@ -10,7 +10,7 @@ internal static class Program
     {
         var repository = FindRepository(AppContext.BaseDirectory);
         var root = Path.Combine(repository, "src", "Core");
-        EditorResources.RegisterResourceRoot(root);
+        EditorResource.RegisterResourceRoot(root);
 
         var content = new GUIContent("Custom", "Icons/Windows/Scene.png", "Custom tooltip");
         Require(content.text == "Custom" && content.image.EndsWith("Scene.png") &&
@@ -44,9 +44,9 @@ internal static class Program
                 panelWindow.titleContent.tooltip == "Updated tooltip",
             "IMGUI dock panel did not observe the EditorWindow's updated titleContent.");
 
-        var resolvedIcon = EditorResources.FindPath(updated.image);
+        var resolvedIcon = EditorResource.FindPath(updated.image);
         Require(resolvedIcon is not null && File.Exists(resolvedIcon),
-            "EditorResources could not resolve the updated window icon.");
+            "Editor could not resolve the updated window icon.");
 
         Console.WriteLine("EDITOR_WINDOW_ICONS_OK|guicontent,iconcontent,attribute,fallback,imgui-dock,tooltip,dynamic-update,png");
         return 0;

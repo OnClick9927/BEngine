@@ -88,74 +88,129 @@ public static class EditorGUI
         return changed;
     }
 
-    public static Rect PrefixLabel(Rect totalPosition, GUIContent label)
+    public static Rect PrefixLabel(Rect totalPosition, GUIContent label) =>
+        PrefixLabel(totalPosition, label, null);
+
+    public static Rect PrefixLabel(Rect totalPosition, GUIContent label, GUIStyle? style)
     {
         var left = Fix64.Min(totalPosition.width, labelWidth + indentLevel * 15);
         GUI.Label(new Rect(totalPosition.x + indentLevel * 15, totalPosition.y,
-            Fix64.Max(0, left - indentLevel * 15), totalPosition.height), label);
+            Fix64.Max(0, left - indentLevel * 15), totalPosition.height), label,
+            style ?? EditorStyles.label);
         return new Rect(totalPosition.x + left, totalPosition.y,
             Fix64.Max(0, totalPosition.width - left), totalPosition.height);
     }
 
-    public static void LabelField(Rect position, string label) => GUI.Label(position, label);
+    public static void LabelField(Rect position, string label) => LabelField(position, label, null);
+    public static void LabelField(Rect position, string label, GUIStyle? style) =>
+        GUI.Label(position, label, style ?? EditorStyles.label);
     public static void LabelField(Rect position, GUIContent label, GUIStyle? style = null) =>
         GUI.Label(position, label, style ?? EditorStyles.label);
     public static void SelectableLabel(Rect position, string text, GUIStyle? style = null) =>
-        GUI.Label(position, text);
-    public static bool Toggle(Rect position, bool value) => GUI.Toggle(position, value, GUIContent.none);
+        GUI.Label(position, text, style ?? EditorStyles.label);
+    public static bool Toggle(Rect position, bool value) => Toggle(position, value, (GUIStyle?)null);
+    public static bool Toggle(Rect position, bool value, GUIStyle? style) =>
+        GUI.Toggle(position, value, GUIContent.none, style ?? GUI.skin.toggle);
     public static bool Toggle(Rect position, string label, bool value) =>
-        GUI.Toggle(PrefixLabel(position, new GUIContent(label)), value, GUIContent.none);
-    public static string TextField(Rect position, string value) =>
-        GUI.TextField(position, value, style: EditorStyles.textField);
+        Toggle(position, label, value, null);
+    public static bool Toggle(Rect position, string label, bool value, GUIStyle? style) =>
+        GUI.Toggle(PrefixLabel(position, new GUIContent(label)), value, GUIContent.none,
+            style ?? GUI.skin.toggle);
+    public static string TextField(Rect position, string value) => TextField(position, value, (GUIStyle?)null);
+    public static string TextField(Rect position, string value, GUIStyle? style) =>
+        GUI.TextField(position, value, style: style ?? EditorStyles.textField);
     public static string TextField(Rect position, string label, string value) =>
-        GUI.TextField(PrefixLabel(position, new GUIContent(label)), value, style: EditorStyles.textField);
-    public static string TextArea(Rect position, string value) => GUI.TextArea(position, value);
+        TextField(position, label, value, null);
+    public static string TextField(Rect position, string label, string value, GUIStyle? style) =>
+        GUI.TextField(PrefixLabel(position, new GUIContent(label)), value,
+            style: style ?? EditorStyles.textField);
+    public static string TextArea(Rect position, string value) => TextArea(position, value, null);
+    public static string TextArea(Rect position, string value, GUIStyle? style) =>
+        GUI.TextArea(position, value, style: style ?? EditorStyles.textArea);
 
-    public static int IntField(Rect position, string label, int value)
+    public static int IntField(Rect position, string label, int value) =>
+        IntField(position, label, value, null);
+
+    public static int IntField(Rect position, string label, int value, GUIStyle? style)
     {
         var text = GUI.TextField(PrefixLabel(position, new GUIContent(label)), FormatInteger(value),
-            style: EditorStyles.numberField);
+            style: style ?? EditorStyles.numberField);
         return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ? result : value;
     }
 
-    public static int IntField(Rect position, int value)
+    public static int IntField(Rect position, int value) => IntField(position, value, null);
+
+    public static int IntField(Rect position, int value, GUIStyle? style)
     {
-        var text = GUI.TextField(position, FormatInteger(value), style: EditorStyles.numberField);
+        var text = GUI.TextField(position, FormatInteger(value), style: style ?? EditorStyles.numberField);
         return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ? result : value;
     }
 
-    public static float FloatField(Rect position, string label, float value)
+    public static float FloatField(Rect position, string label, float value) =>
+        FloatField(position, label, value, null);
+
+    public static float FloatField(Rect position, string label, float value, GUIStyle? style)
     {
         var text = GUI.TextField(PrefixLabel(position, new GUIContent(label)), FormatFloat(value),
-            style: EditorStyles.numberField);
+            style: style ?? EditorStyles.numberField);
         return float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) ? result : value;
     }
 
-    public static float FloatField(Rect position, float value)
+    public static float FloatField(Rect position, float value) => FloatField(position, value, null);
+
+    public static float FloatField(Rect position, float value, GUIStyle? style)
     {
-        var text = GUI.TextField(position, FormatFloat(value), style: EditorStyles.numberField);
+        var text = GUI.TextField(position, FormatFloat(value), style: style ?? EditorStyles.numberField);
         return float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) ? result : value;
     }
 
     public static Color ColorField(Rect position, string label, Color value, bool showEyedropper = true,
         bool showAlpha = true, bool hdr = false) => ColorField(position, new GUIContent(label), value,
-        showEyedropper, showAlpha, hdr);
+        showEyedropper, showAlpha, hdr, null);
+
+    public static Color ColorField(Rect position, string label, Color value, GUIStyle? style) =>
+        ColorField(position, new GUIContent(label), value, true, true, false, style);
+
+    public static Color ColorField(Rect position, string label, Color value, bool showEyedropper,
+        bool showAlpha, bool hdr, GUIStyle? style) => ColorField(position, new GUIContent(label), value,
+        showEyedropper, showAlpha, hdr, style);
 
     public static Color ColorField(Rect position, GUIContent label, Color value, bool showEyedropper = true,
         bool showAlpha = true, bool hdr = false) => DoColorField(position, label, value, showEyedropper,
-        showAlpha, hdr, usePrefix: true);
+        showAlpha, hdr, usePrefix: true, style: null);
+
+    public static Color ColorField(Rect position, GUIContent label, Color value, GUIStyle? style) =>
+        DoColorField(position, label, value, true, true, false, usePrefix: true, style: style);
+
+    public static Color ColorField(Rect position, GUIContent label, Color value, bool showEyedropper,
+        bool showAlpha, bool hdr, GUIStyle? style) => DoColorField(position, label, value, showEyedropper,
+        showAlpha, hdr, usePrefix: true, style: style);
 
     public static Color ColorField(Rect position, Color value, bool showEyedropper = true,
         bool showAlpha = true, bool hdr = false) => DoColorField(position, GUIContent.none, value,
-        showEyedropper, showAlpha, hdr, usePrefix: false);
+        showEyedropper, showAlpha, hdr, usePrefix: false, style: null);
+
+    public static Color ColorField(Rect position, Color value, GUIStyle? style) =>
+        DoColorField(position, GUIContent.none, value, true, true, false, usePrefix: false, style: style);
+
+    public static Color ColorField(Rect position, Color value, bool showEyedropper, bool showAlpha,
+        bool hdr, GUIStyle? style) => DoColorField(position, GUIContent.none, value, showEyedropper,
+        showAlpha, hdr, usePrefix: false, style: style);
 
     public static BObject? ObjectField(
         Rect position,
         BObject? value,
         Type objectType,
-        bool allowSceneObjects) =>
+        bool allowSceneObjects) => ObjectField(position, value, objectType, allowSceneObjects, null);
+
+    public static BObject? ObjectField(
+        Rect position,
+        BObject? value,
+        Type objectType,
+        bool allowSceneObjects,
+        GUIStyle? style) =>
         DoObjectField(position, GUIContent.none, value, objectType, allowSceneObjects,
-            usePrefix: false, showMixedValue, stableIdentity: 0, out _);
+            usePrefix: false, showMixedValue, stableIdentity: 0, style, out _);
 
     public static BObject? ObjectField(
         Rect position,
@@ -163,52 +218,93 @@ public static class EditorGUI
         BObject? value,
         Type objectType,
         bool allowSceneObjects) =>
-        ObjectField(position, new GUIContent(label), value, objectType, allowSceneObjects);
+        ObjectField(position, new GUIContent(label), value, objectType, allowSceneObjects, null);
+
+    public static BObject? ObjectField(
+        Rect position,
+        string label,
+        BObject? value,
+        Type objectType,
+        bool allowSceneObjects,
+        GUIStyle? style) =>
+        ObjectField(position, new GUIContent(label), value, objectType, allowSceneObjects, style);
 
     public static BObject? ObjectField(
         Rect position,
         GUIContent label,
         BObject? value,
         Type objectType,
-        bool allowSceneObjects)
+        bool allowSceneObjects) => ObjectField(position, label, value, objectType, allowSceneObjects, null);
+
+    public static BObject? ObjectField(
+        Rect position,
+        GUIContent label,
+        BObject? value,
+        Type objectType,
+        bool allowSceneObjects,
+        GUIStyle? style)
     {
         ArgumentNullException.ThrowIfNull(label);
         return DoObjectField(position, label, value, objectType, allowSceneObjects,
-            usePrefix: true, showMixedValue, stableIdentity: 0, out _);
+            usePrefix: true, showMixedValue, stableIdentity: 0, style, out _);
     }
 
     public static T? ObjectField<T>(Rect position, T? value, bool allowSceneObjects) where T : BObject =>
         (T?)ObjectField(position, value, typeof(T), allowSceneObjects);
 
+    public static T? ObjectField<T>(Rect position, T? value, bool allowSceneObjects, GUIStyle? style)
+        where T : BObject => (T?)ObjectField(position, value, typeof(T), allowSceneObjects, style);
+
     public static T? ObjectField<T>(Rect position, string label, T? value, bool allowSceneObjects)
         where T : BObject =>
         (T?)ObjectField(position, label, value, typeof(T), allowSceneObjects);
+
+    public static T? ObjectField<T>(Rect position, string label, T? value, bool allowSceneObjects,
+        GUIStyle? style) where T : BObject =>
+        (T?)ObjectField(position, label, value, typeof(T), allowSceneObjects, style);
 
     public static T? ObjectField<T>(Rect position, GUIContent label, T? value, bool allowSceneObjects)
         where T : BObject =>
         (T?)ObjectField(position, label, value, typeof(T), allowSceneObjects);
 
+    public static T? ObjectField<T>(Rect position, GUIContent label, T? value, bool allowSceneObjects,
+        GUIStyle? style) where T : BObject =>
+        (T?)ObjectField(position, label, value, typeof(T), allowSceneObjects, style);
+
     public static void ObjectField(
         Rect position,
         SerializedProperty property,
-        Type objectType)
+        Type objectType) => ObjectField(position, property, objectType, (GUIStyle?)null);
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        GUIStyle? style)
     {
         ArgumentNullException.ThrowIfNull(property);
         ObjectField(position, property, objectType,
             new GUIContent(property.displayName, tooltip: property.tooltip),
-            AllowSceneObjects(property));
+            AllowSceneObjects(property), style);
     }
 
     public static void ObjectField(
         Rect position,
         SerializedProperty property,
         Type objectType,
-        bool allowSceneObjects)
+        bool allowSceneObjects) => ObjectField(position, property, objectType, allowSceneObjects, null);
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        bool allowSceneObjects,
+        GUIStyle? style)
     {
         ArgumentNullException.ThrowIfNull(property);
         ObjectField(position, property, objectType,
             new GUIContent(property.displayName, tooltip: property.tooltip),
-            allowSceneObjects);
+            allowSceneObjects, style);
     }
 
     public static void ObjectField(
@@ -216,7 +312,15 @@ public static class EditorGUI
         SerializedProperty property,
         Type objectType,
         GUIContent label) =>
-        ObjectField(position, property, objectType, label, AllowSceneObjects(property));
+        ObjectField(position, property, objectType, label, AllowSceneObjects(property), null);
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        GUIContent label,
+        GUIStyle? style) =>
+        ObjectField(position, property, objectType, label, AllowSceneObjects(property), style);
 
     public static void ObjectField(
         Rect position,
@@ -229,8 +333,25 @@ public static class EditorGUI
         Rect position,
         SerializedProperty property,
         Type objectType,
+        string label,
+        GUIStyle? style) =>
+        ObjectField(position, property, objectType, new GUIContent(label), style);
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
         GUIContent label,
-        bool allowSceneObjects)
+        bool allowSceneObjects) =>
+        ObjectField(position, property, objectType, label, allowSceneObjects, null);
+
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        GUIContent label,
+        bool allowSceneObjects,
+        GUIStyle? style)
     {
         ArgumentNullException.ThrowIfNull(property);
         ArgumentNullException.ThrowIfNull(label);
@@ -243,7 +364,7 @@ public static class EditorGUI
         var value = DoObjectField(position, label, property.objectReferenceValue, effectiveType,
             allowSceneObjects, usePrefix: true,
             mixed: property.hasMultipleDifferentValues || showMixedValue,
-            stableIdentity: ObjectFieldIdentity(property), out var committed);
+            stableIdentity: ObjectFieldIdentity(property), style, out var committed);
         _ = EndChangeCheck();
         if (committed) property.objectReferenceValue = value;
     }
@@ -256,6 +377,15 @@ public static class EditorGUI
         bool allowSceneObjects) =>
         ObjectField(position, property, objectType, new GUIContent(label), allowSceneObjects);
 
+    public static void ObjectField(
+        Rect position,
+        SerializedProperty property,
+        Type objectType,
+        string label,
+        bool allowSceneObjects,
+        GUIStyle? style) =>
+        ObjectField(position, property, objectType, new GUIContent(label), allowSceneObjects, style);
+
     private static BObject? DoObjectField(
         Rect position,
         GUIContent label,
@@ -265,8 +395,10 @@ public static class EditorGUI
         bool usePrefix,
         bool mixed,
         int stableIdentity,
+        GUIStyle? style,
         out bool committed)
     {
+        style ??= EditorStyles.popup;
         EditorObjectPicker.ValidateValue(value, objectType);
         var field = usePrefix ? PrefixLabel(position, label) : position;
         var id = GUIUtility.GetControlID("ObjectField".GetHashCode(StringComparison.Ordinal),
@@ -295,19 +427,25 @@ public static class EditorGUI
             }
         }
 
-        var content = EditorObjectPicker.Content(value, objectType, mixed && !committed);
-        if (GUI.Button(field, content, EditorStyles.popup))
-            EditorObjectPicker.Open(token, field, value, objectType, allowSceneObjects);
         var pickerWidth = Fix64.Min(18, field.width);
-        if (pickerWidth > 0)
-            GUI.Label(new Rect(field.xMax - pickerWidth, field.y, pickerWidth, field.height),
-                new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Browse, "Select object"));
+        var objectRect = new Rect(field.x, field.y, Fix64.Max(0, field.width - pickerWidth), field.height);
+        var pickerRect = new Rect(objectRect.xMax, field.y, pickerWidth, field.height);
+        var content = EditorObjectPicker.Content(value, objectType, mixed && !committed);
+        if (objectRect.width > 0 && GUI.Button(objectRect, content, style))
+        {
+            if (value is not null) Selection.activeObject = value;
+            else EditorObjectPicker.Open(token, field, value, objectType, allowSceneObjects);
+        }
+        if (pickerWidth > 0 && GUI.Button(pickerRect,
+                new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Browse, "Select object"), style))
+            EditorObjectPicker.Open(token, field, value, objectType, allowSceneObjects);
         return value;
     }
 
     private static Color DoColorField(Rect position, GUIContent label, Color value, bool showEyedropper,
-        bool showAlpha, bool hdr, bool usePrefix)
+        bool showAlpha, bool hdr, bool usePrefix, GUIStyle? style)
     {
+        style ??= EditorStyles.colorField;
         var field = usePrefix ? PrefixLabel(position, label) : position;
         var eyedropperWidth = showEyedropper ? Fix64.Min(20, field.width) : Fix64.Zero;
         var swatch = new Rect(field.x, field.y, Fix64.Max(0, field.width - eyedropperWidth), field.height);
@@ -321,26 +459,71 @@ public static class EditorGUI
             GUI.changed = true;
         }
         if (GUI.Button(swatch, new GUIContent(string.Empty, tooltip: showAlpha
-                ? "Open Color Picker (RGBA)" : "Open Color Picker (RGB)"), EditorStyles.colorField))
+                ? "Open Color Picker (RGBA)" : "Open Color Picker (RGB)"), style))
             EditorColorPicker.Open(token, value, showAlpha, hdr);
         if (showEyedropper && GUI.Button(eyedropper,
-                new GUIContent(string.Empty, tooltip: "Pick a color from the screen"), EditorStyles.colorField))
+                new GUIContent(string.Empty, tooltip: "Pick a color from the screen"), style))
             EditorColorPicker.Pick(token, value, showAlpha);
         DrawColorSwatch(swatch, value, showAlpha, hdr);
-        if (showEyedropper) DrawEyedropperButton(eyedropper);
+        if (showEyedropper) DrawEyedropperButton(eyedropper, style);
         return value;
     }
 
     public static int Popup(Rect position, string label, int selectedIndex, string[] displayedOptions)
-        => DrawPopup(position, label, selectedIndex, displayedOptions, forceAdvanced: false);
+        => Popup(position, label, selectedIndex, displayedOptions, null);
+
+    public static int Popup(Rect position, string label, int selectedIndex, string[] displayedOptions,
+        GUIStyle? style) => DrawPopup(position, label, selectedIndex, displayedOptions,
+        forceAdvanced: false, style);
 
     public static int AdvancedPopup(Rect position, string label, int selectedIndex,
-        string[] displayedOptions)
-        => DrawPopup(position, label, selectedIndex, displayedOptions, forceAdvanced: true);
+        string[] displayedOptions) => AdvancedPopup(position, label, selectedIndex, displayedOptions, null);
+
+    public static int AdvancedPopup(Rect position, string label, int selectedIndex,
+        string[] displayedOptions, GUIStyle? style) => DrawPopup(position, label, selectedIndex,
+        displayedOptions, forceAdvanced: true, style);
+
+    public static bool DropDownButton(Rect position, string text, FocusType focusType,
+        GUIStyle? style = null) => DropDownButton(position, new GUIContent(text), focusType, style);
+
+    public static bool DropDownButton(Rect position, string text, GUIStyle? style = null) =>
+        DropDownButton(position, new GUIContent(text), FocusType.Keyboard, style);
+
+    public static bool DropDownButton(Rect position, GUIContent content, GUIStyle? style = null) =>
+        DropDownButton(position, content, FocusType.Keyboard, style);
+
+    public static bool DropDownButton(Rect position, GUIContent content, FocusType focusType,
+        GUIStyle? style = null)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        style ??= EditorStyles.dropDownButton;
+        var pressed = GUI.Button(position, content, style, focusType);
+        var arrowWidth = Fix64.Min(20, Fix64.Max(0, position.width));
+        var arrow = new Rect(position.xMax - arrowWidth, position.y, arrowWidth, position.height);
+        if (Event.current.type == EventType.Repaint && arrowWidth > 0)
+            GUI.DrawRect(new Rect(arrow.x, arrow.y + 1, 1, Fix64.Max(0, arrow.height - 2)),
+                GUI.skin.palette.Border);
+        GUI.Label(arrow, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.FoldoutOpen, string.Empty),
+            EditorStyles.label);
+        return pressed;
+    }
+
+    public static bool DropdownButton(Rect position, string text, FocusType focusType,
+        GUIStyle? style = null) => DropDownButton(position, text, focusType, style);
+
+    public static bool DropdownButton(Rect position, GUIContent content, FocusType focusType,
+        GUIStyle? style = null) => DropDownButton(position, content, focusType, style);
+
+    public static bool DropdownButton(Rect position, string text, GUIStyle? style = null) =>
+        DropDownButton(position, text, FocusType.Keyboard, style);
+
+    public static bool DropdownButton(Rect position, GUIContent content, GUIStyle? style = null) =>
+        DropDownButton(position, content, FocusType.Keyboard, style);
 
     private static int DrawPopup(Rect position, string label, int selectedIndex,
-        string[] displayedOptions, bool forceAdvanced)
+        string[] displayedOptions, bool forceAdvanced, GUIStyle? style)
     {
+        style ??= EditorStyles.popup;
         var field = PrefixLabel(position, new GUIContent(label));
         selectedIndex = Math.Clamp(selectedIndex, 0, Math.Max(0, displayedOptions.Length - 1));
         var id = GUIUtility.GetControlID("Popup".GetHashCode(StringComparison.Ordinal), FocusType.Keyboard, field);
@@ -351,7 +534,7 @@ public static class EditorGUI
             GUI.changed = true;
         }
         var caption = displayedOptions.ElementAtOrDefault(selectedIndex) ?? "None";
-        if (GUI.Button(field, new GUIContent(caption), EditorStyles.popup) && displayedOptions.Length > 0)
+        if (GUI.Button(field, new GUIContent(caption), style) && displayedOptions.Length > 0)
         {
             var menu = new GenericMenu();
             for (var index = 0; index < displayedOptions.Length; index++)
@@ -371,81 +554,116 @@ public static class EditorGUI
         return selectedIndex;
     }
 
-    public static Enum EnumPopup(Rect position, string label, Enum selected)
+    public static Enum EnumPopup(Rect position, string label, Enum selected) =>
+        EnumPopup(position, label, selected, null);
+
+    public static Enum EnumPopup(Rect position, string label, Enum selected, GUIStyle? style)
     {
         var names = Enum.GetNames(selected.GetType());
         var index = Array.IndexOf(names, selected.ToString());
-        return (Enum)Enum.Parse(selected.GetType(), names[Popup(position, label, Math.Max(0, index), names)]);
+        return (Enum)Enum.Parse(selected.GetType(), names[
+            Popup(position, label, Math.Max(0, index), names, style)]);
     }
 
-    public static Vector2 Vector2Field(Rect position, string label, Vector2 value)
+    public static Vector2 Vector2Field(Rect position, string label, Vector2 value) =>
+        Vector2Field(position, label, value, null);
+
+    public static Vector2 Vector2Field(Rect position, string label, Vector2 value, GUIStyle? style)
     {
+        style ??= EditorStyles.numberField;
         position = WithVisibleWidth(position);
         if (position.height >= LinesHeight(3))
         {
             var rows = PrepareVerticalVectorField(position, label);
-            return new Vector2((Fix64)AxisFloatField(rows, "X", value.x),
-                (Fix64)AxisFloatField(NextLine(rows), "Y", value.y));
+            return new Vector2((Fix64)AxisFloatField(rows, "X", value.x, style),
+                (Fix64)AxisFloatField(NextLine(rows), "Y", value.y, style));
         }
         var field = PrepareVectorField(position, label, GetVectorMinimumFieldWidth(2));
         return new Vector2(
-            (Fix64)AxisFloatField(HorizontalAxisRect(field, 0, 2), "X", value.x),
-            (Fix64)AxisFloatField(HorizontalAxisRect(field, 1, 2), "Y", value.y));
+            (Fix64)AxisFloatField(HorizontalAxisRect(field, 0, 2), "X", value.x, style),
+            (Fix64)AxisFloatField(HorizontalAxisRect(field, 1, 2), "Y", value.y, style));
     }
 
-    public static Vector4 Vector4Field(Rect position, string label, Vector4 value)
+    public static Vector4 Vector4Field(Rect position, string label, Vector4 value) =>
+        Vector4Field(position, label, value, null);
+
+    public static Vector4 Vector4Field(Rect position, string label, Vector4 value, GUIStyle? style)
     {
+        style ??= EditorStyles.numberField;
         position = WithVisibleWidth(position);
         if (position.height >= LinesHeight(5))
         {
             var rows = PrepareVerticalVectorField(position, label);
             return new Vector4(
-                (Fix64)AxisFloatField(rows, "X", value.x),
-                (Fix64)AxisFloatField(NextLine(rows), "Y", value.y),
-                (Fix64)AxisFloatField(NextLine(NextLine(rows)), "Z", value.z),
-                (Fix64)AxisFloatField(NextLine(NextLine(NextLine(rows))), "W", value.w));
+                (Fix64)AxisFloatField(rows, "X", value.x, style),
+                (Fix64)AxisFloatField(NextLine(rows), "Y", value.y, style),
+                (Fix64)AxisFloatField(NextLine(NextLine(rows)), "Z", value.z, style),
+                (Fix64)AxisFloatField(NextLine(NextLine(NextLine(rows))), "W", value.w, style));
         }
         var field = PrepareVectorField(position, label, GetVectorMinimumFieldWidth(4));
         return new Vector4(
-            (Fix64)AxisFloatField(HorizontalAxisRect(field, 0, 4), "X", value.x),
-            (Fix64)AxisFloatField(HorizontalAxisRect(field, 1, 4), "Y", value.y),
-            (Fix64)AxisFloatField(HorizontalAxisRect(field, 2, 4), "Z", value.z),
-            (Fix64)AxisFloatField(HorizontalAxisRect(field, 3, 4), "W", value.w));
+            (Fix64)AxisFloatField(HorizontalAxisRect(field, 0, 4), "X", value.x, style),
+            (Fix64)AxisFloatField(HorizontalAxisRect(field, 1, 4), "Y", value.y, style),
+            (Fix64)AxisFloatField(HorizontalAxisRect(field, 2, 4), "Z", value.z, style),
+            (Fix64)AxisFloatField(HorizontalAxisRect(field, 3, 4), "W", value.w, style));
     }
 
-    public static float Slider(Rect position, string label, float value, float leftValue, float rightValue)
+    public static float Slider(Rect position, string label, float value, float leftValue, float rightValue) =>
+        Slider(position, label, value, leftValue, rightValue, null);
+
+    public static float Slider(Rect position, string label, float value, float leftValue, float rightValue,
+        GUIStyle? style)
     {
+        style ??= GUI.skin.horizontalSlider;
         var field = PrefixLabel(position, new GUIContent(label));
         var numericWidth = Fix64.Clamp(field.width * Fix64.FromDecimal(0.28m), 46, 68);
         var slider = new Rect(field.x, field.y + 4, Fix64.Max(0, field.width - numericWidth - 5),
             Fix64.Max(8, field.height - 8));
         var numeric = new Rect(slider.xMax + 5, field.y, numericWidth, field.height);
-        value = (float)GUI.HorizontalSlider(slider, (Fix64)value, (Fix64)leftValue, (Fix64)rightValue);
+        value = (float)GUI.HorizontalSlider(slider, (Fix64)value, (Fix64)leftValue, (Fix64)rightValue,
+            style, GUI.skin.horizontalSliderThumb);
         value = FloatField(numeric, value);
         return Math.Clamp(value, Math.Min(leftValue, rightValue), Math.Max(leftValue, rightValue));
     }
 
-    public static int IntSlider(Rect position, string label, int value, int leftValue, int rightValue)
+    public static int IntSlider(Rect position, string label, int value, int leftValue, int rightValue) =>
+        IntSlider(position, label, value, leftValue, rightValue, null);
+
+    public static int IntSlider(Rect position, string label, int value, int leftValue, int rightValue,
+        GUIStyle? style)
     {
+        style ??= GUI.skin.horizontalSlider;
         var field = PrefixLabel(position, new GUIContent(label));
         var numericWidth = Fix64.Clamp(field.width * Fix64.FromDecimal(0.28m), 42, 62);
         var slider = new Rect(field.x, field.y + 4, Fix64.Max(0, field.width - numericWidth - 5),
             Fix64.Max(8, field.height - 8));
         var numeric = new Rect(slider.xMax + 5, field.y, numericWidth, field.height);
-        value = (int)Math.Round((double)GUI.HorizontalSlider(slider, value, leftValue, rightValue));
+        value = (int)Math.Round((double)GUI.HorizontalSlider(slider, value, leftValue, rightValue,
+            style, GUI.skin.horizontalSliderThumb));
         value = IntField(numeric, value);
         return Math.Clamp(value, Math.Min(leftValue, rightValue), Math.Max(leftValue, rightValue));
     }
 
-    public static bool Foldout(Rect position, bool foldout, string content, bool toggleOnLabelClick = false)
+    public static bool Foldout(Rect position, bool foldout, string content, bool toggleOnLabelClick = false) =>
+        Foldout(position, foldout, content, toggleOnLabelClick, null);
+
+    public static bool Foldout(Rect position, bool foldout, string content, GUIStyle? style) =>
+        Foldout(position, foldout, content, false, style);
+
+    public static bool Foldout(Rect position, bool foldout, string content, bool toggleOnLabelClick,
+        GUIStyle? style)
     {
+        _ = toggleOnLabelClick;
         var icon = foldout ? EditorBuiltinIcons.Toolbar.FoldoutOpen : EditorBuiltinIcons.Toolbar.FoldoutClosed;
         if (GUI.Button(position, new GUIContent(content, icon, foldout ? "Collapse" : "Expand"),
-                EditorStyles.foldout)) foldout = !foldout;
+                style ?? EditorStyles.foldout)) foldout = !foldout;
         return foldout;
     }
 
-    public static void HelpBox(Rect position, string message, MessageType type)
+    public static void HelpBox(Rect position, string message, MessageType type) =>
+        HelpBox(position, message, type, null);
+
+    public static void HelpBox(Rect position, string message, MessageType type, GUIStyle? style)
     {
         var icon = type switch
         {
@@ -454,11 +672,20 @@ public static class EditorGUI
             MessageType.Info => EditorBuiltinIcons.Toolbar.Info,
             _ => string.Empty
         };
-        GUI.Box(position, new GUIContent(message, icon, type.ToString()), EditorStyles.helpBox);
+        GUI.Box(position, new GUIContent(message, icon, type.ToString()), style ?? EditorStyles.helpBox);
     }
 
     public static bool PropertyField(Rect position, SerializedProperty property, GUIContent? label = null,
-        bool includeChildren = false)
+        bool includeChildren = false) => PropertyField(position, property, label, includeChildren, null);
+
+    public static bool PropertyField(Rect position, SerializedProperty property, GUIStyle? style) =>
+        PropertyField(position, property, null, false, style);
+
+    public static bool PropertyField(Rect position, SerializedProperty property, GUIContent? label,
+        GUIStyle? style) => PropertyField(position, property, label, false, style);
+
+    public static bool PropertyField(Rect position, SerializedProperty property, GUIContent? label,
+        bool includeChildren, GUIStyle? style)
     {
         ArgumentNullException.ThrowIfNull(property);
         label ??= new GUIContent(property.displayName, tooltip: property.tooltip);
@@ -469,7 +696,7 @@ public static class EditorGUI
                     () => drawer.OnGUI(position, property, label)))
                 return property.isExpanded;
         }
-        return DefaultPropertyField(position, property, label, includeChildren);
+        return DefaultPropertyField(position, property, label, includeChildren, style);
     }
 
     public static Fix64 GetPropertyHeight(SerializedProperty property, GUIContent? label = null,
@@ -494,7 +721,13 @@ public static class EditorGUI
     }
 
     public static bool DefaultPropertyField(Rect position, SerializedProperty property, GUIContent label,
-        bool includeChildren)
+        bool includeChildren) => DefaultPropertyField(position, property, label, includeChildren, null);
+
+    public static bool DefaultPropertyField(Rect position, SerializedProperty property, GUIContent label,
+        GUIStyle? style) => DefaultPropertyField(position, property, label, false, style);
+
+    public static bool DefaultPropertyField(Rect position, SerializedProperty property, GUIContent label,
+        bool includeChildren, GUIStyle? style)
     {
         var oldEnabled = GUI.enabled;
         GUI.enabled &= property.editable;
@@ -504,37 +737,38 @@ public static class EditorGUI
             switch (property.propertyType)
             {
                 case SerializedPropertyType.Boolean:
-                    property.boolValue = Toggle(position, label.text, property.boolValue); break;
+                    property.boolValue = Toggle(position, label.text, property.boolValue, style); break;
                 case SerializedPropertyType.Integer:
                 case SerializedPropertyType.LayerMask:
                     property.intValue = range is null
-                        ? IntField(position, label.text, property.intValue)
+                        ? IntField(position, label.text, property.intValue, style)
                         : IntSlider(position, label.text, property.intValue,
-                            (int)MathF.Ceiling(range.min), (int)MathF.Floor(range.max));
+                            (int)MathF.Ceiling(range.min), (int)MathF.Floor(range.max), style);
                     break;
                 case SerializedPropertyType.Float:
                     property.floatValue = range is null
-                        ? FloatField(position, label.text, property.floatValue)
-                        : Slider(position, label.text, property.floatValue, range.min, range.max);
+                        ? FloatField(position, label.text, property.floatValue, style)
+                        : Slider(position, label.text, property.floatValue, range.min, range.max, style);
                     break;
                 case SerializedPropertyType.String:
-                    property.stringValue = TextField(position, label.text, property.stringValue); break;
+                    property.stringValue = TextField(position, label.text, property.stringValue, style); break;
                 case SerializedPropertyType.Color:
                     var usage = property.GetAttribute<ColorUsageAttribute>();
                     property.colorValue = ColorField(position, label.text, property.colorValue,
-                        showAlpha: usage?.showAlpha ?? true, hdr: usage?.hdr ?? false);
+                        true, usage?.showAlpha ?? true, usage?.hdr ?? false, style);
                     break;
                 case SerializedPropertyType.Enum:
                     property.enumValueIndex = Popup(position, label.text, property.enumValueIndex,
-                        property.enumDisplayNames); break;
+                        property.enumDisplayNames, style); break;
                 case SerializedPropertyType.Vector2:
-                    property.vector2Value = Vector2Field(position, label.text, property.vector2Value); break;
+                    property.vector2Value = Vector2Field(position, label.text, property.vector2Value, style); break;
                 case SerializedPropertyType.Vector4:
-                    property.vector4Value = Vector4Field(position, label.text, property.vector4Value); break;
+                    property.vector4Value = Vector4Field(position, label.text, property.vector4Value, style); break;
                 case SerializedPropertyType.ObjectReference:
-                    ObjectField(position, property, property.valueType, label); break;
+                    ObjectField(position, property, property.valueType, label, style); break;
                 default:
-                    GUI.Label(PrefixLabel(position, label), property.boxedValue?.ToString() ?? "None"); break;
+                    GUI.Label(PrefixLabel(position, label), property.boxedValue?.ToString() ?? "None",
+                        style ?? EditorStyles.label); break;
             }
             return property.isExpanded;
         }
@@ -613,7 +847,7 @@ public static class EditorGUI
             GetVectorAxisLabelWidth(VectorAxisNames[index]) + 1 + numericWidth, field.height);
     }
 
-    private static float AxisFloatField(Rect position, string axis, Fix64 value)
+    private static float AxisFloatField(Rect position, string axis, Fix64 value, GUIStyle? style)
     {
         var desiredWidth = GetVectorAxisLabelWidth(axis);
         var axisWidth = Fix64.Min(position.width, desiredWidth);
@@ -621,7 +855,7 @@ public static class EditorGUI
             EditorStyles.vectorAxisLabel);
         var gap = position.width > axisWidth ? Fix64.One : Fix64.Zero;
         return FloatField(new Rect(position.x + axisWidth + gap, position.y,
-            Fix64.Max(0, position.width - axisWidth - gap), position.height), (float)value);
+            Fix64.Max(0, position.width - axisWidth - gap), position.height), (float)value, style);
     }
 
     private static Fix64 GetVectorAxisLabelWidth(string axis) => Fix64.Max(VectorAxisLabelMinimumWidth,
@@ -657,31 +891,12 @@ public static class EditorGUI
                 new GUIContent("HDR"), EditorStyles.miniLabel);
         if (showMixedValue)
             GUI.Label(inner, new GUIContent("-"), EditorStyles.boldLabel);
-        var hovered = field.Contains(Event.current.mousePosition);
-        var lightTheme = EditorAppearance.theme == EditorTheme.Light;
-        var border = GUIUtility.hotControl != 0 && hovered
-            ? EditorAppearance.palette.FocusBorder
-            : hovered ? ColorFromBytes(lightTheme ? 108 : 101, lightTheme ? 108 : 101,
-                lightTheme ? 108 : 101) : ColorFromBytes(lightTheme ? 176 : 32,
-                lightTheme ? 176 : 32, lightTheme ? 176 : 32);
-        GUI.DrawRect(new Rect(field.x, field.y, field.width, 1), border);
-        GUI.DrawRect(new Rect(field.x, field.yMax - 1, field.width, 1), border);
-        GUI.DrawRect(new Rect(field.x, field.y, 1, field.height), border);
-        GUI.DrawRect(new Rect(field.xMax - 1, field.y, 1, field.height), border);
     }
 
-    private static void DrawEyedropperButton(Rect rect)
+    private static void DrawEyedropperButton(Rect rect, GUIStyle style)
     {
         if (Event.current.type != EventType.Repaint || rect.width <= 0) return;
-        var hovered = rect.Contains(Event.current.mousePosition);
-        var lightTheme = EditorAppearance.theme == EditorTheme.Light;
-        var background = lightTheme
-            ? hovered ? ColorFromBytes(204, 204, 204) : ColorFromBytes(200, 200, 200)
-            : hovered ? ColorFromBytes(76, 76, 76) : ColorFromBytes(56, 56, 56);
-        GUI.DrawRect(rect, background);
-        GUI.DrawRect(new Rect(rect.x, rect.y, 1, rect.height), lightTheme
-            ? ColorFromBytes(176, 176, 176) : ColorFromBytes(32, 32, 32));
-        var tint = GUI.enabled ? EditorAppearance.palette.Text : EditorAppearance.palette.DisabledText;
+        var tint = GetStyleState(style, rect).textColor;
         var startX = rect.x + (rect.width - 12) / 2;
         var startY = rect.y + (rect.height - 12) / 2;
         for (var index = 0; index < 6; index++)
@@ -690,9 +905,14 @@ public static class EditorGUI
         GUI.DrawRect(new Rect(startX + 1, startY + 9, 3, 2), tint);
     }
 
-    private static Color ColorFromBytes(int red, int green, int blue, int alpha = 255) => new(
-        Fix64.FromDecimal(red / 255m), Fix64.FromDecimal(green / 255m),
-        Fix64.FromDecimal(blue / 255m), Fix64.FromDecimal(alpha / 255m));
+    private static GUIStyleState GetStyleState(GUIStyle style, Rect position)
+    {
+        if (!GUI.enabled) return style.disabled;
+        var hovered = position.Contains(Event.current.mousePosition);
+        if (hovered && GUIUtility.hotControl != 0) return style.active;
+        if (GUIUtility.keyboardControl != 0) return style.focused;
+        return hovered ? style.hover : style.normal;
+    }
 
     private static int ControlToken(int id, string label) => HashCode.Combine(id, label);
 

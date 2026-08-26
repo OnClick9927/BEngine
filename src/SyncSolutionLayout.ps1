@@ -1,10 +1,14 @@
 [CmdletBinding()]
 param(
-    [string] $SolutionPath = (Join-Path $PSScriptRoot 'BEngine.sln'),
+    [string] $SolutionPath,
     [switch] $Check
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($SolutionPath)) {
+    $SolutionPath = Join-Path $PSScriptRoot 'BEngine.sln'
+}
 
 function Get-ProjectBlocks([string] $content) {
     $pattern = '(?ms)^Project\("(?<type>[^\"]+)"\) = "(?<name>[^\"]+)", "(?<path>[^\"]+)", "(?<guid>\{[^}]+\})"\r?\n.*?^EndProject\r?\n'
@@ -36,7 +40,16 @@ function Set-SolutionItems([string] $content, $project, [string[]] $items) {
 }
 
 function Get-SolutionPath([string] $sourceRoot, [string] $path) {
-    return [IO.Path]::GetRelativePath($sourceRoot, $path).Replace('/', '\')
+    $relativePathMethod = [IO.Path].GetMethod(
+        'GetRelativePath',
+        [Type[]] @([string], [string]))
+    if ($null -ne $relativePathMethod) {
+        return [IO.Path]::GetRelativePath($sourceRoot, $path).Replace('/', '\')
+    }
+
+    $rootUri = [Uri]::new($sourceRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar)
+    $pathUri = [Uri]::new($path)
+    return [Uri]::UnescapeDataString($rootUri.MakeRelativeUri($pathUri).ToString()).Replace('/', '\')
 }
 
 function Get-DeterministicSolutionGuid([string] $path) {
@@ -93,6 +106,35 @@ if ($missingProjectPaths.Count -gt 0) {
     throw "BEngine.sln contains missing project paths: $($missingProjectPaths -join ', ')"
 }
 
+$hubFolders = @($projects | Where-Object {
+    $_.Type -eq $solutionFolderType -and $_.Name -eq 'Hub' -and $_.Path -eq 'Hub' -and
+    !$nested.ContainsKey($_.Guid)
+})
+if ($hubFolders.Count -ne 1) {
+    throw "Expected one root solution folder 'Hub' in '$solutionPath', found $($hubFolders.Count)."
+}
+$hubGuid = $hubFolders[0].Guid
+$hubProjectsOnDisk = @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'Hub') -Filter '*.csproj' -File -Recurse |
+    ForEach-Object { Get-SolutionPath $sourceRoot $_.FullName })
+$hubProjectsInSolution = @($projects | Where-Object {
+    $_.Type -ne $solutionFolderType -and $_.Path.StartsWith('Hub\', [StringComparison]::OrdinalIgnoreCase)
+})
+$hubProjectSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($path in $hubProjectsOnDisk) { [void] $hubProjectSet.Add($path) }
+$hubSolutionProjectSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($project in $hubProjectsInSolution) { [void] $hubSolutionProjectSet.Add($project.Path) }
+if (-not $hubProjectSet.SetEquals($hubSolutionProjectSet)) {
+    throw "BEngine.sln Hub projects do not match src/Hub. Update the solution project entries."
+}
+foreach ($project in $hubProjectsInSolution) {
+    if (!$nested.ContainsKey($project.Guid) -or $nested[$project.Guid] -ne $hubGuid) {
+        throw "Hub project '$($project.Path)' is not nested under the Hub solution folder."
+    }
+}
+if ($projects.Path -contains 'Core\BEngine.Launcher\BEngine.Launcher.csproj') {
+    throw 'BEngine.Launcher must live under src/Hub, not src/Core.'
+}
+
 $packageLocations = [ordered]@{
     Core = 'Core'
     Animation = 'Packages\Animation'
@@ -130,12 +172,16 @@ foreach ($project in $projects | Where-Object {
     [void] $packageRootGuids.Add($project.Guid)
 }
 $resourceRootGuids = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$legacyResourceRootGuids = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($project in $projects | Where-Object {
              $_.Type -eq $solutionFolderType -and
-             $_.Name -in 'Resources', 'EditorResources' -and
+             $_.Name -in 'Resources', 'Editor', 'EditorResources' -and
              $nested.ContainsKey($_.Guid) -and $packageRootGuids.Contains($nested[$_.Guid])
          }) {
     [void] $resourceRootGuids.Add($project.Guid)
+    if ($project.Name -eq 'EditorResources') {
+        [void] $legacyResourceRootGuids.Add($project.Guid)
+    }
 }
 $generatedGuids = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 do {
@@ -149,7 +195,9 @@ do {
         }
     }
 } while ($changed)
-$oldGeneratedProjects = @($projects | Where-Object { $generatedGuids.Contains($_.Guid) })
+$oldGeneratedProjects = @($projects | Where-Object {
+    $generatedGuids.Contains($_.Guid) -or $legacyResourceRootGuids.Contains($_.Guid)
+})
 $obsoleteGuids = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($project in $projects | Where-Object {
              $_.Type -eq $solutionFolderType -and $obsoletePackages -contains $_.Path
@@ -193,7 +241,7 @@ foreach ($package in $packages) {
     }
     $updatedContent = Set-SolutionItems $updatedContent $packageProject $packageItems
 
-    foreach ($folderName in 'Resources', 'EditorResources') {
+    foreach ($folderName in 'Resources', 'Editor') {
         $folderProjects = @($projects | Where-Object {
             $_.Type -eq $solutionFolderType -and $_.Name -eq $folderName -and
             $nested[$_.Guid] -eq $packageProject.Guid
@@ -265,7 +313,7 @@ $updatedNestedSection = "`tGlobalSection(NestedProjects) = preSolution`r`n" +
 $updatedContent = $updatedContent.Replace($nestedSection.Value, $updatedNestedSection)
 
 if ($updatedContent -eq $original) {
-    Write-Output 'BEngine.sln already matches the package folders on disk.'
+    Write-Output 'BEngine.sln already matches the Hub and package folders on disk.'
     return
 }
 
@@ -274,4 +322,4 @@ if ($Check) {
 }
 
 [IO.File]::WriteAllText($solutionPath, $updatedContent, [Text.UTF8Encoding]::new($true))
-Write-Output 'BEngine.sln synchronized with package Resources and EditorResources.'
+Write-Output 'BEngine.sln synchronized with package Resources and Editor.'

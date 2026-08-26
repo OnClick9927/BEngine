@@ -276,7 +276,7 @@ public sealed class GpuCanvasRenderer : IDisposable
     private static void AddText(List<float> output, string text, GpuCanvasRect rect,
         GpuCanvasColor color, float requestedSize)
     {
-        var size = requestedSize > 0 ? requestedSize : 13;
+        var size = requestedSize > 0 ? requestedSize : 14;
         var cell = Math.Max(1f, size / 7f);
         var advance = cell * 6;
         var x = rect.X + 4;

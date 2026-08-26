@@ -149,7 +149,7 @@ internal static class Program
             Thread.Sleep(140);
 
             var destination = Path.Combine(root, "src", shot.SourceDirectory,
-                "EditorResources", "Doc", "images", "overview.png");
+                "Editor", "Doc", "images", "overview.png");
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             using var capture = CaptureClient(form);
             capture.Save(destination, System.Drawing.Imaging.ImageFormat.Png);
@@ -419,7 +419,7 @@ internal static class Program
     {
         foreach (var shot in Shots)
         {
-            var resources = Path.Combine(root, "src", shot.SourceDirectory, "EditorResources");
+            var resources = Path.Combine(root, "src", shot.SourceDirectory, "Editor");
             var htmlPath = Path.Combine(resources, "Doc", "index.html");
             var readmePath = Path.Combine(resources, "Readme.md");
             var imagePath = Path.Combine(resources, "Doc", "images", "overview.png");
@@ -467,8 +467,8 @@ internal static class Program
                 $"{shot.Name} overview image appears blank or does not show an authored scene.");
 
             var releasedResources = shot.SourceDirectory.Equals("Core", StringComparison.Ordinal)
-                ? Path.Combine(root, "Output", "BEgine", "EditorResources")
-                : Path.Combine(root, "Output", "Packages", shot.Name, "EditorResources");
+                ? Path.Combine(root, "Output", "BEgine", "Editor")
+                : Path.Combine(root, "Output", "Packages", shot.Name, "Editor");
             var relativeSkill = Path.GetRelativePath(resources, skillPath);
             foreach (var relativePath in new[]
                      {

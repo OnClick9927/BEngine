@@ -147,9 +147,14 @@ static void ValidateAuthoredExampleContents(
             "AtlasPalette does not reference its packed texture.");
         Require(archive.GetEntry("Assets/res/AtlasTiles.png") is not null,
             "AtlasPalette packed texture is missing.");
-        Require(Regex.Matches(atlas, @"(?m)^- Assets/Examples/AtlasPalette/res/Sprites/").Count == 5 &&
-                Regex.Matches(atlas, @"(?m)^- name:").Count == 5,
-            "AtlasPalette TextureAtlas must hold five Sprite references and packed regions.");
+        Require(Regex.Matches(atlas, @"(?m)^- Assets/Examples/AtlasPalette/res/Sources/.+\.png$").Count == 5 &&
+                Regex.Matches(atlas, @"(?m)^- name:").Count == 5 &&
+                archive.Entries.Where(entry =>
+                        entry.FullName.StartsWith("Assets/res/Sources/", StringComparison.Ordinal) &&
+                        entry.FullName.EndsWith(".png.meta", StringComparison.OrdinalIgnoreCase))
+                    .All(entry => ReadArchiveText(archive, entry.FullName)
+                        .Contains("textureType: Sprite", StringComparison.Ordinal)),
+            "AtlasPalette TextureAtlas must hold five textures imported as Sprite and packed regions.");
     }
 }
 
@@ -232,32 +237,32 @@ static void RepackPublishedExamples(string repositoryRoot, string authoringRoot)
 
 static (string Module, string Archive, string Scene, string RequiredComponent)[] PublishedExamples() =>
 [
-    ("Core", "src/Core/EditorResources/Examples/CoreGettingStarted.bpackage", "Core.scene.yaml",
+    ("Core", "src/Core/Editor/Examples/CoreGettingStarted.bpackage", "Core.scene.yaml",
         "type: BEngine.SpriteRenderer"),
-    ("Animation", "src/Packages/Animation/EditorResources/Examples/AnimationGettingStarted.bpackage",
+    ("Animation", "src/Packages/Animation/Editor/Examples/AnimationGettingStarted.bpackage",
         "Animation.scene.yaml", "type: BEngine.Animation.Animator"),
-    ("Animation", "src/Packages/Animation/EditorResources/Examples/StateMachine.bpackage",
+    ("Animation", "src/Packages/Animation/Editor/Examples/StateMachine.bpackage",
         "StateMachine.scene.yaml", "type: BEngine.Animation.Animator"),
-    ("Navigation2D", "src/Packages/Navigation2D/EditorResources/Examples/NavigationSurfaceAndAgent.bpackage",
+    ("Navigation2D", "src/Packages/Navigation2D/Editor/Examples/NavigationSurfaceAndAgent.bpackage",
         "Navigation.scene.yaml", "type: BEngine.Navigation2D.NavigationSurface2D"),
-    ("Navigation2D", "src/Packages/Navigation2D/EditorResources/Examples/DynamicRebake.bpackage",
+    ("Navigation2D", "src/Packages/Navigation2D/Editor/Examples/DynamicRebake.bpackage",
         "DynamicRebake.scene.yaml", "type: BEngine.Navigation2D.NavigationSurface2D"),
-    ("Physics2D", "src/Packages/Physics2D/EditorResources/Examples/RigidbodyAndQueries.bpackage",
+    ("Physics2D", "src/Packages/Physics2D/Editor/Examples/RigidbodyAndQueries.bpackage",
         "Physics2D.scene.yaml", "type: BEngine.Physics2D.Rigidbody2D"),
-    ("Physics2D", "src/Packages/Physics2D/EditorResources/Examples/TriggersAndQueries.bpackage",
+    ("Physics2D", "src/Packages/Physics2D/Editor/Examples/TriggersAndQueries.bpackage",
         "TriggersAndQueries.scene.yaml", "type: BEngine.Physics2D.BoxCollider2D"),
     ("PropertyAttributes",
-        "src/Packages/PropertyAttributes/EditorResources/Examples/InspectorAttributesAndDrawer.bpackage",
+        "src/Packages/PropertyAttributes/Editor/Examples/InspectorAttributesAndDrawer.bpackage",
         "PropertyAttributes.scene.yaml", "type: BEngine.Examples.PropertyAttributes"),
-    ("PropertyAttributes", "src/Packages/PropertyAttributes/EditorResources/Examples/AttributesGallery.bpackage",
+    ("PropertyAttributes", "src/Packages/PropertyAttributes/Editor/Examples/AttributesGallery.bpackage",
         "AttributesGallery.scene.yaml", "type: BEngine.Examples.PropertyAttributes"),
-    ("TiledMap", "src/Packages/TiledMap/EditorResources/Examples/RuntimePainting.bpackage",
+    ("TiledMap", "src/Packages/TiledMap/Editor/Examples/RuntimePainting.bpackage",
         "RuntimePainting.scene.yaml", "type: BEngine.TiledMap.Tilemap"),
-    ("TiledMap", "src/Packages/TiledMap/EditorResources/Examples/AtlasPalette.bpackage",
+    ("TiledMap", "src/Packages/TiledMap/Editor/Examples/AtlasPalette.bpackage",
         "AtlasPalette.scene.yaml", "type: BEngine.TiledMap.Tilemap"),
-    ("UIElements", "src/Packages/UIElements/EditorResources/Examples/RuntimeHud.bpackage",
+    ("UIElements", "src/Packages/UIElements/Editor/Examples/RuntimeHud.bpackage",
         "UIElements.scene.yaml", "type: BEngine.UIElements.UIDocument"),
-    ("UIElements", "src/Packages/UIElements/EditorResources/Examples/ControlsGallery.bpackage",
+    ("UIElements", "src/Packages/UIElements/Editor/Examples/ControlsGallery.bpackage",
         "ControlsGallery.scene.yaml", "type: BEngine.UIElements.UIDocument")
 ];
 

@@ -432,14 +432,12 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
                 (uint)description.Width, (uint)description.Height, 1, 1,
                 ToVeldrid(description.Format), TextureUsage.Sampled));
             View = device.Factory.CreateTextureView(Texture);
+            var addressMode = ToVeldrid(description.AddressMode);
             Sampler = device.Factory.CreateSampler(new SamplerDescription(
-                description.AddressMode == GraphicsTextureAddressMode.Repeat
-                    ? SamplerAddressMode.Wrap : SamplerAddressMode.Clamp,
-                description.AddressMode == GraphicsTextureAddressMode.Repeat
-                    ? SamplerAddressMode.Wrap : SamplerAddressMode.Clamp,
-                SamplerAddressMode.Clamp,
-                description.MinFilter == GraphicsTextureFilter.Linear ? SamplerFilter.MinLinear_MagLinear_MipPoint
-                    : SamplerFilter.MinPoint_MagPoint_MipPoint,
+                addressMode,
+                addressMode,
+                addressMode,
+                ToVeldrid(description.MinFilter, description.MagFilter),
                 null, 0, 0, 0, 0, SamplerBorderColor.TransparentBlack));
             if (!initialData.IsEmpty) Update(initialData);
         }
@@ -473,6 +471,29 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
             Texture.Dispose();
             _disposed = true;
         }
+
+        private static SamplerAddressMode ToVeldrid(GraphicsTextureAddressMode addressMode) => addressMode switch
+        {
+            GraphicsTextureAddressMode.ClampToEdge => SamplerAddressMode.Clamp,
+            GraphicsTextureAddressMode.Repeat => SamplerAddressMode.Wrap,
+            GraphicsTextureAddressMode.MirroredRepeat => SamplerAddressMode.Mirror,
+            _ => throw new ArgumentOutOfRangeException(nameof(addressMode))
+        };
+
+        private static SamplerFilter ToVeldrid(
+            GraphicsTextureFilter minFilter,
+            GraphicsTextureFilter magFilter) => (minFilter, magFilter) switch
+        {
+            (GraphicsTextureFilter.Nearest, GraphicsTextureFilter.Nearest) =>
+                SamplerFilter.MinPoint_MagPoint_MipPoint,
+            (GraphicsTextureFilter.Nearest, GraphicsTextureFilter.Linear) =>
+                SamplerFilter.MinPoint_MagLinear_MipPoint,
+            (GraphicsTextureFilter.Linear, GraphicsTextureFilter.Nearest) =>
+                SamplerFilter.MinLinear_MagPoint_MipPoint,
+            (GraphicsTextureFilter.Linear, GraphicsTextureFilter.Linear) =>
+                SamplerFilter.MinLinear_MagLinear_MipPoint,
+            _ => throw new ArgumentOutOfRangeException(nameof(minFilter))
+        };
 
         private static PixelFormat ToVeldrid(GraphicsTextureFormat format) => format switch
         {

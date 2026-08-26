@@ -90,9 +90,9 @@ internal static class Program
                 Assert(!Directory.EnumerateFiles(Path.Combine(export, "Packages"), "*.Editor.dll",
                         SearchOption.AllDirectories).Any(),
                     "Editor package assemblies must not be exported to a Player build.");
-                Assert(!Directory.EnumerateDirectories(Path.Combine(export, "Packages"), "EditorResources",
+                Assert(!Directory.EnumerateDirectories(Path.Combine(export, "Packages"), "Editor",
                         SearchOption.AllDirectories).Any(),
-                    "EditorResources must not be exported to a Player build.");
+                    "Editor must not be exported to a Player build.");
                 Assert(!Directory.EnumerateFiles(Path.Combine(export, "Packages"), "package.yaml",
                         SearchOption.AllDirectories).Any(path => File.ReadAllText(path).Contains(
                             "com.bengine.codex", StringComparison.OrdinalIgnoreCase)),

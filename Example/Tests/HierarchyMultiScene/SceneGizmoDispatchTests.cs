@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Reflection;
 using BEngine.Editor;
+using BEngine.Rendering;
 
 namespace BEngine.ExampleTests.HierarchyMultiScene;
 
@@ -26,6 +27,7 @@ internal static class SceneGizmoDispatchTests
             SetEnabled(true);
             SetVisible(typeof(DerivedSceneGizmoProbe), true);
             VerifyBuiltInDrawerVisibilityAndCameraAspect();
+            VerifyThickLineGeometry();
             VerifySelectionDispatch(scene);
             VerifySceneObjectVisibility(scene);
             VerifyTypeVisibility(scene);
@@ -65,6 +67,11 @@ internal static class SceneGizmoDispatchTests
             var tallCameraLines = ReadLines(Collect([scene], null, 400, 1200));
             TestAssert.Require(wideCameraLines.SequenceEqual(tallCameraLines),
                 "The Camera2D Gizmo changed its world-space shape with the Scene viewport aspect ratio.");
+            TestAssert.Require(wideCameraLines.All(line =>
+                    line.Color.r == Fix64.One && line.Color.g == Fix64.One &&
+                    line.Color.b == Fix64.One && line.Color.a == Fix64.One &&
+                    line.LineWidth == 2),
+                "A built-in Camera2D Gizmo did not use the white, thicker default line style.");
             TestAssert.Require(wideCameraLines.Length == 4,
                 "A non-Camera2D built-in Gizmo was drawn without selecting its GameObject.");
 
@@ -115,8 +122,47 @@ internal static class SceneGizmoDispatchTests
             "A base component DrawGizmo callback was not applied to all derived components.");
         TestAssert.Require(SceneGizmoDrawerProbe.ColorWasReset,
             "Gizmos.color was not reset before a static DrawGizmo callback.");
+        TestAssert.Require(SceneGizmoDrawerProbe.LineWidthWasReset,
+            "Gizmos.lineWidth was not reset before a static DrawGizmo callback.");
         TestAssert.Require(LineCount(list) == 6,
             "Scene Gizmo collection returned an unexpected number of callback lines.");
+    }
+
+    private static void VerifyThickLineGeometry()
+    {
+        var method = typeof(PortableSceneRenderer).GetMethod("AddThickLine",
+                         BindingFlags.Static | BindingFlags.NonPublic) ??
+                     throw new MissingMethodException(typeof(PortableSceneRenderer).FullName,
+                         "AddThickLine");
+        var vertices = new List<float>();
+        method.Invoke(null,
+        [
+            vertices,
+            new System.Numerics.Vector2(10, 20),
+            new System.Numerics.Vector2(30, 20),
+            System.Numerics.Vector4.One,
+            2f
+        ]);
+        TestAssert.Require(vertices.Count == 36,
+            "A thick Gizmo line was not expanded into two renderable triangles.");
+        var yCoordinates = Enumerable.Range(0, vertices.Count / 6)
+            .Select(index => vertices[index * 6 + 1]).ToArray();
+        TestAssert.Require(MathF.Abs(yCoordinates.Min() - 19) <= 0.001f &&
+                           MathF.Abs(yCoordinates.Max() - 21) <= 0.001f,
+            "The default Gizmo line did not occupy two screen pixels.");
+        TestAssert.Require(ScreenWinding(vertices, 0) < 0 && ScreenWinding(vertices, 18) < 0,
+            "A thick Gizmo line used back-facing triangle winding and would be culled.");
+    }
+
+    private static float ScreenWinding(IReadOnlyList<float> vertices, int offset)
+    {
+        var ax = vertices[offset];
+        var ay = vertices[offset + 1];
+        var bx = vertices[offset + 6];
+        var by = vertices[offset + 7];
+        var cx = vertices[offset + 12];
+        var cy = vertices[offset + 13];
+        return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
     }
 
     private static void VerifyTypeVisibility(Scene scene)
@@ -208,7 +254,11 @@ internal static class SceneGizmoDispatchTests
                                  throw new InvalidDataException("A Gizmo line had no From point."));
             var to = (Vector2)(type.GetProperty("To")?.GetValue(line) ??
                                throw new InvalidDataException("A Gizmo line had no To point."));
-            return new GizmoLine(from, to);
+            var color = (Color)(type.GetProperty("Color")?.GetValue(line) ??
+                                throw new InvalidDataException("A Gizmo line had no Color."));
+            var lineWidth = (Fix64)(type.GetProperty("LineWidth")?.GetValue(line) ??
+                                    throw new InvalidDataException("A Gizmo line had no LineWidth."));
+            return new GizmoLine(from, to, color, lineWidth);
         }).ToArray() ?? [];
     }
 
@@ -224,5 +274,9 @@ internal static class SceneGizmoDispatchTests
     private static void SetVisible(Type type, bool visible) => VisibilityType.GetMethod("SetVisible", StaticMembers)
         ?.Invoke(null, [type, visible]);
 
-    private readonly record struct GizmoLine(Vector2 From, Vector2 To);
+    private readonly record struct GizmoLine(
+        Vector2 From,
+        Vector2 To,
+        Color Color,
+        Fix64 LineWidth);
 }

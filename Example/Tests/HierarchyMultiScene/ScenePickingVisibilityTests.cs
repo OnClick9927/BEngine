@@ -97,9 +97,6 @@ internal static class ScenePickingVisibilityTests
         GameObject top,
         GameObject bottom)
     {
-        harness.HandleGlobalKeyboard(new Event(EventType.KeyDown) { keyCode = KeyCode.Q });
-        TestAssert.Require(harness.CurrentTool == Tool.View,
-            "Q did not select the View tool before Scene picking.");
         ClickScene(harness, SceneCenter());
         TestAssert.Require(ReferenceEquals(harness.SelectedGameObject, top),
             "The first Scene click did not select the highest RenderSortKey2D object.");

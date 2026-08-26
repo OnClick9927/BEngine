@@ -89,6 +89,8 @@ internal static class HierarchyUnityStyleTests
 
         var sceneIcon = RowImage(collapsed, "AssetScene.png", firstScene);
         var rootIcon = RowImage(collapsed, "GameObject.png", firstRoot);
+        TestAssert.Require(!HasRowImage(collapsed, "More.png", firstRoot),
+            "A Hierarchy GameObject row still rendered a right-side three-dot action button.");
         var rootFoldout = RowImageBefore(collapsed, "FoldoutClosed.png", firstRoot, rootIcon.Rect.X);
         TestAssert.Require(sceneIcon.Rect.X < firstScene.Rect.X && rootIcon.Rect.X < firstRoot.Rect.X,
             "Hierarchy Scene or GameObject row is missing its identifying icon.");
@@ -278,6 +280,12 @@ internal static class HierarchyUnityStyleTests
         VerticallyOverlaps(command.Rect, row.Rect)) is { Type: GpuCanvasCommandType.Image } match
             ? match
             : throw new InvalidOperationException($"Hierarchy row '{row.Content}' did not draw '{suffix}'.");
+
+    private static bool HasRowImage(IEnumerable<GpuCanvasCommand> commands, string suffix,
+        GpuCanvasCommand row) => commands.Any(command =>
+        command.Type == GpuCanvasCommandType.Image &&
+        command.Content.EndsWith(suffix, StringComparison.Ordinal) &&
+        command.Rect.Y < row.Rect.Bottom && command.Rect.Bottom > row.Rect.Y);
 
     private static GpuCanvasCommand RowImageBefore(IEnumerable<GpuCanvasCommand> commands, string suffix,
         GpuCanvasCommand row, float beforeX) => commands.SingleOrDefault(command =>

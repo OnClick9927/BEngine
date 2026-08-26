@@ -3,12 +3,15 @@ namespace BEngine;
 public static class Gizmos
 {
     private const int CircleSegments = 48;
+    private static readonly Fix64 DefaultLineWidth = 2;
     private static GizmoDrawList? _drawList;
 
     public static Color color { get; set; } = Color.white;
+    public static Fix64 lineWidth { get; set; } = DefaultLineWidth;
 
     public static void DrawLine(Vector2 from, Vector2 to) =>
-        _drawList?.Add(new GizmoLine2D(from, to, color));
+        _drawList?.Add(new GizmoLine2D(from, to, color,
+            Fix64.Max(Fix64.One, lineWidth)));
 
     public static void DrawRay(Vector2 from, Vector2 direction) => DrawLine(from, from + direction);
 
@@ -64,20 +67,28 @@ public static class Gizmos
     internal static GizmoCollectionScope BeginCollection(GizmoDrawList drawList)
     {
         ArgumentNullException.ThrowIfNull(drawList);
-        var scope = new GizmoCollectionScope(_drawList, color);
+        var scope = new GizmoCollectionScope(_drawList, color, lineWidth);
         _drawList = drawList;
-        color = Color.white;
+        ResetState();
         return scope;
     }
 
-    internal static void ResetColor() => color = Color.white;
+    internal static void ResetState()
+    {
+        color = Color.white;
+        lineWidth = DefaultLineWidth;
+    }
 
-    internal readonly struct GizmoCollectionScope(GizmoDrawList? previous, Color previousColor) : IDisposable
+    internal readonly struct GizmoCollectionScope(
+        GizmoDrawList? previous,
+        Color previousColor,
+        Fix64 previousLineWidth) : IDisposable
     {
         public void Dispose()
         {
             _drawList = previous;
             color = previousColor;
+            lineWidth = previousLineWidth;
         }
     }
 }
@@ -90,4 +101,8 @@ internal sealed class GizmoDrawList
     internal void Add(GizmoLine2D line) => _lines.Add(line);
 }
 
-internal readonly record struct GizmoLine2D(Vector2 From, Vector2 To, Color Color);
+internal readonly record struct GizmoLine2D(
+    Vector2 From,
+    Vector2 To,
+    Color Color,
+    Fix64 LineWidth);

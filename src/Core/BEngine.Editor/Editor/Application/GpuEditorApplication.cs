@@ -92,8 +92,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private int _lastWidth;
     private int _lastHeight;
     private NVector2 _editorCameraPosition;
-    private float _editorCameraRotation;
     private float _editorCameraSize = 5;
+    private float _editorCameraReferenceHeight;
     private NVector2 _editorCameraPivot;
     private string? _openMenu;
     private Rect _openMenuAnchor;
@@ -172,12 +172,12 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _instanceLogPath = Path.Combine(EditorInstanceContext.current?.logsPath ?? _workspace.LogsPath,
             "Editor.log");
         _sessionLogWriter = new EditorSessionLogWriter(_instanceLogPath, _tasks);
-        RegisterResourceRoot();
-        EditorPreferences.Initialize();
         Application.isEditor = true;
         Application.isPlaying = false;
         Application.dataPath = _workspace.AssetsPath;
         Application.productName = _workspace.Project.Name;
+        RegisterResourceRoot();
+        EditorPreferences.Initialize();
         Time.fixedDeltaTime = Fix64.Parse(_workspace.Project.FixedDeltaTime);
 
         EditorProjectSettings.Initialize(_workspace.ProjectSettingsFilePath, _workspace.Project.Name);
@@ -651,11 +651,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         var x = rect.x + 6;
         foreach (var (icon, tooltip, tool) in new[]
                  {
-                     (EditorBuiltinIcons.Toolbar.View, "View Tool (Q)", Tool.View),
                      (EditorBuiltinIcons.Toolbar.Move, "Move Tool (W)", Tool.Move),
                      (EditorBuiltinIcons.Toolbar.Rotate, "Rotate Tool (E)", Tool.Rotate),
-                     (EditorBuiltinIcons.Toolbar.Scale, "Scale Tool (R)", Tool.Scale),
-                     (EditorBuiltinIcons.Toolbar.Rect, "Rect Tool (T)", Tool.Rect)
+                     (EditorBuiltinIcons.Toolbar.Scale, "Scale Tool (R)", Tool.Scale)
                  })
         {
             if (EditorToolbar.Toggle(new Rect(x, buttonY, toolWidth, buttonHeight), _tool == tool,
@@ -825,7 +823,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _lastWidth = viewport.Width;
         _lastHeight = viewport.Height;
         var scenes = LoadedScenes();
-        var editorCamera = EditorCamera();
+        var renderScale = Math.Max(0.01f, (float)_mainWindow.renderScale);
+        var editorCamera = EditorCamera(viewport.Height / renderScale);
         _sceneRenderer!.RenderViewport(scenes, _scene, editorCamera, viewport,
             initializeColor: true, drawGrid: true, drawUi: false, drawGizmos: false,
             objectFilter: SceneVisibilityManager.instance.IsVisible);
@@ -874,10 +873,27 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         return true;
     }
 
-    private RenderCamera EditorCamera() => new(
-        new Vector2((Fix64)_editorCameraPosition.X, (Fix64)_editorCameraPosition.Y),
-        (Fix64)_editorCameraRotation, (Fix64)_editorCameraSize,
-        new NVector4(0.055f, 0.071f, 0.09f, 1));
+    private RenderCamera EditorCamera(float viewportHeight)
+    {
+        viewportHeight = NormalizeEditorViewportHeight(viewportHeight);
+        var referenceHeight = EnsureEditorCameraReferenceHeight(viewportHeight);
+        var effectiveSize = _editorCameraSize * viewportHeight / referenceHeight;
+        return new RenderCamera(
+            new Vector2((Fix64)_editorCameraPosition.X, (Fix64)_editorCameraPosition.Y),
+            Fix64.Zero, (Fix64)effectiveSize,
+            new NVector4(0.055f, 0.071f, 0.09f, 1));
+    }
+
+    private float EnsureEditorCameraReferenceHeight(float viewportHeight)
+    {
+        viewportHeight = NormalizeEditorViewportHeight(viewportHeight);
+        if (!float.IsFinite(_editorCameraReferenceHeight) || _editorCameraReferenceHeight <= 0)
+            _editorCameraReferenceHeight = viewportHeight;
+        return _editorCameraReferenceHeight;
+    }
+
+    private static float NormalizeEditorViewportHeight(float viewportHeight) =>
+        float.IsFinite(viewportHeight) ? Math.Max(1, viewportHeight) : 1;
 
     private void InitializeEditorCameraNavigation()
     {
@@ -890,42 +906,25 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _editorCameraSize = Math.Clamp(_editorCameraSize * MathF.Exp(wheelDelta * 0.14f), 0.01f, 100000f);
     }
 
-    private void OrbitEditorCamera(float deltaX, float deltaY)
-    {
-        if (!float.IsFinite(deltaX) || !float.IsFinite(deltaY)) return;
-        _editorCameraRotation = WrapAngle(_editorCameraRotation + deltaX * 0.2f);
-    }
-
     private void PanEditorCamera(float deltaX, float deltaY, float viewportHeight)
     {
         if (!float.IsFinite(deltaX) || !float.IsFinite(deltaY)) return;
-        var radians = _editorCameraRotation * MathF.PI / 180f;
-        var right = new NVector2(MathF.Cos(radians), MathF.Sin(radians));
-        var up = new NVector2(-right.Y, right.X);
-        var worldPerPixel = 2 * _editorCameraSize / Math.Max(1, viewportHeight);
-        var translation = (-right * deltaX + up * deltaY) * worldPerPixel;
+        var worldPerPixel = EditorWorldUnitsPerPixel(viewportHeight);
+        var translation = new NVector2(-deltaX, deltaY) * worldPerPixel;
         _editorCameraPosition += translation;
         _editorCameraPivot += translation;
     }
 
     private float EditorWorldUnitsPerPixel(float viewportHeight) =>
-        2 * _editorCameraSize / Math.Max(1, viewportHeight);
+        2 * _editorCameraSize / EnsureEditorCameraReferenceHeight(viewportHeight);
 
     private bool TryProjectEditorPoint(NVector2 worldPosition, Rect viewport, out Vector2 point)
     {
-        var viewportPoint = EditorCamera().WorldToViewport(
+        var viewportPoint = EditorCamera((float)viewport.height).WorldToViewport(
             new Vector2((Fix64)worldPosition.X, (Fix64)worldPosition.Y),
             Math.Max(1, (int)viewport.width), Math.Max(1, (int)viewport.height));
         point = new Vector2(viewport.x + (Fix64)viewportPoint.X, viewport.y + (Fix64)viewportPoint.Y);
         return float.IsFinite(viewportPoint.X) && float.IsFinite(viewportPoint.Y);
-    }
-
-    private static float WrapAngle(float angle)
-    {
-        angle %= 360;
-        if (angle > 180) angle -= 360;
-        else if (angle < -180) angle += 360;
-        return angle;
     }
 
     private void OnProgressChanged(EditorProgressInfo progress) => _progress = progress;
@@ -941,6 +940,26 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         BAsset.ClearLoadedAssets();
         TextureAtlasResolver.Clear();
         AssetPreview.ClearTemporaryAssetPreviews();
+        var selectedSkin = EditorPreferences.current.EditorSkin?.Trim() ?? string.Empty;
+        if (selectedSkin.Length > 0 &&
+            !selectedSkin.StartsWith(EditorSkinPreferences.BuiltInPrefix, StringComparison.OrdinalIgnoreCase) &&
+            changes.LastOrDefault(change => PathsEqual(change.AssetPath, selectedSkin) ||
+                                            PathsEqual(change.PreviousPath, selectedSkin)) is { } skinChange)
+        {
+            if (skinChange.Kind == AssetChangeKind.Moved && PathsEqual(skinChange.PreviousPath, selectedSkin))
+            {
+                EditorPreferences.current.EditorSkin = skinChange.AssetPath;
+                EditorPreferences.Save();
+            }
+            else if (skinChange.Kind == AssetChangeKind.Deleted)
+            {
+                EditorSkinPreferences.Select(EditorPreferences.current,
+                    EditorAppearance.builtInSkins.First(skin =>
+                        skin.name.Equals(nameof(EditorTheme.Dark), StringComparison.OrdinalIgnoreCase)));
+                EditorPreferences.Save();
+            }
+            else EditorAppearance.Apply(EditorPreferences.current);
+        }
         ReloadChangedAssetSelection(changes);
         _scriptSourceCache.Clear();
         _project?.Invalidate();
@@ -1358,7 +1377,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (command == CameraViewCommand.AlignWithView)
         {
             transform.position = ToEngineVector(_editorCameraPosition);
-            transform.rotation = (Fix64)_editorCameraRotation;
+            transform.rotation = Fix64.Zero;
         }
         else
         {
@@ -1848,11 +1867,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             var tool = current.keyCode switch
             {
-                KeyCode.Q => Tool.View,
                 KeyCode.W => Tool.Move,
                 KeyCode.E => Tool.Rotate,
                 KeyCode.R => Tool.Scale,
-                KeyCode.T => Tool.Rect,
                 _ => (Tool?)null
             };
             if (tool is { } selectedTool)
@@ -2893,7 +2910,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
             var core = Path.Combine(directory.FullName, "src", "Core");
-            if (!Directory.Exists(Path.Combine(core, "EditorResources"))) continue;
+            if (!Directory.Exists(Path.Combine(core, EditorResource.DirectoryName))) continue;
             Resources.RegisterResourceRoot(core); return;
         }
     }
@@ -2927,7 +2944,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _dock.Show(_sceneView.PersistentId);
         if (!TryGetSelectedBounds(out var pivot, out var radius)) return;
         _editorCameraPivot = pivot;
-        _editorCameraSize = Math.Max(0.01f, radius * 1.2f);
+        var framedSize = Math.Max(0.01f, radius * 1.2f);
+        if (_lastHeight > 0 && _editorCameraReferenceHeight > 0)
+        {
+            var renderScale = Math.Max(0.01f, (float)_mainWindow.renderScale);
+            var viewportHeight = _lastHeight / renderScale;
+            framedSize *= _editorCameraReferenceHeight / viewportHeight;
+        }
+        _editorCameraSize = Math.Clamp(framedSize, 0.01f, 100000f);
         _editorCameraPosition = pivot;
     }
 
@@ -3255,7 +3279,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _project.CaptureLayout(document);
         document.SceneCameraPositionX = _editorCameraPosition.X;
         document.SceneCameraPositionY = _editorCameraPosition.Y;
-        document.SceneCameraRotation = _editorCameraRotation;
+        document.SceneCameraRotation = 0;
         document.SceneCameraSize = _editorCameraSize;
         document.ShowHierarchy = _editorPanels.ContainsKey(_hierarchy);
         document.ShowInspector = _editorPanels.ContainsKey(_inspector);
@@ -3302,7 +3326,6 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         ArgumentNullException.ThrowIfNull(document);
         _project.ApplyLayout(document);
         _editorCameraPosition = new NVector2(document.SceneCameraPositionX, document.SceneCameraPositionY);
-        _editorCameraRotation = WrapAngle(document.SceneCameraRotation);
         _editorCameraSize = Math.Clamp(document.SceneCameraSize, 0.01f, 100000f);
         _mainWindow.SetMaximized(false);
         _mainWindow.Move(document.WindowX, document.WindowY);
@@ -3688,12 +3711,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var children = item.transform.children.ToArray();
             const int sceneStateButtonWidth = 18;
             const int sceneStateActionWidth = sceneStateButtonWidth * 2;
-            var rightActionWidth = _showRowActions ? (Fix64)22 : Fix64.Zero;
             var treeLeft = rowRect.x + sceneStateActionWidth;
             const int minimumLabelWidth = 13;
             var desiredFoldoutX = treeLeft + depth * 14;
             var maximumFoldoutX = Fix64.Max(treeLeft,
-                rowRect.xMax - rightActionWidth - 18 - minimumLabelWidth);
+                rowRect.xMax - 18 - minimumLabelWidth);
             var foldoutRect = new Rect(Fix64.Min(desiredFoldoutX, maximumFoldoutX), rowRect.y, 18, rowHeight);
             if (children.Length > 0)
             {
@@ -3710,11 +3732,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var itemIcon = PrefabUtility.IsPartOfPrefabInstance(item)
                 ? EditorBuiltinIcons.Assets.Prefab : EditorBuiltinIcons.Components.GameObject;
             var itemLabelRect = new Rect(foldoutRect.xMax, rowRect.y,
-                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax - rightActionWidth), rowHeight);
+                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax), rowHeight);
             var itemLabelWidth = itemLabelRect.width;
             var visibleItemIcon = itemLabelWidth >= 28 ? itemIcon : string.Empty;
-            var morePressed = false;
-            var moreRect = default(Rect);
             if (_renamingId == item.Id)
             {
                 var commit = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
@@ -3734,8 +3754,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     : item.activeInHierarchy && !sceneHidden
                         ? EditorStyles.hierarchyRow
                         : EditorStyles.hierarchyRowInactive;
-                var itemContent = new GUIContent(item.name, visibleItemIcon,
-                    PrefabUtility.IsPartOfPrefabInstance(item) ? "Prefab instance" : "GameObject");
+                var itemContent = new GUIContent(item.name, visibleItemIcon, string.Empty);
                 if (GUI.Button(itemLabelRect, GUIContent.none, rowStyle))
                 {
                     app.Select(item);
@@ -3761,17 +3780,6 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                         ? $"Enable Scene picking for {item.name}"
                         : $"Disable Scene picking for {item.name}"), EditorStyles.hierarchyAction))
                 sceneVisibility.TogglePicking(item, includeDescendants: true);
-            if (_showRowActions)
-            {
-                moreRect = new Rect(rowRect.xMax - 22, rowRect.y, 22, rowHeight);
-                morePressed = GUI.Button(moreRect, new GUIContent(string.Empty,
-                    EditorBuiltinIcons.Toolbar.More, $"{item.name} options"), EditorStyles.hierarchyAction);
-            }
-            if (morePressed)
-            {
-                app.Select(item);
-                ShowItemMenu(item, moreRect);
-            }
             if (Event.current.type == EventType.ContextClick && rowRect.Contains(Event.current.mousePosition))
             {
                 app.Select(item);
@@ -4015,11 +4023,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private const float RotationHandleHitWidth = 8;
         private static readonly (string Icon, string Tooltip, Tool Tool)[] ToolbarTools =
         [
-            (EditorBuiltinIcons.Toolbar.View, "View Tool (Q)", Tool.View),
             (EditorBuiltinIcons.Toolbar.Move, "Move Tool (W)", Tool.Move),
             (EditorBuiltinIcons.Toolbar.Rotate, "Rotate Tool (E)", Tool.Rotate),
-            (EditorBuiltinIcons.Toolbar.Scale, "Scale Tool (R)", Tool.Scale),
-            (EditorBuiltinIcons.Toolbar.Rect, "Rect Tool (T)", Tool.Rect)
+            (EditorBuiltinIcons.Toolbar.Scale, "Scale Tool (R)", Tool.Scale)
         ];
 
         private int _navigationButton = -1;
@@ -4099,17 +4105,6 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 if (EditorToolbar.Toggle(rect, app._tool == tool,
                         new GUIContent(string.Empty, icon, tooltip))) app._tool = tool;
                 x += toolWidth;
-            }
-
-            if (_gizmoToolbarMode == SceneGizmoToolbarMode.Wide && x + 34 < gizmoLeft)
-            {
-                x += 8;
-                GUI.Label(new Rect(x, 0, 22, toolbarHeight), "2D", EditorStyles.miniLabel);
-                x += 26;
-                var selectionWidth = Fix64.Max(0, gizmoLeft - x - 4);
-                if (selectionWidth >= 24)
-                    GUI.Label(new Rect(x, 0, selectionWidth, toolbarHeight),
-                        app.Selected is null ? "No selection" : app.Selected.name, EditorStyles.miniLabel);
             }
 
             DrawGizmoControls(gizmoLeft, toolbarHeight);
@@ -4220,14 +4215,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             };
             var endpoints = new Vector2[2];
             var visible = new[] { true, true };
-            var cameraAngle = -app._editorCameraRotation * MathF.PI / 180f;
-            var cameraCos = MathF.Cos(cameraAngle);
-            var cameraSin = MathF.Sin(cameraAngle);
             for (var index = 0; index < axes.Length; index++)
             {
                 var screenDirection = new NVector2(
-                    axes[index].X * cameraCos - axes[index].Y * cameraSin,
-                    -(axes[index].X * cameraSin + axes[index].Y * cameraCos));
+                    axes[index].X,
+                    -axes[index].Y);
                 screenDirection = NVector2.Normalize(screenDirection) * AxisHandleLength;
                 endpoints[index] = origin + new Vector2(
                     (Fix64)screenDirection.X, (Fix64)screenDirection.Y);
@@ -4427,10 +4419,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 }
                 else if (_handleAxis == SceneHandleAxis.Screen)
                 {
-                    var angle = app._editorCameraRotation * MathF.PI / 180f;
-                    var right = new NVector2(MathF.Cos(angle), MathF.Sin(angle));
-                    var up = new NVector2(-right.Y, right.X);
-                    var movement = (right * deltaX - up * deltaY) * _handleWorldPerPixel;
+                    var movement = new NVector2(deltaX, -deltaY) * _handleWorldPerPixel;
                     transform.position = _handleStartWorldPosition + ToVector2(movement);
                 }
                 else if (_handleTool is Tool.Move or Tool.Transform)
@@ -4585,8 +4574,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 return;
             }
 
-            if (((current.type == EventType.ContextClick && current.button == 1) ||
-                 (current.type == EventType.MouseDown && current.button == 2)) &&
+            if (current.type == EventType.MouseDown && current.button == 2 &&
                 viewport.Contains(current.mousePosition))
             {
                 _navigationButton = current.button;
@@ -4598,11 +4586,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
             if (current.type == EventType.MouseDrag && GUIUtility.hotControl == id)
             {
-                if (_navigationButton == 1)
-                    app.OrbitEditorCamera((float)current.delta.x, (float)current.delta.y);
-                else if (_navigationButton == 2)
-                    app.PanEditorCamera((float)current.delta.x, (float)current.delta.y,
-                        (float)viewport.height);
+                app.PanEditorCamera((float)current.delta.x, (float)current.delta.y,
+                    (float)viewport.height);
                 current.Use();
                 return;
             }
@@ -4616,8 +4601,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
 
             if (GUIUtility.hotControl == id)
-                EditorGUIUtility.AddCursorRect(viewport,
-                    _navigationButton == 2 ? MouseCursor.Pan : MouseCursor.Orbit);
+                EditorGUIUtility.AddCursorRect(viewport, MouseCursor.Pan);
         }
 
         private void HandleObjectPicking(Rect viewport)
@@ -4628,7 +4612,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
             var viewportPoint = current.mousePosition - new Vector2(viewport.x, viewport.y);
             var candidates = ScenePickingUtility.PickAll(
-                app.LoadedScenes(), app.EditorCamera(), viewportPoint,
+                app.LoadedScenes(), app.EditorCamera((float)viewport.height), viewportPoint,
                 Math.Max(1, (int)viewport.width), Math.Max(1, (int)viewport.height)).ToArray();
             if (candidates.Length == 0)
             {
@@ -4681,6 +4665,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private sealed class ImGuiGameWindow(GpuEditorApplication app) : EditorWindow
     {
+        private const int StatusButtonWidth = 68;
         private readonly GameViewResolutionSettings _resolutions = new();
         private GraphicsRect _lastFittedViewport;
         private SceneRenderStatistics _renderStatistics;
@@ -4710,17 +4695,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             DrawWindowToolbarBackground();
             var toolbarWidth = GUI.visibleViewWidth;
-            var showDisplay = toolbarWidth >= 310;
-            var statusWidth = toolbarWidth >= 190 ? (Fix64)62 : (Fix64)52;
-            var displayWidth = showDisplay ? (Fix64)80 : Fix64.Zero;
-            var resolutionWidth = Fix64.Max(44, Fix64.Min(132,
-                toolbarWidth - displayWidth - statusWidth - (showDisplay ? 20 : 12)));
+            var showResolution = toolbarWidth >= StatusButtonWidth + 56;
+            var statusWidth = (Fix64)StatusButtonWidth;
+            var resolutionWidth = showResolution
+                ? Fix64.Max(44, Fix64.Min(132,
+                    toolbarWidth - statusWidth - 12))
+                : Fix64.Zero;
             GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.toolbar.fixedHeight));
-            if (showDisplay)
-                GUILayout.Label("Display 1", EditorStyles.toolbarButton, GUILayout.Width(76));
-            if (GUILayout.Button(new GUIContent(_resolutions.selected.SizeLabel,
-                    _resolutions.selected.MenuLabel), EditorStyles.toolbarButton,
-                    GUILayout.Width(resolutionWidth)))
+            if (showResolution && GUILayout.Button(new GUIContent(_resolutions.selected.SizeLabel,
+                        _resolutions.selected.MenuLabel), EditorStyles.toolbarButton,
+                        GUILayout.Width(resolutionWidth)))
             {
                 var anchor = GUILayout.LastRect;
                 var topLeft = GUI.GUIToRootPoint(anchor.position);
@@ -4728,13 +4712,15 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 ShowResolutionMenu(anchor, new Rect(topLeft.x, topLeft.y,
                     bottomRight.x - topLeft.x, bottomRight.y - topLeft.y));
             }
+            var usedBeforeStatus = showResolution
+                ? 8 + resolutionWidth
+                : (Fix64)4;
+            GUILayout.Space(Fix64.Max(0,
+                toolbarWidth - statusWidth - 4 - usedBeforeStatus));
             if (GUILayout.Button(new GUIContent("Status", "Show Game rendering statistics"),
                     _statusExpanded ? EditorStyles.toolbarIconButtonSelected : EditorStyles.toolbarButton,
                     GUILayout.Width(statusWidth)))
                 _statusExpanded = !_statusExpanded;
-            if (toolbarWidth >= 260)
-                GUILayout.Label(app._playing ? "Playing" : "Preview", EditorStyles.miniLabel,
-                    GUILayout.ExpandWidth(true));
             GUILayout.EndHorizontal();
             if (_statusExpanded) DrawStatusOverlay();
         }
@@ -4767,9 +4753,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             GUI.DrawRect(new Rect(panel.x, panel.y, 1, panel.height), EditorAppearance.palette.Border);
             GUI.DrawRect(new Rect(panel.xMax - 1, panel.y, 1, panel.height), EditorAppearance.palette.Border);
 
-            var titleStyle = new GUIStyle(EditorStyles.boldLabel) { alignment = TextAnchor.MiddleCenter };
             GUI.Label(new Rect(panel.x + 6, panel.y + 4, panel.width - 12, lineHeight),
-                "Statistics", titleStyle);
+                "Statistics", EditorStyles.centeredBoldLabel);
             var y = panel.y + 4 + lineHeight;
             foreach (var (text, heading) in lines)
             {
@@ -4808,6 +4793,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 lines.Add(($"Cameras: {CompactNumber(_renderStatistics.CameraCount)}", false));
                 lines.Add(($"Visible: {CompactNumber(_renderStatistics.VisibleSubmissionCount)}", false));
                 lines.Add(($"Batches: {CompactNumber(_renderStatistics.BatchCount)}", false));
+                lines.Add(($"Saved by batching: {CompactNumber(SavedByBatching())}", false));
                 lines.Add((DrawMetric("Draw", _renderStatistics.DrawCallCount, true), false));
                 lines.Add((DrawMetric("Tris", _renderStatistics.TriangleCount, true), false));
                 lines.Add((DrawMetric("Verts", _renderStatistics.VertexCount, true), false));
@@ -4818,6 +4804,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                            $"Visible: {_renderStatistics.VisibleSubmissionCount:N0}", false));
                 lines.Add(($"Batches: {_renderStatistics.BatchCount:N0}   " +
                            DrawMetric("Draw calls", _renderStatistics.DrawCallCount), false));
+                lines.Add(($"Saved by batching: {SavedByBatching():N0}", false));
                 lines.Add(($"{DrawMetric("Tris", _renderStatistics.TriangleCount)}   " +
                            DrawMetric("Verts", _renderStatistics.VertexCount), false));
             }
@@ -4826,6 +4813,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 : $"Screen: {_renderStatistics.TargetWidth:N0} x {_renderStatistics.TargetHeight:N0}", false));
             return lines;
         }
+
+        private int SavedByBatching() => Math.Max(0,
+            _renderStatistics.VisibleSubmissionCount - _renderStatistics.BatchCount);
 
         private string DrawMetric(string label, long value, bool compact = false) =>
             _renderStatistics.HasCompleteDrawStatistics
@@ -7056,7 +7046,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                         GUILayout.Label($"Version {package.Document.PackageVersion}", EditorStyles.miniLabel);
                         var dependencies = app.Packages.GetDependencies(package.Document.Id).ToArray();
                         var sourceDirectory = Path.Combine(Path.GetDirectoryName(package.Path)!,
-                            "EditorResources", "Examples");
+                            EditorResource.DirectoryName, "Examples");
                         var examples = GetExamples(sourceDirectory);
                         DrawDetailsTabs(dependencies.Length, examples.Length);
                         switch (_selectedTab)

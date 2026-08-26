@@ -4,6 +4,7 @@
 
 - 世界层级、Order in Layer、Hierarchy 与透明物体排序。
 - `Assets/Art/Showcase.atlas.yaml` 中的 Sprite/Particle 图集合批。
+- `Assets/Art/Sources/*.png` 直接通过 TextureImporter 的 `Texture Type = Sprite` 使用；示例不创建独立 Sprite YAML。
 - 主相机与右上角观察相机的优先级、视口、Clear Mode 和层级筛选。
 - Play 模式下的旋转、浮动、双粒子发射器，以及方向键/WASD 控制的导航图标。
 

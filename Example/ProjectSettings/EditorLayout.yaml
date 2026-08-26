@@ -2,16 +2,16 @@ format: BEngine.EditorLayout
 version: 2
 name: Last Session
 activeLayout: Last Session
-windowX: 0
-windowY: 29
-windowWidth: 2560
-windowHeight: 1351
-windowMaximized: true
-hierarchyWidth: 362.0001
-inspectorWidth: 525.9999
-bottomHeight: 1207
-projectFoldersWidth: 240
-projectThumbnailSize: 32
+windowX: 229
+windowY: 174
+windowWidth: 1753
+windowHeight: 889
+windowMaximized: false
+hierarchyWidth: 275.46277
+inspectorWidth: 463.53723
+bottomHeight: 777
+projectFoldersWidth: 313
+projectThumbnailSize: 144
 projectBrowserMode: OneColumn
 showHierarchy: true
 showInspector: true
@@ -19,139 +19,140 @@ showBottomPanel: true
 showSceneView: true
 showGameView: true
 showProject: true
-showConsole: false
+showConsole: true
 hierarchyDock: Left
 inspectorDock: Right
 sceneCameraPositionX: 0
 sceneCameraPositionY: 0
 sceneCameraRotation: 0
-sceneCameraSize: 9.568061
+sceneCameraSize: 6.9292245
 sceneCameraBackgroundR: 0.055
 sceneCameraBackgroundG: 0.062
 sceneCameraBackgroundB: 0.071
 sceneCameraDrawGrid: true
-focusedWindowId: Console
+focusedWindowId: Project
 dockRoot:
   type: Split
   sideBySide: true
-  ratio: 0.7928879
+  ratio: 0.5730594
   panels: []
   first:
     type: Split
     sideBySide: true
-    ratio: 0.8195266
+    ratio: 0.2572283
     panels: []
     first:
+      type: Group
+      sideBySide: false
+      ratio: 0.5
+      panels:
+      - Project
+      selectedId: Project
+    second:
       type: Split
-      sideBySide: true
-      ratio: 0.312078
+      sideBySide: false
+      ratio: 0.3228664
       panels: []
       first:
         type: Group
         sideBySide: false
         ratio: 0.5
         panels:
-        - Project
-        selectedId: Project
+        - Game
+        - PackageManager
+        selectedId: Game
       second:
         type: Split
         sideBySide: false
-        ratio: 0.4002711
+        ratio: 0.5807758
         panels: []
         first:
           type: Group
           sideBySide: false
           ratio: 0.5
           panels:
-          - Game
-          selectedId: Game
+          - Scene
+          selectedId: Scene
         second:
-          type: Split
-          sideBySide: true
-          ratio: 0.3664514
-          panels: []
-          first:
-            type: Group
-            sideBySide: false
-            ratio: 0.5
-            panels:
-            - Scene
-            selectedId: Scene
-          second:
-            type: Group
-            sideBySide: false
-            ratio: 0.5
-            panels:
-            - PackageManager
-            selectedId: PackageManager
-    second:
+          type: Group
+          sideBySide: false
+          ratio: 0.5
+          panels:
+          - Console
+          selectedId: Console
+  second:
+    type: Split
+    sideBySide: true
+    ratio: 0.37411347
+    panels: []
+    first:
       type: Group
       sideBySide: false
       ratio: 0.5
       panels:
       - Hierarchy
       selectedId: Hierarchy
-  second:
-    type: Group
-    sideBySide: false
-    ratio: 0.5
-    panels:
-    - Inspector
-    selectedId: Inspector
+    second:
+      type: Group
+      sideBySide: false
+      ratio: 0.5
+      panels:
+      - Inspector
+      selectedId: Inspector
 windows:
 - id: Project
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiProjectWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
   x: 2
-  y: 110
-  width: 514.3616
-  height: 1207
+  y: 86
+  width: 254
+  height: 777
 - id: Game
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiGameWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 521.3616
-  y: 110
-  width: 1138.6384
-  height: 461.13672
-- id: Scene
-  typeName: BEngine.Editor.GpuEditorApplication+ImGuiSceneWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
-  state: Normal
-  docked: true
-  x: 521.3616
-  y: 608.1367
-  width: 414.355
-  height: 708.8633
+  x: 261
+  y: 86
+  width: 741
+  height: 231.58458
 - id: PackageManager
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiPackageManagerWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 940.7166
-  y: 608.1367
-  width: 719.28345
-  height: 708.8633
+  x: 232.841
+  y: 83
+  width: 406.5676
+  height: 185.7151
+- id: Scene
+  typeName: BEngine.Editor.GpuEditorApplication+ImGuiSceneWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+  state: Normal
+  docked: true
+  x: 261
+  y: 346.5846
+  width: 741
+  height: 287.6025
+- id: Console
+  typeName: BEngine.Editor.GpuEditorApplication+ImGuiConsoleWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+  state: Normal
+  docked: true
+  x: 261
+  y: 663.18713
+  width: 741
+  height: 199.8129
 - id: Hierarchy
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiHierarchyWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 1665
-  y: 110
-  width: 362.0001
-  height: 1207
+  x: 1007
+  y: 86
+  width: 275.46277
+  height: 777
 - id: Inspector
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiInspectorWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 2032.0001
-  y: 110
-  width: 525.9999
-  height: 1207
-- id: Console
-  typeName: BEngine.Editor.GpuEditorApplication+ImGuiConsoleWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
-  state: Normal
-  docked: false
-  x: 849.532
-  y: 642.9328
-  width: 1169.468
-  height: 676.0672
+  x: 1287.4628
+  y: 86
+  width: 463.53723
+  height: 777

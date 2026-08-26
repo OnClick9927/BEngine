@@ -8,7 +8,6 @@
     ".NETCoreApp,Version=v10.0": {
       "BEngine.Launcher/1.0.0": {
         "dependencies": {
-          "BEngine": "1.0.0",
           "BEngine.Editor": "1.0.0",
           "Microsoft.Extensions.DependencyInjection": "10.0.11"
         },

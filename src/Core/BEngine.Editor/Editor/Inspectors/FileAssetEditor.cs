@@ -42,8 +42,11 @@ public sealed class FileAssetEditor : Editor
         GUILayout.Label("Import Settings", EditorStyles.boldLabel);
         _importerObject.UpdateIfRequiredOrScript();
         var changedBefore = GUI.changed;
-        foreach (var property in _importerObject.GetVisibleProperties())
-            EditorGUILayout.PropertyField(property, includeChildren: true);
+        if (_importer is TextureImporter textureImporter)
+            DrawTextureImporter(textureImporter, _importerObject);
+        else
+            foreach (var property in _importerObject.GetVisibleProperties())
+                EditorGUILayout.PropertyField(property, includeChildren: true);
         if (_importerObject.ApplyModifiedProperties() || GUI.changed != changedBefore)
             hasUnsavedChanges = true;
         DrawApplyBar();
@@ -86,6 +89,36 @@ public sealed class FileAssetEditor : Editor
             if (GUILayout.Button("Apply", GUILayout.Width(72))) SaveChanges();
         }
         GUILayout.EndHorizontal();
+    }
+
+    private static void DrawTextureImporter(TextureImporter importer, SerializedObject serialized)
+    {
+        DrawImporterProperty(serialized, nameof(TextureImporter.textureType));
+        DrawImporterProperty(serialized, nameof(TextureImporter.sRGBTexture));
+        DrawImporterProperty(serialized, nameof(TextureImporter.alphaIsTransparency));
+        DrawImporterProperty(serialized, nameof(TextureImporter.isReadable));
+        if (importer.textureType == TextureImporterType.Sprite)
+        {
+            GUILayout.Space(4);
+            GUILayout.Label("Sprite", EditorStyles.boldLabel);
+            DrawImporterProperty(serialized, nameof(TextureImporter.pixelsPerUnit));
+            DrawImporterProperty(serialized, nameof(TextureImporter.spritePivotX));
+            DrawImporterProperty(serialized, nameof(TextureImporter.spritePivotY));
+        }
+        GUILayout.Space(4);
+        GUILayout.Label("Sampling", EditorStyles.boldLabel);
+        DrawImporterProperty(serialized, nameof(TextureImporter.filterMode));
+        DrawImporterProperty(serialized, nameof(TextureImporter.wrapMode));
+        DrawImporterProperty(serialized, nameof(TextureImporter.generateMipMaps));
+        DrawImporterProperty(serialized, nameof(TextureImporter.maxTextureSize));
+        DrawImporterProperty(serialized, nameof(TextureImporter.compressionFormat));
+        DrawImporterProperty(serialized, nameof(AssetImporter.userData));
+    }
+
+    private static void DrawImporterProperty(SerializedObject serialized, string name)
+    {
+        if (serialized.FindProperty(name) is { } property)
+            EditorGUILayout.PropertyField(property, includeChildren: true);
     }
 
     private static void DrawAssetInformation(FileAsset asset)

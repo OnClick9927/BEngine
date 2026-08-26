@@ -1,3 +1,4 @@
+using System.Reflection;
 using BEngine.Editor;
 
 namespace BEngine.ExampleTests.GpuDockWindowStates;
@@ -12,6 +13,7 @@ internal static class EditorWindowLayerRegressionTests
         VerifyTopmostInputAndModalBlocking();
         VerifyPopupOutsideClick();
         VerifyDockRequestOnlyForNormalWindow();
+        VerifyWindowControlsHaveNoTooltips();
     }
 
     private static void VerifyPresentationStateAndOrder()
@@ -178,6 +180,34 @@ internal static class EditorWindowLayerRegressionTests
         }
     }
 
+    private static void VerifyWindowControlsHaveNoTooltips()
+    {
+        var layer = new EditorWindowLayer();
+        var window = CreateWindow("Tooltip-free controls", new Rect(100, 100, 320, 220));
+        try
+        {
+            var presentation = layer.Show(window, EditorWindowState.Normal);
+            Render(layer, new Event(EventType.Layout), inputPass: false);
+            foreach (var methodName in new[] { "MenuRect", "DockRect", "CloseRect" })
+            {
+                var method = typeof(EditorWindowLayer).GetMethod(methodName,
+                    BindingFlags.Static | BindingFlags.NonPublic) ??
+                             throw new MissingMethodException(typeof(EditorWindowLayer).FullName, methodName);
+                var rect = (Rect)(method.Invoke(null, [presentation]) ?? default(Rect));
+                Render(layer, new Event(EventType.Repaint)
+                {
+                    mousePosition = new Vector2(rect.center.x, rect.center.y)
+                }, inputPass: false);
+                Require(TooltipCandidate() is null,
+                    $"A floating window {methodName} control still registered a tooltip.");
+            }
+        }
+        finally
+        {
+            Close(window);
+        }
+    }
+
     private static void DragTitle(EditorWindowLayer layer, Vector2 start, Vector2 end)
     {
         Render(layer, new Event(EventType.MouseDown) { mousePosition = start, button = 0 });
@@ -209,6 +239,9 @@ internal static class EditorWindowLayerRegressionTests
     {
         foreach (var window in windows) window.CloseInternal();
     }
+
+    private static string? TooltipCandidate() => typeof(GUI).GetField("_tooltipCandidate",
+        BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null) as string;
 
     private static void Require(bool condition, string message)
     {

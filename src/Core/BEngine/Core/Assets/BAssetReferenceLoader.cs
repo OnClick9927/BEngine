@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -24,8 +25,12 @@ internal static class BAssetReferenceLoader
         lock (Gate)
             if (Cache.TryGetValue(key, out var cached)) return cached;
 
-        var asset = LoadKnown(fullPath, assetType) ?? InvokeTypeLoader(fullPath, assetType) ??
-                    LoadManagedOrYaml(fullPath, assetType);
+        var asset = assetType == typeof(Sprite)
+            ? LoadSprite(fullPath)
+            : assetType == typeof(Texture)
+                ? LoadKnown(fullPath, assetType)
+                : LoadKnown(fullPath, assetType) ?? InvokeTypeLoader(fullPath, assetType) ??
+                  LoadManagedOrYaml(fullPath, assetType);
         if (asset is null) return null;
         if (!assetType.IsInstanceOfType(asset))
             throw new InvalidDataException(
@@ -60,12 +65,12 @@ internal static class BAssetReferenceLoader
     {
         if (assetType == typeof(Texture))
         {
+            if (!Texture.IsSupportedSourcePath(fullPath)) return null;
             var texture = new Texture { name = Path.GetFileName(fullPath) };
-            if (TryReadPngSize(fullPath, out var width, out var height))
-            {
-                texture.width = width;
-                texture.height = height;
-            }
+            if (!TryReadPngSize(fullPath, out var width, out var height)) return null;
+            texture.width = width;
+            texture.height = height;
+            ApplyTextureImportSettings(texture, ReadTextureImportSettings(fullPath));
             return texture;
         }
         if (assetType == typeof(Font)) return new Font { name = Path.GetFileName(fullPath) };
@@ -81,6 +86,22 @@ internal static class BAssetReferenceLoader
         if (assetType == typeof(Scene)) return Document.LoadBObject<SceneDocument, Scene>(fullPath);
         if (assetType == typeof(PrefabAsset)) return Document.LoadBObject<PrefabDocument, PrefabAsset>(fullPath);
         return null;
+    }
+
+    private static Sprite? LoadSprite(string fullPath)
+    {
+        if (fullPath.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase))
+            return Sprite.Load(fullPath);
+        if (!Texture.IsSupportedSourcePath(fullPath) || !TryReadMeta(fullPath, out var meta) ||
+            !meta.Settings.TryGetValue("textureType", out var textureType) ||
+            !textureType.Equals("Sprite", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var reference = AssetReferencePath.ToReference(fullPath);
+        var pivot = new Vector2(
+            (Fix64)(double)ReadPivot(meta.Settings, "spritePivotX"),
+            (Fix64)(double)ReadPivot(meta.Settings, "spritePivotY"));
+        return Sprite.FromTexture(reference, pivot, reference);
     }
 
     private static BAsset? InvokeTypeLoader(string fullPath, Type assetType)
@@ -145,6 +166,99 @@ internal static class BAssetReferenceLoader
         return new Guid(hash.AsSpan(0, 16));
     }
 
+    private static bool TryReadMeta(string fullPath, out AssetMetaIdentity meta)
+    {
+        var metaPath = fullPath + ".meta";
+        if (!File.Exists(metaPath))
+        {
+            meta = null!;
+            return false;
+        }
+        try
+        {
+            meta = YamlUtility.Deserialize<AssetMetaIdentity>(File.ReadAllText(metaPath));
+            meta.Settings ??= [];
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException or
+                                          YamlDotNet.Core.YamlException)
+        {
+            Debug.LogWarning($"Could not read asset metadata from {metaPath}: {exception.Message}");
+            meta = null!;
+            return false;
+        }
+    }
+
+    private static float ReadPivot(IReadOnlyDictionary<string, string> settings, string key) =>
+        settings.TryGetValue(key, out var value) &&
+        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) &&
+        float.IsFinite(parsed)
+            ? Math.Clamp(parsed, 0, 1)
+            : 0.5f;
+
+    internal static (TextureFilterMode FilterMode, TextureWrapMode WrapMode) ReadTextureSamplingSettings(
+        string fullPath)
+    {
+        var settings = ReadTextureImportSettings(fullPath);
+        return (settings.FilterMode, settings.WrapMode);
+    }
+
+    private static TextureImportSettings ReadTextureImportSettings(string fullPath)
+    {
+        if (!TryReadMeta(fullPath, out var meta)) return TextureImportSettings.Default;
+        var settings = meta.Settings;
+        return new TextureImportSettings(
+            ReadBoolean(settings, "sRGBTexture", true),
+            ReadBoolean(settings, "alphaIsTransparency", true),
+            ReadBoolean(settings, "isReadable", false),
+            ReadEnum(settings, "compressionFormat", TextureCompressionFormat.Automatic),
+            ReadEnum(settings, "filterMode", TextureFilterMode.Bilinear),
+            ReadEnum(settings, "wrapMode", TextureWrapMode.Clamp),
+            ReadBoolean(settings, "generateMipMaps", false),
+            NormalizeMaxSize(ReadInteger(settings, "maxTextureSize", 2048)),
+            Math.Clamp(ReadInteger(settings, "pixelsPerUnit", 100), 1, 10000));
+    }
+
+    private static void ApplyTextureImportSettings(Texture texture, TextureImportSettings settings)
+    {
+        texture.sRGB = settings.SRgbTexture;
+        texture.alphaIsTransparency = settings.AlphaIsTransparency;
+        texture.isReadable = settings.IsReadable;
+        texture.compressionFormat = settings.CompressionFormat;
+        texture.filterMode = settings.FilterMode;
+        texture.wrapMode = settings.WrapMode;
+        texture.mipMaps = settings.GenerateMipMaps;
+        texture.maxSize = settings.MaxTextureSize;
+        texture.pixelsPerUnit = settings.PixelsPerUnit;
+    }
+
+    private static bool ReadBoolean(IReadOnlyDictionary<string, string> settings, string key, bool fallback) =>
+        settings.TryGetValue(key, out var value) && bool.TryParse(value, out var parsed) ? parsed : fallback;
+
+    private static int ReadInteger(IReadOnlyDictionary<string, string> settings, string key, int fallback) =>
+        settings.TryGetValue(key, out var value) &&
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : fallback;
+
+    private static TEnum ReadEnum<TEnum>(
+        IReadOnlyDictionary<string, string> settings,
+        string key,
+        TEnum fallback) where TEnum : struct, Enum =>
+        settings.TryGetValue(key, out var value) &&
+        Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : fallback;
+
+    private static int NormalizeMaxSize(int value)
+    {
+        var clamped = Math.Clamp(value, 32, 16384);
+        var lower = 32;
+        while (lower <= clamped / 2) lower *= 2;
+        var upper = Math.Min(16384, lower * 2);
+        return clamped - lower < upper - clamped ? lower : upper;
+    }
+
     private static string CanonicalPath(string path)
     {
         var canonical = Path.GetFullPath(path).Replace('\\', '/');
@@ -179,5 +293,29 @@ internal static class BAssetReferenceLoader
     private sealed class AssetMetaIdentity
     {
         public string Guid { get; set; } = string.Empty;
+        public Dictionary<string, string> Settings { get; set; } = [];
+    }
+
+    private readonly record struct TextureImportSettings(
+        bool SRgbTexture,
+        bool AlphaIsTransparency,
+        bool IsReadable,
+        TextureCompressionFormat CompressionFormat,
+        TextureFilterMode FilterMode,
+        TextureWrapMode WrapMode,
+        bool GenerateMipMaps,
+        int MaxTextureSize,
+        int PixelsPerUnit)
+    {
+        internal static TextureImportSettings Default => new(
+            true,
+            true,
+            false,
+            TextureCompressionFormat.Automatic,
+            TextureFilterMode.Bilinear,
+            TextureWrapMode.Clamp,
+            false,
+            2048,
+            100);
     }
 }

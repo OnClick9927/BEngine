@@ -7,9 +7,7 @@
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
-    <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
-    <ProjectReference Include="../../../src/Core/BEngine.Launcher/BEngine.Launcher.csproj" />
+    <ProjectReference Include="../../../src/Hub/BEngine.Launcher/BEngine.Launcher.csproj" />
     <ProjectReference Include="../../../src/Core/BEngine.Player/BEngine.Player.csproj" />
   </ItemGroup>
 </Project>

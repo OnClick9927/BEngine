@@ -2,6 +2,7 @@ using BEngine.AssetBundles;
 using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Player;
+using BEngine.Rendering;
 using BEngine.SceneManagement;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -108,31 +109,69 @@ internal static class RuntimeAssetBundleTests
                 "Resources did not prefer the active AssetBundle provider over a disk resource.");
             TestAssert.That(BEngine.Resources.LoadAll<string>().Contains("resource-v1", StringComparer.Ordinal),
                 "Resources.LoadAll did not enumerate active AssetBundle content.");
+            var bundledSpriteAsset = build.Catalog.Assets.Single(asset =>
+                asset.Address == AssetBundleTestWorkspace.SpriteAddress);
+            TestAssert.That(bundledSpriteAsset.Importer == "TextureImporter" &&
+                            bundledSpriteAsset.ImporterSettings.GetValueOrDefault("textureType") == "Sprite" &&
+                            bundledSpriteAsset.ImporterSettings.GetValueOrDefault("spritePivotX") == "0.25" &&
+                            bundledSpriteAsset.ImporterSettings.GetValueOrDefault("spritePivotY") == "0.75",
+                "The bundle catalog did not preserve the Sprite importer description.");
+
+            workspace.WriteScene("Disk Scene", "Disk Root", includeBundledSprite: false);
+            workspace.DeleteSpriteSource();
+            var services = new ServiceCollection();
+            services.AddSingleton<IAssetBundleManager>(manager);
+            services.AddBEnginePlayer(workspace.Workspace.RootPath);
+            using var serviceProvider = services.BuildServiceProvider();
+            var loader = serviceProvider.GetRequiredService<ISceneLoader>();
+            var scene = loader.LoadScene("main", serviceProvider);
+            try
+            {
+                var sprite = scene.QueryComponents<SpriteRenderer>().Single().sprite;
+                TestAssert.That(scene.name == "Bundled Scene" &&
+                                scene.path == AssetBundleTestWorkspace.SceneAddress &&
+                                scene.gameObjects.Any(item => item.name == "Bundled Root"),
+                    "The Player scene loader did not prefer the active bundle over the project scene file.");
+                TestAssert.That(sprite is not null &&
+                                sprite.assetPath == AssetBundleTestWorkspace.SpriteAddress &&
+                                sprite.Texture == "@bundle/" + AssetBundleTestWorkspace.SpriteAddress &&
+                                Math.Abs((double)sprite.pivot.x - 0.25) < 0.0001 &&
+                                Math.Abs((double)sprite.pivot.y - 0.75) < 0.0001,
+                    "The bundled Scene did not restore its SpriteRenderer from bundle importer metadata.");
+                TestAssert.That(BEngine.Resources.Load<byte[]>(sprite!.Texture) is { } bundledBytes &&
+                                bundledBytes.AsSpan().SequenceEqual(workspace.SpriteBytes),
+                    "The Sprite texture did not resolve to the active bundle after its project source was deleted.");
+
+                workspace.WriteStaleSpriteSource();
+                var engineResourceRoot = Path.Combine(FindRepositoryRoot(), "src", "Core");
+                BEngine.Resources.RegisterResourceRoot(engineResourceRoot);
+                try
+                {
+                    using var graphics = new RecordingBundleGraphicsDevice();
+                    using var renderer = new PortableSceneRenderer(graphics);
+                    renderer.Render(scene, RenderCamera.Default, 128, 128,
+                        drawGrid: false, drawUi: false, drawExtensions: false);
+                    TestAssert.That(graphics.Textures.Any(texture =>
+                                            texture.Label.EndsWith("bundled.png", StringComparison.OrdinalIgnoreCase) &&
+                                            texture.Description.Width == 2 && texture.Description.Height == 2 &&
+                                            texture.InitialData.Length == 16) &&
+                                    graphics.DrawCount > 0,
+                        "The renderer did not decode and draw the Sprite texture from bundle bytes.");
+                }
+                finally
+                {
+                    _ = BEngine.Resources.UnregisterResourceRoot(engineResourceRoot);
+                }
+            }
+            finally
+            {
+                scene.Dispose();
+            }
         }
         finally
         {
             _ = BEngine.Resources.UnregisterResourceProvider(provider);
             _ = BEngine.Resources.UnregisterResourceRoot(workspace.Workspace.AssetsPath);
-        }
-        _ = manager.UnloadUnused();
-
-        workspace.WriteScene("Disk Scene", "Disk Root");
-        var services = new ServiceCollection();
-        services.AddSingleton<IAssetBundleManager>(manager);
-        services.AddBEnginePlayer(workspace.Workspace.RootPath);
-        using var serviceProvider = services.BuildServiceProvider();
-        var loader = serviceProvider.GetRequiredService<ISceneLoader>();
-        var scene = loader.LoadScene("main", serviceProvider);
-        try
-        {
-            TestAssert.That(scene.name == "Bundled Scene" &&
-                            scene.path == AssetBundleTestWorkspace.SceneAddress &&
-                            scene.gameObjects.Any(item => item.name == "Bundled Root"),
-                "The Player scene loader did not prefer the active bundle over the project scene file.");
-        }
-        finally
-        {
-            scene.Dispose();
         }
         _ = manager.UnloadUnused();
     }
@@ -197,4 +236,13 @@ internal static class RuntimeAssetBundleTests
             RemoteBaseUri = http is null ? null : new Uri("https://asset-bundle.test/content/"),
             MaxRetries = 2
         });
+
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null;
+             directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "src", "BEngine.sln")))
+                return directory.FullName;
+        throw new DirectoryNotFoundException("BEngine repository root was not found.");
+    }
 }

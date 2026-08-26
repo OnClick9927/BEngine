@@ -277,7 +277,7 @@ public static class AssetPreview
         DrawBorder(swatch, EditorAppearance.palette.Border);
         var label = new Rect(inner.x, swatch.yMax + 4, inner.width,
             Fix64.Max(0, inner.yMax - swatch.yMax - 4));
-        GUI.Label(label, material.shader.shaderName, Centered(EditorStyles.miniLabel));
+        GUI.Label(label, material.shader.shaderName, EditorStyles.centeredMiniLabel);
     }
 
     private static void DrawShader(Shader shader, Rect area)
@@ -329,9 +329,9 @@ public static class AssetPreview
         GUI.DrawTexture(iconRect, icon);
         var titleRect = new Rect(area.x + 6, iconRect.yMax + 4, Fix64.Max(0, area.width - 12), 20);
         GUI.Label(titleRect, string.IsNullOrWhiteSpace(title) ? "Unnamed asset" : title,
-            Centered(EditorStyles.boldLabel));
+            EditorStyles.centeredBoldLabel);
         var detailRect = new Rect(area.x + 6, titleRect.yMax, Fix64.Max(0, area.width - 12), 18);
-        GUI.Label(detailRect, detail, Centered(EditorStyles.miniLabel));
+        GUI.Label(detailRect, detail, EditorStyles.centeredMiniLabel);
     }
 
     private static void DrawUnavailable(Rect area, string icon, string message) =>
@@ -344,7 +344,7 @@ public static class AssetPreview
             area.y + (area.height - size - 24) * Fix64.Half, size, size);
         GUI.DrawTexture(iconRect, icon);
         GUI.Label(new Rect(area.x + 6, iconRect.yMax + 4, Fix64.Max(0, area.width - 12), 20), label,
-            Centered(EditorStyles.boldLabel));
+            EditorStyles.centeredBoldLabel);
     }
 
     private static void DrawCheckerboard(Rect area)
@@ -702,8 +702,6 @@ public static class AssetPreview
 
     private static Rect Inset(Rect area, Fix64 amount) => new(area.x + amount, area.y + amount,
         Fix64.Max(0, area.width - amount * 2), Fix64.Max(0, area.height - amount * 2));
-
-    private static GUIStyle Centered(GUIStyle source) => new(source) { alignment = TextAnchor.MiddleCenter };
 
     private static void DrawBorder(Rect rect, Color color)
     {

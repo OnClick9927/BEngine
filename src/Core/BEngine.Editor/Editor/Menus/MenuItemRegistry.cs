@@ -108,6 +108,19 @@ internal sealed class MenuItemRegistry
         PopulateNodes(menu, GetRoot(root, context), string.Empty);
     }
 
+    public void PopulatePath(GenericMenu menu, string path, BObject? context = null)
+    {
+        ArgumentNullException.ThrowIfNull(menu);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var segments = path.Replace('\\', '/').Split('/',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var commands = _commands.Where(command => command.Segments.Length > segments.Length &&
+                                                   command.Segments.AsSpan(0, segments.Length)
+                                                       .SequenceEqual(segments)).ToArray();
+        if (commands.Length == 0) return;
+        PopulateNodes(menu, BuildLevel(commands, segments.Length, context), string.Empty);
+    }
+
     public void PopulateContext(GenericMenu menu, BObject context)
     {
         ArgumentNullException.ThrowIfNull(menu);

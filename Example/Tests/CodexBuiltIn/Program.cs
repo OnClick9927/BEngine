@@ -29,10 +29,10 @@ internal static class Program
 
             var coreRoot = Path.Combine(repository, "src", "Core");
             Resources.RegisterResourceRoot(coreRoot);
-            var icon = EditorResources.FindPath("Icons/Windows/Codex.png");
+            var icon = EditorResource.FindPath("Icons/Windows/Codex.png");
             Require(icon is not null && Path.GetFullPath(icon).StartsWith(
                     Path.GetFullPath(coreRoot), StringComparison.OrdinalIgnoreCase),
-                "The Codex icon is not loaded from Core/EditorResources.");
+                "The Codex icon is not loaded from Core/Editor.");
             var protocolEvent = CodexProtocol.ParseEvent(
                 "{\"method\":\"turn/started\",\"params\":{\"turn\":{\"id\":\"test-turn\"}}}");
             Require(protocolEvent.Kind == CodexProtocolEventKind.TurnStarted,

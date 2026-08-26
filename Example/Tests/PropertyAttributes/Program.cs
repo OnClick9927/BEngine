@@ -20,7 +20,7 @@ internal static class Program
         try
         {
             _ = typeof(ExtendedPropertyDrawer).Assembly;
-            RegisterEditorResources();
+            RegisterEditor();
             VerifyPackageDefinition();
             VerifyAttributeSurface();
             VerifyImGuiDrawers();
@@ -122,11 +122,11 @@ internal static class Program
         return commands;
     }
 
-    private static void RegisterEditorResources()
+    private static void RegisterEditor()
     {
         var root = Directory.GetCurrentDirectory();
         var packageRoot = Path.Combine(root, "src", "Packages", "PropertyAttributes");
-        if (Directory.Exists(packageRoot)) EditorResources.RegisterResourceRoot(packageRoot);
+        if (Directory.Exists(packageRoot)) EditorResource.RegisterResourceRoot(packageRoot);
     }
 
     private static void Assert(bool condition, string message)

@@ -50,6 +50,7 @@ internal static class Program
             VerifyCountFormatting();
             VerifyTypeCountsInToolbar();
             VerifyToolbarControls();
+            VerifyToolbarButtonChrome();
             VerifyToolbarLayout();
             VerifyClearCommand();
             VerifyClearTriggers();
@@ -58,7 +59,8 @@ internal static class Program
             VerifyErrorPause();
             Console.WriteLine("CONSOLE_TOOLBAR_BEHAVIOR_OK|counts,999+,clear,clear-on-play," +
                               "clear-on-build,clear-on-recompile,collapse,error-pause," +
-                              "complete-toolbar-labels,short-search,narrow-layout,stable-narrow-resize");
+                              "complete-toolbar-labels,textured-button-chrome,short-search,narrow-layout," +
+                              "stable-narrow-resize");
             return 0;
         }
         catch (Exception exception)
@@ -133,20 +135,81 @@ internal static class Program
         }
     }
 
+    private static void VerifyToolbarButtonChrome()
+    {
+        var original = new EditorPreferencesDocument
+        {
+            EditorTheme = EditorAppearance.theme.ToString(),
+            EditorFontSize = EditorAppearance.fontSize,
+            EditorFont = EditorAppearance.fontFamily
+        };
+        try
+        {
+            foreach (var theme in Enum.GetNames<EditorTheme>())
+            {
+                EditorAppearance.Apply(new EditorPreferencesDocument { EditorTheme = theme });
+                var palette = EditorAppearance.palette;
+                foreach (var style in new[] { EditorStyles.toolbarButton, EditorStyles.toolbarIconButton })
+                {
+                    Require(style.normal.backgroundColor.Equals(palette.Toolbar),
+                        $"{theme} toolbar button normal color was not restored.");
+                    Require(style.borderWidth == Fix64.Zero &&
+                            style.normal.borderColor.Equals(palette.Border) &&
+                            style.normal.backgroundImage is not null,
+                        $"{theme} toolbar buttons have no textured separator background.");
+                    Require(!style.hover.backgroundColor.Equals(style.normal.backgroundColor) &&
+                            !style.active.backgroundColor.Equals(style.normal.backgroundColor),
+                        $"{theme} toolbar buttons lost their hover or pressed feedback.");
+                    Require(style.disabled.backgroundColor.Equals(style.normal.backgroundColor) &&
+                            style.disabled.textColor.Equals(palette.DisabledText),
+                        $"{theme} disabled toolbar buttons do not preserve their surface and muted text.");
+                }
+
+                var selected = EditorStyles.toolbarIconButtonSelected;
+                Require(selected.normal.backgroundColor.Equals(palette.Selection) &&
+                        selected.normal.borderColor.Equals(palette.Border) &&
+                        selected.borderWidth == Fix64.Zero && selected.normal.backgroundImage is not null,
+                    $"{theme} selected toolbar buttons lost their selected surface or boundary.");
+            }
+        }
+        finally
+        {
+            EditorAppearance.Apply(original);
+        }
+
+        var commands = RenderConsole();
+        var separator = GpuCanvasColor.FromColor(EditorAppearance.palette.Border);
+        foreach (var label in new[] { "Clear", "Collapse", "Error Pause" })
+        {
+            var text = commands.Single(command => command.Type == GpuCanvasCommandType.Text &&
+                                                  command.Content == label && command.Rect.Y < 50);
+            Require(commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                            command.Color == separator &&
+                                            Math.Abs(command.Rect.Width - 1) < .01f &&
+                                            command.Rect.X >= text.Rect.Right &&
+                                            command.Rect.X - text.Rect.Right <= 16 &&
+                                            command.Rect.Y <= text.Rect.Y &&
+                                            command.Rect.Bottom >= text.Rect.Bottom),
+                $"Console toolbar command '{label}' rendered without a vertical texture separator.");
+        }
+    }
+
     private static void VerifyToolbarLayout()
     {
-        VerifyToolbarTextFitsAtLargeFont();
+        VerifyToolbarTextFitsAtFixedFont();
         VerifyNarrowToolbarCounts();
         VerifyNarrowToolbarResizeStability();
     }
 
-    private static void VerifyToolbarTextFitsAtLargeFont()
+    private static void VerifyToolbarTextFitsAtFixedFont()
     {
         const string searchProbe = "console probe";
         var defaultAppearance = new EditorPreferencesDocument();
         try
         {
             EditorAppearance.Apply(new EditorPreferencesDocument { EditorFontSize = 20 });
+            Require(EditorAppearance.fontSize == EditorAppearance.DefaultFontSize,
+                "Console accepted a variable editor font size.");
             ClearStore();
             var commands = RenderConsole(1_200, 240, console =>
             {
@@ -160,7 +223,7 @@ internal static class Program
             {
                 var command = toolbarText.SingleOrDefault(item => item.Content == label);
                 Require(command.Content == label,
-                    $"Console toolbar did not render the complete {label} label at a large editor font size.");
+                    $"Console toolbar did not render the complete {label} label at the fixed font size.");
                 RequireTextFits(command, label);
             }
 

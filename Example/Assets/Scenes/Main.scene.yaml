@@ -203,7 +203,7 @@ gameObjects:
       runInEditMode: false
       size: 3.25,3.25
       sortingLayer: 4
-      sprite: Assets/Art/Sprites/Brand.sprite.yaml
+      sprite: Assets/Art/Sources/BEngine.png
       useSpritePivot: true
   - id: d10e21c5-e811-44ef-90fe-9c7b170ea38d
     type: Game.ShowcaseMotion
@@ -246,7 +246,7 @@ gameObjects:
       runInEditMode: false
       size: 1.049999999813735485076904296875,1.049999999813735485076904296875
       sortingLayer: 4
-      sprite: Assets/Art/Sprites/Animation.sprite.yaml
+      sprite: Assets/Art/Sources/Animation.png
       useSpritePivot: true
   - id: d160dec8-0146-477a-a64e-998b6a01effb
     type: Game.ShowcaseMotion
@@ -289,7 +289,7 @@ gameObjects:
       runInEditMode: false
       size: 1.19999999995343387126922607421875,1.19999999995343387126922607421875
       sortingLayer: 4
-      sprite: Assets/Art/Sprites/Physics2D.sprite.yaml
+      sprite: Assets/Art/Sources/Physics2D.png
       useSpritePivot: true
   - id: 867de2eb-8ac6-4430-bae2-062800861933
     type: Game.ShowcaseMotion
@@ -332,7 +332,7 @@ gameObjects:
       runInEditMode: false
       size: 0.94999999995343387126922607421875,0.94999999995343387126922607421875
       sortingLayer: 4
-      sprite: Assets/Art/Sprites/Navigation2D.sprite.yaml
+      sprite: Assets/Art/Sources/Navigation2D.png
       useSpritePivot: true
   - id: 8236caa2-b6a5-4658-bec0-2c888f037ee2
     type: Game.ShowcaseMotion
@@ -375,13 +375,13 @@ gameObjects:
       runInEditMode: false
       size: 1.25,1.25
       sortingLayer: 4
-      sprite: Assets/Art/Sprites/Navigation2D.sprite.yaml
+      sprite: Assets/Art/Sources/Navigation2D.png
       useSpritePivot: true
   - id: 24168131-df7d-4eb4-b80d-75e499f7b0ee
     type: Game.PlayerMover
     enabled: true
     fields:
-      runInEditMode: false
+      runInEditMode: true
       speed: 3.19999999995343387126922607421875
 - id: 98c3037f-c4b4-48a5-95d0-39f1488a954c
   name: Foreground Effects
@@ -632,7 +632,7 @@ gameObjects:
       runInEditMode: false
       size: 2.19999999995343387126922607421875,2.19999999995343387126922607421875
       sortingLayer: 16
-      sprite: Assets/Art/Sprites/Brand.sprite.yaml
+      sprite: Assets/Art/Sources/BEngine.png
       useSpritePivot: true
   - id: 6ace5840-2b1b-4d3f-a1f4-d6d3bb3f9790
     type: Game.ShowcaseMotion
@@ -682,7 +682,7 @@ gameObjects:
     id: 49dff6d5-d044-4dd2-8cec-016f34416b57
     type: BEngine.Transform
     localPosition:
-      x: 0
+      x: -0.049999999813735485076904296875
       y: 0
     localRotation: 0
     localScale:

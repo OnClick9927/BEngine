@@ -18,8 +18,10 @@ internal static class Program
             VerifyProjectTargetPath(temporaryRoot);
             VerifyDependencyInjectionComposition();
             VerifyHubTabsAndCoreOnlyCreation();
+            VerifyHubSourceBoundary();
             Console.WriteLine(
-                "LAUNCHER_HUB_OK|projects,history-migration,packages-tab,output-catalog,target-path,ioc,default-none");
+                "LAUNCHER_HUB_OK|projects,history-migration,packages-tab,output-catalog,target-path,ioc," +
+                "default-none,source-boundary,no-reverse-core-dependency");
         }
         finally
         {
@@ -139,6 +141,50 @@ internal static class Program
         catch (ArgumentException)
         {
         }
+    }
+
+    private static void VerifyHubSourceBoundary()
+    {
+        var repository = FindRepositoryRoot();
+        var hubRoot = Path.Combine(repository, "src", "Hub");
+        var launcherRoot = Path.Combine(hubRoot, "BEngine.Launcher");
+        Require(File.Exists(Path.Combine(launcherRoot, "BEngine.Launcher.csproj")),
+            "The Launcher project was not moved under src/Hub.");
+        Require(!Directory.Exists(Path.Combine(repository, "src", "Core", "BEngine.Launcher")),
+            "The old src/Core/BEngine.Launcher directory still exists.");
+
+        var project = System.Xml.Linq.XDocument.Load(
+            Path.Combine(launcherRoot, "BEngine.Launcher.csproj"));
+        var references = project.Descendants("ProjectReference")
+            .Select(element => element.Attribute("Include")?.Value ?? string.Empty)
+            .ToArray();
+        Require(references.Length > 0 && references.All(reference =>
+                reference.Replace('\\', '/').StartsWith("../../Core/", StringComparison.Ordinal)),
+            "Hub may depend on Core only through explicit project references.");
+
+        var coreProjects = Directory.EnumerateFiles(Path.Combine(repository, "src", "Core"), "*.csproj",
+                SearchOption.AllDirectories)
+            .SelectMany(path => System.Xml.Linq.XDocument.Load(path).Descendants("ProjectReference"))
+            .Select(element => element.Attribute("Include")?.Value ?? string.Empty);
+        Require(coreProjects.All(reference =>
+                !reference.Replace('\\', '/').Contains("/Hub/", StringComparison.OrdinalIgnoreCase)),
+            "A Core assembly has a forbidden reverse dependency on Hub.");
+
+        var nonProjectFiles = Directory.EnumerateFiles(hubRoot, "*", SearchOption.AllDirectories)
+            .Where(path => !path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) &&
+                           !path.EndsWith(".csproj.user", StringComparison.OrdinalIgnoreCase));
+        Require(nonProjectFiles.All(path => !File.ReadAllText(path).Contains("src/Core",
+                StringComparison.OrdinalIgnoreCase)),
+            "Hub contains a filesystem dependency on the Core source tree.");
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null;
+             directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "src", "BEngine.sln")))
+                return directory.FullName;
+        throw new DirectoryNotFoundException("Could not locate the BEngine repository root.");
     }
 
     private static T Field<T>(object instance, string name) where T : class =>

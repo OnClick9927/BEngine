@@ -45,7 +45,7 @@ internal static class SceneGizmoPass
 
     private static void InvokeComponentCallback(Component component, bool selected)
     {
-        Gizmos.ResetColor();
+        Gizmos.ResetState();
         var callbackName = selected
             ? nameof(Component.OnDrawGizmosSelected)
             : nameof(Component.OnDrawGizmos);
@@ -59,7 +59,7 @@ internal static class SceneGizmoPass
         foreach (var drawer in GizmoDrawerRegistry.GetDrawers(component.GetType()))
         {
             if (!GizmoDrawerRegistry.ShouldInvoke(drawer, state)) continue;
-            Gizmos.ResetColor();
+            Gizmos.ResetState();
             EditorFeatureGuard.Invoke(drawer.Feature, () => drawer.Callback(component, state));
         }
     }

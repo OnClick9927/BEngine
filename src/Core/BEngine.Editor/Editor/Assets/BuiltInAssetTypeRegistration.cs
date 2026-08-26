@@ -10,11 +10,6 @@ internal static class BuiltInAssetTypeRegistration
     internal static void Register()
     {
         RegisterTexture(".png");
-        RegisterTexture(".jpg");
-        RegisterTexture(".jpeg");
-        RegisterTexture(".bmp");
-        RegisterTexture(".tga");
-        RegisterTexture(".webp");
         RegisterFont(".ttf");
         RegisterFont(".otf");
         RegisterFont(".woff");
@@ -31,6 +26,8 @@ internal static class BuiltInAssetTypeRegistration
             EditorBuiltinIcons.Assets.Prefab);
         AssetTypeRegistry.Register<Material>(".material.yaml", "Material",
             EditorBuiltinIcons.Assets.Material);
+        AssetTypeRegistry.Register<GUISkin>(GUISkin.FileExtension, nameof(GUISkin),
+            context => GUISkin.Load(context.SourcePath), EditorBuiltinIcons.Assets.Style);
     }
 
     private static void RegisterTexture(string suffix) =>

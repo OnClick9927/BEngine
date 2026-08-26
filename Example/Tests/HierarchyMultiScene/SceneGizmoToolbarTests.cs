@@ -12,6 +12,7 @@ internal static class SceneGizmoToolbarTests
     {
         using var harness = new EditorApplicationHarness(fixture);
         VerifyWideToolbar(harness);
+        VerifyRemovedToolsAndFixedCamera(harness);
         VerifyNarrowToolbarAndExternalTypeMenu(harness);
         VerifyThresholdStability(harness);
     }
@@ -24,7 +25,43 @@ internal static class SceneGizmoToolbarTests
             command.Type == GpuCanvasCommandType.Text && command.Content == "Gizmos");
         TestAssert.Require(label.Type == GpuCanvasCommandType.Text && label.Rect.Right <= WideWidth,
             "The wide Scene toolbar did not expose its Gizmos toggle label inside the window.");
+        TestAssert.Require(!commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                                    command.Content is "2D" or "No selection") &&
+                           !commands.Any(command => command.Type == GpuCanvasCommandType.Image &&
+                                                    (command.Content.EndsWith("View.png",
+                                                         StringComparison.Ordinal) ||
+                                                     command.Content.EndsWith("Rect.png",
+                                                         StringComparison.Ordinal))),
+            "The Scene toolbar still rendered its removed 2D/selection label or Q/T tool button.");
         RequireGizmoIcon(commands, WideWidth);
+    }
+
+    private static void VerifyRemovedToolsAndFixedCamera(EditorApplicationHarness harness)
+    {
+        harness.HandleGlobalKeyboard(new Event(EventType.KeyDown) { keyCode = KeyCode.W });
+        var q = new Event(EventType.KeyDown) { keyCode = KeyCode.Q };
+        harness.HandleGlobalKeyboard(q);
+        var t = new Event(EventType.KeyDown) { keyCode = KeyCode.T };
+        harness.HandleGlobalKeyboard(t);
+        TestAssert.Require(harness.CurrentTool == Tool.Move &&
+                           q.type == EventType.KeyDown && t.type == EventType.KeyDown,
+            "Q or T still selected and consumed a removed Scene tool shortcut.");
+
+        var rightClick = new Event(EventType.ContextClick)
+        {
+            mousePosition = new Vector2(320, 240),
+            button = 1
+        };
+        harness.RenderScene(rightClick, WideWidth);
+        harness.RenderScene(new Event(EventType.MouseDrag)
+        {
+            mousePosition = new Vector2(340, 250),
+            delta = new Vector2(20, 10),
+            button = 1
+        }, WideWidth);
+        TestAssert.Require(rightClick.type == EventType.ContextClick &&
+                           harness.ResolveEditorCamera(456).Rotation == Fix64.Zero,
+            "Right mouse input was still captured to rotate the Scene camera.");
     }
 
     private static void VerifyNarrowToolbarAndExternalTypeMenu(EditorApplicationHarness harness)

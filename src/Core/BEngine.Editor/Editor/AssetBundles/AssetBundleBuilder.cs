@@ -2,8 +2,10 @@ using System.Buffers;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using BEngine.AssetBundles;
+using BEngine.Documents;
 using BEngine.ProjectSystem;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
+using ProjectAssetMetaDocument = BEngine.ProjectSystem.Editor.AssetMetaDocument;
 using ProjectAssetRecord = BEngine.ProjectSystem.Editor.AssetRecord;
 
 namespace BEngine.Editor;
@@ -160,12 +162,19 @@ public static class AssetBundleBuilder
         ValidateSha256(record.SourceHash, $"source hash of '{record.AssetPath}'");
         if (string.IsNullOrWhiteSpace(record.AssetType))
             throw new InvalidDataException($"Asset '{record.AssetPath}' has no asset type.");
+        if (!File.Exists(record.MetaPath))
+            throw new FileNotFoundException($"Asset metadata does not exist: {record.AssetPath}", record.MetaPath);
+        var meta = Document.Load<ProjectAssetMetaDocument>(record.MetaPath);
+        if (!Guid.TryParse(meta.Guid, out var metaGuid) || metaGuid != record.Guid)
+            throw new InvalidDataException($"Asset metadata GUID changed after the AssetDatabase snapshot: {record.AssetPath}");
         return new AssetBundleBuildAsset
         {
             Guid = record.Guid,
             AssetPath = NormalizeAssetAddress(record.AssetPath),
             SourcePath = sourcePath,
             AssetType = record.AssetType,
+            Importer = meta.Importer?.Trim() ?? string.Empty,
+            ImporterSettings = new Dictionary<string, string>(meta.Settings ?? [], StringComparer.Ordinal),
             SourceHash = record.SourceHash.ToLowerInvariant(),
             Size = new FileInfo(sourcePath).Length
         };
@@ -215,6 +224,9 @@ public static class AssetBundleBuilder
                     Bundle = definition.Name,
                     Entry = asset.AssetPath,
                     AssetType = asset.AssetType,
+                    Importer = asset.Importer,
+                    ImporterSettings = new Dictionary<string, string>(asset.ImporterSettings,
+                        StringComparer.Ordinal),
                     Sha256 = asset.SourceHash,
                     Size = asset.Size
                 }));

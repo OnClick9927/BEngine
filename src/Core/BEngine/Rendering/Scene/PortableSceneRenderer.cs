@@ -200,15 +200,15 @@ public sealed class PortableSceneRenderer : IDisposable
         viewport.Validate();
         if (viewport.Width <= 0 || viewport.Height <= 0 || gizmos.Count == 0) return;
         PrepareViewport(viewport);
-        var vertices = new List<float>(gizmos.Count * 12);
+        var vertices = new List<float>(gizmos.Count * 36);
         foreach (var line in gizmos)
         {
-            AddLine(vertices,
+            AddThickLine(vertices,
                 camera.WorldToViewport(line.From, viewport.Width, viewport.Height),
                 camera.WorldToViewport(line.To, viewport.Width, viewport.Height),
-                Numerics.ToNumerics(line.Color));
+                Numerics.ToNumerics(line.Color), (float)line.LineWidth);
         }
-        DrawVertices(_lineMesh, vertices, viewport.Width, viewport.Height);
+        DrawVertices(_triangleMesh, vertices, viewport.Width, viewport.Height);
         _device.SetScissor(null);
     }
 
@@ -518,6 +518,21 @@ public sealed class PortableSceneRenderer : IDisposable
     {
         AddVertex(output, a, color);
         AddVertex(output, b, color);
+    }
+    private static void AddThickLine(
+        List<float> output,
+        NVector2 a,
+        NVector2 b,
+        NVector4 color,
+        float width)
+    {
+        var delta = b - a;
+        var length = delta.Length();
+        if (!float.IsFinite(length) || length <= 0.0001f) return;
+        var halfWidth = Math.Max(1f, width) * 0.5f;
+        var normal = new NVector2(-delta.Y, delta.X) * (halfWidth / length);
+        AddTriangle(output, a - normal, a + normal, b + normal, color);
+        AddTriangle(output, a - normal, b + normal, b - normal, color);
     }
     private static void AddTexturedTriangle(List<float> output,
         NVector2 a, NVector2 b, NVector2 c,

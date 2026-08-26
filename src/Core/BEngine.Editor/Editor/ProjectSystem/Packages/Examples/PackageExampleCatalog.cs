@@ -13,13 +13,13 @@ internal static class PackageExampleCatalog
 
     public static string? FindCoreExamplesDirectory()
     {
-        var installed = Path.Combine(AppContext.BaseDirectory, "EditorResources", "Examples");
+        var installed = Path.Combine(AppContext.BaseDirectory, EditorResource.DirectoryName, "Examples");
         if (Directory.Exists(installed)) return installed;
 
         var current = new DirectoryInfo(AppContext.BaseDirectory);
         while (current is not null)
         {
-            var source = Path.Combine(current.FullName, "src", "Core", "EditorResources", "Examples");
+            var source = Path.Combine(current.FullName, "src", "Core", EditorResource.DirectoryName, "Examples");
             if (Directory.Exists(source) && File.Exists(Path.Combine(current.FullName, "src", "BEngine.sln")))
                 return source;
             current = current.Parent;

@@ -122,7 +122,8 @@ public static class AssetDatabase
                     return registered;
                 }
             }
-            catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException)
+            catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException or
+                                              YamlDotNet.Core.YamlException)
             {
                 Debug.LogWarning($"Could not load typed asset {record.Value.AssetPath}: {exception.Message}");
             }
@@ -140,19 +141,46 @@ public static class AssetDatabase
         return asset;
     }
 
-    public static T? LoadAssetAtPath<T>(string assetPath) where T : BObject =>
-        LoadMainAssetAtPath(assetPath) as T;
+    public static T? LoadAssetAtPath<T>(string assetPath) where T : BObject
+    {
+        var mainAsset = LoadMainAssetAtPath(assetPath);
+        if (mainAsset is T typed) return typed;
+        return typeof(T) == typeof(Sprite) && mainAsset is BEngine.Texture texture
+            ? CreateImportedSprite(texture) as T
+            : null;
+    }
 
     public static BObject? LoadAssetAtPath(string assetPath, Type type)
     {
         ArgumentNullException.ThrowIfNull(type);
         var asset = LoadMainAssetAtPath(assetPath);
-        return asset is not null && type.IsInstanceOfType(asset) ? asset : null;
+        if (asset is not null && type.IsInstanceOfType(asset)) return asset;
+        return type == typeof(Sprite) && asset is BEngine.Texture texture
+            ? CreateImportedSprite(texture)
+            : null;
     }
 
     public static Type? GetMainAssetTypeAtPath(string assetPath) => LoadMainAssetAtPath(assetPath)?.GetType();
-    public static BObject[] LoadAllAssetsAtPath(string assetPath) => LoadMainAssetAtPath(assetPath) is { } asset
-        ? [asset] : [];
+    public static BObject[] LoadAllAssetsAtPath(string assetPath)
+    {
+        if (LoadMainAssetAtPath(assetPath) is not { } asset) return [];
+        return asset is BEngine.Texture texture && CreateImportedSprite(texture) is { } sprite
+            ? [asset, sprite]
+            : [asset];
+    }
+
+    private static Sprite? CreateImportedSprite(BEngine.Texture texture)
+    {
+        if (AssetImporter.GetAtPath(texture.assetPath) is not TextureImporter
+            {
+                textureType: TextureImporterType.Sprite
+            } importer) return null;
+        var sprite = Sprite.FromTexture(texture.assetPath,
+            new Vector2((Fix64)importer.spritePivotX, (Fix64)importer.spritePivotY), texture.assetPath);
+        sprite.Id = texture.Id;
+        sprite.BindAssetFile(texture.assetPath, texture.sourcePath, texture.Id, nameof(Sprite));
+        return sprite;
+    }
 
     public static void CreateAsset(BObject asset, string path)
     {
@@ -195,7 +223,8 @@ public static class AssetDatabase
         try { BAsset.Invalidate(ResolveAssetPath(path)); }
         catch (InvalidDataException) { BAsset.Invalidate(path); }
         EditorBridge.Host?.ImportAsset(path);
-        if (path.EndsWith(".atlas.yaml", StringComparison.OrdinalIgnoreCase))
+        if (path.EndsWith(".atlas.yaml", StringComparison.OrdinalIgnoreCase) ||
+            Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase))
             TextureAtlasResolver.Clear();
     }
 
@@ -274,6 +303,7 @@ public static class AssetDatabase
         if (string.IsNullOrWhiteSpace(assetPath)) return false;
         var fullPath = ResolveAssetPath(assetPath);
         if (!File.Exists(fullPath)) return false;
+        if (asset is Sprite && !IsLegacySpritePath(assetPath)) return false;
         if (asset is BEngine.Texture or BEngine.Font or Script or Shader or DefaultAsset) return false;
 
         AssetModificationProcessorDispatcher.OnWillSaveAssets([assetPath]);
@@ -313,6 +343,7 @@ public static class AssetDatabase
         ArgumentNullException.ThrowIfNull(asset);
         var path = GetAssetPath(asset);
         if (string.IsNullOrWhiteSpace(path)) return false;
+        if (asset is Sprite && !IsLegacySpritePath(path)) return false;
         BAsset.Invalidate(path);
         if (LoadMainAssetAtPath(path) is not BAsset restored ||
             restored.GetType() != asset.GetType()) return false;
@@ -321,6 +352,10 @@ public static class AssetDatabase
         EditorUtility.ClearDirty(asset);
         return true;
     }
+
+    private static bool IsLegacySpritePath(string path) =>
+        path.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase);
+
     public static void StartAssetEditing() { }
     public static void StopAssetEditing() => Refresh();
 

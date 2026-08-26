@@ -31,7 +31,7 @@ internal static class Program
             foreach (var module in Modules) VerifyModule(repositoryRoot, module);
 
             Console.WriteLine(
-                "PACKAGED_EXAMPLE_LAYOUT_OK|core,6-packages,editor-resources-only,expected-archives," +
+                "PACKAGED_EXAMPLE_LAYOUT_OK|core,6-packages,editor-only,expected-archives," +
                 "yaml-manifest,release-mirror,package-manager-discovery");
             return 0;
         }
@@ -45,20 +45,20 @@ internal static class Program
     private static void VerifyModule(string repositoryRoot, Module module)
     {
         var sourceRoot = Path.Combine(repositoryRoot, "src", module.SourceDirectory);
-        var sourceExamples = Path.Combine(sourceRoot, "EditorResources", "Examples");
+        var sourceExamples = Path.Combine(sourceRoot, "Editor", "Examples");
         var legacySourceExamples = Path.Combine(sourceRoot, "Examples");
         var releasedRoot = module.IsCore
             ? Path.Combine(repositoryRoot, "Output", "BEgine")
             : Path.Combine(repositoryRoot, "Output", "Packages", module.Name);
-        var releasedExamples = Path.Combine(releasedRoot, "EditorResources", "Examples");
+        var releasedExamples = Path.Combine(releasedRoot, "Editor", "Examples");
         var legacyReleasedExamples = Path.Combine(releasedRoot, "Examples");
 
         Require(Directory.Exists(sourceExamples),
-            $"{module.Name} source EditorResources/Examples is missing.");
+            $"{module.Name} source Editor/Examples is missing.");
         Require(!Directory.Exists(legacySourceExamples),
             $"{module.Name} retained the legacy source Examples directory.");
         Require(Directory.Exists(releasedExamples),
-            $"{module.Name} release EditorResources/Examples is missing.");
+            $"{module.Name} release Editor/Examples is missing.");
         Require(!Directory.Exists(legacyReleasedExamples),
             $"{module.Name} retained the legacy released Examples directory.");
 

@@ -12,6 +12,7 @@ public sealed class PackageDefinitionDocument : Document
     public string Description { get; set; } = string.Empty;
     public bool EnabledByDefault { get; set; }
     public bool Required { get; set; }
+    public PackageContentDocument Content { get; set; } = new();
     public PackageAssemblyDocument? Runtime { get; set; }
     public PackageAssemblyDocument? Editor { get; set; }
 

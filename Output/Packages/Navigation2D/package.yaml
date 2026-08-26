@@ -5,6 +5,9 @@ packageVersion: 1.0.0
 displayName: 2D Navigation
 description: Runtime 2D navigation surfaces, deterministic grid baking, A-star agents, obstacles and links.
 enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
 runtime:
   assembly: BEngine.Navigation2D
   rootNamespace: BEngine.Navigation2D

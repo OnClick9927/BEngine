@@ -4,14 +4,10 @@ namespace BEngine.Editor;
 
 internal static class CoreBuiltInGizmoDrawers
 {
-    private static readonly Color CameraColor = new(1, Fix64.Parse("0.72"), Fix64.Parse("0.12"));
-    private static readonly Color SpriteColor = new(Fix64.Parse("0.28"), 1, Fix64.Parse("0.46"));
-    private static readonly Color ParticleColor = new(Fix64.Parse("0.2"), Fix64.Parse("0.86"), 1);
-
     [DrawGizmo(GizmoType.Selected | GizmoType.NonSelected)]
     private static void DrawCamera(Camera2D camera, GizmoType state)
     {
-        Gizmos.color = WithSelectionAlpha(CameraColor, state);
+        Gizmos.color = Color.white;
         var viewport = camera.viewportRect;
         var width = Math.Max(1, (int)MathF.Round(
             Screen.width * (float)viewport.width));
@@ -31,7 +27,7 @@ internal static class CoreBuiltInGizmoDrawers
             (Fix64.Half - pivot.y) * renderer.size.y);
         var worldCenter = renderer.transform.TransformPoint(localCenter);
         var worldSize = Vector2.Scale(renderer.size, renderer.transform.lossyScale);
-        Gizmos.color = WithSelectionAlpha(SpriteColor, state);
+        Gizmos.color = Color.white;
         Gizmos.DrawWireCube(worldCenter, worldSize, renderer.transform.rotation);
     }
 
@@ -43,7 +39,7 @@ internal static class CoreBuiltInGizmoDrawers
             : Vector2.up;
         var travel = direction * particles.startSpeed * Fix64.Max(Fix64.Zero, particles.startLifetime);
         var origin = particles.transform.position;
-        Gizmos.color = WithSelectionAlpha(ParticleColor, state);
+        Gizmos.color = Color.white;
         Gizmos.DrawArrow(origin, origin + particles.transform.TransformVector(travel));
     }
 
@@ -53,8 +49,4 @@ internal static class CoreBuiltInGizmoDrawers
         for (var index = 0; index < points.Count; index++)
             Gizmos.DrawLine(points[index], points[(index + 1) % points.Count]);
     }
-
-    private static Color WithSelectionAlpha(Color color, GizmoType state) =>
-        new(color.r, color.g, color.b,
-            (state & GizmoType.Selected) != 0 ? Fix64.One : Fix64.Parse("0.55"));
 }

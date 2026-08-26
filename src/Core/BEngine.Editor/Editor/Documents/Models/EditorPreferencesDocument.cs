@@ -10,8 +10,10 @@ public sealed class EditorPreferencesDocument : Document
     public string ExternalScriptEditor { get; set; } = string.Empty;
     public float EditorScale { get; set; } = 1f;
     public string EditorFont { get; set; } = "BEngine Built-in";
-    public int EditorFontSize { get; set; } = 13;
+    public int EditorFontSize { get; set; } = 14;
     public string EditorTheme { get; set; } = "Dark";
+    public string EditorSkin { get; set; } = string.Empty;
+    public Dictionary<string, string> CustomThemeColors { get; set; } = new(StringComparer.Ordinal);
     public bool AutoRefreshAssets { get; set; } = true;
     public bool ShowAssetMetaFiles { get; set; }
 }

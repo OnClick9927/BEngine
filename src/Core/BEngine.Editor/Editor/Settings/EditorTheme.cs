@@ -10,5 +10,6 @@ public enum EditorTheme
 {
     Dark,
     Light,
-    Classic
+    Classic,
+    Custom
 }

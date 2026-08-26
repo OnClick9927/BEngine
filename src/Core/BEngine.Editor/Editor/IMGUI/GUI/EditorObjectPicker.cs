@@ -117,7 +117,7 @@ internal static class EditorObjectPicker
             if (assetPath.Length == 0) continue;
             try
             {
-                if (AssetDatabase.LoadMainAssetAtPath(assetPath) is { } asset &&
+                if (AssetDatabase.LoadAssetAtPath(assetPath, objectType) is { } asset &&
                     Coerce(asset, objectType, allowSceneObjects) is { } candidate)
                     return candidate;
             }
@@ -176,7 +176,7 @@ internal static class EditorObjectPicker
             BObject? asset;
             try
             {
-                asset = AssetDatabase.LoadMainAssetAtPath(record.AssetPath);
+                asset = AssetDatabase.LoadAssetAtPath(record.AssetPath, objectType);
             }
             catch (Exception exception)
             {
@@ -240,6 +240,17 @@ internal static class EditorObjectPicker
                 gameObject.components.FirstOrDefault(objectType.IsInstanceOfType),
             _ => null
         };
+        if (candidate is null && AssetDatabase.GetAssetPath(source) is { Length: > 0 } assetPath)
+        {
+            try
+            {
+                candidate = AssetDatabase.LoadAssetAtPath(assetPath, objectType);
+            }
+            catch (Exception exception)
+            {
+                EditorFeatureGuard.Report($"ObjectField.LoadAsset {assetPath}", exception);
+            }
+        }
         if (candidate is null || !objectType.IsInstanceOfType(candidate)) return null;
         if (candidate is GameObject or Component)
             return allowSceneObjects && IsLoadedSceneObject(candidate) ? candidate : null;

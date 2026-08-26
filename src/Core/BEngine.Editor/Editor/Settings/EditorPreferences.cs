@@ -25,11 +25,26 @@ public static class EditorPreferences
             Debug.LogWarning($"Preferences could not be loaded; defaults are active: {exception.Message}");
             _current = new EditorPreferencesDocument();
         }
+        _current.EditorFontSize = EditorAppearance.DefaultFontSize;
+        _current.EditorSkin ??= string.Empty;
+        _current.CustomThemeColors ??= new Dictionary<string, string>(StringComparer.Ordinal);
+        var skinBeforeApply = _current.EditorSkin;
         EditorAppearance.Apply(_current);
+        if (!skinBeforeApply.Equals(_current.EditorSkin, StringComparison.Ordinal))
+        {
+            try { _current.Save(EditorDataPaths.preferencesPath); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                Debug.LogWarning($"Normalized editor skin preference could not be saved: {exception.Message}");
+            }
+        }
     }
 
     public static void Save()
     {
+        _current.EditorFontSize = EditorAppearance.DefaultFontSize;
+        _current.EditorSkin ??= string.Empty;
+        _current.CustomThemeColors ??= new Dictionary<string, string>(StringComparer.Ordinal);
         _current.Save(EditorDataPaths.preferencesPath);
         EditorAppearance.Apply(_current);
         EditorCallbackDispatcher.Invoke(preferencesChanged, nameof(preferencesChanged));

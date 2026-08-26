@@ -22,11 +22,11 @@ internal static class Program
             var enabledRoot = CreatePackage(root, "Enabled", "com.test.enabled", "Enabled Package");
             var disabledRoot = CreatePackage(root, "Disabled", "com.test.disabled", "Disabled Package");
             Directory.CreateDirectory(Path.Combine(enabledRoot, "Resources", "Shaders"));
-            Directory.CreateDirectory(Path.Combine(enabledRoot, "EditorResources", "Icons"));
+            Directory.CreateDirectory(Path.Combine(enabledRoot, "Editor", "Icons"));
             Directory.CreateDirectory(Path.Combine(enabledRoot, "bin"));
             Directory.CreateDirectory(Path.Combine(enabledRoot, "obj"));
             File.WriteAllText(Path.Combine(enabledRoot, "Resources", "Shaders", "Default.shader"), "shader");
-            File.WriteAllText(Path.Combine(enabledRoot, "EditorResources", "Icons", "Package.png"), "image");
+            File.WriteAllText(Path.Combine(enabledRoot, "Editor", "Icons", "Package.png"), "image");
             File.WriteAllText(Path.Combine(enabledRoot, "bin", "Ignored.dll"), "ignored");
             File.WriteAllText(Path.Combine(enabledRoot, "obj", "Ignored.cache"), "ignored");
             File.WriteAllText(Path.Combine(enabledRoot, "Ignored.meta"), "ignored");
@@ -69,9 +69,9 @@ internal static class Program
                                       item.AssetType == "Shader"),
                 "Package resource hierarchy or resource type was lost.");
             Require(items.Any(item => item.VirtualPath ==
-                                      "Packages/com.test.enabled/EditorResources/Icons/Package.png" &&
-                                      item.ParentPath == "Packages/com.test.enabled/EditorResources/Icons"),
-                "EditorResources hierarchy was not represented accurately.");
+                                      "Packages/com.test.enabled/Editor/Icons/Package.png" &&
+                                      item.ParentPath == "Packages/com.test.enabled/Editor/Icons"),
+                "Editor hierarchy was not represented accurately.");
             Require(items.Any(item => item.VirtualPath == "Packages/com.test.missing" &&
                                       item.AssetType == "Missing Package"),
                 "Missing enabled package did not receive a visible diagnostic row.");

@@ -54,23 +54,31 @@ internal static class Program
             var preferences = new EditorPreferencesDocument
             {
                 Locale = "en-US", EditorScale = 1.25f, EditorFont = "Segoe UI",
-                EditorFontSize = 15, EditorTheme = "Light", AutoRefreshAssets = false,
+                EditorFontSize = 15, EditorTheme = "Light", EditorSkin = "builtin:Light",
+                AutoRefreshAssets = false,
                 ShowAssetMetaFiles = true
             };
             preferences.Save(preferencesPath);
             var restored = Document.Load<EditorPreferencesDocument>(preferencesPath);
             Require(restored.Locale == "en-US" && Math.Abs(restored.EditorScale - 1.25f) < .001f &&
                     restored.EditorFont == "Segoe UI" && restored.EditorFontSize == 15 &&
-                    restored.EditorTheme == "Light" && !restored.AutoRefreshAssets && restored.ShowAssetMetaFiles,
+                    restored.EditorTheme == "Light" && restored.EditorSkin == "builtin:Light" &&
+                    !restored.AutoRefreshAssets && restored.ShowAssetMetaFiles,
                 "Preferences YAML did not round-trip.");
 
             EditorAppearance.Apply(restored);
             Require(EditorAppearance.theme == EditorTheme.Light &&
-                    EditorAppearance.fontFamily == "Segoe UI" && EditorAppearance.fontSize == 15,
-                "Editor appearance did not apply theme and font preferences.");
+                    EditorAppearance.activeSkin.name == nameof(EditorTheme.Light) &&
+                    EditorAppearance.fontFamily == "Segoe UI" &&
+                    EditorAppearance.fontSize == EditorAppearance.DefaultFontSize &&
+                    restored.EditorFontSize == EditorAppearance.DefaultFontSize,
+                "Editor appearance did not apply the theme or normalize the fixed 14px font.");
             Require(Math.Abs((double)GUIUtility.pixelsPerPoint - 1.25) < .001 &&
                     EditorLocalization.locale == "en-US" && !EditorGUIUtility.isProSkin,
                 "Editor scale, localization, or theme flag was not applied.");
+
+            VerifyCustomThemeAndLegacyFontMigration(testDirectory);
+            EditorAppearance.Apply(restored);
 
             var resolverType = typeof(EditorWindow).Assembly.GetType(
                 "BEngine.Editor.EditorGpuCanvasResourceResolver", throwOnError: true)!;
@@ -102,6 +110,7 @@ internal static class Program
             VerifyTagLayerDraftAndDocumentRewrites();
             var renderMarkers = SettingsWindowRenderRegressionTests.Run(testDirectory, projectPath);
             Console.WriteLine("EDITOR_SETTINGS_WINDOWS_OK|reflection,scopes,yaml,appearance,scale,locale," +
+                              "fixed-font,custom-theme-presets,custom-theme-persistence,skin-selection," +
                               $"font-gpu,project,tag-layer-draft,tag-reference-rewrite,{string.Join(',', renderMarkers)}");
             return 0;
         }
@@ -115,6 +124,93 @@ internal static class Program
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static void VerifyCustomThemeAndLegacyFontMigration(string testDirectory)
+    {
+        var themePath = Path.Combine(testDirectory, "CustomThemePreferences.yaml");
+        foreach (var preset in new[] { EditorTheme.Light, EditorTheme.Dark, EditorTheme.Classic })
+        {
+            var value = new EditorPreferencesDocument();
+            EditorAppearance.SetCustomThemePreset(value, preset);
+            Require(value.EditorTheme == nameof(EditorTheme.Custom) &&
+                    value.CustomThemeColors.Count == EditorAppearance.customThemeColorNames.Count &&
+                    EditorAppearance.customThemeColorNames.All(value.CustomThemeColors.ContainsKey),
+                $"{preset} did not populate every custom theme color.");
+            value.Save(themePath);
+            var restored = Document.Load<EditorPreferencesDocument>(themePath);
+            Require(restored.CustomThemeColors.Count == value.CustomThemeColors.Count &&
+                    value.CustomThemeColors.All(item =>
+                        restored.CustomThemeColors.TryGetValue(item.Key, out var encoded) && encoded == item.Value),
+                $"{preset} custom theme colors did not round-trip through preferences YAML.");
+            Require(PalettesNear(EditorAppearance.GetPresetPalette(preset),
+                    EditorAppearance.GetCustomThemePalette(restored)),
+                $"{preset} custom theme values do not reproduce their built-in preset.");
+        }
+
+        var custom = Document.Load<EditorPreferencesDocument>(themePath);
+        var accent = new Color((Fix64).11f, (Fix64).42f, (Fix64).73f, Fix64.One);
+        EditorAppearance.SetCustomThemeColor(custom, nameof(EditorThemePalette.Accent), accent);
+        custom.Save(themePath);
+        var customRestored = Document.Load<EditorPreferencesDocument>(themePath);
+        EditorAppearance.Apply(customRestored);
+        Require(EditorAppearance.theme == EditorTheme.Custom &&
+                ColorNear(EditorAppearance.palette.Accent, accent),
+            "A customized theme color was not persisted and applied.");
+
+        var legacyPath = EditorDataPaths.preferencesPath;
+        new EditorPreferencesDocument { Locale = "en-US", EditorFontSize = 24 }.Save(legacyPath);
+        EditorPreferences.Initialize();
+        Require(EditorPreferences.current.EditorFontSize == EditorAppearance.DefaultFontSize &&
+                EditorAppearance.fontSize == EditorAppearance.DefaultFontSize,
+            "A legacy variable font size was not normalized to 14 when preferences loaded.");
+        EditorPreferences.Save();
+        Require(Document.Load<EditorPreferencesDocument>(legacyPath).EditorFontSize ==
+                EditorAppearance.DefaultFontSize,
+            "The normalized fixed font size was not persisted back to preferences.");
+    }
+
+    private static bool PalettesNear(EditorThemePalette left, EditorThemePalette right) =>
+        EditorAppearance.customThemeColorNames.All(name => ColorNear(
+            PaletteColor(left, name), PaletteColor(right, name)));
+
+    private static Color PaletteColor(EditorThemePalette value, string name) => name switch
+    {
+        nameof(EditorThemePalette.Window) => value.Window,
+        nameof(EditorThemePalette.Panel) => value.Panel,
+        nameof(EditorThemePalette.Toolbar) => value.Toolbar,
+        nameof(EditorThemePalette.Field) => value.Field,
+        nameof(EditorThemePalette.Button) => value.Button,
+        nameof(EditorThemePalette.Hover) => value.Hover,
+        nameof(EditorThemePalette.Active) => value.Active,
+        nameof(EditorThemePalette.Text) => value.Text,
+        nameof(EditorThemePalette.MutedText) => value.MutedText,
+        nameof(EditorThemePalette.Accent) => value.Accent,
+        nameof(EditorThemePalette.Border) => value.Border,
+        nameof(EditorThemePalette.PanelRaised) => value.PanelRaised,
+        nameof(EditorThemePalette.TitleBar) => value.TitleBar,
+        nameof(EditorThemePalette.FieldHover) => value.FieldHover,
+        nameof(EditorThemePalette.FieldFocused) => value.FieldFocused,
+        nameof(EditorThemePalette.ButtonHover) => value.ButtonHover,
+        nameof(EditorThemePalette.ButtonPressed) => value.ButtonPressed,
+        nameof(EditorThemePalette.DisabledText) => value.DisabledText,
+        nameof(EditorThemePalette.FocusBorder) => value.FocusBorder,
+        nameof(EditorThemePalette.Selection) => value.Selection,
+        nameof(EditorThemePalette.SelectionInactive) => value.SelectionInactive,
+        nameof(EditorThemePalette.ScrollTrack) => value.ScrollTrack,
+        nameof(EditorThemePalette.ScrollThumb) => value.ScrollThumb,
+        nameof(EditorThemePalette.ScrollThumbHover) => value.ScrollThumbHover,
+        nameof(EditorThemePalette.Shadow) => value.Shadow,
+        _ => throw new ArgumentOutOfRangeException(nameof(name), name, null)
+    };
+
+    private static bool ColorNear(Color left, Color right)
+    {
+        const double tolerance = 1d / 255d + .0001d;
+        return Math.Abs((double)(left.r - right.r)) <= tolerance &&
+               Math.Abs((double)(left.g - right.g)) <= tolerance &&
+               Math.Abs((double)(left.b - right.b)) <= tolerance &&
+               Math.Abs((double)(left.a - right.a)) <= tolerance;
     }
 
     private static void VerifyTagLayerDraftAndDocumentRewrites()

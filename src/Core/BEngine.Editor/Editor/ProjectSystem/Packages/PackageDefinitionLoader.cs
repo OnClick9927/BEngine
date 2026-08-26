@@ -1,5 +1,6 @@
 using BEngine.Serialization;
 using BEngine.Documents;
+using BEngine.Editor;
 using BEngine.Editor.Documents;
 
 namespace BEngine.ProjectSystem;
@@ -55,6 +56,11 @@ public static class PackageDefinitionLoader
         if (runtime is null && editor is null)
             throw Invalid(sourceName, "at least one runtime or editor assembly is required");
 
+        var content = document.Content ?? new PackageContentDocument();
+        if (!string.Equals(content.Runtime, "Resources", StringComparison.Ordinal) ||
+            !string.Equals(content.Editor, EditorResource.DirectoryName, StringComparison.Ordinal))
+            throw Invalid(sourceName, "content must map runtime to Resources and editor to Editor");
+
         runtime = NormalizeAssembly(runtime, "runtime", sourceName, allowEditorDependency: false);
         editor = NormalizeAssembly(editor, "editor", sourceName, allowEditorDependency: true);
 
@@ -72,6 +78,11 @@ public static class PackageDefinitionLoader
             Description = document.Description?.Trim() ?? string.Empty,
             EnabledByDefault = document.EnabledByDefault,
             Required = document.Required,
+            Content = new PackageContentDocument
+            {
+                Runtime = "Resources",
+                Editor = EditorResource.DirectoryName
+            },
             Runtime = runtime,
             Editor = editor
         };

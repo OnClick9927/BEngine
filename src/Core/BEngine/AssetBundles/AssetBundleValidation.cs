@@ -6,7 +6,8 @@ internal static class AssetBundleValidation
     {
         ArgumentNullException.ThrowIfNull(catalog);
         if (!string.Equals(catalog.Format, AssetBundleCatalog.CurrentFormat, StringComparison.Ordinal) ||
-            catalog.SchemaVersion != AssetBundleCatalog.CurrentSchemaVersion)
+            catalog.SchemaVersion is < AssetBundleCatalog.MinimumSupportedSchemaVersion or
+                > AssetBundleCatalog.CurrentSchemaVersion)
             throw new InvalidDataException(
                 $"Unsupported asset bundle catalog format '{catalog.Format}' version {catalog.SchemaVersion}.");
         ValidateIdentifier(catalog.PackageName, nameof(catalog.PackageName));
@@ -76,6 +77,7 @@ internal static class AssetBundleValidation
                 throw new InvalidDataException(
                     $"Asset '{asset.Address}' references missing bundle '{asset.Bundle}'.");
             ValidateType(asset.AssetType, asset.Address);
+            ValidateImporter(asset);
             ValidateSha256(asset.Sha256, $"asset '{asset.Address}' SHA256");
             if (asset.Size < 0) throw new InvalidDataException($"Asset '{asset.Address}' size cannot be negative.");
             if (!addresses.Add(asset.Address))
@@ -158,6 +160,22 @@ internal static class AssetBundleValidation
         if (string.IsNullOrWhiteSpace(value) || value.Length > 512 ||
             value.Any(char.IsControl))
             throw new InvalidDataException($"Asset '{address}' has an invalid asset type.");
+    }
+
+    private static void ValidateImporter(AssetBundleAsset asset)
+    {
+        if (asset.Importer is null || asset.Importer.Length > 512 || asset.Importer.Any(char.IsControl))
+            throw new InvalidDataException($"Asset '{asset.Address}' has an invalid importer name.");
+        if (asset.ImporterSettings is null)
+            throw new InvalidDataException($"Asset '{asset.Address}' importer settings cannot be null.");
+        if (asset.ImporterSettings.Count > 128)
+            throw new InvalidDataException($"Asset '{asset.Address}' has too many importer settings.");
+        foreach (var (key, value) in asset.ImporterSettings)
+        {
+            if (string.IsNullOrWhiteSpace(key) || key.Length > 128 || key.Any(char.IsControl) ||
+                value is null || value.Length > 2048 || value.Any(char.IsControl))
+                throw new InvalidDataException($"Asset '{asset.Address}' has an invalid importer setting.");
+        }
     }
 
     private static void ValidatePathSegment(string segment, string fieldName)

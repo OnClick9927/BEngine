@@ -328,12 +328,12 @@ internal sealed class EditorWindowLayer
                 var titleRight = menu.x - 3;
                 GUI.Label(new Rect(title.x + 5, title.y, Fix64.Max(0, titleRight - title.x - 5),
                     title.height), presentation.Window.titleContent, EditorStyles.windowTitle);
-                GUI.Box(menu, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More,
-                    "Window options"), EditorStyles.toolbarIconButton);
+                GUI.Box(menu, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More, string.Empty),
+                    EditorStyles.toolbarIconButton);
                 if (dock.width > 0)
-                    GUI.Box(dock, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Container,
-                        "Dock window"), EditorStyles.toolbarIconButton);
-                GUI.Box(close, new GUIContent("x", tooltip: "Close window"), EditorStyles.toolbarIconButton);
+                    GUI.Box(dock, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Container, string.Empty),
+                        EditorStyles.toolbarIconButton);
+                GUI.Box(close, new GUIContent("x"), EditorStyles.toolbarIconButton);
                 DrawResizeCursors(bounds);
             }
         }

@@ -107,7 +107,11 @@ public static class AssetBundleCatalogSerializer
                 Entry = item.Entry,
                 AssetType = item.AssetType,
                 Sha256 = item.Sha256.ToLowerInvariant(),
-                Size = item.Size
+                Size = item.Size,
+                Importer = item.Importer,
+                ImporterSettings = item.ImporterSettings
+                    .OrderBy(setting => setting.Key, StringComparer.Ordinal)
+                    .ToDictionary(setting => setting.Key, setting => setting.Value, StringComparer.Ordinal)
             }).ToList()
     };
 

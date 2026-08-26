@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Linq.Expressions;
 using BEngine.Animation;
 using BEngine.Documents;
 using BEngine.Editor;
@@ -11,6 +13,8 @@ namespace BEngine.ExampleTests.ProjectAssetWorkflow;
 
 internal static class BAssetTypeSystemTests
 {
+    private static object? _capturedObjectPickerItems;
+
     internal static void Run()
     {
         if (Execute() != 0)
@@ -26,7 +30,8 @@ internal static class BAssetTypeSystemTests
         {
             new ProjectDocument { Name = "BAsset Type Test" }.Save(Path.Combine(root, "Project.yaml"));
             var workspace = ProjectWorkspace.Open(root);
-            var animationEditor = Assembly.Load("BEngine.Animation.Editor");
+            var animationEditor = Assembly.LoadFrom(
+                Path.Combine(AppContext.BaseDirectory, "BEngine.Animation.Editor.dll"));
             TypeCache.Refresh();
             EditorInitialization.Run([animationEditor], scriptsReloaded: false);
             AssetTypeRegistry.Register<ExternalYamlAsset>(".external.yaml", "External YAML",
@@ -39,6 +44,7 @@ internal static class BAssetTypeSystemTests
 
             VerifyRequiredRuntimeTypes();
             VerifyTypedLoads();
+            VerifyUnsupportedTextureFormats(workspace, projectAssets);
             VerifyDynamicTypeRegistration();
             VerifyTextureImporterRoundTrip(workspace);
             VerifyManagedAssetPersistence();
@@ -46,7 +52,8 @@ internal static class BAssetTypeSystemTests
             VerifyPackageReference(workspace);
             VerifyInheritedAndUnloadableIcons(root);
 
-            Console.WriteLine("BASSET_TYPE_SYSTEM_OK|typed-files,texture-meta-roundtrip,importer-revert," +
+            Console.WriteLine("BASSET_TYPE_SYSTEM_OK|typed-files,png-only-texture-import," +
+                              "texture-meta-roundtrip,importer-revert," +
                               "managed-save-reload,basset-reference-roundtrip,package-reference," +
                               "no-loader-registry,editor-icon-inheritance,registry-unload");
             return 0;
@@ -129,28 +136,59 @@ internal static class BAssetTypeSystemTests
             "Assembly unload did not clear a dynamic asset type registration.");
     }
 
+    private static void VerifyUnsupportedTextureFormats(
+        ProjectWorkspace workspace,
+        ProjectAssetDatabase projectAssets)
+    {
+        var unsupported = projectAssets.GetRecord("Assets/Unsupported.jpg");
+        var meta = Document.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(
+            Path.Combine(workspace.AssetsPath, "Unsupported.jpg.meta"));
+        Require(unsupported is { AssetType: "DefaultAsset" } &&
+                meta.Importer == nameof(DefaultImporter) &&
+                AssetImporter.GetAtPath("Assets/Unsupported.jpg") is DefaultImporter &&
+                AssetDatabase.LoadAssetAtPath<BEngine.Texture>("Assets/Unsupported.jpg") is null &&
+                AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Unsupported.jpg") is null,
+            "An unsupported JPG was imported or loaded as a Texture/Sprite.");
+        Require(new[] { ".jpg", ".jpeg", ".bmp", ".tga", ".webp" }.All(extension =>
+                AssetTypeRegistry.ResolveAssetType("Assets/Unsupported" + extension) is null &&
+                AssetTypeRegistry.ResolveImporterType("Assets/Unsupported" + extension) is null),
+            "An unsupported image suffix is still registered as a TextureImporter source.");
+    }
+
     private static void VerifyTextureImporterRoundTrip(ProjectWorkspace workspace)
     {
         var importer = AssetImporter.GetAtPath("Assets/Spark.png") as TextureImporter ??
                        throw new InvalidOperationException("TextureImporter was not selected for PNG.");
+        importer.textureType = TextureImporterType.Sprite;
+        importer.sRGBTexture = false;
+        importer.alphaIsTransparency = true;
+        importer.isReadable = true;
         importer.compressionFormat = TextureCompressionFormat.Bc7;
-        importer.filterMode = TextureFilterMode.Trilinear;
-        importer.wrapMode = TextureWrapMode.Repeat;
+        importer.filterMode = TextureFilterMode.Point;
+        importer.wrapMode = TextureWrapMode.Mirror;
         importer.generateMipMaps = true;
         importer.maxTextureSize = 4096;
         importer.pixelsPerUnit = 64;
+        importer.spritePivotX = 0.25f;
+        importer.spritePivotY = 0.75f;
         importer.userData = "round-trip";
         importer.SaveAndReimport();
 
         var reloaded = AssetImporter.GetAtPath("Assets/Spark.png") as TextureImporter;
         Require(reloaded is
         {
+            textureType: TextureImporterType.Sprite,
+            sRGBTexture: false,
+            alphaIsTransparency: true,
+            isReadable: true,
             compressionFormat: TextureCompressionFormat.Bc7,
-            filterMode: TextureFilterMode.Trilinear,
-            wrapMode: TextureWrapMode.Repeat,
+            filterMode: TextureFilterMode.Point,
+            wrapMode: TextureWrapMode.Mirror,
             generateMipMaps: true,
             maxTextureSize: 4096,
             pixelsPerUnit: 64,
+            spritePivotX: 0.25f,
+            spritePivotY: 0.75f,
             userData: "round-trip"
         }, "Texture import settings did not reload from .meta Settings.");
         reloaded!.compressionFormat = TextureCompressionFormat.Rgba32;
@@ -159,12 +197,190 @@ internal static class BAssetTypeSystemTests
             "TextureImporter.Revert did not restore persisted settings.");
 
         var texture = AssetDatabase.LoadAssetAtPath<BEngine.Texture>("Assets/Spark.png");
-        Require(texture is { compressionFormat: TextureCompressionFormat.Bc7, mipMaps: true, pixelsPerUnit: 64 },
+        Require(texture is
+            {
+                compressionFormat: TextureCompressionFormat.Bc7,
+                mipMaps: true,
+                pixelsPerUnit: 64,
+                sRGB: false,
+                alphaIsTransparency: true,
+                isReadable: true,
+                filterMode: TextureFilterMode.Point,
+                wrapMode: TextureWrapMode.Mirror
+            },
             "Reloaded Texture did not consume persisted importer settings.");
+        var importedSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Spark.png");
+        Require(importedSprite is
+                {
+                    Texture: "Assets/Spark.png",
+                    PivotX: 0.25f,
+                    PivotY: 0.75f,
+                    assetPath: "Assets/Spark.png"
+                } && importedSprite.Id == texture!.Id,
+            "A Sprite-mode texture did not expose its imported Sprite sub-asset view.");
+        var allAssets = AssetDatabase.LoadAllAssetsAtPath("Assets/Spark.png");
+        Require(allAssets is [BEngine.Texture, Sprite] &&
+                AssetDatabase.GetMainAssetTypeAtPath("Assets/Spark.png") == typeof(BEngine.Texture),
+            "Texture main-asset identity or imported Sprite sub-asset enumeration is incorrect.");
         var meta = Document.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(
             Path.Combine(workspace.AssetsPath, "Spark.png.meta"));
-        Require(meta.Settings["compressionFormat"] == "Bc7" && meta.Importer == nameof(TextureImporter),
+        Require(meta.Settings["compressionFormat"] == "Bc7" &&
+                meta.Settings["textureType"] == "Sprite" &&
+                meta.Settings["spritePivotX"] == "0.25" &&
+                meta.Settings["spritePivotY"] == "0.75" &&
+                meta.Importer == nameof(TextureImporter),
             "Texture requested compression format was not written to metadata.");
+
+        VerifyImportedSpriteWriteProtection(workspace, importedSprite!);
+        VerifySpriteObjectPicker(texture!);
+    }
+
+    private static void VerifyImportedSpriteWriteProtection(ProjectWorkspace workspace, Sprite importedSprite)
+    {
+        var sourcePath = Path.Combine(workspace.AssetsPath, "Spark.png");
+        var originalBytes = File.ReadAllBytes(sourcePath);
+        var originalHash = System.Security.Cryptography.SHA256.HashData(originalBytes);
+
+        importedSprite.PivotX = 0.9f;
+        EditorUtility.SetDirty(importedSprite);
+        Require(!AssetDatabase.SaveAsset(importedSprite),
+            "SaveAsset accepted an imported Sprite and could overwrite its source image.");
+        Require(File.ReadAllBytes(sourcePath).SequenceEqual(originalBytes) &&
+                System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(sourcePath)).SequenceEqual(originalHash),
+            "SaveAsset changed the source PNG bytes for an imported Sprite.");
+
+        Require(!AssetDatabase.RevertAsset(importedSprite),
+            "RevertAsset treated an imported Sprite view as an authored Sprite asset.");
+        Require(File.ReadAllBytes(sourcePath).SequenceEqual(originalBytes),
+            "RevertAsset changed the source PNG bytes for an imported Sprite.");
+
+        using var editor = InspectorEditor.CreateEditor(importedSprite);
+        Require(editor is SpriteEditor, "An imported Sprite did not resolve the Sprite Inspector.");
+        editor.SaveChanges();
+        Require(File.ReadAllBytes(sourcePath).SequenceEqual(originalBytes),
+            "SpriteEditor SaveChanges changed the source PNG bytes for an imported Sprite.");
+    }
+
+    private static void VerifySpriteObjectPicker(BEngine.Texture spriteTexture)
+    {
+        var plainTexture = AssetDatabase.LoadAssetAtPath<BEngine.Texture>("Assets/Plain.png") ??
+                           throw new InvalidOperationException("Default Texture fixture did not load.");
+        Require(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Plain.png") is null,
+            "A Texture-mode image unexpectedly exposed a Sprite sub-asset.");
+
+        var editorAssembly = typeof(EditorWindow).Assembly;
+        var picker = editorAssembly.GetType("BEngine.Editor.EditorObjectPicker", throwOnError: true)!;
+        var open = picker.GetMethod("Open", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var tryConsume = picker.GetMethod("TryConsume", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var resolveDragged = picker.GetMethod(
+            "ResolveDraggedObject", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var dispatcher = editorAssembly.GetType("BEngine.Editor.GenericMenuDispatcher", throwOnError: true)!;
+        var handler = dispatcher.GetProperty("Handler", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var previousHandler = handler.GetValue(null);
+
+        try
+        {
+            handler.SetValue(null, BuildObjectPickerCapture(handler.PropertyType));
+            Selection.activeObject = spriteTexture;
+            OpenSpritePicker(open, token: 71001);
+            var items = CapturedObjectPickerItems();
+            var useSelected = items.Single(item => ObjectPickerPath(item)
+                .StartsWith("Use Selected", StringComparison.OrdinalIgnoreCase));
+            Require(ObjectPickerEnabled(useSelected),
+                "Sprite ObjectField did not enable Use Selected for a Sprite-mode Texture.");
+            Require(items.Any(item => ObjectPickerPath(item)
+                        .Equals("Project/Assets/Spark.png", StringComparison.OrdinalIgnoreCase)) &&
+                    !items.Any(item => ObjectPickerPath(item)
+                        .Equals("Project/Assets/Plain.png", StringComparison.OrdinalIgnoreCase)),
+                "Sprite ObjectField dropdown did not filter project images by TextureImporter Sprite mode.");
+            InvokeObjectPickerItem(useSelected);
+            Require(ConsumeSprite(tryConsume, 71001) is { Texture: "Assets/Spark.png" },
+                "Sprite ObjectField Use Selected did not resolve the imported Sprite sub-asset.");
+
+            Selection.activeObject = plainTexture;
+            OpenSpritePicker(open, token: 71002);
+            items = CapturedObjectPickerItems();
+            Require(!ObjectPickerEnabled(items.Single(item => ObjectPickerPath(item)
+                        .StartsWith("Use Selected", StringComparison.OrdinalIgnoreCase))),
+                "Sprite ObjectField enabled Use Selected for a Texture-mode image.");
+            var projectSprite = items.Single(item => ObjectPickerPath(item)
+                .Equals("Project/Assets/Spark.png", StringComparison.OrdinalIgnoreCase));
+            InvokeObjectPickerItem(projectSprite);
+            Require(ConsumeSprite(tryConsume, 71002) is { Texture: "Assets/Spark.png" },
+                "Selecting a Sprite-mode image from the ObjectField dropdown did not return its Sprite.");
+
+            DragAndDrop.paths = [];
+            DragAndDrop.objectReferences = [spriteTexture];
+            Require(ResolveDraggedSprite(resolveDragged) is { Texture: "Assets/Spark.png" },
+                "ObjectField did not resolve a dragged Sprite-mode Texture reference as Sprite.");
+            DragAndDrop.objectReferences = [];
+            DragAndDrop.paths = ["Assets/Spark.png"];
+            Require(ResolveDraggedSprite(resolveDragged) is { Texture: "Assets/Spark.png" },
+                "ObjectField did not resolve a dragged Sprite-mode image path as Sprite.");
+
+            DragAndDrop.paths = [];
+            DragAndDrop.objectReferences = [plainTexture];
+            Require(ResolveDraggedSprite(resolveDragged) is null,
+                "ObjectField accepted a dragged Texture-mode image reference as Sprite.");
+            DragAndDrop.objectReferences = [];
+            DragAndDrop.paths = ["Assets/Plain.png"];
+            Require(ResolveDraggedSprite(resolveDragged) is null,
+                "ObjectField accepted a dragged Texture-mode image path as Sprite.");
+        }
+        finally
+        {
+            Selection.activeObject = null;
+            DragAndDrop.objectReferences = [];
+            DragAndDrop.paths = [];
+            handler.SetValue(null, previousHandler);
+        }
+
+        return;
+
+        void OpenSpritePicker(MethodInfo method, int token)
+        {
+            _capturedObjectPickerItems = null;
+            method.Invoke(null, [token, new Rect(0, 0, 320, 18), null, typeof(Sprite), false]);
+            Require(_capturedObjectPickerItems is not null,
+                "Opening a Sprite ObjectField did not produce a dropdown.");
+        }
+    }
+
+    private static Sprite? ConsumeSprite(MethodInfo tryConsume, int token)
+    {
+        object?[] arguments = [token, typeof(Sprite), false, null];
+        return tryConsume.Invoke(null, arguments) is true ? arguments[3] as Sprite : null;
+    }
+
+    private static Sprite? ResolveDraggedSprite(MethodInfo resolveDragged) =>
+        resolveDragged.Invoke(null, [typeof(Sprite), false]) as Sprite;
+
+    private static Delegate BuildObjectPickerCapture(Type delegateType)
+    {
+        var parameter = Expression.Parameter(delegateType.GetMethod("Invoke")!.GetParameters()[0].ParameterType,
+            "items");
+        var capture = typeof(BAssetTypeSystemTests).GetMethod(nameof(CaptureObjectPickerItems),
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        return Expression.Lambda(delegateType,
+            Expression.Call(capture, Expression.Convert(parameter, typeof(object))), parameter).Compile();
+    }
+
+    private static void CaptureObjectPickerItems(object items) => _capturedObjectPickerItems = items;
+
+    private static object[] CapturedObjectPickerItems() =>
+        ((IEnumerable?)_capturedObjectPickerItems)?.Cast<object>().ToArray() ?? [];
+
+    private static string ObjectPickerPath(object item) =>
+        item.GetType().GetProperty("Path")?.GetValue(item) as string ?? string.Empty;
+
+    private static bool ObjectPickerEnabled(object item) =>
+        item.GetType().GetProperty("Enabled")?.GetValue(item) is true;
+
+    private static void InvokeObjectPickerItem(object item)
+    {
+        var action = item.GetType().GetProperty("Action")?.GetValue(item) as Action;
+        Require(action is not null, $"Object picker item '{ObjectPickerPath(item)}' has no action.");
+        action!();
     }
 
     private static void VerifyManagedAssetPersistence()
@@ -299,13 +515,13 @@ internal static class BAssetTypeSystemTests
 
     private static void VerifyInheritedAndUnloadableIcons(string root)
     {
-        var icons = Path.Combine(root, "EditorResources", "Icons");
+        var icons = Path.Combine(root, "Editor", "Icons");
         Directory.CreateDirectory(icons);
         var inheritedIcon = Path.Combine(icons, "Probe.png");
         var explicitIcon = Path.Combine(icons, "Explicit.png");
         File.WriteAllBytes(inheritedIcon, [1]);
         File.WriteAllBytes(explicitIcon, [2]);
-        EditorResources.RegisterResourceRoot(root);
+        EditorResource.RegisterResourceRoot(root);
 
         Require(EditorIconRegistry.GetIconPath(typeof(DerivedProbeAsset)) == inheritedIcon,
             "EditorIconAttribute did not flow to a ScriptableObject subclass.");
@@ -321,8 +537,11 @@ internal static class BAssetTypeSystemTests
 
     private static void WriteFixtures(ProjectWorkspace workspace)
     {
-        File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "Spark.png"), Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+AvzZVwAAAABJRU5ErkJggg=="));
+        var png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+AvzZVwAAAABJRU5ErkJggg==");
+        File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "Spark.png"), png);
+        File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "Plain.png"), png);
+        File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "Unsupported.jpg"), png);
         File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "Test.ttf"), [0, 1, 0, 0]);
         File.WriteAllText(Path.Combine(workspace.AssetsPath, "Probe.cs"),
             "using BEngine; public sealed class Probe : MonoBehaviour { }");

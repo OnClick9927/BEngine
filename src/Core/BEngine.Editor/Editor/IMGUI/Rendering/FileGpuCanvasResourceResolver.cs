@@ -10,7 +10,7 @@ using DrawingRectangle = System.Drawing.Rectangle;
 
 namespace BEngine.Editor.Rendering;
 
-/// <summary>Resolves PNG icons from registered EditorResources/Resources roots without platform UI APIs.</summary>
+/// <summary>Resolves PNG icons from registered Editor and Resources roots without platform UI APIs.</summary>
 public sealed class FileGpuCanvasResourceResolver : IGpuCanvasResourceResolver
 {
     public static FileGpuCanvasResourceResolver Shared { get; } = new();
@@ -43,7 +43,7 @@ public sealed class FileGpuCanvasResourceResolver : IGpuCanvasResourceResolver
         var revision = source.LastIndexOf(AssetPreview.PreviewRevisionQuery, StringComparison.Ordinal);
         if (revision >= 0) source = source[..revision];
         if (Path.IsPathRooted(source)) return Path.GetFullPath(source);
-        return ResourceLoader.Resolve(source, "EditorResources") ??
+        return ResourceLoader.Resolve(source, EditorResource.DirectoryName) ??
                ResourceLoader.Resolve(source, "Resources");
     }
 

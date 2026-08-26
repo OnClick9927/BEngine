@@ -116,15 +116,18 @@ public sealed class TextureAtlasWindow : EditorWindow
             var current = AssetDatabase.LoadAssetAtPath<Sprite>(reference);
             var selected = EditorGUI.ObjectField(
                 new Rect(4, y, contentWidth - 34, rowHeight - 3),
-                current, typeof(Sprite), allowSceneObjects: false) as Sprite;
+                current, typeof(FileAsset), allowSceneObjects: false);
             if (selected is not null)
             {
                 var selectedPath = AssetDatabase.GetAssetPath(selected);
-                if (selectedPath.Length > 0 && !selectedPath.Equals(reference, StringComparison.OrdinalIgnoreCase))
+                if (TryLoadImportedSprite(selectedPath, out _) &&
+                    !selectedPath.Equals(reference, StringComparison.OrdinalIgnoreCase))
                 {
                     _atlas.SpriteReferences[index] = selectedPath;
                     _dirty = true;
                 }
+                else if (!selectedPath.Equals(reference, StringComparison.OrdinalIgnoreCase))
+                    _message = "Choose a PNG whose Texture Type is Sprite.";
             }
             else if (current is null)
             {
@@ -186,7 +189,7 @@ public sealed class TextureAtlasWindow : EditorWindow
     private void AddSelected()
     {
         foreach (var path in Selection.objects.Select(AssetDatabase.GetAssetPath)
-                     .Where(path => path.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase)))
+                     .Where(path => TryLoadImportedSprite(path, out _)))
             AddSource(path);
     }
 
@@ -194,11 +197,23 @@ public sealed class TextureAtlasWindow : EditorWindow
     {
         path = path.Trim().Replace('\\', '/');
         if (string.IsNullOrWhiteSpace(path) ||
-            !path.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase) ||
             _atlas.SpriteReferences.Contains(path, StringComparer.OrdinalIgnoreCase)) return;
+        if (!TryLoadImportedSprite(path, out _))
+        {
+            _message = "Choose a PNG whose Texture Type is Sprite.";
+            return;
+        }
         _atlas.SpriteReferences.Add(path);
         _sourcePath = string.Empty;
         _dirty = true;
+    }
+
+    private static bool TryLoadImportedSprite(string path, out Sprite? sprite)
+    {
+        sprite = null;
+        if (!Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase)) return false;
+        sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        return sprite is not null;
     }
 
     private void NewAtlas()

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using BEngine.Documents;
 using BEngine.Editor;
@@ -9,7 +10,7 @@ namespace BEngine.ExampleTests.TextureAtlas;
 
 internal static class Program
 {
-    private static int Main()
+    private static int Main(string[] args)
     {
         var repository = FindRepositoryRoot();
         var testRoot = Path.Combine(repository, "Temp", "TextureAtlasTests");
@@ -18,12 +19,22 @@ internal static class Program
             if (Directory.Exists(testRoot)) Directory.Delete(testRoot, recursive: true);
             var assets = Directory.CreateDirectory(Path.Combine(testRoot, "Assets")).FullName;
             Application.dataPath = assets;
+            if (args.Contains("--runtime-sprite-import-only", StringComparer.Ordinal))
+            {
+                _ = BuildAtlas(assets);
+                ValidateImportedSpriteRuntime(assets);
+                ValidateTextureRuntimeSampling(assets);
+                Console.WriteLine("TEXTURE_SPRITE_IMPORT_RUNTIME_OK|meta-mode,pivot,sampling,png-only,atlas,legacy");
+                return 0;
+            }
             Require(AssetTypeRegistry.Resolve("Assets/Test.atlas.yaml") == nameof(BEngine.TextureAtlas),
                 "The editor did not register the .atlas.yaml asset type.");
             Require(AssetTypeRegistry.ResolveAssetType("Assets/Test.atlas.yaml") == typeof(BEngine.TextureAtlas) &&
                     AssetTypeRegistry.ResolveAssetType("Assets/Test.sprite.yaml") == typeof(Sprite),
                 "Texture Atlas or Sprite did not register as a typed BAsset.");
             var atlas = BuildAtlas(assets);
+            ValidateImportedSpriteRuntime(assets);
+            ValidateTextureRuntimeSampling(assets);
             ValidateAtlas(atlas, assets);
             ValidateDeterminism(atlas, assets);
             ValidateOutputCollision(assets);
@@ -38,7 +49,8 @@ internal static class Program
                               "deterministic,source-overwrite-guard,uv,sprite-reference-reverse-lookup," +
                               "sprite-particle-batch,package-atlas-lazy-index,removed-reference," +
                               "legacy-atlas,legacy-renderer-migration,solid-sprite," +
-                              "default-example-v2,tile-palette-import");
+                              "default-example-v2,tile-palette-import,texture-imported-sprite," +
+                              "texture-runtime-sampling,png-only-import");
             return 0;
         }
         catch (Exception exception)
@@ -83,6 +95,176 @@ internal static class Program
                 result.TextureAssetPath == "Assets/Combined.png",
             "Texture atlas build result used incorrect asset paths.");
         return BEngine.TextureAtlas.Load(manifest);
+    }
+
+    private static void ValidateImportedSpriteRuntime(string assets)
+    {
+        var importedPath = Path.Combine(assets, "imported.png");
+        var textureOnlyPath = Path.Combine(assets, "texture-only.png");
+        File.WriteAllBytes(importedPath, PngImageCodec.EncodeRgba(2, 2,
+            SolidPixels(2, 2, 25, 210, 120, 255)));
+        File.WriteAllBytes(textureOnlyPath, PngImageCodec.EncodeRgba(1, 1,
+            SolidPixels(1, 1, 180, 90, 30, 255)));
+        WriteTextureMeta(importedPath, "Sprite", "0.25", "0.75");
+        WriteTextureMeta(textureOnlyPath, "Texture", "0.1", "0.9");
+
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            BAsset.ClearLoadedAssets();
+            var imported = BAsset.Load<Sprite>("Assets/imported.png");
+            Require(imported is not null && imported.Texture == "Assets/imported.png" &&
+                    imported.assetPath == "Assets/imported.png" &&
+                    Math.Abs((double)imported.pivot.x - 0.25) < 0.0001 &&
+                    Math.Abs((double)imported.pivot.y - 0.75) < 0.0001,
+                "A texture imported as Sprite did not load with invariant-culture pivot settings.");
+            Require(BAsset.Load<Texture>("Assets/imported.png") is { width: 2, height: 2 },
+                "A Sprite-mode image was no longer available as its underlying Texture.");
+            Require(BAsset.Load<Sprite>("Assets/texture-only.png") is null &&
+                    BAsset.Load<Sprite>("Assets/red.png") is null,
+                "A regular image without Sprite import mode was exposed as a Sprite.");
+
+            var directAtlas = new BEngine.TextureAtlas
+            {
+                name = "Imported Sprite Atlas",
+                MaxSize = 32,
+                Padding = 1,
+                Extrude = 0,
+                SpriteReferences = ["Assets/imported.png"]
+            };
+            var directAtlasPath = Path.Combine(assets, "Direct.atlas.yaml");
+            directAtlas.Save(directAtlasPath);
+            var directResult = TextureAtlasBuilder.Build(directAtlas, directAtlasPath);
+            directAtlas = BEngine.TextureAtlas.Load(directAtlasPath);
+            Require(directResult.SpriteCount == 1 && directResult.TextureAssetPath == "Assets/Direct.png" &&
+                    directAtlas.Sprites is
+                    [
+                        {
+                            Name: "imported", Source: "Assets/imported.png",
+                            PivotX: 0.25f, PivotY: 0.75f
+                        }
+                    ],
+                "TextureAtlasBuilder did not pack a direct PNG Sprite reference with its importer pivot.");
+            Require(directAtlas.LoadReferencedSprites() is [{ Texture: "Assets/imported.png" }],
+                "A TextureAtlas did not load its direct image reference through Sprite import settings.");
+            Expect<InvalidDataException>(() => new BEngine.TextureAtlas
+                {
+                    SpriteReferences = ["Assets/texture-only.png"]
+                }.LoadReferencedSprites(),
+                "A TextureAtlas accepted a direct image that was not imported as Sprite.");
+            var rejectedAtlasPath = Path.Combine(assets, "Rejected.atlas.yaml");
+            var rejectedAtlas = new BEngine.TextureAtlas
+            {
+                MaxSize = 32,
+                SpriteReferences = ["Assets/texture-only.png"]
+            };
+            rejectedAtlas.Save(rejectedAtlasPath);
+            Expect<InvalidDataException>(() => TextureAtlasBuilder.Build(rejectedAtlas, rejectedAtlasPath),
+                "TextureAtlasBuilder accepted a PNG whose TextureImporter type was not Sprite.");
+
+            TextureAtlasResolver.Clear();
+            var packed = TextureAtlasResolver.Resolve(imported!);
+            Require(packed.Texture == "Assets/Direct.png" &&
+                    packed.BatchIdentity.EndsWith("Assets/Direct.atlas.yaml", StringComparison.OrdinalIgnoreCase),
+                "A directly imported Sprite did not resolve to its TextureAtlas region.");
+            Require(TextureAtlasResolver.LoadSpriteReference("Assets/imported.png") is
+                    { Texture: "Assets/imported.png" } &&
+                    TextureAtlasResolver.LoadSpriteReference("Assets/texture-only.png") is null,
+                "Sprite reference deserialization did not enforce texture import mode.");
+            Require(BAsset.Load<Sprite>("Assets/red.sprite.yaml") is { Texture: "Assets/red.png" },
+                "Legacy .sprite.yaml loading compatibility was lost.");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+            BAsset.ClearLoadedAssets();
+            TextureAtlasResolver.Clear();
+        }
+    }
+
+    private static void WriteTextureMeta(
+        string texturePath,
+        string textureType,
+        string pivotX,
+        string pivotY,
+        TextureFilterMode filterMode = TextureFilterMode.Bilinear,
+        TextureWrapMode wrapMode = TextureWrapMode.Clamp) =>
+        File.WriteAllText(texturePath + ".meta", $$"""
+            format: BEngine.AssetMeta
+            version: 1
+            guid: {{Guid.NewGuid():N}}
+            importer: TextureImporter
+            assetType: Texture
+            sourceHash: ''
+            settings:
+              textureType: {{textureType}}
+              filterMode: {{filterMode}}
+              wrapMode: {{wrapMode}}
+              spritePivotX: '{{pivotX}}'
+              spritePivotY: '{{pivotY}}'
+            """);
+
+    private static void ValidateTextureRuntimeSampling(string assets)
+    {
+        var texturePath = Path.Combine(assets, "sampling.png");
+        File.WriteAllBytes(texturePath, PngImageCodec.EncodeRgba(2, 1,
+            SolidPixels(2, 1, 70, 120, 230, 255)));
+        WriteTextureMeta(texturePath, "Sprite", "0.2", "0.8",
+            TextureFilterMode.Point, TextureWrapMode.Mirror);
+
+        BAsset.ClearLoadedAssets();
+        Require(BAsset.Load<Texture>("Assets/sampling.png") is
+                {
+                    width: 2, height: 1,
+                    filterMode: TextureFilterMode.Point,
+                    wrapMode: TextureWrapMode.Mirror
+                } &&
+                BAsset.Load<Sprite>("Assets/sampling.png") is
+                {
+                    Texture: "Assets/sampling.png",
+                    PivotX: 0.2f,
+                    PivotY: 0.8f
+                },
+            "Texture and Sprite views did not consume the same TextureImporter metadata.");
+
+        using var device = new RecordingGraphicsDevice();
+        using var cache = new SceneTextureCache(device);
+        var pointMirror = (RecordingTexture)cache.Resolve("Assets/sampling.png");
+        Require(pointMirror.Description is
+                {
+                    MinFilter: GraphicsTextureFilter.Nearest,
+                    MagFilter: GraphicsTextureFilter.Nearest,
+                    AddressMode: GraphicsTextureAddressMode.MirroredRepeat
+                } && ReferenceEquals(pointMirror, cache.Resolve("Assets/sampling.png")),
+            "Point/Mirror TextureImporter settings were not applied to the runtime GPU texture.");
+
+        WriteTextureMeta(texturePath, "Sprite", "0.2", "0.8",
+            TextureFilterMode.Bilinear, TextureWrapMode.Repeat);
+        File.SetLastWriteTimeUtc(texturePath + ".meta", DateTime.UtcNow.AddSeconds(2));
+        var bilinearRepeat = (RecordingTexture)cache.Resolve("Assets/sampling.png");
+        Require(!ReferenceEquals(pointMirror, bilinearRepeat) && bilinearRepeat.Description is
+                {
+                    MinFilter: GraphicsTextureFilter.Linear,
+                    MagFilter: GraphicsTextureFilter.Linear,
+                    AddressMode: GraphicsTextureAddressMode.Repeat
+                },
+            "Changing only TextureImporter metadata did not rebuild the runtime GPU sampler.");
+
+        var unsupportedPath = Path.Combine(assets, "unsupported.jpg");
+        File.WriteAllBytes(unsupportedPath, PngImageCodec.EncodeRgba(1, 1,
+            SolidPixels(1, 1, 255, 255, 255, 255)));
+        WriteTextureMeta(unsupportedPath, "Sprite", "0.5", "0.5",
+            TextureFilterMode.Point, TextureWrapMode.Clamp);
+        BAsset.ClearLoadedAssets();
+        Require(BAsset.Load<Texture>("Assets/unsupported.jpg") is null &&
+                BAsset.Load<Sprite>("Assets/unsupported.jpg") is null &&
+                ((RecordingTexture)cache.Resolve("Assets/unsupported.jpg")).Label ==
+                "BEngine.Scene2D.MissingTexture" &&
+                AssetTypeRegistry.Resolve("Assets/unsupported.jpg") is null &&
+                AssetTypeRegistry.ResolveAssetType("Assets/unsupported.jpg") is null &&
+                AssetTypeRegistry.ResolveImporterType("Assets/unsupported.jpg") is null,
+            "An unsupported JPG was still advertised or loaded as a Texture/Sprite.");
     }
 
     private static void ValidateAtlas(BEngine.TextureAtlas atlas, string assets)
@@ -304,12 +486,16 @@ internal static class Program
         var atlas = BEngine.TextureAtlas.Load(Path.Combine(art, "Showcase.atlas.yaml"));
         Require(atlas.Version == 2 && atlas.Sources.Count == 0 && atlas.SpriteReferences.Count == 5 &&
                 atlas.SpriteReferences.All(reference =>
-                    reference.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase)) &&
+                    reference.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) &&
                 atlas.SpriteReferences.All(reference => File.Exists(Path.Combine(
                     repository, "Example", reference.Replace('/', Path.DirectorySeparatorChar)))) &&
                 atlas.Sprites.Count == 5 && atlas.Sprites.All(region =>
-                    region.Source.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase)),
-            "The default Showcase Atlas was not migrated to Sprite asset references.");
+                    region.Source.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) &&
+                atlas.SpriteReferences.All(reference =>
+                    File.ReadAllText(Path.Combine(repository, "Example",
+                            (reference + ".meta").Replace('/', Path.DirectorySeparatorChar)))
+                        .Contains("textureType: Sprite", StringComparison.Ordinal)),
+            "The default Showcase Atlas was not migrated to textures imported as Sprite.");
 
         var scene = Document.Load<SceneDocument>(
             Path.Combine(repository, "Example", "Assets", "Scenes", "Main.scene.yaml"));
@@ -323,10 +509,10 @@ internal static class Program
                 renderers.Where(renderer => renderer.Fields.TryGetValue("sprite", out var reference) &&
                                              reference.Length > 0)
                     .All(renderer => renderer.Fields["sprite"]
-                        .EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase)) &&
+                        .EndsWith(".png", StringComparison.OrdinalIgnoreCase)) &&
                 renderers.Any(renderer => !renderer.Fields.ContainsKey("sprite")) &&
                 particles.Any(particle => particle.Fields.ContainsKey("atlas")),
-            "The default Showcase Scene still serializes SpriteRenderer Atlas fields instead of Sprite assets.");
+            "The default Showcase Scene does not reference textures imported as Sprite.");
     }
 
     private static void ValidateTilePaletteImport(BEngine.TextureAtlas atlas)

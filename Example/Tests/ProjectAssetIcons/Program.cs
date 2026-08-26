@@ -31,7 +31,7 @@ internal static class Program
         Require(EditorAssetIcons.GetIconPath("Editor.uss").EndsWith("AssetStyle.png"),
             "USS icon mapping is missing.");
         var iconFile = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(),
-            "src", "Core", "EditorResources", EditorAssetIcons.ClosedFolder.Replace('/', Path.DirectorySeparatorChar)));
+            "src", "Core", "Editor", EditorAssetIcons.ClosedFolder.Replace('/', Path.DirectorySeparatorChar)));
         Require(FileUIRenderResourceResolver.Shared.TryResolveTexture(iconFile, out var texture) &&
                 texture.Width == 32 && texture.Height == 32,
             "Built-in project icon could not be decoded into a GPU texture.");

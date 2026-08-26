@@ -10,7 +10,7 @@ internal static class BEngineSkillCatalog
         var fullProjectRoot = Path.GetFullPath(projectRoot);
         var skills = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (EditorResources.FindPath($"Skills/bengine-core/{SkillFileName}") is { } coreSkill)
+        if (EditorResource.FindPath($"Skills/bengine-core/{SkillFileName}") is { } coreSkill)
             skills.Add(Path.GetFullPath(coreSkill));
 
         var packagesRoot = Path.Combine(fullProjectRoot, "Packages");
@@ -18,7 +18,7 @@ internal static class BEngineSkillCatalog
 
         foreach (var packageRoot in Directory.EnumerateDirectories(packagesRoot, "*", SearchOption.TopDirectoryOnly))
         {
-            var skillsRoot = Path.Combine(packageRoot, "EditorResources", "Skills");
+            var skillsRoot = Path.Combine(packageRoot, EditorResource.DirectoryName, "Skills");
             if (!Directory.Exists(skillsRoot)) continue;
             foreach (var skillRoot in Directory.EnumerateDirectories(skillsRoot, "*", SearchOption.TopDirectoryOnly))
             {

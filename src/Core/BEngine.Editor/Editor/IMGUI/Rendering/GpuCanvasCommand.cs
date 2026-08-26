@@ -10,7 +10,7 @@ public readonly record struct GpuCanvasCommand(
     GpuCanvasRect ClipRect,
     GpuCanvasColor Color,
     string Content = "",
-    float FontSize = 13,
+    float FontSize = 14,
     string FontFamily = "",
     GpuCanvasColor Color2 = default,
     GpuCanvasColor Color3 = default,

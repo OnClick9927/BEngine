@@ -25,7 +25,7 @@ internal static class Program
             VerifyIconToolbarLanguage();
             VerifyPrefabWorkflow();
             VerifyAssemblyBoundary();
-            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,double-click,numeric-edit-buffer,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,project-tree-row-clip,assets-packages-separator,icon-toolbar,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
+            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,double-click,numeric-edit-buffer,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
             return 0;
         }
         catch (Exception exception)
@@ -54,8 +54,25 @@ internal static class Program
         Require(!commands.Any(item => item.Type == GpuCanvasCommandType.Text &&
                                       item.Content is "Refresh" or "Warnings"),
             "Icon-only toolbar rendered tooltip text into the compact toolbar.");
-        Require(commands.Count(item => item.Type == GpuCanvasCommandType.SolidRect) == 2,
-            "Icon toolbar emitted an extra checkbox or unstable background command.");
+        var surfaceColors = new HashSet<GpuCanvasColor>
+        {
+            GpuCanvasColor.FromColor(EditorStyles.toolbarIconButton.normal.backgroundColor),
+            GpuCanvasColor.FromColor(EditorStyles.toolbarIconButton.hover.backgroundColor),
+            GpuCanvasColor.FromColor(EditorStyles.toolbarIconButtonSelected.normal.backgroundColor)
+        };
+        foreach (var image in images)
+            Require(commands.Any(item => item.Type == GpuCanvasCommandType.SolidRect &&
+                                         surfaceColors.Contains(item.Color) &&
+                                         item.Rect.X <= image.Rect.X && item.Rect.Y <= image.Rect.Y &&
+                                         item.Rect.Right >= image.Rect.Right && item.Rect.Bottom >= image.Rect.Bottom),
+                $"Icon toolbar button '{image.Content}' has no distinguishable surface.");
+        var separator = GpuCanvasColor.FromColor(EditorStyles.toolbarIconButton.normal.borderColor);
+        foreach (var image in images)
+            Require(commands.Any(item => item.Type == GpuCanvasCommandType.SolidRect &&
+                                         item.Color == separator && Math.Abs(item.Rect.Width - 1) < .01f &&
+                                         item.Rect.X > image.Rect.Right && item.Rect.X - image.Rect.Right <= 6 &&
+                                         item.Rect.Y <= image.Rect.Y && item.Rect.Bottom >= image.Rect.Bottom),
+                $"Icon toolbar button '{image.Content}' has no vertical texture separator.");
     }
 
     private static void VerifyPrefabWorkflow()
@@ -120,9 +137,10 @@ internal static class Program
     {
         var commands = new List<GpuCanvasCommand>();
         Dispatch(new Event(EventType.Layout), commands, false);
+        var secondBoundary = GUI.skin.textField.CalcSize(new GUIContent("ab")).x;
         var click = new Event(EventType.MouseDown)
         {
-            mousePosition = new Vector2(4 + 5 + (Fix64)(2 * 13 * 0.58), 12), button = 0, clickCount = 1
+            mousePosition = new Vector2(4 + 4 + secondBoundary, 12), button = 0, clickCount = 1
         };
         Dispatch(click, commands, false);
         Dispatch(new Event(EventType.KeyDown) { character = 'X' }, commands, false);
@@ -493,9 +511,9 @@ internal static class Program
         var previousSelectedTreeFontSize = EditorStyles.treeViewRowSelected.fontSize;
         var skin = new GUISkin();
         skin.button.fontSize = 20;
+        GUI.skin = skin;
         EditorStyles.treeViewRow.fontSize = 20;
         EditorStyles.treeViewRowSelected.fontSize = 20;
-        GUI.skin = skin;
         var commands = new List<GpuCanvasCommand>();
         try
         {

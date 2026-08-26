@@ -21,19 +21,32 @@ internal sealed class SceneTextureCache : IDisposable
         if (string.IsNullOrWhiteSpace(source) || source.StartsWith("missing:", StringComparison.Ordinal))
             return Missing();
         var path = ResolvePath(source);
-        var writeTime = path is not null ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
-        if (_textures.TryGetValue(source, out var cached) && cached.WriteTimeUtc == writeTime)
+        if (!Texture.IsSupportedSourcePath(path ?? source)) return Missing();
+        var stamp = SourceStamp.Read(path);
+        if (_textures.TryGetValue(source, out var cached) && cached.Stamp == stamp)
             return cached.Texture;
         if (!TryRead(source, path, out var bytes) ||
             !PngImageCodec.TryDecode(bytes, out var width, out var height, out var pixels))
             return Missing();
+        var (filterMode, wrapMode) = path is null
+            ? (TextureFilterMode.Bilinear, TextureWrapMode.Clamp)
+            : BAssetReferenceLoader.ReadTextureSamplingSettings(path);
+        var filter = filterMode == TextureFilterMode.Point
+            ? GraphicsTextureFilter.Nearest
+            : GraphicsTextureFilter.Linear;
+        var addressMode = wrapMode switch
+        {
+            TextureWrapMode.Clamp => GraphicsTextureAddressMode.ClampToEdge,
+            TextureWrapMode.Repeat => GraphicsTextureAddressMode.Repeat,
+            TextureWrapMode.Mirror => GraphicsTextureAddressMode.MirroredRepeat,
+            _ => GraphicsTextureAddressMode.ClampToEdge
+        };
         var texture = _device.CreateTexture2D(
             $"BEngine.Scene2D.{Path.GetFileName(source)}",
             new GraphicsTextureDescription(width, height, GraphicsTextureFormat.Rgba8Unorm,
-                GraphicsTextureUsage.Sampled, GraphicsTextureFilter.Nearest,
-                GraphicsTextureFilter.Nearest, GraphicsTextureAddressMode.ClampToEdge), pixels);
+                GraphicsTextureUsage.Sampled, filter, filter, addressMode), pixels);
         if (_textures.Remove(source, out var previous)) previous.Texture.Dispose();
-        _textures[source] = new CacheEntry(writeTime, texture);
+        _textures[source] = new CacheEntry(stamp, texture);
         return texture;
     }
 
@@ -103,5 +116,17 @@ internal sealed class SceneTextureCache : IDisposable
         }
     }
 
-    private sealed record CacheEntry(DateTime WriteTimeUtc, IGraphicsTexture2D Texture);
+    private readonly record struct SourceStamp(DateTime SourceWriteTimeUtc, DateTime MetaWriteTimeUtc)
+    {
+        internal static SourceStamp Read(string? path)
+        {
+            if (path is null) return default;
+            var metaPath = path + ".meta";
+            return new SourceStamp(
+                File.GetLastWriteTimeUtc(path),
+                File.Exists(metaPath) ? File.GetLastWriteTimeUtc(metaPath) : DateTime.MinValue);
+        }
+    }
+
+    private sealed record CacheEntry(SourceStamp Stamp, IGraphicsTexture2D Texture);
 }

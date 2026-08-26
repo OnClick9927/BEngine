@@ -8,6 +8,6 @@
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../src/Core/BEngine.Launcher/BEngine.Launcher.csproj" />
+    <ProjectReference Include="../../../src/Hub/BEngine.Launcher/BEngine.Launcher.csproj" />
   </ItemGroup>
 </Project>

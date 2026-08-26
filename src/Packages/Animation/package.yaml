@@ -5,6 +5,9 @@ packageVersion: 1.0.0
 displayName: Animation
 description: Fixed-point animation curves, YAML clips and controller-driven Animator state machines.
 enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
 runtime:
   assembly: BEngine.Animation
   rootNamespace: BEngine.Animation

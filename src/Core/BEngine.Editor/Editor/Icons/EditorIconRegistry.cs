@@ -34,7 +34,7 @@ public static class EditorIconRegistry
                                type.GetCustomAttribute<EditorIconAttribute>(inherit: true)?.resourcePath;
             return Resolved[type] = string.IsNullOrWhiteSpace(resourcePath)
                 ? null
-                : EditorResources.FindPath(resourcePath) ?? resourcePath;
+                : EditorResource.FindPath(resourcePath) ?? resourcePath;
         }
     }
 

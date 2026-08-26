@@ -3,6 +3,8 @@ namespace BEngine.Editor;
 [CustomEditor(typeof(Sprite))]
 public sealed class SpriteEditor : Editor
 {
+    private const string ImportedSpriteGuidance =
+        "This Sprite is imported from a Texture. Select the source Texture and edit its Sprite settings in TextureImporter.";
     private string _message = string.Empty;
 
     public override void OnInspectorGUI()
@@ -10,6 +12,12 @@ public sealed class SpriteEditor : Editor
         var sprite = (Sprite)target;
         GUILayout.Label(new GUIContent(sprite.name, EditorBuiltinIcons.Assets.Image, sprite.assetPath),
             EditorStyles.inspectorTitlebar);
+
+        if (!IsLegacySprite(sprite))
+        {
+            DrawImportedSprite(sprite);
+            return;
+        }
 
         var currentTexture = AssetDatabase.LoadAssetAtPath<BEngine.Texture>(sprite.Texture);
         var changedBefore = GUI.changed;
@@ -42,6 +50,14 @@ public sealed class SpriteEditor : Editor
     public override void SaveChanges()
     {
         var sprite = (Sprite)target;
+        if (!IsLegacySprite(sprite))
+        {
+            hasUnsavedChanges = false;
+            EditorUtility.ClearDirty(sprite);
+            _message = ImportedSpriteGuidance;
+            return;
+        }
+
         try
         {
             sprite.Validate();
@@ -59,7 +75,16 @@ public sealed class SpriteEditor : Editor
 
     public override void DiscardChanges()
     {
-        if (AssetDatabase.RevertAsset((Sprite)target))
+        var sprite = (Sprite)target;
+        if (!IsLegacySprite(sprite))
+        {
+            hasUnsavedChanges = false;
+            EditorUtility.ClearDirty(sprite);
+            _message = ImportedSpriteGuidance;
+            return;
+        }
+
+        if (AssetDatabase.RevertAsset(sprite))
         {
             hasUnsavedChanges = false;
             _message = string.Empty;
@@ -78,5 +103,19 @@ public sealed class SpriteEditor : Editor
             if (GUILayout.Button("Apply", GUILayout.Width(72))) SaveChanges();
         }
         GUILayout.EndHorizontal();
+    }
+
+    private static bool IsLegacySprite(Sprite sprite) =>
+        sprite.assetPath.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase);
+
+    private static void DrawImportedSprite(Sprite sprite)
+    {
+        using (new EditorGUI.DisabledScope(true))
+        {
+            var texture = AssetDatabase.LoadAssetAtPath<BEngine.Texture>(sprite.Texture);
+            _ = EditorGUILayout.ObjectField("Texture", texture, typeof(BEngine.Texture), allowSceneObjects: false);
+            _ = EditorGUILayout.Vector2Field("Pivot", sprite.pivot);
+        }
+        EditorGUILayout.HelpBox(ImportedSpriteGuidance, MessageType.Info);
     }
 }

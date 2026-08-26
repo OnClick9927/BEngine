@@ -7,6 +7,7 @@ using BEngine.Editor;
 using BEngine.Editor.Documents;
 using BEngine.Editor.Rendering;
 using BEngine.ProjectSystem;
+using BEngine.Rendering;
 using BEngine.SceneManagement;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
 
@@ -219,6 +220,14 @@ internal sealed class EditorApplicationHarness : IDisposable
 
     public void SetCameraPosition(System.Numerics.Vector2 value) => SetField("_editorCameraPosition", value);
     public void SetCameraSize(float value) => SetField("_editorCameraSize", value);
+
+    public RenderCamera ResolveEditorCamera(float viewportHeight) =>
+        (RenderCamera)(RequireMethod("EditorCamera").Invoke(Application, [viewportHeight]) ??
+                       throw new InvalidOperationException("The editor Scene camera was not resolved."));
+
+    public float ResolveEditorWorldUnitsPerPixel(float viewportHeight) =>
+        (float)(RequireMethod("EditorWorldUnitsPerPixel").Invoke(Application, [viewportHeight]) ??
+                throw new InvalidOperationException("The editor Scene scale was not resolved."));
 
     public System.Numerics.Vector2 CameraPosition =>
         (System.Numerics.Vector2)(GetField(Application, "_editorCameraPosition") ?? default(System.Numerics.Vector2));

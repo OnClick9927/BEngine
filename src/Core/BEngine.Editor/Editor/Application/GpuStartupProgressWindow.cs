@@ -8,12 +8,14 @@ internal sealed class GpuStartupProgressWindow : IDisposable
     private readonly ConcurrentQueue<EditorProgressInfo> _pending = new();
     private readonly int _ownerThreadId = Environment.CurrentManagedThreadId;
     private readonly ImGuiNativeWindow _window;
+    private readonly IDisposable _platformProgressSuppression;
     private EditorProgressInfo _state = new("打开项目", "正在准备编辑器...", 0, true, false, false);
     private bool _disposed;
 
     private GpuStartupProgressWindow()
     {
         _window = new ImGuiNativeWindow("BEngine - 打开项目", 560, 200);
+        _platformProgressSuppression = EditorUtility.SuppressPlatformProgress();
         _window.gui += OnGUI;
         EditorUtility.progressChanged += OnProgressChanged;
         try
@@ -26,6 +28,7 @@ internal sealed class GpuStartupProgressWindow : IDisposable
         {
             EditorUtility.progressChanged -= OnProgressChanged;
             _window.Dispose();
+            _platformProgressSuppression.Dispose();
             throw;
         }
     }
@@ -47,6 +50,7 @@ internal sealed class GpuStartupProgressWindow : IDisposable
         EditorUtility.progressChanged -= OnProgressChanged;
         if (!_window.isClosing) _window.Close();
         _window.Dispose();
+        _platformProgressSuppression.Dispose();
         GC.SuppressFinalize(this);
     }
 

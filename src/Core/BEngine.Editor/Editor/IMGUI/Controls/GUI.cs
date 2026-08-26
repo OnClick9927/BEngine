@@ -27,6 +27,14 @@ public static class GUI
         get;
         set => field = value ?? throw new ArgumentNullException(nameof(value));
     } = new();
+
+    internal static GUISkin initialSkin { get; private set; } = null!;
+
+    static GUI()
+    {
+        skin.ApplyPaletteDefaults(skin.palette, EditorAppearance.DefaultFontSize);
+        initialSkin = skin;
+    }
     public static string tooltip => _context?.Tooltip ?? string.Empty;
     internal static bool isEditingTextField => _activeTextControl != 0 &&
         GUIUtility.keyboardControl == _activeTextControl;
@@ -70,59 +78,95 @@ public static class GUI
         Event.ClearCurrent();
     }
 
-    public static void Label(Rect position, string text) => Label(position, new GUIContent(text), skin.label);
+    public static void Label(Rect position, string text) => Label(position, new GUIContent(text), null);
+    public static void Label(Rect position, string text, GUIStyle? style) =>
+        Label(position, new GUIContent(text), style);
     public static void Label(Rect position, GUIContent content, GUIStyle? style = null) =>
         DrawContent(position, content, style ?? skin.label, false, false);
-    public static void Box(Rect position, string text = "") => Box(position, new GUIContent(text), skin.box);
+    public static void Box(Rect position, string text = "") => Box(position, new GUIContent(text), null);
+    public static void Box(Rect position, string text, GUIStyle? style) =>
+        Box(position, new GUIContent(text), style);
     public static void Box(Rect position, GUIContent content, GUIStyle? style = null) =>
         DrawContent(position, content, style ?? skin.box, true, false);
 
-    public static bool Button(Rect position, string text) => Button(position, new GUIContent(text), skin.button);
-    public static bool Button(Rect position, GUIContent content, GUIStyle? style = null)
+    public static bool Button(Rect position, string text) => Button(position, new GUIContent(text), null);
+    public static bool Button(Rect position, string text, GUIStyle? style) =>
+        Button(position, new GUIContent(text), style);
+    public static bool Button(Rect position, GUIContent content, GUIStyle? style = null) =>
+        Button(position, content, style, FocusType.Keyboard);
+
+    internal static bool Button(Rect position, GUIContent content, GUIStyle? style, FocusType focusType)
     {
-        var id = GUIUtility.GetControlID(content.text.GetHashCode(StringComparison.Ordinal), FocusType.Keyboard, position);
-        var pressed = DoButton(id, position);
+        var id = GUIUtility.GetControlID(content.text.GetHashCode(StringComparison.Ordinal), focusType, position);
+        var pressed = DoButton(id, position, focusType == FocusType.Keyboard);
         DrawContent(position, content, style ?? skin.button, true, GUIUtility.hotControl == id,
             GUIUtility.keyboardControl == id);
         return pressed;
     }
 
     public static bool Toggle(Rect position, bool value, string text) =>
-        Toggle(position, value, new GUIContent(text), skin.toggle);
+        Toggle(position, value, new GUIContent(text), null);
+    public static bool Toggle(Rect position, bool value, string text, GUIStyle? style) =>
+        Toggle(position, value, new GUIContent(text), style);
     public static bool Toggle(Rect position, bool value, GUIContent content, GUIStyle? style = null)
     {
+        style ??= skin.toggle;
         var id = GUIUtility.GetControlID(content.text.GetHashCode(StringComparison.Ordinal), FocusType.Keyboard, position);
         if (DoButton(id, position)) { value = !value; changed = true; }
+        var absolute = _context?.Translate(position) ?? position;
+        var hovered = absolute.Contains(PointerPosition) && PointerInsideClip(PointerPosition);
+        var active = GUIUtility.hotControl == id;
+        var focused = GUIUtility.keyboardControl == id;
+        var state = ResolveStyleState(style, value, active, focused, hovered);
         var boxSize = Fix64.Clamp(position.height - 6, 13, 16);
         var box = new Rect(position.x, position.y + (position.height - boxSize) / 2, boxSize, boxSize);
-        DrawRect(box, value ? EditorAppearance.palette.Accent : EditorAppearance.palette.Field);
-        DrawBorder(box, EditorAppearance.palette.Border, 1);
+        DrawStyleBackground(box, state, style.borderWidth);
         if (value)
             AddCommand(GpuCanvasCommandType.Image,
                 new Rect(box.x + 1, box.y + 1, Fix64.Max(0, box.width - 2), Fix64.Max(0, box.height - 2)),
-                enabled ? Color.white : EditorAppearance.palette.DisabledText,
+                state.textColor * contentColor * color,
                 EditorBuiltinIcons.Toolbar.Check);
-        Label(new Rect(position.x + boxSize + 6, position.y,
+        DrawContent(new Rect(position.x + boxSize + 6, position.y,
                 Fix64.Max(0, position.width - boxSize - 6), position.height), content,
-            style ?? skin.toggle);
+            style, false, active, focused, value);
         return value;
     }
 
     public static string TextField(Rect position, string text, int maxLength = -1, GUIStyle? style = null) =>
         DoTextField(position, text, maxLength, false, style ?? skin.textField);
+    public static string TextField(Rect position, string text, GUIStyle? style) =>
+        DoTextField(position, text, -1, false, style ?? skin.textField);
     public static string TextArea(Rect position, string text, int maxLength = -1, GUIStyle? style = null) =>
         DoTextField(position, text, maxLength, true, style ?? skin.textArea);
+    public static string TextArea(Rect position, string text, GUIStyle? style) =>
+        DoTextField(position, text, -1, true, style ?? skin.textArea);
     public static string PasswordField(Rect position, string password, char maskChar = '*', int maxLength = -1,
         GUIStyle? style = null)
     {
         var value = DoTextField(position, password, maxLength, false, style ?? skin.textField, maskChar);
         return value;
     }
+    public static string PasswordField(Rect position, string password, GUIStyle? style) =>
+        PasswordField(position, password, '*', -1, style);
+    public static string PasswordField(Rect position, string password, char maskChar, GUIStyle? style) =>
+        PasswordField(position, password, maskChar, -1, style);
 
     public static Fix64 HorizontalSlider(Rect position, Fix64 value, Fix64 leftValue, Fix64 rightValue) =>
-        Slider(position, value, leftValue, rightValue, false);
+        HorizontalSlider(position, value, leftValue, rightValue, null, null);
+    public static Fix64 HorizontalSlider(Rect position, Fix64 value, Fix64 leftValue, Fix64 rightValue,
+        GUIStyle? slider) => HorizontalSlider(position, value, leftValue, rightValue, slider, null);
+    public static Fix64 HorizontalSlider(Rect position, Fix64 value, Fix64 leftValue, Fix64 rightValue,
+        GUIStyle? slider, GUIStyle? thumb) =>
+        Slider(position, value, leftValue, rightValue, false,
+            slider ?? skin.horizontalSlider, thumb ?? skin.horizontalSliderThumb);
     public static Fix64 VerticalSlider(Rect position, Fix64 value, Fix64 topValue, Fix64 bottomValue) =>
-        Slider(position, value, topValue, bottomValue, true);
+        VerticalSlider(position, value, topValue, bottomValue, null, null);
+    public static Fix64 VerticalSlider(Rect position, Fix64 value, Fix64 topValue, Fix64 bottomValue,
+        GUIStyle? slider) => VerticalSlider(position, value, topValue, bottomValue, slider, null);
+    public static Fix64 VerticalSlider(Rect position, Fix64 value, Fix64 topValue, Fix64 bottomValue,
+        GUIStyle? slider, GUIStyle? thumb) =>
+        Slider(position, value, topValue, bottomValue, true,
+            slider ?? skin.verticalSlider, thumb ?? skin.verticalSliderThumb);
     public static void DrawTexture(Rect position, string imagePath) => AddCommand(GpuCanvasCommandType.Image,
         position, new Color(1, 1, 1, 1), imagePath);
     public static void DrawRect(Rect position, Color colorValue) =>
@@ -143,10 +187,32 @@ public static class GUI
     public static void BeginClip(Rect position) => _context?.PushClip(position);
     public static void EndClip() => _context?.PopClip();
     public static Vector2 BeginScrollView(Rect position, Vector2 scrollPosition, Rect viewRect)
+        => BeginScrollView(position, scrollPosition, viewRect, null, null, null, null, null);
+
+    public static Vector2 BeginScrollView(Rect position, Vector2 scrollPosition, Rect viewRect,
+        GUIStyle? background) => BeginScrollView(position, scrollPosition, viewRect,
+        null, null, null, null, background);
+
+    public static Vector2 BeginScrollView(Rect position, Vector2 scrollPosition, Rect viewRect,
+        GUIStyle? horizontalScrollbar, GUIStyle? verticalScrollbar, GUIStyle? background) =>
+        BeginScrollView(position, scrollPosition, viewRect, horizontalScrollbar, null,
+            verticalScrollbar, null, background);
+
+    public static Vector2 BeginScrollView(Rect position, Vector2 scrollPosition, Rect viewRect,
+        GUIStyle? horizontalScrollbar, GUIStyle? horizontalScrollbarThumb,
+        GUIStyle? verticalScrollbar, GUIStyle? verticalScrollbarThumb, GUIStyle? background)
     {
         if (_context is null) return scrollPosition;
+        horizontalScrollbar ??= skin.horizontalScrollbar;
+        horizontalScrollbarThumb ??= skin.horizontalScrollbarThumb;
+        verticalScrollbar ??= skin.verticalScrollbar;
+        verticalScrollbarThumb ??= skin.verticalScrollbarThumb;
+        background ??= skin.scrollView;
         var viewport = _context.Translate(position);
         var pointer = PointerPosition;
+        var hovered = viewport.Contains(pointer) && PointerInsideClip(pointer);
+        DrawStyleBackground(position, ResolveStyleState(background, false, false, false, hovered),
+            background.borderWidth);
         var maxX = Fix64.Max(0, viewRect.width - position.width);
         var maxY = Fix64.Max(0, viewRect.height - position.height);
         if (Event.current.type == EventType.ScrollWheel && viewport.Contains(pointer))
@@ -157,7 +223,8 @@ public static class GUI
         }
         scrollPosition = new Vector2(Fix64.Clamp(scrollPosition.x, 0, maxX),
             Fix64.Clamp(scrollPosition.y, 0, maxY));
-        scrollPosition = HandleAndDrawScrollbars(position, scrollPosition, viewRect);
+        scrollPosition = HandleAndDrawScrollbars(position, scrollPosition, viewRect,
+            horizontalScrollbar, horizontalScrollbarThumb, verticalScrollbar, verticalScrollbarThumb);
 
         var contentOrigin = new Vector2(viewport.x - scrollPosition.x, viewport.y - scrollPosition.y);
         _context.PushScrollView(position, scrollPosition);
@@ -286,7 +353,7 @@ public static class GUI
             _requestedMouseCursor = mouse;
     }
 
-    private static bool DoButton(int id, Rect rect)
+    private static bool DoButton(int id, Rect rect, bool takesKeyboardFocus = true)
     {
         if (!enabled) return false;
         var evt = Event.current;
@@ -295,7 +362,10 @@ public static class GUI
         switch (evt.GetTypeForControl(id))
         {
             case EventType.MouseDown when contains && evt.button == 0:
-                GUIUtility.hotControl = id; GUIUtility.keyboardControl = id; evt.Use(); return false;
+                GUIUtility.hotControl = id;
+                if (takesKeyboardFocus) GUIUtility.keyboardControl = id;
+                evt.Use();
+                return false;
             case EventType.MouseUp when GUIUtility.hotControl == id:
                 GUIUtility.hotControl = 0; evt.Use(); return contains;
             case EventType.KeyDown when GUIUtility.keyboardControl == id && evt.keyCode is KeyCode.Return or KeyCode.Space:
@@ -312,16 +382,14 @@ public static class GUI
         var controlName = _context?.AssignNextControlName(id) ?? string.Empty;
         var evt = Event.current;
         var absolute = _context?.Translate(rect) ?? rect;
-        if (enabled && evt.type == EventType.MouseDown && absolute.Contains(PointerPosition) &&
-            PointerInsideClip(PointerPosition) && evt.button == 0)
+        var hovered = absolute.Contains(PointerPosition) && PointerInsideClip(PointerPosition);
+        if (enabled && evt.type == EventType.MouseDown && hovered && evt.button == 0)
         {
             GUIUtility.keyboardControl = id;
             var visibleValue = mask is null ? value : new string(mask.Value, value.Length);
             var pointer = PointerPosition;
-            var localX = Fix64.Max(0, pointer.x - absolute.x - 5);
-            var characterWidth = Fix64.Max(1, style.fontSize * Fix64.FromDecimal(0.58m));
-            var clickedIndex = Math.Clamp((int)Math.Round((double)(localX / characterWidth)), 0,
-                visibleValue.Length);
+            var localX = Fix64.Max(0, pointer.x - absolute.x - TextHorizontalInset);
+            var clickedIndex = ClosestTextBoundary(visibleValue, localX, style);
             _context?.SetText(id, new TextState(value,
                 evt.clickCount >= 2 ? value.Length : clickedIndex,
                 evt.clickCount >= 2 ? 0 : clickedIndex,
@@ -356,23 +424,28 @@ public static class GUI
         GUIUtility.textFieldInput = focused;
         var displayed = new GUIContent(mask is null ? state.Text : new string(mask.Value, state.Text.Length));
         DrawContent(rect, displayed, style, true, false, focused);
+        var visualState = ResolveStyleState(style, false, false, focused, hovered);
         if (focused && Event.current.type == EventType.Repaint && state.Caret != state.Anchor)
         {
             var start = Math.Min(state.Caret, state.Anchor);
             var length = Math.Abs(state.Caret - state.Anchor);
-            var characterWidth = style.fontSize * Fix64.FromDecimal(0.58m);
-            DrawRect(new Rect(rect.x + 5 + characterWidth * start, rect.y + 3,
-                characterWidth * length, Fix64.Max(0, rect.height - 6)),
-                EditorAppearance.palette.Selection);
+            var visibleText = displayed.text;
+            var selectionX = TextBoundaryOffset(visibleText, start, style);
+            var selectionWidth = TextBoundaryOffset(visibleText, start + length, style) - selectionX;
+            DrawRect(new Rect(rect.x + TextHorizontalInset + selectionX, rect.y + 3,
+                selectionWidth, Fix64.Max(0, rect.height - 6)),
+                skin.palette.Selection);
         }
         if (focused && state.Caret != state.Anchor) DrawContent(rect, displayed, style, false, false, true);
         if (focused && Event.current.type == EventType.Repaint &&
             (Environment.TickCount64 - _caretBlinkStart) / 500 % 2 == 0)
         {
-            var caretX = (double)rect.x + 5 + Math.Min((double)(rect.width - 8),
-                state.Caret * (double)style.fontSize * 0.58);
-            DrawRect(new Rect((Fix64)caretX, rect.y + 3, 1, Fix64.Max(0, rect.height - 6)),
-                EditorAppearance.palette.Text);
+            var visibleText = displayed.text;
+            var caretOffset = Fix64.Min(Fix64.Max(0, rect.width - TextHorizontalInset * 2),
+                TextBoundaryOffset(visibleText, state.Caret, style));
+            DrawRect(new Rect(rect.x + TextHorizontalInset + caretOffset, rect.y + 3,
+                1, Fix64.Max(0, rect.height - 6)),
+                visualState.textColor * contentColor * color);
         }
         return state.Text;
     }
@@ -423,7 +496,8 @@ public static class GUI
         return state with { Text = text };
     }
 
-    private static Fix64 Slider(Rect rect, Fix64 value, Fix64 first, Fix64 second, bool vertical)
+    private static Fix64 Slider(Rect rect, Fix64 value, Fix64 first, Fix64 second, bool vertical,
+        GUIStyle sliderStyle, GUIStyle thumbStyle)
     {
         var id = GUIUtility.GetControlID("Slider".GetHashCode(StringComparison.Ordinal), FocusType.Passive, rect);
         var evt = Event.current;
@@ -440,39 +514,51 @@ public static class GUI
         }
         if (evt.type == EventType.MouseUp && GUIUtility.hotControl == id) { GUIUtility.hotControl = 0; evt.Use(); }
         var range = second - first; var normalized = range == 0 ? Fix64.Zero : Fix64.Clamp((value - first) / range, 0, 1);
+        var trackThickness = vertical
+            ? sliderStyle.fixedWidth > 0 ? sliderStyle.fixedWidth : (Fix64)4
+            : sliderStyle.fixedHeight > 0 ? sliderStyle.fixedHeight : (Fix64)4;
+        trackThickness = Fix64.Clamp(trackThickness, 1, vertical ? rect.width : rect.height);
         var track = vertical
-            ? new Rect(rect.x + (rect.width - 4) / 2, rect.y, 4, rect.height)
-            : new Rect(rect.x, rect.y + (rect.height - 4) / 2, rect.width, 4);
-        DrawRect(track, EditorAppearance.palette.ScrollTrack);
+            ? new Rect(rect.x + (rect.width - trackThickness) / 2, rect.y, trackThickness, rect.height)
+            : new Rect(rect.x, rect.y + (rect.height - trackThickness) / 2, rect.width, trackThickness);
+        var active = GUIUtility.hotControl == id;
+        DrawStyleBackground(track, ResolveStyleState(sliderStyle, false, active, false, contains),
+            sliderStyle.borderWidth);
+        var thumbLength = vertical
+            ? thumbStyle.fixedHeight > 0 ? thumbStyle.fixedHeight : (Fix64)10
+            : thumbStyle.fixedWidth > 0 ? thumbStyle.fixedWidth : (Fix64)10;
+        thumbLength = Fix64.Clamp(thumbLength, 1, vertical ? rect.height : rect.width);
+        var thumbCross = vertical
+            ? thumbStyle.fixedWidth > 0 ? Fix64.Min(rect.width, thumbStyle.fixedWidth) : rect.width
+            : thumbStyle.fixedHeight > 0 ? Fix64.Min(rect.height, thumbStyle.fixedHeight) : rect.height;
         var thumb = vertical
-            ? new Rect(rect.x, rect.y + normalized * Fix64.Max(0, rect.height - 10), rect.width, 10)
-            : new Rect(rect.x + normalized * Fix64.Max(0, rect.width - 10), rect.y, 10, rect.height);
-        var hovered = contains || GUIUtility.hotControl == id;
-        DrawRect(thumb, hovered ? EditorAppearance.palette.ScrollThumbHover : EditorAppearance.palette.ScrollThumb);
-        DrawBorder(thumb, EditorAppearance.palette.Border, 1);
+            ? new Rect(rect.x + (rect.width - thumbCross) / 2,
+                rect.y + normalized * Fix64.Max(0, rect.height - thumbLength), thumbCross, thumbLength)
+            : new Rect(rect.x + normalized * Fix64.Max(0, rect.width - thumbLength),
+                rect.y + (rect.height - thumbCross) / 2, thumbLength, thumbCross);
+        var absoluteThumb = _context?.Translate(thumb) ?? thumb;
+        var thumbHovered = absoluteThumb.Contains(PointerPosition) && PointerInsideClip(PointerPosition);
+        DrawStyleBackground(thumb, ResolveStyleState(thumbStyle, false, active, false, thumbHovered),
+            thumbStyle.borderWidth);
         return value;
     }
 
     private static void DrawContent(Rect rect, GUIContent content, GUIStyle style, bool background, bool active,
-        bool focused = false)
+        bool focused = false, bool on = false)
     {
         if (_context is null || Event.current.type != EventType.Repaint) return;
         var absolute = _context?.Translate(rect) ?? rect;
         var hovered = absolute.Contains(PointerPosition) && PointerInsideClip(PointerPosition);
-        var state = !enabled ? style.disabled : active ? style.active : focused ? style.focused :
-            hovered ? style.hover : style.normal;
-        if (background && state.backgroundColor.a > 0)
-        {
-            DrawRect(rect, state.backgroundColor * backgroundColor);
-            DrawBorder(rect, state.borderColor, style.borderWidth);
-        }
+        var state = ResolveStyleState(style, on, active, focused, hovered);
+        if (background && (state.backgroundColor.a > 0 || state.backgroundImage is not null))
+            DrawStyleBackground(rect, state, style.borderWidth);
         var hasImage = !string.IsNullOrWhiteSpace(content.image);
         if (hasImage)
         {
             var iconSize = Fix64.Min(16, Fix64.Max(0, rect.height - 4));
             AddCommand(GpuCanvasCommandType.Image,
                 new Rect(rect.x + 3, rect.y + (rect.height - iconSize) / 2, iconSize, iconSize),
-                enabled ? Color.white : EditorAppearance.palette.DisabledText, content.image);
+                state.textColor * contentColor * color, content.image);
         }
         var inset = background ? (Fix64)4 : Fix64.Zero;
         var textRect = hasImage
@@ -535,7 +621,7 @@ public static class GUI
     }
 
     private static void AddCommand(GpuCanvasCommandType type, Rect rect, Color commandColor,
-        string content = "", float fontSize = 13)
+        string content = "", float fontSize = 14)
     {
         if (_context is null || Event.current.type != EventType.Repaint) return;
         var translated = _context.Translate(rect);
@@ -570,7 +656,9 @@ public static class GUI
         GUIUtility.currentViewHeight = state.ViewHeight;
     }
 
-    private static Vector2 HandleAndDrawScrollbars(Rect viewport, Vector2 scroll, Rect content)
+    private static Vector2 HandleAndDrawScrollbars(Rect viewport, Vector2 scroll, Rect content,
+        GUIStyle horizontalStyle, GUIStyle horizontalThumbStyle,
+        GUIStyle verticalStyle, GUIStyle verticalThumbStyle)
     {
         var verticalId = GUIUtility.GetControlID(
             "VerticalScrollbar".GetHashCode(StringComparison.Ordinal), FocusType.Passive, viewport);
@@ -581,30 +669,53 @@ public static class GUI
         var verticalRange = Fix64.Max(0, content.height - viewport.height);
         if (verticalRange > 0)
         {
-            var track = new Rect(viewport.xMax - 9, viewport.y, 9, viewport.height);
+            var trackWidth = verticalStyle.fixedWidth > 0 ? verticalStyle.fixedWidth : (Fix64)9;
+            trackWidth = Fix64.Clamp(trackWidth, 1, viewport.width);
+            var track = new Rect(viewport.xMax - trackWidth, viewport.y, trackWidth, viewport.height);
+            var minimumThumbHeight = verticalThumbStyle.fixedHeight > 0
+                ? verticalThumbStyle.fixedHeight : Fix64.Min(24, viewport.height);
             var thumbHeight = Fix64.Min(viewport.height,
-                Fix64.Max(Fix64.Min(24, viewport.height), viewport.height * viewport.height / content.height));
+                Fix64.Max(Fix64.Min(minimumThumbHeight, viewport.height),
+                    viewport.height * viewport.height / content.height));
             var thumbY = viewport.y + scroll.y / verticalRange * Fix64.Max(0, viewport.height - thumbHeight);
-            var thumb = new Rect(track.x + 2, thumbY, 5, thumbHeight);
+            var thumbWidth = verticalThumbStyle.fixedWidth > 0
+                ? Fix64.Min(track.width, verticalThumbStyle.fixedWidth)
+                : Fix64.Max(1, track.width - 4);
+            var thumb = new Rect(track.x + (track.width - thumbWidth) / 2, thumbY, thumbWidth, thumbHeight);
             scroll = new Vector2(scroll.x,
                 HandleScrollbar(verticalId, track, thumb, scroll.y, verticalRange, true));
-            DrawRect(track, EditorAppearance.palette.ScrollTrack);
-            DrawRect(thumb, IsScrollbarHovered(verticalId, thumb)
-                ? EditorAppearance.palette.ScrollThumbHover : EditorAppearance.palette.ScrollThumb);
+            var trackHovered = IsRectHovered(track);
+            DrawStyleBackground(track,
+                ResolveStyleState(verticalStyle, false, GUIUtility.hotControl == verticalId, false, trackHovered),
+                verticalStyle.borderWidth);
+            DrawStyleBackground(thumb, ResolveStyleState(verticalThumbStyle, false,
+                    GUIUtility.hotControl == verticalId, false, IsScrollbarHovered(verticalId, thumb)),
+                verticalThumbStyle.borderWidth);
         }
         var horizontalRange = Fix64.Max(0, content.width - viewport.width);
         if (horizontalRange > 0)
         {
-            var track = new Rect(viewport.x, viewport.yMax - 9, viewport.width, 9);
+            var trackHeight = horizontalStyle.fixedHeight > 0 ? horizontalStyle.fixedHeight : (Fix64)9;
+            trackHeight = Fix64.Clamp(trackHeight, 1, viewport.height);
+            var track = new Rect(viewport.x, viewport.yMax - trackHeight, viewport.width, trackHeight);
+            var minimumThumbWidth = horizontalThumbStyle.fixedWidth > 0
+                ? horizontalThumbStyle.fixedWidth : Fix64.Min(24, viewport.width);
             var thumbWidth = Fix64.Min(viewport.width,
-                Fix64.Max(Fix64.Min(24, viewport.width), viewport.width * viewport.width / content.width));
+                Fix64.Max(Fix64.Min(minimumThumbWidth, viewport.width),
+                    viewport.width * viewport.width / content.width));
             var thumbX = viewport.x + scroll.x / horizontalRange * Fix64.Max(0, viewport.width - thumbWidth);
-            var thumb = new Rect(thumbX, track.y + 2, thumbWidth, 5);
+            var thumbHeight = horizontalThumbStyle.fixedHeight > 0
+                ? Fix64.Min(track.height, horizontalThumbStyle.fixedHeight)
+                : Fix64.Max(1, track.height - 4);
+            var thumb = new Rect(thumbX, track.y + (track.height - thumbHeight) / 2, thumbWidth, thumbHeight);
             scroll = new Vector2(
                 HandleScrollbar(horizontalId, track, thumb, scroll.x, horizontalRange, false), scroll.y);
-            DrawRect(track, EditorAppearance.palette.ScrollTrack);
-            DrawRect(thumb, IsScrollbarHovered(horizontalId, thumb)
-                ? EditorAppearance.palette.ScrollThumbHover : EditorAppearance.palette.ScrollThumb);
+            var trackHovered = IsRectHovered(track);
+            DrawStyleBackground(track, ResolveStyleState(horizontalStyle, false,
+                    GUIUtility.hotControl == horizontalId, false, trackHovered), horizontalStyle.borderWidth);
+            DrawStyleBackground(thumb, ResolveStyleState(horizontalThumbStyle, false,
+                    GUIUtility.hotControl == horizontalId, false, IsScrollbarHovered(horizontalId, thumb)),
+                horizontalThumbStyle.borderWidth);
         }
         return scroll;
     }
@@ -667,6 +778,22 @@ public static class GUI
         return _context.Translate(thumb).Contains(pointer) && PointerInsideClip(pointer);
     }
 
+    private static bool IsRectHovered(Rect rect)
+    {
+        if (_context is null) return false;
+        var pointer = PointerPosition;
+        return _context.Translate(rect).Contains(pointer) && PointerInsideClip(pointer);
+    }
+
+    private static GUIStyleState ResolveStyleState(GUIStyle style, bool on, bool active,
+        bool focused, bool hovered)
+    {
+        if (!enabled) return style.disabled;
+        if (on)
+            return active ? style.onActive : focused ? style.onFocused : hovered ? style.onHover : style.onNormal;
+        return active ? style.active : focused ? style.focused : hovered ? style.hover : style.normal;
+    }
+
     private static Rect AlignTextRect(Rect rect, string text, GUIStyle style)
     {
         if (string.IsNullOrEmpty(text) || style.alignment is TextAnchor.UpperLeft or
@@ -679,6 +806,45 @@ public static class GUI
         return new Rect(x, rect.y, textWidth, rect.height);
     }
 
+    private static int ClosestTextBoundary(string text, Fix64 localX, GUIStyle style)
+    {
+        if (text.Length == 0 || localX <= 0) return 0;
+        var previous = Fix64.Zero;
+        for (var index = 1; index <= text.Length; index++)
+        {
+            var next = TextBoundaryOffset(text, index, style);
+            if (localX < (previous + next) / 2) return index - 1;
+            previous = next;
+        }
+        return text.Length;
+    }
+
+    private static Fix64 TextBoundaryOffset(string text, int index, GUIStyle style)
+    {
+        index = Math.Clamp(index, 0, text.Length);
+        return index == 0 ? Fix64.Zero :
+            GUITextMetrics.MeasureWidth(text[..index], style.fontSize, GUIUtility.fontFamily);
+    }
+
+    private static void DrawStyleBackground(Rect rect, GUIStyleState state, Fix64 borderWidth)
+    {
+        var tint = state.backgroundColor * backgroundColor;
+        if (GUIStyleBackground.IsSegmentedButton(state.backgroundImage))
+        {
+            if (tint.a > 0) DrawRect(rect, tint);
+            var highlight = EditorAppearance.palette.Text;
+            DrawRect(new Rect(rect.x, rect.y, rect.width, Fix64.One),
+                new Color(highlight.r, highlight.g, highlight.b, Fix64.FromDecimal(.04m)));
+            var separator = state.borderColor.a > 0 ? state.borderColor : EditorAppearance.palette.Border;
+            DrawRect(new Rect(rect.xMax - 1, rect.y, 1, rect.height), separator);
+        }
+        else if (state.backgroundImage is { } image)
+            AddCommand(GpuCanvasCommandType.Image, rect, tint.a > 0 ? tint : Color.white,
+                GUIStyleBackground.ToRenderSource(image));
+        else if (tint.a > 0) DrawRect(rect, tint);
+        DrawBorder(rect, state.borderColor, borderWidth);
+    }
+
     private static void DrawBorder(Rect rect, Color borderColor, Fix64 width)
     {
         if (width <= 0 || borderColor.a <= 0 || rect.width <= 0 || rect.height <= 0) return;
@@ -689,6 +855,8 @@ public static class GUI
         DrawRect(new Rect(rect.xMax - width, rect.y + width, width,
             Fix64.Max(0, rect.height - width * 2)), borderColor);
     }
+
+    private static readonly Fix64 TextHorizontalInset = 4;
 
     internal sealed class ImGuiContext(
         Fix64 width,

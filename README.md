@@ -13,7 +13,7 @@ BEngine 是基于 .NET 10 LTS 与 C# 14 的轻量化单线程 2D 游戏引擎。
 ```powershell
 dotnet restore src/BEngine.sln
 dotnet build src/BEngine.sln -c Release
-dotnet run --project src/Core/BEngine.Launcher/BEngine.Launcher.csproj -c Release
+dotnet run --project src/Hub/BEngine.Launcher/BEngine.Launcher.csproj -c Release
 ```
 
 重新生成 `Output/BEgine` 中的 Launcher、Editor、Player 与 Core 资源：
@@ -26,13 +26,14 @@ dotnet run --project src/Core/BEngine.Launcher/BEngine.Launcher.csproj -c Releas
 
 ```text
 src/
+  Hub/
+    BEngine.Launcher/
   Core/
     BEngine/
     BEngine.Editor/
-    BEngine.Launcher/
     BEngine.Player/
     Resources/
-    EditorResources/
+    Editor/
       Doc/index.html
       Readme.md
   Packages/
@@ -40,7 +41,7 @@ src/
       BEngine.Animation/
       BEngine.Animation.Editor/
       Resources/
-      EditorResources/
+      Editor/
         Doc/index.html
         Readme.md
       package.yaml
@@ -53,7 +54,7 @@ src/
 
 - `BEngine.dll` 是纯运行时公共程序集，不包含 PackageManager、Codex 或具体扩展包引用。
 - `BEngine.Editor.dll` 提供编辑器宿主、PackageManager、Codex 与扩展 API；它不静态引用任何可选包程序集。
-- `BEngine.Launcher` 负责工程选择、创建和启动。
+- `Hub/BEngine.Launcher` 负责工程选择、创建和启动，仅通过工程引用使用 Core 程序集；Core 不反向依赖 Hub。
 - `BEngine.Player` 是通用 Player 入口，按导出目录加载启用的运行时扩展。
 - Animation、Physics2D、Navigation2D、PropertyAttributes、TiledMap、UIElements 是可独立启停的扩展包。
 
@@ -69,13 +70,13 @@ Core 内置 Texture Atlas：通过 `Assets/Create/2D/Texture Atlas` 创建 `.atl
 
 ## 包结构
 
-每个包包含独立的 Runtime 与 Editor 程序集；`package.yaml` 位于包根，说明文件和离线网页位于 `EditorResources`：
+每个包包含独立的 Runtime 与 Editor 程序集；`package.yaml` 位于包根，说明文件和离线网页位于 `Editor`：
 
 ```text
 src/Packages/Animation/
   BEngine.Animation/
   BEngine.Animation.Editor/
-  EditorResources/
+  Editor/
     Doc/index.html
     Readme.md
     Skills/bengine-animation/
@@ -85,11 +86,11 @@ src/Packages/Animation/
   package.yaml
 ```
 
-`Resources` 存放运行时默认材质、图片和 YAML；`EditorResources` 存放组件图标、模板、说明文件、离线网页和其他编辑器专用资源。Package Manager 会从每个包的 `EditorResources/Doc/index.html` 打开文档。
+`Resources` 存放运行时默认材质、图片和 YAML；`Editor` 存放组件图标、模板、说明文件、离线网页和其他编辑器专用资源。Package Manager 会从每个包的 `Editor/Doc/index.html` 打开文档。
 
-程序集项目目录只允许存在 `.cs`、`.csproj` 和根程序集定义。资源、图标、YAML、模板与说明文件必须位于包级 `Resources` 或 `EditorResources`；只有 `package.yaml` 留在扩展包根。程序集通过 `Resources` / `EditorResources` API 读取，不链接、不复制也不嵌入程序集。
+程序集项目目录只允许存在 `.cs`、`.csproj` 和根程序集定义。资源、图标、YAML、模板与说明文件必须位于包级 `Resources` 或 `Editor`；只有 `package.yaml` 留在扩展包根。程序集通过 `Resources` / `EditorResource` API 读取，不链接、不复制也不嵌入程序集。
 
-`src/BEngine.sln` 的包级资源节点与磁盘目录保持一致。新增或移动 `Resources`、`EditorResources` 文件后运行 `src/SyncSolutionLayout.ps1`，即可同步 VS2022 的 Solution Items；`SourceLayout` 回归会阻止未同步的提交。
+`src/BEngine.sln` 的包级资源节点与磁盘目录保持一致。新增或移动 `Resources`、`Editor` 文件后运行 `src/SyncSolutionLayout.ps1`，即可同步 VS2022 的 Solution Items；`SourceLayout` 回归会阻止未同步的提交。
 
 Runtime 包项目引用 `BEngine`。Editor 包项目引用 `BEngine.Editor` 与自己的 Runtime 程序集。包依赖只记录其他可选包，不把核心引擎伪装成 package。
 

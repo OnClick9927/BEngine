@@ -40,11 +40,33 @@ internal sealed class PlayerProjectSceneLoader(
             throw new InvalidOperationException(
                 $"Scene name '{sceneNameOrPath}' is ambiguous in the active AssetBundle catalog.");
         using var handle = assetBundles.LoadTextAsync(matches[0]).ConfigureAwait(false).GetAwaiter().GetResult();
-        scene = Document.FromYaml<SceneDocument>(handle.Value)
-            .ToBObject(new DocumentConversionContext(matches[0], services)) as Scene ??
+        var document = Document.FromYaml<SceneDocument>(handle.Value);
+        scene = document.ToBObject(new DocumentConversionContext(matches[0], services)) as Scene ??
                 throw new InvalidDataException($"AssetBundle scene '{matches[0]}' could not be deserialized.");
+        try { RestoreBundledSprites(document, scene); }
+        catch
+        {
+            scene.Dispose();
+            throw;
+        }
         scene.path = matches[0];
         return true;
+    }
+
+    private void RestoreBundledSprites(SceneDocument document, Scene scene)
+    {
+        var renderers = scene.QueryComponents<SpriteRenderer>()
+            .ToDictionary(renderer => renderer.Id);
+        foreach (var component in document.GameObjects.SelectMany(gameObject => gameObject.Components))
+        {
+            if (!renderers.TryGetValue(component.Id, out var renderer) ||
+                !component.Fields.TryGetValue(nameof(SpriteRenderer.sprite), out var reference) ||
+                string.IsNullOrWhiteSpace(reference) ||
+                !Path.GetExtension(reference).Equals(".png", StringComparison.OrdinalIgnoreCase)) continue;
+            renderer.sprite = AssetBundleAssetLoader.LoadSprite(assetBundles!, reference) ??
+                              throw new InvalidDataException(
+                                  $"AssetBundle scene Sprite '{reference}' is not a bundled TextureImporter Sprite.");
+        }
     }
 
     private string ToProjectRelativePath(string sceneNameOrPath)

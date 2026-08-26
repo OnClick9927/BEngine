@@ -101,7 +101,8 @@ internal static class TextureAtlasResolver
                 return Sprite.FromTexture(string.Empty, HalfPivot, reference);
             }
         }
-        return Sprite.FromTexture(reference, HalfPivot, reference);
+        try { return BAsset.Load<Sprite>(reference); }
+        catch (Exception exception) when (IsAssetReadException(exception)) { return null; }
     }
 
     internal static void Clear()
@@ -118,6 +119,9 @@ internal static class TextureAtlasResolver
             var path = TextureAtlasPath.Resolve(atlasReference);
             if (TryLoadAtlas(path, out var atlas) && atlas.Find(regionName) is { } region)
             {
+                if (atlas.Version < 2)
+                    return Sprite.FromTexture(region.Source, region.pivot,
+                        $"{atlasReference}#{region.Name}", atlasReference, region.Name);
                 if (region.Source.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase))
                 {
                     var sprite = Sprite.Load(region.Source);
@@ -125,8 +129,10 @@ internal static class TextureAtlasResolver
                     sprite.packedRegion = region.Name;
                     return sprite;
                 }
-                return Sprite.FromTexture(region.Source, region.pivot,
-                    $"{atlasReference}#{region.Name}", atlasReference, region.Name);
+                var imported = BAsset.Load<Sprite>(region.Source);
+                if (imported is not null)
+                    return Sprite.FromTexture(imported.Texture, region.pivot,
+                        $"{atlasReference}#{region.Name}", atlasReference, region.Name);
             }
         }
         catch (Exception exception) when (IsAssetReadException(exception)) { }
@@ -162,8 +168,13 @@ internal static class TextureAtlasResolver
             var activeReferences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var reference in atlas.SpriteReferences.OrderBy(item => item, StringComparer.OrdinalIgnoreCase))
             {
-                try { activeReferences.Add(ReferenceKey(reference, path)); }
-                catch (ArgumentException) { }
+                try
+                {
+                    var loadReference = ReferenceForLoad(reference, path);
+                    if (BAsset.Load<Sprite>(loadReference) is not null)
+                        activeReferences.Add(ReferenceKey(reference, path));
+                }
+                catch (Exception exception) when (IsAssetReadException(exception)) { }
             }
             foreach (var region in atlas.Sprites.OrderBy(item => item.Name, StringComparer.Ordinal))
             {
@@ -224,6 +235,13 @@ internal static class TextureAtlasResolver
         return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(atlasPath)!,
             reference.Replace('/', Path.DirectorySeparatorChar))).Replace('\\', '/');
     }
+
+    private static string ReferenceForLoad(string reference, string atlasPath) =>
+        Path.IsPathRooted(reference) || HasProjectPrefix(reference, "Assets") ||
+        HasProjectPrefix(reference, "Packages")
+            ? reference
+            : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(atlasPath)!,
+                reference.Replace('/', Path.DirectorySeparatorChar)));
 
     private static bool HasProjectPrefix(string reference, string prefix) =>
         reference.Equals(prefix, StringComparison.OrdinalIgnoreCase) ||

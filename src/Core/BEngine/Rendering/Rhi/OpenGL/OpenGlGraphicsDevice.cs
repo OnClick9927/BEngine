@@ -610,6 +610,7 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice, IGraphicsDeviceStati
         {
             GraphicsTextureAddressMode.ClampToEdge => GLEnum.ClampToEdge,
             GraphicsTextureAddressMode.Repeat => GLEnum.Repeat,
+            GraphicsTextureAddressMode.MirroredRepeat => GLEnum.MirroredRepeat,
             _ => throw new ArgumentOutOfRangeException(nameof(addressMode))
         };
     }

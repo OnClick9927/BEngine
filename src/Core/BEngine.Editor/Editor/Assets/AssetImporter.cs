@@ -66,6 +66,12 @@ public class AssetImporter : BObject
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed : fallback;
 
+    protected static float Get(IReadOnlyDictionary<string, string> settings, string key, float fallback) =>
+        settings.TryGetValue(key, out var value) &&
+        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) &&
+        float.IsFinite(parsed)
+            ? parsed : fallback;
+
     protected static bool Get(IReadOnlyDictionary<string, string> settings, string key, bool fallback) =>
         settings.TryGetValue(key, out var value) && bool.TryParse(value, out var parsed) ? parsed : fallback;
 
@@ -109,7 +115,7 @@ public class AssetImporter : BObject
             return typeof(DefaultImporter);
         return Path.GetExtension(normalized).ToLowerInvariant() switch
         {
-            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tga" or ".webp" => typeof(TextureImporter),
+            ".png" => typeof(TextureImporter),
             ".ttf" or ".otf" or ".woff" or ".woff2" => typeof(FontImporter),
             ".shader" or ".glsl" or ".hlsl" or ".wgsl" => typeof(ShaderImporter),
             ".cs" => typeof(ScriptImporter),

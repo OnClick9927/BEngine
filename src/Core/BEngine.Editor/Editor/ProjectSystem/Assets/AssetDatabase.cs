@@ -333,7 +333,7 @@ public sealed class AssetDatabase
                 {
                     ".cs" => "ScriptImporter",
                     ".html" or ".htm" => "HtmlImporter",
-                    ".png" or ".jpg" or ".jpeg" or ".bmp" => "TextureImporter",
+                    ".png" => "TextureImporter",
                     ".shader" or ".glsl" => "ShaderImporter",
                     ".bpackage" => "BPackageImporter",
                     ".yaml" => "YamlImporter",
@@ -354,7 +354,7 @@ public sealed class AssetDatabase
         Path.GetExtension(path).ToLowerInvariant() switch
         {
             ".cs" => "Script",
-            ".png" or ".jpg" or ".jpeg" or ".bmp" => "Texture",
+            ".png" => "Texture",
             ".shader" or ".glsl" => "Shader",
             ".json" => "JSON",
             ".xml" => "XML",

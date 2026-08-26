@@ -5,7 +5,7 @@ public static class EditorGUIUtility
     public static Fix64 singleLineHeight => Fix64.Max(18,
         GUITextMetrics.MeasureLineHeight(GUI.skin.label.fontSize, GUIUtility.fontFamily));
     public static Fix64 standardVerticalSpacing => (Fix64)2;
-    public static bool isProSkin => EditorAppearance.theme != EditorTheme.Light;
+    public static bool isProSkin => EditorAppearance.isDarkTheme;
     public static Fix64 pixelsPerPoint => GUIUtility.pixelsPerPoint;
     public static bool wideMode { get; set; } = true;
     public static bool editingTextField => GUI.isEditingTextField;

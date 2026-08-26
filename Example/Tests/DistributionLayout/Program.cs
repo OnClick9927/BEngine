@@ -15,6 +15,8 @@ internal static class Program
             Require(Directory.Exists(packages), "Output/Packages is missing.");
             Require(!Directory.Exists(Path.Combine(engine, "Packages")),
                 "The core engine still contains a Packages directory.");
+            Require(!Directory.Exists(Path.Combine(engine, "EditorResources")),
+                "The core engine retained the legacy EditorResources directory.");
             Require(File.Exists(Path.Combine(example, "Project.yaml")),
                 "The root Example project is missing.");
             Require(!Directory.Exists(Path.Combine(output, "Example")),
@@ -40,39 +42,41 @@ internal static class Program
                 Require(IsDisabledByDefault(exportedDefinitions[packageId]),
                     $"Exported package '{packageId}' is enabled by default.");
                 var packageRoot = Path.GetDirectoryName(exportedDefinitions[packageId])!;
-                Require(File.Exists(Path.Combine(packageRoot, "EditorResources", "Readme.md")),
-                    $"Exported package '{packageId}' has no EditorResources/Readme.md.");
+                Require(File.Exists(Path.Combine(packageRoot, "Editor", "Readme.md")),
+                    $"Exported package '{packageId}' has no Editor/Readme.md.");
                 Require(!File.Exists(Path.Combine(packageRoot, "Readme.md")),
                     $"Exported package '{packageId}' retained a root Readme.md.");
                 Require(Directory.Exists(Path.Combine(packageRoot, "Resources")),
                     $"Exported package '{packageId}' has no Resources directory.");
-                Require(Directory.Exists(Path.Combine(packageRoot, "EditorResources")),
-                    $"Exported package '{packageId}' has no EditorResources directory.");
-                Require(File.Exists(Path.Combine(packageRoot, "EditorResources", "Doc", "index.html")),
-                    $"Exported package '{packageId}' has no EditorResources/Doc/index.html.");
-                var examples = Path.Combine(packageRoot, "EditorResources", "Examples");
+                Require(Directory.Exists(Path.Combine(packageRoot, "Editor")),
+                    $"Exported package '{packageId}' has no Editor directory.");
+                Require(!Directory.Exists(Path.Combine(packageRoot, "EditorResources")),
+                    $"Exported package '{packageId}' retained the legacy EditorResources directory.");
+                Require(File.Exists(Path.Combine(packageRoot, "Editor", "Doc", "index.html")),
+                    $"Exported package '{packageId}' has no Editor/Doc/index.html.");
+                var examples = Path.Combine(packageRoot, "Editor", "Examples");
                 Require(Directory.Exists(examples),
-                    $"Exported package '{packageId}' has no EditorResources/Examples directory.");
+                    $"Exported package '{packageId}' has no Editor/Examples directory.");
                 var exampleFiles = Directory.EnumerateFiles(examples, "*", SearchOption.AllDirectories).ToArray();
                 Require(exampleFiles.Length >= 2 && exampleFiles.All(path =>
                         Path.GetExtension(path).Equals(".bpackage", StringComparison.OrdinalIgnoreCase)),
                     $"Exported package '{packageId}' must contain at least two .bpackage archives in " +
-                    "EditorResources/Examples.");
+                    "Editor/Examples.");
                 Require(!Directory.Exists(Path.Combine(packageRoot, "Examples")),
                     $"Exported package '{packageId}' retained the legacy top-level Examples directory.");
             }
 
-            var coreExamples = Path.Combine(engine, "EditorResources", "Examples");
+            var coreExamples = Path.Combine(engine, "Editor", "Examples");
             Require(Directory.Exists(coreExamples) &&
                     Directory.EnumerateFiles(coreExamples, "*.bpackage", SearchOption.AllDirectories).Any(),
                 "The core engine must contain a .bpackage example in " +
-                "Output/BEgine/EditorResources/Examples.");
+                "Output/BEgine/Editor/Examples.");
             Require(!File.Exists(Path.Combine(coreExamples, "EcsSystems.bpackage")),
                 "The removed ECS example was exported with the core engine.");
-            Require(File.Exists(Path.Combine(engine, "EditorResources", "Readme.md")),
-                "The core engine has no Output/BEgine/EditorResources/Readme.md.");
-            Require(File.Exists(Path.Combine(engine, "EditorResources", "Doc", "index.html")),
-                "The core engine has no Output/BEgine/EditorResources/Doc/index.html.");
+            Require(File.Exists(Path.Combine(engine, "Editor", "Readme.md")),
+                "The core engine has no Output/BEgine/Editor/Readme.md.");
+            Require(File.Exists(Path.Combine(engine, "Editor", "Doc", "index.html")),
+                "The core engine has no Output/BEgine/Editor/Doc/index.html.");
             Require(!Directory.Exists(Path.Combine(engine, "Examples")),
                 "The core engine retained the legacy Output/BEgine/Examples directory.");
 

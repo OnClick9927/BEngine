@@ -17,7 +17,7 @@ internal static class Program
                 "ASSET_BUNDLE_HOT_UPDATE_OK|catalog,deterministic-manifest,deterministic-bundle,strict-json," +
                 "dependencies,cycles,content-addressing,path-traversal,archive-entry-safety,async-load,cache,refcount,unload," +
                 "remote-version,retry,hash-verification,atomic-activation,rollback,offline-cache,staging-cleanup," +
-                "resources-provider,player-scene-priority");
+                "resources-provider,player-scene-priority,bundled-sprite-import,bundled-sprite-render");
             return 0;
         }
         catch (Exception exception)
