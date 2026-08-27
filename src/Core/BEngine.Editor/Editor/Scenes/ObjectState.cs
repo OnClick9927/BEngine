@@ -22,8 +22,14 @@ internal sealed class ObjectState
         Target = target;
         _name = target.name;
         _hideFlags = target.hideFlags;
-        _members = GetSerializableMembers(target)
-            .ToDictionary(member => member, member => CloneValue(GetMemberValue(member, target)));
+        _members = [];
+        foreach (var member in GetSerializableMembers(target))
+        {
+            if (EditorFeatureGuard.TryInvoke(
+                    $"Object state {target.GetType().FullName}.{member.Name}.get",
+                    () => CloneValue(GetMemberValue(member, target)), fallback: null, out var value))
+                _members[member] = value;
+        }
         if (target is Transform transform)
         {
             _localPosition = transform.localPosition;

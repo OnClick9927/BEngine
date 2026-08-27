@@ -13,7 +13,6 @@ public sealed class EditorPreferencesDocument : Document
     public int EditorFontSize { get; set; } = 14;
     public string EditorTheme { get; set; } = "Dark";
     public string EditorSkin { get; set; } = string.Empty;
-    public Dictionary<string, string> CustomThemeColors { get; set; } = new(StringComparer.Ordinal);
     public bool AutoRefreshAssets { get; set; } = true;
     public bool ShowAssetMetaFiles { get; set; }
 }

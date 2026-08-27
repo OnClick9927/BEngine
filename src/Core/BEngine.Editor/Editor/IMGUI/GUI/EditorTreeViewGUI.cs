@@ -17,6 +17,7 @@ internal static class EditorTreeViewGUI
     public static void Separator()
     {
         var area = GUILayoutUtility.GetControlRect(8);
-        GUI.DrawRect(new Rect(area.x, area.y + 3, area.width, 2), EditorAppearance.palette.Border);
+        GUI.DrawRect(new Rect(area.x, area.y + 3, area.width, 2),
+            EditorStyles.separator.normal.backgroundColor);
     }
 }

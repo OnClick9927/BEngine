@@ -186,7 +186,7 @@ internal sealed class EditorColorPickerWindow : EditorWindow
             Fix64.Max(0, numeric.x - row.x - 28), Fix64.Max(8, row.height - 6));
         if (checker) DrawCheckerboard(slider, 6);
         GUI.DrawGradientRect(slider, left, right, right, left);
-        DrawBorder(slider, EditorAppearance.palette.Border);
+        DrawBorder(slider, PickerBorder);
         var normalized = maximum <= minimum ? Fix64.Zero : (Fix64)((value - minimum) / (maximum - minimum));
         if (HandleHorizontalValue(slider, ref normalized, $"ColorPickerChannel{label}"))
         {
@@ -210,7 +210,7 @@ internal sealed class EditorColorPickerWindow : EditorWindow
         var slider = new Rect(row.x + 22, row.y + 3,
             Fix64.Max(0, numeric.x - row.x - 28), Fix64.Max(8, row.height - 6));
         DrawHueGradient(slider);
-        DrawBorder(slider, EditorAppearance.palette.Border);
+        DrawBorder(slider, PickerBorder);
         var normalized = (Fix64)((value - minimum) / (maximum - minimum));
         if (HandleHorizontalValue(slider, ref normalized, "ColorPickerHueChannel"))
         {
@@ -245,7 +245,7 @@ internal sealed class EditorColorPickerWindow : EditorWindow
         var slider = new Rect(row.x + 68, row.y + 3,
             Fix64.Max(0, numeric.x - row.x - 74), Fix64.Max(8, row.height - 6));
         GUI.DrawGradientRect(slider, Color.black, Color.white, Color.white, Color.black);
-        DrawBorder(slider, EditorAppearance.palette.Border);
+        DrawBorder(slider, PickerBorder);
         var normalized = (Fix64)((exposure + 10) / 20);
         EditorGUI.BeginChangeCheck();
         if (HandleHorizontalValue(slider, ref normalized, "ColorPickerIntensity")) GUI.changed = true;
@@ -305,7 +305,7 @@ internal sealed class EditorColorPickerWindow : EditorWindow
             }
             GUI.DrawRect(new Rect(swatch.x + 1, swatch.y + 1, Fix64.Max(0, swatch.width - 2),
                 Fix64.Max(0, swatch.height - 2)), Palette[index]);
-            DrawBorder(swatch, EditorAppearance.palette.Border);
+            DrawBorder(swatch, PickerBorder);
         }
     }
 
@@ -313,7 +313,7 @@ internal sealed class EditorColorPickerWindow : EditorWindow
     {
         var pure = EditorColorMath.HsvToRgb(hue, 1, 1, 1);
         GUI.DrawGradientRect(rect, Color.white, pure, Color.black, Color.black);
-        DrawBorder(rect, EditorAppearance.palette.Border);
+        DrawBorder(rect, PickerBorder);
         var x = rect.x + rect.width * Fix64.Clamp(saturation, 0, 1);
         var y = rect.y + rect.height * (Fix64.One - Fix64.Clamp(brightness, 0, 1));
         DrawMarker(new Rect(x - 3, y - 3, 7, 7));
@@ -322,7 +322,7 @@ internal sealed class EditorColorPickerWindow : EditorWindow
     private static void DrawHue(Rect rect, Fix64 hue)
     {
         DrawHueGradient(rect);
-        DrawBorder(rect, EditorAppearance.palette.Border);
+        DrawBorder(rect, PickerBorder);
         DrawSliderMarker(rect, hue);
     }
 
@@ -344,7 +344,7 @@ internal sealed class EditorColorPickerWindow : EditorWindow
             Fix64.Max(0, rect.height - 2));
         DrawCheckerboard(inner, 8);
         GUI.DrawRect(inner, color);
-        DrawBorder(rect, EditorAppearance.palette.Border);
+        DrawBorder(rect, PickerBorder);
     }
 
     private static void DrawCheckerboard(Rect rect, Fix64 tile)
@@ -448,10 +448,11 @@ internal sealed class EditorColorPickerWindow : EditorWindow
 
     private static void DrawEyedropper(Rect rect)
     {
-        GUI.DrawRect(rect, rect.Contains(Event.current.mousePosition)
-            ? EditorAppearance.palette.ButtonHover : EditorAppearance.palette.Button);
-        DrawBorder(rect, EditorAppearance.palette.Border);
-        var tint = GUI.enabled ? EditorAppearance.palette.Text : EditorAppearance.palette.DisabledText;
+        var style = EditorStyles.iconButton;
+        var state = rect.Contains(Event.current.mousePosition) ? style.hover : style.normal;
+        GUI.DrawRect(rect, state.backgroundColor);
+        DrawBorder(rect, state.borderColor.a > 0 ? state.borderColor : PickerBorder);
+        var tint = GUI.enabled ? state.textColor : style.disabled.textColor;
         var x = rect.x + (rect.width - 12) / 2;
         var y = rect.y + (rect.height - 12) / 2;
         for (var index = 0; index < 6; index++)
@@ -466,6 +467,15 @@ internal sealed class EditorColorPickerWindow : EditorWindow
         GUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1), color);
         GUI.DrawRect(new Rect(rect.x, rect.y + 1, 1, Fix64.Max(0, rect.height - 2)), color);
         GUI.DrawRect(new Rect(rect.xMax - 1, rect.y + 1, 1, Fix64.Max(0, rect.height - 2)), color);
+    }
+
+    private static Color PickerBorder
+    {
+        get
+        {
+            var color = EditorStyles.colorPickerBox.normal.borderColor;
+            return color.a > 0 ? color : EditorStyles.separator.normal.backgroundColor;
+        }
     }
 
     private static Color Preview(float red, float green, float blue) =>

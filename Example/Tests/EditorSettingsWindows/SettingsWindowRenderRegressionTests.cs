@@ -40,7 +40,8 @@ internal static class SettingsWindowRenderRegressionTests
             VerifyPreferencesWindow(testDirectory);
             markers.AddRange(["preferences-render", "selection", "search", "navigation-scroll",
                 "content-scroll", "narrow", "multi-frame", "provider-fault", "preferences-persist",
-                "skin-list-ui", "skin-set-persist", "fixed-font-ui"]);
+                "scale-slider", "theme-tab", "skin-list-ui", "skin-set-persist", "skin-preset-ui",
+                "fixed-font-ui"]);
             VerifyProjectSettingsWindow(projectSettingsPath);
             markers.AddRange(["project-render", "tag-layer-tabs", "layers-scrollbar-drag", "apply-persist"]);
             return markers;
@@ -91,25 +92,46 @@ internal static class SettingsWindowRenderRegressionTests
             Require(narrow.SequenceEqual(Render(window, NarrowWidth, NarrowHeight)),
                 "Narrow Preferences layout changed between unchanged repaint frames.");
 
-            EditorAppearance.SetCustomThemePreset(EditorPreferences.current, EditorTheme.Classic);
-            EditorPreferences.Save();
+            var customSkin = EditorSkinPreferences.CreateSkin(EditorTheme.Dark);
+            var customSkinPath = AssetDatabase.GetAssetPath(customSkin);
+            customSkin.AddStyle(new GUIStyle("External Package Style")
+            {
+                normal = { backgroundColor = new Color((Fix64).12f, (Fix64).34f, (Fix64).56f, 1) }
+            });
+            Require(EditorSkinPreferences.SaveSkin(customSkin),
+                "Could not persist the custom GUISkin extension style used by the preset regression test.");
+            Require(Path.GetDirectoryName(customSkinPath)!.Equals(EditorDataPaths.themesPath,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    EditorSkinPreferences.GetToken(customSkin).StartsWith(
+                        "editor-data:Preferences/Themes/", StringComparison.OrdinalIgnoreCase),
+                "New custom GUISkins were not stored under EditorData/Preferences/Themes.");
             Select(window, "Preferences/General");
-            var customGeneral = Render(window, WideWidth, WideHeight);
-            Require(HasVisibleText(customGeneral, "Theme") &&
-                    HasVisibleText(customGeneral, "New") &&
-                    HasVisibleText(customGeneral, "Light") &&
-                    HasVisibleText(customGeneral, "Dark") &&
-                    HasVisibleText(customGeneral, "Classic") &&
-                    HasVisibleText(customGeneral, "Set"),
-                "General Preferences did not expose the GUISkin list, New, and all built-in skins.");
-            Require(customGeneral.Any(command => command.Type == GpuCanvasCommandType.Text &&
+            var generalLayout = Render(window, WideWidth, WideHeight);
+            Require(!HasVisibleText(generalLayout, "New"),
+                "General Preferences still renders Theme controls after Theme moved to its own page.");
+            VerifyEditorScaleSlider(generalLayout);
+            Require(generalLayout.Any(command => command.Type == GpuCanvasCommandType.Text &&
                                                  command.Content == "14" && IsVisible(command) &&
                                                  command.Color == GpuCanvasColor.FromColor(
-                                                     EditorAppearance.palette.DisabledText)),
+                                                     GUI.skin.numberField.disabled.textColor)),
                 "General Preferences did not show the fixed 14px font as a read-only value.");
 
-            var firstSet = customGeneral.Where(command => command.Type == GpuCanvasCommandType.Text &&
-                                                           command.Content == "Set" && IsVisible(command))
+            Select(window, "Preferences/Theme");
+            var theme = Render(window, WideWidth, WideHeight);
+            Require(HasVisibleText(theme, "Theme") &&
+                    HasVisibleText(theme, "New") &&
+                    HasVisibleText(theme, "Light") &&
+                    HasVisibleText(theme, "Dark") &&
+                    HasVisibleText(theme, "Classic") &&
+                    HasVisibleText(theme, "Set") &&
+                    HasVisibleText(theme, EditorLocalization.Tr("Theme Preset")) &&
+                    HasVisibleText(theme, customSkin.name),
+                "Theme Preferences did not expose the GUISkin list, New, and all built-in skins. " +
+                "Visible: " + string.Join(" | ", theme.Where(command =>
+                    command.Type == GpuCanvasCommandType.Text && IsVisible(command))
+                    .Select(command => command.Content).Distinct()));
+            var firstSet = theme.Where(command => command.Type == GpuCanvasCommandType.Text &&
+                                                  command.Content == "Set" && IsVisible(command))
                 .OrderBy(command => command.Rect.Y).First();
             Click(window, WideWidth, WideHeight, Center(firstSet.Rect));
             Require(EditorPreferences.current.EditorSkin == "builtin:Light" &&
@@ -119,9 +141,49 @@ internal static class SettingsWindowRenderRegressionTests
                     "builtin:Light",
                 "The selected GUISkin was not persisted to Preferences.");
 
+            var themeAfterSet = Render(window, WideWidth, WideHeight);
+            var presetLabel = FindVisibleText(themeAfterSet, EditorLocalization.Tr("Theme Preset"));
+            var classicPreset = themeAfterSet.Where(command =>
+                    command.Type == GpuCanvasCommandType.Text && command.Content == "Classic" &&
+                    IsVisible(command) && Math.Abs(command.Rect.Y - presetLabel.Rect.Y) < 3)
+                .Single();
+            Click(window, WideWidth, WideHeight, Center(classicPreset.Rect));
+            BAsset.Invalidate(customSkinPath);
+            var reloadedCustom = BAsset.Load<GUISkin>(customSkinPath);
+            var classicSkin = EditorAppearance.builtInSkins.Single(skin =>
+                skin.name == nameof(EditorTheme.Classic));
+            Require(reloadedCustom is not null &&
+                    reloadedCustom.button.normal.backgroundColor.Equals(
+                        classicSkin.button.normal.backgroundColor) &&
+                    reloadedCustom.window.normal.backgroundColor.Equals(
+                        classicSkin.window.normal.backgroundColor) &&
+                    reloadedCustom.textField.focused.textColor.Equals(
+                        classicSkin.textField.focused.textColor) &&
+                    reloadedCustom.FindStyle("External Package Style") is not null,
+                "The custom GUISkin Classic button did not copy and persist the complete built-in preset.");
+
+            var customThemeLayout = Render(window, WideWidth, WideHeight);
+            var customSkinLabel = customThemeLayout.Single(command =>
+                command.Type == GpuCanvasCommandType.Text && command.Content == customSkin.name &&
+                IsVisible(command));
+            var customSet = customThemeLayout.Single(command =>
+                command.Type == GpuCanvasCommandType.Text && command.Content == "Set" &&
+                IsVisible(command) && Math.Abs(command.Rect.Y - customSkinLabel.Rect.Y) < 3);
+            Click(window, WideWidth, WideHeight, Center(customSet.Rect));
+            var customToken = EditorSkinPreferences.GetToken(reloadedCustom!);
+            Require(EditorPreferences.current.EditorSkin == customToken &&
+                    EditorAppearance.IsActiveSkin(reloadedCustom!),
+                "The custom GUISkin Set button did not apply the EditorData skin globally.");
+            EditorPreferences.Initialize();
+            Require(EditorPreferences.current.EditorSkin == customToken &&
+                    AssetDatabase.GetAssetPath(EditorAppearance.activeSkin).Equals(
+                        customSkinPath, StringComparison.OrdinalIgnoreCase),
+                "The stable EditorData GUISkin token did not restore the custom skin.");
+
             EditorPreferences.current.EditorTheme = nameof(EditorTheme.Dark);
             EditorPreferences.current.EditorSkin = "builtin:Dark";
             EditorPreferences.Save();
+            Select(window, "Preferences/General");
             var general = Render(window, WideWidth, WideHeight);
             var toggleLabel = FindVisibleText(general, "Auto Refresh Assets");
             var togglePoint = new Vector2((Fix64)(toggleLabel.Rect.Right + 12),
@@ -220,9 +282,9 @@ internal static class SettingsWindowRenderRegressionTests
         Require(!HasVisibleText(initial, "2^63"),
             "Layers fixture unexpectedly exposed its last row before scrollbar dragging.");
         var footerBefore = FindVisibleText(initial, "Revert");
-        var trackColor = GpuCanvasColor.FromColor(EditorAppearance.palette.ScrollTrack);
-        var thumbColor = GpuCanvasColor.FromColor(EditorAppearance.palette.ScrollThumb);
-        var hoverColor = GpuCanvasColor.FromColor(EditorAppearance.palette.ScrollThumbHover);
+        var trackColor = GpuCanvasColor.FromColor(GUI.skin.verticalScrollbar.normal.backgroundColor);
+        var thumbColor = GpuCanvasColor.FromColor(GUI.skin.verticalScrollbarThumb.normal.backgroundColor);
+        var hoverColor = GpuCanvasColor.FromColor(GUI.skin.verticalScrollbarThumb.hover.backgroundColor);
         var track = initial.Where(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                              command.Color == trackColor &&
                                              Math.Abs(command.Rect.Width - 9) < 0.01f &&
@@ -567,12 +629,36 @@ internal static class SettingsWindowRenderRegressionTests
         commands.Any(command => command.Type == GpuCanvasCommandType.Text && command.Content == text &&
                                 IsVisible(command));
 
+    private static void VerifyEditorScaleSlider(IReadOnlyList<GpuCanvasCommand> commands)
+    {
+        var label = FindVisibleText(commands, "Editor Scale");
+        var trackColor = GpuCanvasColor.FromColor(GUI.skin.horizontalSlider.normal.backgroundColor);
+        var thumbColor = GpuCanvasColor.FromColor(GUI.skin.horizontalSliderThumb.normal.backgroundColor);
+        var track = commands.FirstOrDefault(command =>
+            command.Type == GpuCanvasCommandType.SolidRect && command.Color == trackColor &&
+            command.Rect.X >= label.Rect.Right - 0.01f && command.Rect.Y >= label.Rect.Y &&
+            command.Rect.Bottom <= label.Rect.Bottom && command.Rect.Width > 40);
+        Require(track.Rect.Width > 0,
+            "General Preferences did not render Editor Scale as a horizontal slider.");
+        Require(commands.Any(command =>
+                command.Type == GpuCanvasCommandType.SolidRect && command.Color == thumbColor &&
+                command.Rect.Y < track.Rect.Bottom && command.Rect.Bottom > track.Rect.Y &&
+                command.Rect.X >= track.Rect.X && command.Rect.Right <= track.Rect.Right + 1),
+            "The Editor Scale slider did not render its draggable thumb.");
+        Require(commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                        command.Content != "Editor Scale" &&
+                                        command.Rect.X > track.Rect.Right &&
+                                        command.Rect.Y < label.Rect.Bottom &&
+                                        command.Rect.Bottom > label.Rect.Y && IsVisible(command)),
+            "The Editor Scale slider did not retain its precise numeric input field.");
+    }
+
     private static bool HasActiveTabIndicator(
         IReadOnlyList<GpuCanvasCommand> commands,
         string tabLabel)
     {
         var tab = FindVisibleText(commands, tabLabel);
-        var accent = GpuCanvasColor.FromColor(EditorAppearance.palette.Accent);
+        var accent = GpuCanvasColor.FromColor(EditorStyles.progressBarBar.normal.backgroundColor);
         return commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                        command.Color == accent &&
                                        command.Rect.Height is > 0 and <= 2.01f &&
@@ -597,8 +683,8 @@ internal static class SettingsWindowRenderRegressionTests
             .ToArray();
         if (backgrounds.Length == 0) return false;
         var finalColor = backgrounds[^1].Color;
-        return finalColor == GpuCanvasColor.FromColor(EditorAppearance.palette.Active) ||
-               finalColor == GpuCanvasColor.FromColor(EditorAppearance.palette.Selection);
+        return finalColor == GpuCanvasColor.FromColor(EditorStyles.toolbarIconButtonSelected.hover.backgroundColor) ||
+               finalColor == GpuCanvasColor.FromColor(EditorStyles.selectionRect.normal.backgroundColor);
     }
 
     private static void VerifyNoVerticalTextOverlap(

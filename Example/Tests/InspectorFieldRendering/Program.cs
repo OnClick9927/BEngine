@@ -13,6 +13,8 @@ internal static class Program
         BindingFlags.Static | BindingFlags.NonPublic)!;
     private static readonly MethodInfo EndFrame = typeof(GUI).GetMethod("EndFrame",
         BindingFlags.Static | BindingFlags.NonPublic)!;
+    private static readonly MethodInfo GetVectorFieldHeight = typeof(EditorGUI).GetMethod(
+        "GetVectorFieldHeight", BindingFlags.Static | BindingFlags.NonPublic)!;
     private static object? _capturedMenuItems;
     private static bool _capturedMenuAdvanced;
 
@@ -23,15 +25,21 @@ internal static class Program
             VerifyNarrowVectorAndPrecision();
             VerifyVector4ResponsiveLayout();
             VerifyNarrowSerializedComponentFields();
+            VerifyIndentedVectorLayout();
+            VerifyNestedLabelContentLayout();
             VerifyClippedInspectorVectorLayout();
             VerifyHighDpiVectorLayout();
             VerifyColorSwatchAndAlphaPicker();
             VerifyEnumDropdown();
+            VerifyNestedObjectInspector();
             VerifyObjectFields();
             VerifyRangeSlider();
             Console.WriteLine(
                 "INSPECTOR_FIELD_RENDERING_OK|vector24-responsive,vector4dp,color-alpha,enum-dropdown," +
-                "advanced-popup,object-field,object-dragdrop,range-slider");
+                "advanced-popup,object-field,object-dragdrop,range-slider,nested-object-foldout," +
+                "nested-indent,null,array-list,cycle-depth,foldout-isolation,getter-fault-isolation," +
+                "indented-vector-bounds,indented-vector-responsive,nested-centered-label," +
+                "nested-image-spacing");
             return 0;
         }
         catch (Exception exception)
@@ -145,6 +153,137 @@ internal static class Program
                 $"Property '{propertyName}' axis {axes[index]} numeric fields overlap.");
         }
 
+    }
+
+    private static void VerifyIndentedVectorLayout()
+    {
+        var twoLines = EditorGUIUtility.singleLineHeight * 2 +
+                       EditorGUIUtility.standardVerticalSpacing;
+        var vector2Stacked = EditorGUIUtility.singleLineHeight * 3 +
+                             EditorGUIUtility.standardVerticalSpacing * 2;
+        var vector4Stacked = EditorGUIUtility.singleLineHeight * 5 +
+                             EditorGUIUtility.standardVerticalSpacing * 4;
+
+        var vector2FlatHeight = ResolveVectorFieldHeight(viewportWidth: 190, dimensions: 2, indentLevel: 0);
+        var vector2IndentedHeight = ResolveVectorFieldHeight(viewportWidth: 190, dimensions: 2, indentLevel: 1);
+        Require(vector2FlatHeight == twoLines && vector2IndentedHeight == vector2Stacked,
+            $"Vector2 responsive height did not deduct one indent unit: " +
+            $"flat={vector2FlatHeight}, indented={vector2IndentedHeight}.");
+
+        var vector4FlatHeight = ResolveVectorFieldHeight(viewportWidth: 370, dimensions: 4, indentLevel: 0);
+        var vector4IndentedHeight = ResolveVectorFieldHeight(viewportWidth: 370, dimensions: 4, indentLevel: 1);
+        Require(vector4FlatHeight == twoLines && vector4IndentedHeight == vector4Stacked,
+            $"Vector4 responsive height did not deduct one indent unit: " +
+            $"flat={vector4FlatHeight}, indented={vector4IndentedHeight}.");
+
+        var vector2Rect = new Rect(37, 9, 126, vector2Stacked);
+        var vector2Commands = Render(240, 120, () =>
+        {
+            var previousIndent = EditorGUI.indentLevel;
+            try
+            {
+                EditorGUI.indentLevel = 2;
+                EditorGUI.Vector2Field(vector2Rect, "Nested Offset",
+                    new Vector2(Fix64.FromDecimal(11.25m), Fix64.FromDecimal(-22.5m)));
+            }
+            finally { EditorGUI.indentLevel = previousIndent; }
+        });
+        RequireCommandsInside(vector2Commands, vector2Rect, "Indented narrow Vector2");
+
+        var vector4Rect = new Rect(53, 7, 190, vector4Stacked);
+        var vector4Commands = Render(320, 140, () =>
+        {
+            var previousIndent = EditorGUI.indentLevel;
+            try
+            {
+                EditorGUI.indentLevel = 2;
+                EditorGUI.Vector4Field(vector4Rect, "Nested Weights",
+                    new Vector4(1, 2, 3, 4));
+            }
+            finally { EditorGUI.indentLevel = previousIndent; }
+        });
+        RequireCommandsInside(vector4Commands, vector4Rect, "Indented narrow Vector4");
+    }
+
+    private static Fix64 ResolveVectorFieldHeight(int viewportWidth, int dimensions, int indentLevel)
+    {
+        var result = Fix64.Zero;
+        Dispatch(new Event(EventType.Layout), viewportWidth, 180, () =>
+        {
+            var previousIndent = EditorGUI.indentLevel;
+            try
+            {
+                EditorGUI.indentLevel = indentLevel;
+                result = (Fix64)GetVectorFieldHeight.Invoke(null, [dimensions])!;
+            }
+            finally { EditorGUI.indentLevel = previousIndent; }
+        });
+        return result;
+    }
+
+    private static void VerifyNestedLabelContentLayout()
+    {
+        var centeredRect = new Rect(24, 5, 240, 22);
+        var centeredStyle = new GUIStyle(EditorStyles.label)
+        {
+            alignment = TextAnchor.MiddleCenter
+        };
+        var centeredCommands = Render(320, 40, () =>
+        {
+            var previousIndent = EditorGUI.indentLevel;
+            try
+            {
+                EditorGUI.indentLevel = 1;
+                EditorGUI.LabelField(centeredRect, new GUIContent("Centered Child"), centeredStyle);
+            }
+            finally { EditorGUI.indentLevel = previousIndent; }
+        });
+        var centeredText = centeredCommands.Single(command =>
+            command.Type == GpuCanvasCommandType.Text && command.Content == "Centered Child");
+        const float indentWidth = 15;
+        var expectedCenter = ((float)centeredRect.x + indentWidth + (float)centeredRect.xMax) * 0.5f;
+        var actualCenter = (centeredText.Rect.X + centeredText.Rect.Right) * 0.5f;
+        Require(Math.Abs(actualCenter - expectedCenter) <= 0.1f,
+            $"A centered nested LabelField was shifted by virtual foldout space: " +
+            $"center={actualCenter:0.###}, expected={expectedCenter:0.###}.");
+
+        var iconRect = new Rect(31, 7, 250, 22);
+        var iconContent = new GUIContent("Icon Child", "Icons/Tests/NestedLabel.png", string.Empty);
+        var iconCommands = Render(340, 44, () =>
+        {
+            var previousIndent = EditorGUI.indentLevel;
+            try
+            {
+                EditorGUI.indentLevel = 1;
+                EditorGUI.LabelField(iconRect, iconContent, EditorStyles.label);
+            }
+            finally { EditorGUI.indentLevel = previousIndent; }
+        });
+        var image = iconCommands.Single(command => command.Type == GpuCanvasCommandType.Image &&
+                                                   command.Content == iconContent.image);
+        var text = iconCommands.Single(command => command.Type == GpuCanvasCommandType.Text &&
+                                                  command.Content == iconContent.text);
+        var indentedLeft = (float)iconRect.x + indentWidth;
+        Require(Math.Abs(image.Rect.X - (indentedLeft + 3)) <= 0.1f,
+            $"A nested GUIContent image did not start inside its indented row: x={image.Rect.X:0.###}.");
+        Require(Math.Abs(text.Rect.X - (indentedLeft + 22)) <= 0.1f,
+            $"A nested GUIContent image reserved its 22px text spacing more than once: " +
+            $"x={text.Rect.X:0.###}, expected={indentedLeft + 22:0.###}.");
+    }
+
+    private static void RequireCommandsInside(IEnumerable<GpuCanvasCommand> commands, Rect bounds, string name)
+    {
+        var left = (float)bounds.x;
+        var top = (float)bounds.y;
+        var right = (float)bounds.xMax;
+        var bottom = (float)bounds.yMax;
+        foreach (var command in commands)
+            Require(command.Rect.X >= left - 0.1f && command.Rect.Y >= top - 0.1f &&
+                    command.Rect.Right <= right + 0.1f && command.Rect.Bottom <= bottom + 0.1f,
+                $"{name} command '{command.Type}:{command.Content}' escaped its Rect: " +
+                $"({command.Rect.X:0.###},{command.Rect.Y:0.###})-" +
+                $"({command.Rect.Right:0.###},{command.Rect.Bottom:0.###}) outside " +
+                $"({left:0.###},{top:0.###})-({right:0.###},{bottom:0.###}).");
     }
 
     private static void VerifyClippedInspectorVectorLayout()
@@ -298,6 +437,169 @@ internal static class Program
             $"Dragging the [Range] field did not update its numeric value: {probe.speed}.");
         Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(210, 9), button = 0 }, 340, 40,
             () => EditorGUI.PropertyField(new Rect(0, 0, 340, 18), property));
+    }
+
+    private static void VerifyNestedObjectInspector()
+    {
+        using var scene = new Scene("Nested Inspector Scene");
+        var gameObject = scene.CreateGameObject("Nested Inspector Probe");
+        var component = gameObject.AddComponent<NestedInspectorComponent>();
+        using var serialized = new SerializedObject(component);
+        var a = serialized.FindProperty(nameof(NestedInspectorComponent.a))!;
+        var b = serialized.FindProperty(nameof(NestedInspectorComponent.b))!;
+        var nullable = serialized.FindProperty(nameof(NestedInspectorComponent.nullable))!;
+
+        Require(a.propertyType == SerializedPropertyType.Generic && a.hasVisibleChildren,
+            "A serializable ordinary object was not exposed as an expandable Generic property.");
+        Require(!nullable.hasVisibleChildren,
+            "A null ordinary object incorrectly reported visible children.");
+        var nullCommands = Render(420, 50,
+            () => EditorGUI.PropertyField(new Rect(0, 0, 420, 22), nullable, includeChildren: true));
+        Require(nullCommands.Any(command => command.Type == GpuCanvasCommandType.Text && command.Content == "None"),
+            "A null ordinary object was not rendered safely as None.");
+
+        ClickFoldout(a, new Rect(0, 0, 420, 22));
+        Require(a.isExpanded && !b.isExpanded,
+            "Expanding one nested field leaked its foldout state to a sibling field.");
+        using (var otherSerialized = new SerializedObject(component))
+            Require(!otherSerialized.FindProperty(nameof(NestedInspectorComponent.a))!.isExpanded,
+                "Nested foldout state leaked to another SerializedObject instance.");
+
+        var expandedHeight = EditorGUI.GetPropertyHeight(a, includeChildren: true);
+        Require(expandedHeight > EditorGUIUtility.singleLineHeight,
+            "Expanded nested object height did not include its child fields.");
+        var expanded = Render(420, (int)Math.Ceiling((double)expandedHeight) + 8,
+            () => EditorGUI.PropertyField(new Rect(0, 0, 420, expandedHeight), a, includeChildren: true));
+        var ageLabel = expanded.Single(command => command.Type == GpuCanvasCommandType.Text &&
+                                                  command.Content == "Age");
+        Require(ageLabel.Rect.X >= 14,
+            $"Nested field indentation is not proportional to depth 1: x={ageLabel.Rect.X}.");
+        Require(!expanded.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                         command.Content == "Hidden"),
+            "[HideInInspector] was ignored inside an ordinary nested object.");
+        Require(expanded.Count(command => command.Type == GpuCanvasCommandType.Text &&
+                                           command.Content == "Experience") == 1 &&
+                !expanded.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                         command.Content.Contains("Backing", StringComparison.Ordinal)),
+            "A serialized auto-property exposed its compiler-generated backing field or rendered twice.");
+
+        var age = serialized.FindProperty($"{nameof(NestedInspectorComponent.a)}.age")!;
+        var experience = serialized.FindProperty($"{nameof(NestedInspectorComponent.a)}.experience")!;
+        Require(age.depth == 1, $"Nested ordinary field depth was {age.depth}, expected 1.");
+        age.intValue = 41;
+        experience.intValue = 43;
+        Require(serialized.ApplyModifiedProperties() && component.a.age == 41 && component.a.experience == 43,
+            "A nested field/property edit was not applied to the owning Component.");
+
+        VerifyNestedCollection(serialized, component, nameof(NestedInspectorComponent.items), isList: false);
+        VerifyNestedCollection(serialized, component, nameof(NestedInspectorComponent.entries), isList: true);
+        VerifyNestedCycleAndDepth(serialized);
+        VerifyThrowingGetterIsolation(serialized);
+        Require(GUIUtility.hotControl == 0,
+            $"Nested Inspector drawing leaked hot control {GUIUtility.hotControl}.");
+    }
+
+    private static void VerifyThrowingGetterIsolation(SerializedObject serialized)
+    {
+        var throwing = serialized.FindProperty(nameof(NestedInspectorComponent.throwing))!;
+        var following = serialized.FindProperty(nameof(NestedInspectorComponent.zAfterThrow))!;
+        throwing.isExpanded = true;
+        Require(EditorGUI.GetPropertyHeight(throwing, includeChildren: true) ==
+                EditorGUIUtility.singleLineHeight,
+            "A throwing getter corrupted nested property height calculation.");
+
+        var stateRestored = false;
+        var commands = Render(420, 60, () =>
+        {
+            EditorGUI.indentLevel = 2;
+            GUI.enabled = true;
+            EditorGUI.PropertyField(new Rect(0, 0, 420, 18), throwing, includeChildren: true);
+            stateRestored = EditorGUI.indentLevel == 2 && GUI.enabled;
+            EditorGUI.PropertyField(new Rect(0, 22, 420, 18), following);
+            EditorGUI.indentLevel = 0;
+        });
+
+        Require(stateRestored, "A throwing getter leaked GUI enabled or indentation state.");
+        Require(commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                        command.Content == "Unavailable"),
+            "A throwing getter did not render an isolated unavailable value.");
+        Require(commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                        command.Content == "Z After Throw") &&
+                commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                        command.Content == "97"),
+            "A throwing getter prevented the following Inspector field from rendering.");
+    }
+
+    private static void VerifyNestedCollection(SerializedObject serialized, NestedInspectorComponent component,
+        string propertyName, bool isList)
+    {
+        var collection = serialized.FindProperty(propertyName)!;
+        Require(collection.isArray && collection.hasVisibleChildren,
+            $"Nested collection '{propertyName}' did not expose its elements.");
+        collection.isExpanded = true;
+        var element = serialized.FindProperty($"{propertyName}[0]")!;
+        element.isExpanded = true;
+        Require(element.displayName == "Element 0" && element.depth == 1,
+            $"Collection element metadata was not normalized: {element.displayName}, depth {element.depth}.");
+        var elementAge = serialized.FindProperty($"{propertyName}[0].age")!;
+        Require(elementAge.depth == 2,
+            $"Collection child depth was {elementAge.depth}, expected 2.");
+        elementAge.intValue = isList ? 73 : 71;
+        Require(serialized.ApplyModifiedProperties(),
+            $"Editing '{propertyName}[0].age' did not create an applicable serialized change.");
+        var actual = isList ? component.entries[0].age : component.items[0].age;
+        Require(actual == (isList ? 73 : 71),
+            $"Editing '{propertyName}[0].age' did not update the collection element.");
+
+        var height = EditorGUI.GetPropertyHeight(collection, includeChildren: true);
+        var commands = Render(420, (int)Math.Ceiling((double)height) + 8,
+            () => EditorGUI.PropertyField(new Rect(0, 0, 420, height), collection, includeChildren: true));
+        Require(commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                        command.Content == "Element 0") &&
+                commands.Any(command => command.Type == GpuCanvasCommandType.Text && command.Content == "Age"),
+            $"Expanded collection '{propertyName}' did not draw its element and nested fields.");
+        var ageLabel = commands.Single(command => command.Type == GpuCanvasCommandType.Text &&
+                                                  command.Content == "Age");
+        Require(ageLabel.Rect.X >= 29,
+            $"Collection child indentation is not proportional to depth 2: x={ageLabel.Rect.X}.");
+    }
+
+    private static void VerifyNestedCycleAndDepth(SerializedObject serialized)
+    {
+        var cycle = serialized.FindProperty(nameof(NestedInspectorComponent.cycle))!;
+        var cycleNext = serialized.FindProperty($"{nameof(NestedInspectorComponent.cycle)}.next")!;
+        cycle.isExpanded = true;
+        cycleNext.isExpanded = true;
+        var cycleHeight = EditorGUI.GetPropertyHeight(cycle, includeChildren: true);
+        var maximumCycleHeight = EditorGUIUtility.singleLineHeight * 3 +
+                                 EditorGUIUtility.standardVerticalSpacing * 2;
+        Require(cycleHeight <= maximumCycleHeight,
+            $"Circular ordinary object recursion was not bounded: {cycleHeight}.");
+        _ = Render(420, 160,
+            () => EditorGUI.PropertyField(new Rect(0, 0, 420, cycleHeight), cycle, includeChildren: true));
+
+        var deep = serialized.FindProperty(nameof(NestedInspectorComponent.deep))!;
+        var path = nameof(NestedInspectorComponent.deep);
+        for (var depth = 0; depth < 14; depth++)
+        {
+            serialized.FindProperty(path)!.isExpanded = true;
+            path += ".next";
+        }
+        var maximumExpected = EditorGUIUtility.singleLineHeight * 9 +
+                              EditorGUIUtility.standardVerticalSpacing * 8;
+        var deepHeight = EditorGUI.GetPropertyHeight(deep, includeChildren: true);
+        Require(deepHeight <= maximumExpected,
+            $"Nested object maximum depth was not enforced: {deepHeight} > {maximumExpected}.");
+        _ = Render(420, (int)Math.Ceiling((double)deepHeight) + 8,
+            () => EditorGUI.PropertyField(new Rect(0, 0, 420, deepHeight), deep, includeChildren: true));
+    }
+
+    private static void ClickFoldout(SerializedProperty property, Rect rect)
+    {
+        Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(8, 9), button = 0 },
+            (int)rect.width, 60, () => EditorGUI.PropertyField(rect, property, includeChildren: true));
+        Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(8, 9), button = 0 },
+            (int)rect.width, 60, () => EditorGUI.PropertyField(rect, property, includeChildren: true));
     }
 
     private static void VerifyObjectFields()
@@ -477,9 +779,9 @@ internal static class Program
     {
         _capturedMenuItems = null;
         _capturedMenuAdvanced = false;
-        Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(210, 9), button = 0 }, 320, 40,
+        Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(310, 9), button = 0 }, 320, 40,
             () => EditorGUI.ObjectField(rect, "Target", value, type, allowSceneObjects));
-        Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(210, 9), button = 0 }, 320, 40,
+        Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(310, 9), button = 0 }, 320, 40,
             () => EditorGUI.ObjectField(rect, "Target", value, type, allowSceneObjects));
         Require(_capturedMenuItems is not null, "Clicking ObjectField did not open its picker.");
     }
@@ -489,9 +791,9 @@ internal static class Program
     {
         _capturedMenuItems = null;
         _capturedMenuAdvanced = false;
-        Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(210, 9), button = 0 }, 320, 40,
+        Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(310, 9), button = 0 }, 320, 40,
             () => EditorGUI.ObjectField(rect, property, type, allowSceneObjects));
-        Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(210, 9), button = 0 }, 320, 40,
+        Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(310, 9), button = 0 }, 320, 40,
             () => EditorGUI.ObjectField(rect, property, type, allowSceneObjects));
         Require(_capturedMenuItems is not null, "Clicking SerializedProperty ObjectField did not open its picker.");
     }

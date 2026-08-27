@@ -172,7 +172,7 @@ public static class GUILayout
     internal static Fix64 CurrentGroupWidth => Context.Width;
     private static Fix64 StyleHeight(GUIStyle style, Fix64 fallback) =>
         style.fixedHeight > 0 ? style.fixedHeight : fallback;
-    private static Fix64 DefaultControlHeight => Fix64.Max(22,
+    internal static Fix64 DefaultControlHeight => Fix64.Max(22,
         GUITextMetrics.MeasureLineHeight(GUI.skin.label.fontSize, GUIUtility.fontFamily));
     private static LayoutContext Context => _context ?? throw new InvalidOperationException("GUILayout is only valid during OnGUI.");
 

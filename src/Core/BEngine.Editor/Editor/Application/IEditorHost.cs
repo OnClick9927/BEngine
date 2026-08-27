@@ -20,6 +20,7 @@ internal interface IEditorHost
     bool IsChangingPlayMode { get; }
     bool IsPaused { get; set; }
     void ShowWindow(EditorWindow window);
+    void FocusWindow(EditorWindow window);
     void CloseWindow(EditorWindow window);
     void RepaintWindow(EditorWindow window);
     void RepaintAllWindows();

@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
 using BEngine.Launcher;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -7,7 +9,7 @@ namespace BEngine.ExampleTests.LauncherHub;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static async Task Main()
     {
         var temporaryRoot = Path.Combine(Path.GetTempPath(), $"BEngine-LauncherHub-{Guid.NewGuid():N}");
         Directory.CreateDirectory(temporaryRoot);
@@ -19,14 +21,71 @@ internal static class Program
             VerifyDependencyInjectionComposition();
             VerifyHubTabsAndCoreOnlyCreation();
             VerifyHubSourceBoundary();
+            await VerifyEditorStartupMonitoring(temporaryRoot).ConfigureAwait(false);
             Console.WriteLine(
                 "LAUNCHER_HUB_OK|projects,history-migration,packages-tab,output-catalog,target-path,ioc," +
-                "default-none,source-boundary,no-reverse-core-dependency");
+                "default-none,source-boundary,no-reverse-core-dependency,startup-ready," +
+                "startup-reported-failure,startup-unexpected-exit,startup-timeout");
         }
         finally
         {
             Directory.Delete(temporaryRoot, true);
         }
+    }
+
+    private static async Task VerifyEditorStartupMonitoring(string root)
+    {
+        using var currentProcess = Process.GetCurrentProcess();
+
+        var readyPath = Path.Combine(root, "EditorStartupReady.json");
+        WriteStartupStatus(readyPath, "ready");
+        var ready = await EditorStartupMonitor.WaitAsync(currentProcess, readyPath,
+            TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(5)).ConfigureAwait(false);
+        Require(ready.Kind == EditorStartupOutcomeKind.Ready && ready.IsReady,
+            "The Hub did not accept the Editor's first-frame-ready report.");
+
+        var failureLog = Path.Combine(root, "SyntheticEditorStartup.log");
+        var failedPath = Path.Combine(root, "EditorStartupFailed.json");
+        WriteStartupStatus(failedPath, "failed", "Synthetic managed startup failure.", failureLog);
+        var failed = await EditorStartupMonitor.WaitAsync(currentProcess, failedPath,
+            TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(5)).ConfigureAwait(false);
+        Require(failed.Kind == EditorStartupOutcomeKind.Failed && !failed.IsReady &&
+                failed.Message == "Synthetic managed startup failure." &&
+                failed.LogPath == failureLog,
+            "The Hub discarded the Editor's reported startup failure details.");
+
+        var commandInterpreter = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe";
+        var startInfo = new ProcessStartInfo(commandInterpreter)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("/d");
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("exit 37");
+        using var exitedProcess = Process.Start(startInfo) ??
+                                  throw new InvalidOperationException("Could not start the exit-code probe.");
+        var exited = await EditorStartupMonitor.WaitAsync(exitedProcess,
+            Path.Combine(root, "NoStartupStatusForExitedProcess.json"),
+            TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(5)).ConfigureAwait(false);
+        Require(exited.Kind == EditorStartupOutcomeKind.UnexpectedExit && !exited.IsReady &&
+                exited.ExitCode == 37 && exited.Message.Contains("0x00000025", StringComparison.Ordinal),
+            "The Hub did not turn an early non-zero Editor exit into an actionable startup failure.");
+
+        var timedOut = await EditorStartupMonitor.WaitAsync(currentProcess,
+            Path.Combine(root, "NoStartupStatusForTimeout.json"),
+            TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(5)).ConfigureAwait(false);
+        Require(timedOut.Kind == EditorStartupOutcomeKind.TimedOut && !timedOut.IsReady &&
+                timedOut.Message.Contains("may still be running", StringComparison.OrdinalIgnoreCase),
+            "The Hub did not distinguish a blocked startup from a process exit.");
+    }
+
+    private static void WriteStartupStatus(string path, string state, string? message = null,
+        string? logPath = null)
+    {
+        var status = new EditorStartupMonitor.EditorStartupStatus(state, message, logPath,
+            Environment.ProcessId, DateTimeOffset.UtcNow);
+        File.WriteAllText(path, JsonSerializer.Serialize(status));
     }
 
     private static void VerifyHistoryMigrationAndMultipleProjects(string root)

@@ -20,6 +20,13 @@ internal sealed class EditorGpuCanvasResourceResolver : IGpuCanvasResourceResolv
                WindowsTextRasterizer.TryMeasure(text, fontSize, fontFamily, out width, out _);
     }
 
+    internal bool TryMeasureTextAdvance(string text, float fontSize, string fontFamily, out int width)
+    {
+        width = 0;
+        return OperatingSystem.IsWindows() &&
+               WindowsTextRasterizer.TryMeasureAdvance(text, fontSize, fontFamily, out width);
+    }
+
     internal bool TryMeasureLineHeight(float fontSize, string fontFamily, out int height)
     {
         height = 0;
@@ -74,6 +81,33 @@ internal sealed class EditorGpuCanvasResourceResolver : IGpuCanvasResourceResolv
             }
         }
 
+        public static bool TryMeasureAdvance(string text, float fontSize, string fontFamily, out int width)
+        {
+            width = 0;
+            if (string.IsNullOrEmpty(text)) return false;
+            IntPtr dc = IntPtr.Zero, font = IntPtr.Zero, oldFont = IntPtr.Zero;
+            try
+            {
+                dc = CreateCompatibleDC(IntPtr.Zero);
+                if (dc == IntPtr.Zero) return false;
+                font = CreateTextFont(fontSize, fontFamily);
+                if (font != IntPtr.Zero) oldFont = SelectObject(dc, font);
+                if (!GetTextExtentPoint32W(dc, text, text.Length, out var size)) return false;
+                width = Math.Max(0, size.Width);
+                return true;
+            }
+            catch (Exception exception) when (exception is ExternalException or OverflowException)
+            {
+                return false;
+            }
+            finally
+            {
+                if (oldFont != IntPtr.Zero && dc != IntPtr.Zero) SelectObject(dc, oldFont);
+                if (font != IntPtr.Zero) DeleteObject(font);
+                if (dc != IntPtr.Zero) DeleteDC(dc);
+            }
+        }
+
         public static bool TryRasterize(string text, int width, int height, float fontSize, string fontFamily,
             out GpuCanvasTextureData texture)
         {
@@ -100,7 +134,7 @@ internal sealed class EditorGpuCanvasResourceResolver : IGpuCanvasResourceResolv
                 if (font != IntPtr.Zero) oldFont = SelectObject(dc, font);
                 SetBkMode(dc, Transparent);
                 SetTextColor(dc, 0x00FFFFFF);
-                var rect = new NativeRect { Left = 4, Top = 0, Right = Math.Max(4, width - 2), Bottom = height };
+                var rect = new NativeRect { Left = 0, Top = 0, Right = Math.Max(1, width - 2), Bottom = height };
                 DrawTextW(dc, text, text.Length, ref rect,
                     DtLeft | DtVCenter | DtSingleLine | DtEndEllipsis | DtNoPrefix);
                 var bgra = new byte[checked(width * height * 4)];
@@ -136,7 +170,7 @@ internal sealed class EditorGpuCanvasResourceResolver : IGpuCanvasResourceResolv
                        fontFamily.Equals("BEngine Built-in", StringComparison.OrdinalIgnoreCase)
                 ? "Microsoft YaHei UI"
                 : fontFamily;
-            return CreateFontW(-Math.Max(8, (int)Math.Round(fontSize)), 0, 0, 0, 400,
+            return CreateFontW(-Math.Max(1, (int)Math.Round(fontSize)), 0, 0, 0, 400,
                 0, 0, 0, 1, 0, 0, 5, 0, face);
         }
 

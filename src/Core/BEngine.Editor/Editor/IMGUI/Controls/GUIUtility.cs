@@ -42,4 +42,12 @@ public static class GUIUtility
         _controlCount = 0;
         IdScopes.Clear();
     }
+
+    internal static void ReleaseInputFocus()
+    {
+        hotControl = 0;
+        keyboardControl = 0;
+        textFieldInput = false;
+        GUI.FocusControl(string.Empty);
+    }
 }

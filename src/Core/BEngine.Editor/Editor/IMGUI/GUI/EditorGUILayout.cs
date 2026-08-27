@@ -22,13 +22,15 @@ public static class EditorGUILayout
     }
 
     public static void LabelField(string label, params GUILayoutOption[] options) =>
-        GUILayout.Label(label, options);
+        LabelField(new GUIContent(label), null, options);
 
     public static void LabelField(string label, GUIStyle? style, params GUILayoutOption[] options) =>
-        GUILayout.Label(label, style, options);
+        LabelField(new GUIContent(label), style, options);
 
     public static void LabelField(GUIContent label, GUIStyle? style = null,
-        params GUILayoutOption[] options) => GUILayout.Label(label, style, options);
+        params GUILayoutOption[] options) => EditorGUI.LabelField(
+        GUILayoutUtility.GetControlRect(StyleHeight(style, EditorStyles.label,
+            GUILayout.DefaultControlHeight), options), label, style);
 
     public static string TextField(string label, string value, params GUILayoutOption[] options) =>
         TextField(label, value, null, options);

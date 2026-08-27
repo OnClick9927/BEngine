@@ -40,7 +40,7 @@ internal static class HierarchyUnityStyleTests
                                                     command.Content.Contains("Create GameObject",
                                                         StringComparison.OrdinalIgnoreCase)),
             "Hierarchy rendered a verbose create label instead of Unity-style compact toolbar controls.");
-        var toolbarColor = GpuCanvasColor.FromColor(EditorAppearance.palette.Toolbar);
+        var toolbarColor = GpuCanvasColor.FromColor(EditorStyles.toolbar.normal.backgroundColor);
         TestAssert.Require(commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                                    command.Color == toolbarColor &&
                                                    command.Rect.X <= 0.5f &&
@@ -94,13 +94,13 @@ internal static class HierarchyUnityStyleTests
         var rootFoldout = RowImageBefore(collapsed, "FoldoutClosed.png", firstRoot, rootIcon.Rect.X);
         TestAssert.Require(sceneIcon.Rect.X < firstScene.Rect.X && rootIcon.Rect.X < firstRoot.Rect.X,
             "Hierarchy Scene or GameObject row is missing its identifying icon.");
-        var titleBar = GpuCanvasColor.FromColor(EditorAppearance.palette.TitleBar);
-        var raisedPanel = GpuCanvasColor.FromColor(EditorAppearance.palette.PanelRaised);
+        var titleBar = GpuCanvasColor.FromColor(EditorStyles.windowTitle.normal.backgroundColor);
+        var raisedPanel = GpuCanvasColor.FromColor(GUI.skin.frameBox.normal.backgroundColor);
         TestAssert.Require(HasFullRowBackground(collapsed, firstScene, titleBar, WideWidth) ||
                            HasFullRowBackground(collapsed, firstScene, raisedPanel, WideWidth),
             "Hierarchy Scene root has no distinct Unity-style header background.");
         TestAssert.Require(!HasFullRowBackground(collapsed, firstScene,
-                GpuCanvasColor.FromColor(EditorAppearance.palette.Selection), WideWidth),
+                GpuCanvasColor.FromColor(EditorStyles.treeViewRowSelected.normal.backgroundColor), WideWidth),
             "The active Scene was rendered as a selected GameObject instead of a Scene header.");
 
         Click(harness, rootFoldout.Rect);
@@ -161,7 +161,7 @@ internal static class HierarchyUnityStyleTests
 
         var selected = harness.RenderHierarchy(new Event(EventType.Repaint), WideWidth);
         root = Text(selected, "First Root");
-        var selectionColor = GpuCanvasColor.FromColor(EditorAppearance.palette.Selection);
+        var selectionColor = GpuCanvasColor.FromColor(EditorStyles.treeViewRowSelected.normal.backgroundColor);
         TestAssert.Require(HasFullRowBackground(selected, root, selectionColor, WideWidth),
             "Hierarchy selection does not span the full Unity-style row.");
 
@@ -171,7 +171,7 @@ internal static class HierarchyUnityStyleTests
             mousePosition = Center(child.Rect)
         }, WideWidth);
         child = Text(hovered, "First Child");
-        var hoverColor = GpuCanvasColor.FromColor(EditorAppearance.palette.Hover);
+        var hoverColor = GpuCanvasColor.FromColor(EditorStyles.treeViewRow.hover.backgroundColor);
         TestAssert.Require(HasFullRowBackground(hovered, child, hoverColor, WideWidth),
             "Hierarchy hover does not span the full Unity-style row.");
     }

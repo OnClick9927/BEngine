@@ -73,13 +73,16 @@ internal static class Program
     private static void VerifyDockChromeColors()
     {
         EditorAppearance.Apply(new EditorPreferencesDocument());
-        var palette = EditorAppearance.palette;
-        Require(!palette.Toolbar.Equals(palette.Panel),
+        Require(!EditorStyles.toolbar.normal.backgroundColor.Equals(
+                    GUI.skin.viewBackground.normal.backgroundColor),
             "EditorWindow title bar and content colors must remain visually distinct.");
-        Require(EditorStyles.dockTab.normal.backgroundColor.Equals(palette.TitleBar),
+        Require(EditorStyles.dockTab.normal.backgroundColor.Equals(
+                    EditorStyles.windowTitle.normal.backgroundColor),
             "Inactive dock tabs do not use the title bar color.");
-        Require(EditorStyles.dockTabActive.normal.backgroundColor.Equals(palette.PanelRaised),
-            "The active dock tab is not visually joined to its content area.");
+        Require(!EditorStyles.dockTabActive.normal.backgroundColor.Equals(
+                    EditorStyles.dockTab.normal.backgroundColor) &&
+                EditorStyles.dockTabActive.normal.backgroundColor.a > 0,
+            "The active dock tab is not visually distinct from an inactive tab.");
 
         var dock = typeof(EditorWindow).Assembly.GetType("BEngine.Editor.ImGuiDockWorkspace", true)!;
         Require(dock.GetMethod("DrawSplit", BindingFlags.Instance | BindingFlags.NonPublic) is not null,

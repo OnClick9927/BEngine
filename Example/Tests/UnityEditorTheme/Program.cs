@@ -22,14 +22,15 @@ internal static class Program
                 EditorFont = "Microsoft YaHei UI",
                 EditorFontSize = 20
             });
-            VerifyPaletteHierarchy();
+            VerifyStyleHierarchy();
             VerifySkinOwnedEditorStylesAndToggleStates();
             VerifyFixedFontDensity();
             VerifyControlStates();
             VerifySegmentedButtonsAndDropDownApi();
+            VerifyTextureStyleBackground();
             VerifyScaledTextCaret();
-            Console.WriteLine("UNITY_EDITOR_THEME_OK|palette,skin-owned-styles,toggle-states,fixed-14px-font,density,alignment,focus," +
-                              "disabled,segmented-button-background,dropdown-api,scaled-caret");
+            Console.WriteLine("UNITY_EDITOR_THEME_OK|style-only-theme,skin-owned-styles,toggle-states,fixed-14px-font,density,alignment,focus," +
+                              "disabled,segmented-button-background,texture-background,dropdown-api,scaled-caret");
             return 0;
         }
         catch (Exception exception)
@@ -44,16 +45,19 @@ internal static class Program
         }
     }
 
-    private static void VerifyPaletteHierarchy()
+    private static void VerifyStyleHierarchy()
     {
-        var palette = EditorAppearance.palette;
-        Require(!palette.Window.Equals(palette.Panel) && !palette.Panel.Equals(palette.PanelRaised) &&
-                !palette.Toolbar.Equals(palette.TitleBar) && !palette.Field.Equals(palette.Button),
+        var skin = GUI.skin;
+        Require(!skin.window.normal.backgroundColor.Equals(skin.viewBackground.normal.backgroundColor) &&
+                !skin.viewBackground.normal.backgroundColor.Equals(skin.frameBox.normal.backgroundColor) &&
+                !skin.toolbar.normal.backgroundColor.Equals(skin.windowTitle.normal.backgroundColor) &&
+                !skin.textField.normal.backgroundColor.Equals(skin.button.normal.backgroundColor),
             "Unity-style chrome, content, raised panels, fields and buttons are not visually distinct.");
-        Require(!palette.Selection.Equals(palette.SelectionInactive) &&
-                !palette.FocusBorder.Equals(palette.Border),
+        Require(!skin.selectionRect.normal.backgroundColor.Equals(skin.selectionRect.disabled.backgroundColor) &&
+                !skin.textField.focused.borderColor.Equals(skin.textField.normal.borderColor),
             "Focused and inactive selection states use the same color.");
-        Require(!palette.Text.Equals(palette.MutedText) && !palette.MutedText.Equals(palette.DisabledText),
+        Require(!skin.label.normal.textColor.Equals(skin.miniLabel.normal.textColor) &&
+                !skin.miniLabel.normal.textColor.Equals(skin.label.disabled.textColor),
             "Normal, muted and disabled text do not have a readable hierarchy.");
     }
 
@@ -68,20 +72,21 @@ internal static class Program
                 Require(ReferenceEquals(EditorStyles.centeredBoldLabel, skin.centeredBoldLabel) &&
                         ReferenceEquals(EditorStyles.centeredMiniLabel, skin.centeredMiniLabel),
                     $"{skin.name} does not own the centered editor label styles.");
-                Require(skin.toggle.normal.backgroundColor.Equals(skin.palette.Field) &&
-                        skin.toggle.onNormal.backgroundColor.Equals(skin.palette.Field) &&
-                        skin.toggle.normal.borderColor.Equals(skin.palette.Border) &&
-                        skin.toggle.onNormal.textColor.Equals(skin.palette.Text),
-                    $"{skin.name} toggle off/on states do not follow its palette.");
+                Require(skin.toggle.normal.backgroundColor.Equals(skin.textField.normal.backgroundColor) &&
+                        skin.toggle.onNormal.backgroundColor.Equals(skin.textField.normal.backgroundColor) &&
+                        skin.toggle.normal.borderColor.Equals(skin.textField.normal.borderColor) &&
+                        skin.toggle.onNormal.textColor.Equals(skin.label.normal.textColor),
+                    $"{skin.name} toggle off/on states do not follow its GUIStyles.");
 
                 foreach (var value in new[] { false, true })
                 {
                     var commands = Render(() => GUI.Toggle(new Rect(10, 8, 220, 30), value, "Visible"));
                     Require(commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
-                                                    command.Color == GpuCanvasColor.FromColor(skin.palette.Field)) &&
+                                                    command.Color == GpuCanvasColor.FromColor(
+                                                        skin.toggle.normal.backgroundColor)) &&
                             commands.Count(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                                       command.Color == GpuCanvasColor.FromColor(
-                                                          skin.palette.Border)) >= 4,
+                                                          skin.toggle.normal.borderColor)) >= 4,
                         $"{skin.name} {(value ? "checked" : "unchecked")} toggle has no visible field or border.");
                 }
             }
@@ -121,7 +126,8 @@ internal static class Program
             () => GUI.TextField(new Rect(10, 8, 220, 30), "Focused"));
         var focused = Render(() => GUI.TextField(new Rect(10, 8, 220, 30), "Focused"));
         Require(focused.Count(command => command.Type == GpuCanvasCommandType.SolidRect &&
-                         command.Color == GpuCanvasColor.FromColor(EditorAppearance.palette.FocusBorder)) >= 4,
+                         command.Color == GpuCanvasColor.FromColor(
+                             EditorStyles.textField.focused.borderColor)) >= 4,
             "Focused text field did not render the Unity-style one-pixel focus border.");
 
         GUI.enabled = false;
@@ -129,13 +135,14 @@ internal static class Program
         GUI.enabled = true;
         Require(disabled.Any(command => command.Type == GpuCanvasCommandType.Text &&
                                         command.Color == GpuCanvasColor.FromColor(
-                                            EditorAppearance.palette.DisabledText)),
+                                            GUI.skin.button.disabled.textColor)),
             "Disabled controls do not use the shared disabled text color.");
     }
 
     private static void VerifySegmentedButtonsAndDropDownApi()
     {
-        Require(EditorStyles.toolbarButton.normal.backgroundColor.Equals(EditorAppearance.palette.Toolbar) &&
+        Require(EditorStyles.toolbarButton.normal.backgroundColor.Equals(
+                    EditorStyles.toolbar.normal.backgroundColor) &&
                 EditorStyles.toolbarButton.borderWidth == Fix64.Zero,
             "Toolbar button colors were not restored to the toolbar surface.");
         Require(EditorStyles.toolbarButton.normal.backgroundImage is not null &&
@@ -146,7 +153,8 @@ internal static class Program
         var toolbar = Render(() => GUI.Button(new Rect(10, 8, 120, 28), "Toolbar",
             EditorStyles.toolbarButton));
         Require(toolbar.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
-                                      command.Color == GpuCanvasColor.FromColor(EditorAppearance.palette.Border) &&
+                                      command.Color == GpuCanvasColor.FromColor(
+                                          EditorStyles.toolbarButton.normal.borderColor) &&
                                       Math.Abs(command.Rect.X - 129) < .01f &&
                                       Math.Abs(command.Rect.Width - 1) < .01f),
             "Toolbar button texture did not produce its right-side separator.");
@@ -161,7 +169,7 @@ internal static class Program
         Require(arrow.Rect.X > label.Rect.X && arrow.Rect.X >= 210 &&
                 dropDown.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                         command.Color == GpuCanvasColor.FromColor(
-                                            EditorAppearance.palette.Border) &&
+                                            EditorStyles.dropDownButton.normal.borderColor) &&
                                         Math.Abs(command.Rect.X - 210) < .01f),
             "DropDownButton does not visibly separate its dropdown arrow region.");
 
@@ -194,33 +202,87 @@ internal static class Program
             "EditorGUILayout.DropDownButton did not render its content and dropdown affordance.");
     }
 
+    private static void VerifyTextureStyleBackground()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"BEngine-StyleTexture-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var path = Path.Combine(directory, "Panel.png");
+            File.WriteAllBytes(path, Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
+            var texture = BAsset.Load<Texture>(path) ??
+                          throw new InvalidOperationException("Could not load the GUIStyle Texture fixture.");
+            var style = new GUIStyle(GUI.skin.box);
+            style.normal.backgroundImage = texture;
+            var commands = Render(() => GUI.Box(new Rect(10, 8, 120, 28), string.Empty, style));
+            Require(commands.Any(command => command.Type == GpuCanvasCommandType.Image &&
+                                            command.Content.Equals(texture.sourcePath,
+                                                StringComparison.OrdinalIgnoreCase)),
+                "A GUIStyleState Texture did not reach the GPU image command as its resolved source path.");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static void VerifyScaledTextCaret()
     {
-        const string text = "WiWi scale";
+        const string text = "Wi中文 scale";
         const int boundary = 3;
         var previousScale = GUIUtility.pixelsPerPoint;
         GUIUtility.keyboardControl = 0;
         GUIUtility.hotControl = 0;
-        GUIUtility.pixelsPerPoint = Fix64.FromDecimal(1.5m);
         try
         {
-            var field = new Rect(10, 8, 260, 30);
-            var prefixWidth = EditorStyles.textField.CalcSize(new GUIContent(text[..boundary])).x;
-            var logicalPointer = new Vector2(field.x + 4 + prefixWidth, field.y + field.height / 2);
-            var physicalPointer = logicalPointer * GUIUtility.pixelsPerPoint;
-            Dispatch(new Event(EventType.MouseDown) { mousePosition = physicalPointer, button = 0 },
-                () => GUI.TextField(field, text, style: EditorStyles.textField), width: 520, height: 120);
-            var commands = Render(() => GUI.TextField(field, text, style: EditorStyles.textField),
-                width: 520, height: 120);
-            var caret = commands.Single(command => command.Type == GpuCanvasCommandType.SolidRect &&
-                                                   command.Color == GpuCanvasColor.FromColor(
-                                                       EditorAppearance.palette.Text) &&
-                                                   Math.Abs(command.Rect.Width - 1.5f) < .01f &&
-                                                   command.Rect.Height > 30);
-            var expectedX = (float)((field.x + 4 + prefixWidth) * GUIUtility.pixelsPerPoint);
-            Require(Math.Abs(caret.Rect.X - expectedX) <= .75f,
-                $"Scaled text caret is detached from the measured glyph boundary: " +
-                $"actual={caret.Rect.X:0.##}, expected={expectedX:0.##}.");
+            var field = new Rect(10, 8, 300, 30);
+            var style = EditorStyles.textField;
+            foreach (var value in new[] { .5m, .75m, 1m, 1.25m, 1.5m, 1.8m })
+            {
+                var scale = Fix64.FromDecimal(value);
+                GUIUtility.pixelsPerPoint = scale;
+                GUIUtility.keyboardControl = 0;
+                GUIUtility.hotControl = 0;
+                var edited = text;
+                void Draw() => edited = GUI.TextField(field, edited, style: style);
+
+                Dispatch(new Event(EventType.MouseDown)
+                    {
+                        mousePosition = new Vector2(field.x + 12, field.y + field.height / 2) * scale,
+                        button = 0,
+                        clickCount = 2
+                    }, Draw, width: 760, height: 140);
+                Dispatch(new Event(EventType.KeyDown) { keyCode = KeyCode.Home }, Draw,
+                    width: 760, height: 140);
+                var originCommands = Render(Draw, width: 760, height: 140);
+                var originCaret = FindCaret(originCommands, style, scale);
+                var textCommand = originCommands.Single(command => command.Type == GpuCanvasCommandType.Text &&
+                                                                   command.Content == text);
+                Require(Math.Abs(originCaret.Rect.X - textCommand.Rect.X) < .02f,
+                    $"EditorScale {value:0.##} offsets an empty caret from the rendered text origin.");
+
+                for (var index = 0; index < boundary; index++)
+                    Dispatch(new Event(EventType.KeyDown) { keyCode = KeyCode.RightArrow }, Draw,
+                        width: 760, height: 140);
+                var boundaryCommands = Render(Draw, width: 760, height: 140);
+                var boundaryCaret = FindCaret(boundaryCommands, style, scale);
+                Require(boundaryCaret.Rect.X > originCaret.Rect.X,
+                    $"EditorScale {value:0.##} did not advance the caret across ASCII/CJK text.");
+
+                GUIUtility.keyboardControl = 0;
+                Dispatch(new Event(EventType.MouseDown)
+                    {
+                        mousePosition = new Vector2((Fix64)boundaryCaret.Rect.X,
+                            (field.y + field.height / 2) * scale),
+                        button = 0,
+                        clickCount = 1
+                    }, Draw, width: 760, height: 140);
+                Dispatch(new Event(EventType.KeyDown) { character = '|' }, Draw,
+                    width: 760, height: 140);
+                Require(edited == text.Insert(boundary, "|"),
+                    $"EditorScale {value:0.##} clicked the wrong ASCII/CJK boundary: '{edited}'.");
+            }
         }
         finally
         {
@@ -228,6 +290,17 @@ internal static class Program
             GUIUtility.hotControl = 0;
             GUIUtility.pixelsPerPoint = previousScale;
         }
+    }
+
+    private static GpuCanvasCommand FindCaret(
+        IEnumerable<GpuCanvasCommand> commands,
+        GUIStyle style,
+        Fix64 scale)
+    {
+        var color = GpuCanvasColor.FromColor(style.focused.textColor);
+        return commands.Single(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                          command.Color == color &&
+                                          Math.Abs(command.Rect.Width - (float)scale) < .02f);
     }
 
     private static List<GpuCanvasCommand> Render(Action draw, int width = 260, int height = 60)

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using BEngine.Editor.Rendering;
 using BEngine.Rendering;
@@ -20,6 +21,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
     private readonly IWindow _window;
     private readonly GraphicsBackend _requestedBackend;
     private readonly bool _vsync;
+    private readonly NativeWindowFrameScheduler _frameScheduler = new();
     private readonly ConcurrentQueue<BEvent> _events = new();
     private readonly List<GpuCanvasCommand> _commands = [];
     private IInputContext? _input;
@@ -31,12 +33,15 @@ internal sealed class ImGuiNativeWindow : IDisposable
     private MouseCursor? _appliedMouseCursor;
     private bool _disposed;
     private bool _firstFrame;
+    private bool _isFocused;
     private BVector2 _mousePosition;
     private BVector2 _lastMousePosition;
     private EventModifiers _modifiers;
     private long _lastClickTime;
     private BVector2 _lastClickPosition;
     private int _clickCount;
+    private Vector2D<int> _minimumSize;
+    private Vector2D<int> _maximumSize;
     private readonly GameViewFrameTiming _frameTiming = new();
 
     public event Action<double>? updating;
@@ -50,14 +55,18 @@ internal sealed class ImGuiNativeWindow : IDisposable
     public int width => Math.Max(1, _window.FramebufferSize.X);
     public int height => Math.Max(1, _window.FramebufferSize.Y);
     public Fix64 renderScale { get; private set; } = Fix64.One;
+    public Fix64 deviceScale { get; private set; } = Fix64.One;
     internal GameViewFrameTimingSnapshot frameTiming => _frameTiming.snapshot;
+    internal IGraphicsDevice? graphicsDevice => _device;
     public IntPtr nativeHandle => _window.Native?.Win32?.Hwnd ?? IntPtr.Zero;
     public BVector2 screenPosition => new(_window.Position.X, _window.Position.Y);
     public BVector2 windowSize => new(_window.Size.X, _window.Size.Y);
     public bool isMaximized => _window.WindowState == WindowState.Maximized;
+    public bool isFocused => _isFocused;
     public bool leftMouseButtonPressed => OperatingSystem.IsWindows()
         ? (GetAsyncKeyState(0x01) & 0x8000) != 0
         : _primaryMouse?.IsButtonPressed(MouseButton.Left) == true;
+    internal NativeWindowPointerOperation pointerOperation => ResolvePointerOperation();
     private bool anyNavigationMouseButtonPressed => OperatingSystem.IsWindows()
         ? (GetAsyncKeyState(0x01) & 0x8000) != 0 ||
           (GetAsyncKeyState(0x02) & 0x8000) != 0 ||
@@ -66,13 +75,18 @@ internal sealed class ImGuiNativeWindow : IDisposable
           _primaryMouse?.IsButtonPressed(MouseButton.Right) == true ||
           _primaryMouse?.IsButtonPressed(MouseButton.Middle) == true;
 
-    public ImGuiNativeWindow(string title, int width, int height, bool visible = true)
+    public ImGuiNativeWindow(string title, int width, int height, bool visible = true,
+        bool vsync = true, int minimumWidth = 320, int minimumHeight = 200,
+        int maximumWidth = int.MaxValue, int maximumHeight = int.MaxValue)
     {
         _requestedBackend = ResolveWindowBackend(GraphicsBackendSettings.PreferredBackend);
-        _vsync = true;
+        _vsync = vsync;
+        _minimumSize = new Vector2D<int>(Math.Max(1, minimumWidth), Math.Max(1, minimumHeight));
+        _maximumSize = new Vector2D<int>(Math.Max(_minimumSize.X, maximumWidth),
+            Math.Max(_minimumSize.Y, maximumHeight));
         var options = WindowOptions.Default;
         options.Title = title;
-        options.Size = new Vector2D<int>(Math.Max(320, width), Math.Max(200, height));
+        options.Size = ConstrainSize(width, height);
         options.VSync = _vsync;
         options.ShouldSwapAutomatically = false;
         options.IsVisible = visible;
@@ -83,13 +97,15 @@ internal sealed class ImGuiNativeWindow : IDisposable
         _window.Update += OnUpdate;
         _window.Render += OnRender;
         _window.Closing += () => EditorCallbackDispatcher.Invoke(closing, nameof(closing));
-        _window.FocusChanged += focused => Enqueue(new BEvent(
-            focused ? EventType.MouseEnterWindow : EventType.MouseLeaveWindow)
-        {
-            mousePosition = _mousePosition
-        });
         _window.FocusChanged += focused =>
+        {
+            _isFocused = focused;
+            Enqueue(new BEvent(focused ? EventType.MouseEnterWindow : EventType.MouseLeaveWindow)
+            {
+                mousePosition = _mousePosition
+            });
             EditorCallbackDispatcher.Invoke(focusChanged, focused, nameof(focusChanged));
+        };
     }
 
     public void Run() => _window.Run();
@@ -97,16 +113,63 @@ internal sealed class ImGuiNativeWindow : IDisposable
     public void Pump()
     {
         if (!_window.IsInitialized || _window.IsClosing) return;
-        _window.DoEvents(); _window.DoUpdate(); _window.DoRender();
+        var previousFramebufferSize = _window.FramebufferSize;
+        var previousWindowSize = _window.Size;
+        _window.DoEvents();
+        _window.DoUpdate();
+        if (_window.FramebufferSize != previousFramebufferSize || _window.Size != previousWindowSize)
+            _frameScheduler.RequestRender();
+
+        var decision = _frameScheduler.Evaluate(_isFocused,
+            _window.WindowState == WindowState.Minimized, Stopwatch.GetTimestamp());
+        if (!decision.ShouldRender) return;
+        _window.DoRender();
+        _frameScheduler.NotifyRendered(decision);
     }
-    public void Focus() => _window.Focus();
+    public void Focus()
+    {
+        // GLFW requires a live native handle. Layout restoration can request focus
+        // before the main window has been initialized; the first rendered frame
+        // performs the real focus handoff.
+        var initialized = _window.IsInitialized;
+        if (!CanQueryNativeFocusState(_disposed, initialized, _isFocused)) return;
+        // IsClosing itself enters GLFW, so it must only be queried after initialization.
+        if (!CanInvokeNativeFocus(_disposed, initialized, _window.IsClosing, _isFocused)) return;
+        _window.Focus();
+    }
+
+    internal static bool CanQueryNativeFocusState(bool disposed, bool initialized, bool focused) =>
+        !disposed && initialized && !focused;
+
+    internal static bool CanInvokeNativeFocus(
+        bool disposed,
+        bool initialized,
+        bool closing,
+        bool focused) =>
+        CanQueryNativeFocusState(disposed, initialized, focused) && !closing;
     public void Close() => _window.Close();
-    public void Repaint() { }
+    public void Repaint() => _frameScheduler.RequestRender();
     public void SetTitle(string title) { if (_window.Title != title) _window.Title = title; }
     public void Move(int x, int y) => _window.Position = new Vector2D<int>(x, y);
-    public void Resize(int width, int height) => _window.Size = new Vector2D<int>(Math.Max(320, width), Math.Max(200, height));
+    public void Resize(int width, int height)
+    {
+        _window.Size = ConstrainSize(width, height);
+        Repaint();
+    }
+    public void SetSizeLimits(int minimumWidth, int minimumHeight, int maximumWidth, int maximumHeight)
+    {
+        _minimumSize = new Vector2D<int>(Math.Max(1, minimumWidth), Math.Max(1, minimumHeight));
+        _maximumSize = new Vector2D<int>(Math.Max(_minimumSize.X, maximumWidth),
+            Math.Max(_minimumSize.Y, maximumHeight));
+        var constrained = ConstrainSize(_window.Size.X, _window.Size.Y);
+        if (_window.Size != constrained) Resize(constrained.X, constrained.Y);
+    }
     public void SetMaximized(bool maximized) =>
         _window.WindowState = maximized ? WindowState.Maximized : WindowState.Normal;
+
+    private Vector2D<int> ConstrainSize(int width, int height) => new(
+        Math.Clamp(width, _minimumSize.X, _maximumSize.X),
+        Math.Clamp(height, _minimumSize.Y, _maximumSize.Y));
 
     public BVector2 ClientToScreen(BVector2 point)
     {
@@ -130,6 +193,30 @@ internal sealed class ImGuiNativeWindow : IDisposable
         return point - screenPosition;
     }
 
+    internal BVector2 GUIToScreen(BVector2 point, Fix64 editorScale) =>
+        ClientToScreen(GUIToClient(point, editorScale, deviceScale));
+
+    internal BVector2 ScreenToGUI(BVector2 point, Fix64 editorScale) =>
+        ClientToGUI(ScreenToClient(point), editorScale, deviceScale);
+
+    internal static BVector2 GUIToClient(BVector2 point, Fix64 editorScale) =>
+        point * NormalizeEditorScale(editorScale);
+
+    internal static BVector2 ClientToGUI(BVector2 point, Fix64 editorScale) =>
+        point / NormalizeEditorScale(editorScale);
+
+    internal static BVector2 GUIToClient(BVector2 point, Fix64 editorScale, Fix64 deviceScale) =>
+        point * NormalizeEditorScale(editorScale) * NormalizeDeviceScale(deviceScale);
+
+    internal static BVector2 ClientToGUI(BVector2 point, Fix64 editorScale, Fix64 deviceScale) =>
+        point / (NormalizeEditorScale(editorScale) * NormalizeDeviceScale(deviceScale));
+
+    private static Fix64 NormalizeEditorScale(Fix64 editorScale) =>
+        Fix64.Clamp(editorScale, Fix64.FromDecimal(0.5m), (Fix64)4);
+
+    private static Fix64 NormalizeDeviceScale(Fix64 scale) =>
+        Fix64.Clamp(scale, Fix64.FromDecimal(0.5m), (Fix64)4);
+
     public static bool TryGetPointerScreenPosition(out BVector2 point)
     {
         if (OperatingSystem.IsWindows() && GetCursorPos(out var nativePoint))
@@ -139,6 +226,20 @@ internal sealed class ImGuiNativeWindow : IDisposable
         }
         point = default;
         return false;
+    }
+
+    private NativeWindowPointerOperation ResolvePointerOperation()
+    {
+        if (!OperatingSystem.IsWindows() || nativeHandle == IntPtr.Zero ||
+            !GetCursorPos(out var point)) return NativeWindowPointerOperation.Unknown;
+        var packed = unchecked((uint)(ushort)point.X | ((uint)(ushort)point.Y << 16));
+        var hit = (int)SendMessageNative(nativeHandle, 0x0084, IntPtr.Zero, (IntPtr)(long)packed);
+        return hit switch
+        {
+            2 => NativeWindowPointerOperation.CaptionMove,
+            >= 10 and <= 18 => NativeWindowPointerOperation.BorderResize,
+            _ => NativeWindowPointerOperation.Unknown
+        };
     }
 
     public void Dispose()
@@ -236,11 +337,12 @@ internal sealed class ImGuiNativeWindow : IDisposable
         var windowSize = _window.Size;
         var frameScale = DevicePixelsPerPoint(frameWidth, frameHeight,
             Math.Max(1, windowSize.X), Math.Max(1, windowSize.Y));
+        deviceScale = frameScale;
         renderScale = frameScale * Fix64.Clamp(GUIUtility.pixelsPerPoint,
             Fix64.FromDecimal(0.5m), (Fix64)4);
         _presentation?.BeginFrame(frameWidth, frameHeight);
         _device.SetViewport(new GraphicsRect(0, 0, frameWidth, frameHeight));
-        var background = EditorAppearance.palette.Window;
+        var background = EditorStyles.viewBackground.normal.backgroundColor;
         _device.Clear(GraphicsClearFlags.Color | GraphicsClearFlags.Depth,
             new System.Numerics.Vector4((float)background.r, (float)background.g,
                 (float)background.b, (float)background.a));
@@ -394,7 +496,11 @@ internal sealed class ImGuiNativeWindow : IDisposable
         if (keyboard.IsKeyPressed(Key.AltLeft) || keyboard.IsKeyPressed(Key.AltRight)) _modifiers |= EventModifiers.Alt;
         if (keyboard.IsKeyPressed(Key.SuperLeft) || keyboard.IsKeyPressed(Key.SuperRight)) _modifiers |= EventModifiers.Command;
     }
-    private void Enqueue(BEvent evt) => _events.Enqueue(evt);
+    private void Enqueue(BEvent evt)
+    {
+        _events.Enqueue(evt);
+        _frameScheduler.RequestRender();
+    }
     private static int ToButton(MouseButton button) => button switch
     { MouseButton.Left => 0, MouseButton.Right => 1, MouseButton.Middle => 2, MouseButton.Button4 => 3, MouseButton.Button5 => 4, _ => 0 };
 
@@ -441,4 +547,63 @@ internal sealed class ImGuiNativeWindow : IDisposable
 
     [DllImport("user32.dll", EntryPoint = "GetAsyncKeyState", ExactSpelling = true)]
     private static extern short GetAsyncKeyState(int virtualKey);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true)]
+    private static extern IntPtr SendMessageNative(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+}
+
+internal readonly record struct NativeWindowFrameDecision(
+    bool ShouldRender,
+    long Timestamp,
+    long RequestVersion);
+
+/// <summary>
+/// Keeps manually pumped native windows responsive without repainting every unfocused frame.
+/// </summary>
+internal sealed class NativeWindowFrameScheduler
+{
+    internal const int UnfocusedFramesPerSecond = 8;
+    internal static long UnfocusedFrameIntervalTicks { get; } =
+        Math.Max(1, Stopwatch.Frequency / UnfocusedFramesPerSecond);
+
+    private long _requestVersion = 1;
+    private long _renderedRequestVersion;
+    private long _lastRenderTimestamp;
+    private bool _hasRendered;
+    private bool _hasObservedState;
+    private bool _wasFocused;
+    private bool _wasMinimized;
+
+    internal void RequestRender() => Interlocked.Increment(ref _requestVersion);
+
+    internal NativeWindowFrameDecision Evaluate(bool focused, bool minimized, long timestamp)
+    {
+        if (_hasObservedState)
+        {
+            if (focused && !_wasFocused || !minimized && _wasMinimized) RequestRender();
+        }
+        else
+            _hasObservedState = true;
+
+        _wasFocused = focused;
+        _wasMinimized = minimized;
+        var requestVersion = Volatile.Read(ref _requestVersion);
+        if (minimized) return new NativeWindowFrameDecision(false, timestamp, requestVersion);
+
+        var requestPending = requestVersion > Volatile.Read(ref _renderedRequestVersion);
+        var inactiveIntervalElapsed = _hasRendered && timestamp - _lastRenderTimestamp >=
+            UnfocusedFrameIntervalTicks;
+        return new NativeWindowFrameDecision(
+            focused || !_hasRendered || requestPending || inactiveIntervalElapsed,
+            timestamp,
+            requestVersion);
+    }
+
+    internal void NotifyRendered(NativeWindowFrameDecision decision)
+    {
+        if (!decision.ShouldRender) return;
+        _hasRendered = true;
+        _lastRenderTimestamp = decision.Timestamp;
+        Volatile.Write(ref _renderedRequestVersion, decision.RequestVersion);
+    }
 }

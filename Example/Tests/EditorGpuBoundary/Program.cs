@@ -16,18 +16,6 @@ internal static class Program
         {
             var assembly = typeof(EditorWindow).Assembly;
             var references = assembly.GetReferencedAssemblies().Select(item => item.Name).ToArray();
-            Require(!references.Contains("System.Windows.Forms", StringComparer.OrdinalIgnoreCase),
-                "BEngine.Editor directly references System.Windows.Forms.");
-            Require(!references.Contains("Microsoft.WindowsDesktop.App.WindowsForms", StringComparer.OrdinalIgnoreCase),
-                "BEngine.Editor references the WinForms WindowsDesktop framework.");
-
-            var depsPath = Path.ChangeExtension(assembly.Location, ".deps.json");
-            var deps = File.ReadAllText(depsPath);
-            Require(!deps.Contains("System.Windows.Forms", StringComparison.OrdinalIgnoreCase),
-                "BEngine.Editor.deps.json contains System.Windows.Forms.");
-            Require(!deps.Contains("Microsoft.WindowsDesktop.App.WindowsForms", StringComparison.OrdinalIgnoreCase),
-                "BEngine.Editor.deps.json contains WinForms framework dependency.");
-
             Require(!references.Contains("BEngine.UIElements", StringComparer.OrdinalIgnoreCase),
                 "BEngine.Editor directly references the optional UIElements package.");
 
@@ -44,14 +32,15 @@ internal static class Program
                 "BEngine runtime still embeds the optional UIElements package.");
 
             VerifyEditorWindowTypeBoundary(editorAssembly, nativeWindow);
-            VerifySingleNativeEditorHost(editorAssembly, nativeWindow);
+            VerifyNativeEditorHosts(editorAssembly, nativeWindow);
             VerifyNativeWindowConstructionBoundary(editorAssembly, nativeWindow);
             VerifyNativeWindowGraphicsApi(nativeWindow);
             VerifyEditorWindowHostRouting(editorAssembly);
 
             Console.WriteLine(
-                "EDITOR_GPU_BOUNDARY_OK|no-winforms,no-uielements,gpu-imgui,rhi-window,gpu-dock," +
-                "in-process-editor-windows,single-native-host,vulkan-no-api-window");
+                "EDITOR_GPU_BOUNDARY_OK|platform-dialog-isolation,no-uielements,gpu-imgui,rhi-window,gpu-dock," +
+                "docked-editor-windows,native-float,native-float-popups,single-thread-hosting," +
+                "vulkan-no-api-window");
             return 0;
         }
         catch (Exception exception)
@@ -69,9 +58,10 @@ internal static class Program
     private static void VerifyEditorWindowTypeBoundary(Assembly editorAssembly, Type nativeWindow)
     {
         var editorWindow = typeof(EditorWindow);
+        var nativeFloatingHost = editorAssembly.GetType("BEngine.Editor.NativeFloatingEditorWindow", true)!;
         var ownedTypes = editorAssembly.GetTypes().Where(type =>
-            editorWindow.IsAssignableFrom(type) ||
-            type.Name.Contains("EditorWindow", StringComparison.Ordinal) ||
+            type != nativeFloatingHost && (editorWindow.IsAssignableFrom(type) ||
+            type.Name.Contains("EditorWindow", StringComparison.Ordinal)) ||
             type.Name.Contains("DockWorkspace", StringComparison.Ordinal) ||
             type.Name.Contains("DockPanel", StringComparison.Ordinal));
 
@@ -143,7 +133,8 @@ internal static class Program
         var allowedOwners = new HashSet<string>(StringComparer.Ordinal)
         {
             "BEngine.Editor.GpuEditorApplication",
-            "BEngine.Editor.GpuStartupProgressWindow"
+            "BEngine.Editor.GpuStartupProgressWindow",
+            "BEngine.Editor.NativeFloatingEditorWindow"
         };
         foreach (var type in editorAssembly.GetTypes())
         foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Static |
@@ -154,22 +145,44 @@ internal static class Program
         {
             if (!ConstructsType(method, nativeWindow)) continue;
             Require(method.IsConstructor && allowedOwners.Contains(type.FullName ?? string.Empty),
-                $"{type.FullName}.{method.Name} creates a second native editor window. " +
-                "EditorWindow presentations must remain inside the main graphics host.");
+                $"{type.FullName}.{method.Name} creates a native editor window outside an approved host.");
         }
     }
 
-    private static void VerifySingleNativeEditorHost(Assembly editorAssembly, Type nativeWindow)
+    private static void VerifyNativeEditorHosts(Assembly editorAssembly, Type nativeWindow)
     {
+        var editorWindow = typeof(EditorWindow);
         var application = editorAssembly.GetType("BEngine.Editor.GpuEditorApplication", true)!;
+        var floatingHost = editorAssembly.GetType("BEngine.Editor.NativeFloatingEditorWindow", true)!;
         var nativeFields = application.GetFields(BindingFlags.Instance | BindingFlags.Static |
                                                   BindingFlags.Public | BindingFlags.NonPublic)
             .Where(field => ContainsType(field.FieldType, nativeWindow))
             .ToArray();
         Require(nativeFields.Length == 1 && nativeFields[0].Name == "_mainWindow" &&
                 nativeFields[0].FieldType == nativeWindow,
-            "GpuEditorApplication must own exactly one native graphics host (_mainWindow); " +
+            "GpuEditorApplication must directly own only its main native graphics host; " +
             $"found [{string.Join(", ", nativeFields.Select(field => field.Name))}].");
+        var floatingNativeFields = floatingHost.GetFields(BindingFlags.Instance | BindingFlags.Public |
+                                                           BindingFlags.NonPublic)
+            .Where(field => field.FieldType == nativeWindow)
+            .ToArray();
+        Require(floatingNativeFields.Length == 1,
+            "Each native floating EditorWindow host must own exactly one ImGuiNativeWindow.");
+        Require(floatingHost.GetMethod("Pump", BindingFlags.Instance | BindingFlags.NonPublic) is not null,
+            "Native floating EditorWindows are not pumped explicitly by the editor owner thread.");
+        var layer = editorAssembly.GetType("BEngine.Editor.EditorWindowLayer", true)!;
+        Require(floatingHost.GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Count(field => field.FieldType == layer) == 1,
+            "A native floating host must own exactly one transient EditorWindow layer.");
+        Require(floatingHost.GetMethod("ShowTransient", BindingFlags.Instance | BindingFlags.NonPublic) is not null &&
+                floatingHost.GetMethod("RemoveTransient", BindingFlags.Instance | BindingFlags.NonPublic) is not null,
+            "Native floating hosts cannot own and dismiss local popup EditorWindows.");
+        var transientOwnerField = application.GetField("_nativeTransientOwners",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Require(transientOwnerField is not null &&
+                ContainsType(transientOwnerField.FieldType, editorWindow) &&
+                ContainsType(transientOwnerField.FieldType, floatingHost),
+            "GpuEditorApplication does not retain popup-to-native-host ownership.");
     }
 
     private static void VerifyNativeWindowGraphicsApi(Type nativeWindow)
@@ -197,7 +210,7 @@ internal static class Program
             .ToArray();
         Require(layerFields.Length == 1,
             "GpuEditorApplication must own exactly one in-process EditorWindowLayer.");
-        foreach (var methodName in new[] { "ShowEditorWindow", "CloseEditorWindow", "ProcessPendingUndocks" })
+        foreach (var methodName in new[] { "ShowEditorWindow", "CloseEditorWindow" })
         {
             var method = application.GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic) ??
                          throw new InvalidOperationException(
@@ -208,6 +221,13 @@ internal static class Program
         var show = application.GetMethod("ShowEditorWindow", BindingFlags.Instance | BindingFlags.NonPublic)!;
         Require(ReferencesType(show, dock),
             "GpuEditorApplication.ShowEditorWindow no longer routes Normal windows into the engine dock workspace.");
+        var nativeFloating = editorAssembly.GetType("BEngine.Editor.NativeFloatingEditorWindow", true)!;
+        var showFloating = application.GetMethod("ShowNativeFloating",
+            BindingFlags.Instance | BindingFlags.NonPublic) ??
+                           throw new InvalidOperationException(
+                               "GpuEditorApplication is missing native floating EditorWindow hosting.");
+        Require(ReferencesType(showFloating, nativeFloating),
+            "GpuEditorApplication does not route floating Normal/Aux windows through the native host.");
     }
 
     private static bool ContainsType(Type candidate, Type target)

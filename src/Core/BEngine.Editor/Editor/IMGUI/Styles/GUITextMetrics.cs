@@ -6,6 +6,7 @@ namespace BEngine.Editor;
 internal static class GUITextMetrics
 {
     private static readonly ConcurrentDictionary<TextMetricKey, Fix64> Widths = new();
+    private static readonly ConcurrentDictionary<TextMetricKey, Fix64> RenderedAdvances = new();
     private static readonly ConcurrentDictionary<FontMetricKey, Fix64> LineHeights = new();
 
     public static Fix64 MeasureWidth(string text, Fix64 fontSize, string fontFamily)
@@ -35,14 +36,41 @@ internal static class GUITextMetrics
         });
     }
 
+    public static Fix64 MeasureRenderedAdvance(
+        string text,
+        Fix64 fontSize,
+        string fontFamily,
+        Fix64 renderScale)
+    {
+        if (string.IsNullOrEmpty(text)) return Fix64.Zero;
+        renderScale = Fix64.Max(Fix64.FromDecimal(0.01m), renderScale);
+        var physicalSize = Math.Max(1, (float)(fontSize * renderScale));
+        var family = string.IsNullOrWhiteSpace(fontFamily) ? "BEngine Built-in" : fontFamily;
+        var physicalAdvance = RenderedAdvances.GetOrAdd(
+            new TextMetricKey(family, physicalSize, text), static key =>
+                EditorGpuCanvasResourceResolver.Shared.TryMeasureTextAdvance(
+                    key.Text, key.FontSize, key.FontFamily, out var measured)
+                    ? measured
+                    : (Fix64)EstimateBuiltinGlyphAdvance(key.Text, key.FontSize));
+        return (Fix64)physicalAdvance / renderScale;
+    }
+
     private static Fix64 EstimateWidth(string text, float fontSize)
     {
-        var width = 8f;
+        return (Fix64)Math.Ceiling(EstimateLayoutAdvance(text, fontSize) + 8f);
+    }
+
+    private static float EstimateLayoutAdvance(string text, float fontSize)
+    {
+        var width = 0f;
         foreach (var rune in text.EnumerateRunes())
             width += Rune.IsWhiteSpace(rune) ? fontSize * 0.5f :
                 rune.Value <= 0x7f ? fontSize * 0.72f : fontSize * 1.1f;
-        return (Fix64)Math.Ceiling(width);
+        return width;
     }
+
+    private static float EstimateBuiltinGlyphAdvance(string text, float fontSize) =>
+        text.Length * Math.Max(1, fontSize) / 7f * 6f;
 
     private readonly record struct TextMetricKey(string FontFamily, float FontSize, string Text);
     private readonly record struct FontMetricKey(string FontFamily, float FontSize);

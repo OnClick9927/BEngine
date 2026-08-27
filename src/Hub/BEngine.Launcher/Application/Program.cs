@@ -5,15 +5,17 @@ namespace BEngine.Launcher;
 internal static class Program
 {
     [STAThread]
-    private static void Main(string[] args)
+    private static int Main(string[] args)
     {
         try
         {
             Run(args);
+            return 0;
         }
         catch (Exception exception)
         {
             ReportStartupFailure(exception);
+            return 1;
         }
     }
 
@@ -38,10 +40,11 @@ internal static class Program
         string? logPath = null;
         try
         {
-            logPath = Path.Combine(BEngine.Editor.EditorDataPaths.logsPath, "Launcher.log");
-            File.AppendAllText(logPath,
+            var candidateLogPath = Path.Combine(BEngine.Editor.EditorDataPaths.logsPath, "Launcher.log");
+            File.AppendAllText(candidateLogPath,
                 $"[{DateTimeOffset.Now:O}] BEngine Launcher failed to start.{Environment.NewLine}" +
                 $"{exception}{Environment.NewLine}{Environment.NewLine}");
+            logPath = candidateLogPath;
         }
         catch (Exception logException)
         {

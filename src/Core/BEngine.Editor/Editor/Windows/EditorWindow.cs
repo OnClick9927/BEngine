@@ -4,8 +4,8 @@ using System.Linq.Expressions;
 namespace BEngine.Editor;
 
 /// <summary>
-/// An editor surface hosted by the engine's dock or in-process window layer. Showing an
-/// EditorWindow never creates an operating-system window or graphics device.
+/// An editor surface hosted by the engine dock, a transient in-process layer, or an independent
+/// native window while floating. Native floating windows are pumped by the editor thread.
 /// </summary>
 public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
 {
@@ -14,6 +14,7 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     private double _lastInspectorUpdate;
     public static EditorWindow? focusedWindow { get; private set; }
     public static EditorWindow? mouseOverWindow { get; internal set; }
+    internal static EditorWindow? currentDrawingWindow { get; private set; }
 
     public GUIContent titleContent
     {
@@ -101,7 +102,8 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     public void Focus()
     {
         if (!IsOpen) Show();
-        FocusInternal();
+        if (EditorBridge.Host is { } host) host.FocusWindow(this);
+        else FocusInternal();
     }
 
     protected virtual void OnEnable() { }
@@ -141,8 +143,10 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
         if (ReferenceEquals(focusedWindow, this))
         {
             focusedWindow = null;
+            GUIUtility.ReleaseInputFocus();
             InvokeCallback(OnLostFocus, nameof(OnLostFocus));
         }
+        if (ReferenceEquals(mouseOverWindow, this)) SetMouseOverWindow(null);
         if (_enabled)
         {
             _enabled = false;
@@ -159,7 +163,19 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
         InvokeCallback(OnInspectorUpdate, nameof(OnInspectorUpdate));
     }
 
-    internal void OnGUIInternal() => InvokeCallback(OnGUI, nameof(OnGUI));
+    internal void OnGUIInternal()
+    {
+        var previous = currentDrawingWindow;
+        currentDrawingWindow = this;
+        try
+        {
+            InvokeCallback(OnGUI, nameof(OnGUI));
+        }
+        finally
+        {
+            currentDrawingWindow = previous;
+        }
+    }
 
     internal void PopulateContextMenu(GenericMenu menu)
     {
@@ -182,6 +198,7 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     {
         if (ReferenceEquals(focusedWindow, this)) return;
         var previous = focusedWindow;
+        GUIUtility.ReleaseInputFocus();
         previous?.InvokeCallback(previous.OnLostFocus, nameof(OnLostFocus));
         focusedWindow = this;
         InvokeCallback(OnFocus, nameof(OnFocus));
@@ -191,6 +208,7 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     {
         if (!ReferenceEquals(focusedWindow, this)) return;
         focusedWindow = null;
+        GUIUtility.ReleaseInputFocus();
         InvokeCallback(OnLostFocus, nameof(OnLostFocus));
     }
 

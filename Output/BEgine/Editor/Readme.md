@@ -70,7 +70,7 @@ Core 使用 `Microsoft.Extensions.DependencyInjection` 管理宿主与 Scene sco
 | `Sprite` | `.png` + `.meta`: `textureType`, `spritePivotX/Y` | 将 PNG 的 Texture Type 设为 Sprite；同一图片可赋给 SpriteRenderer 或加入 Atlas |
 | `TextureAtlas` | `*.atlas.yaml`: `MaxSize`, `Padding`, `Extrude`, `SpriteReferences` | 在 `Window > 2D > Texture Atlas` 构建 |
 | `Material` | `*.material.yaml`: `shader`, `color`, `renderQueue` | 可保存 Color、Fix64、Vector4 和 Int 属性 |
-| `GUISkin` | `*.guiskin.yaml`: `palette`, 内置样式槽, `customStyles` | 编辑器主题资产；继承 `BAsset`，仅存在于 `BEngine.Editor` 程序集 |
+| `GUISkin` | `*.guiskin.yaml`: 全部 `EditorStyles` 样式槽, `customStyles` | 编辑器主题资产；继承 `BAsset`，仅存在于 `BEngine.Editor` 程序集 |
 | `Texture` | `.png` | Inspector Import Settings 写入相邻 `.meta`；当前运行时解码器仅支持 PNG |
 | `TextureImporter` | `compressionFormat`, `filterMode`, `wrapMode` | 请求的压缩、过滤和寻址模式 |
 | `TextureImporter` | `generateMipMaps`, `maxTextureSize`, `pixelsPerUnit` | MipMap、32 到 16384 的 2 次幂尺寸和 PPU |
@@ -123,7 +123,7 @@ public sealed class PlayerMover : MonoBehaviour
 | `EditorWindow.GetWindow<T>()` | 创建或聚焦可停靠窗口 |
 | `[CustomEditor(typeof(T), true)]` | 为目标类型及可选子类注册 Inspector |
 | `[CustomPropertyDrawer(typeof(T))]` | 为字段类型或 PropertyAttribute 注册 Drawer |
-| `SerializedObject`, `SerializedProperty` | 统一多选、Undo 和字段绘制 |
+| `SerializedObject`, `SerializedProperty` | 统一多选、Undo 和字段绘制；普通嵌套对象以 Foldout 递归显示并按深度缩进 |
 | `EditorGUI.ObjectField` | 为 BObject/BAsset 字段提供选择、拖放和类型校验 |
 | `Undo.RecordObject`, `EditorUtility.SetDirty` | 正确记录编辑态修改 |
 | `AssetDatabase.LoadAssetAtPath<T>()` | 通过工程路径加载编辑器资源 |
@@ -132,15 +132,24 @@ public sealed class PlayerMover : MonoBehaviour
 | `GUI.skin` | 获取或设置当前 `GUISkin`；控件从中解析对应的默认 `GUIStyle` |
 | `EditorAppearance.SetSkin` | 将指定 Skin 应用到整个编辑器并重绘所有窗口 |
 
+### Project 窗口布局
+
+Project 窗口的菜单可以在 One Column 与 Two Column 间切换。左侧目录始终分为 Assets 和 Packages 两个独立滚动区域；把鼠标移到两者之间的横线后上下拖动，可以直接调整下方 Packages 区域的高度。分隔高度会随编辑器布局保存，并在窗口缩小时限制在两个区域都可操作的范围内。
+
+Two Column 模式右侧按网格显示当前文件夹的直接子项。文件与文件夹名称都以缩略图中心为轴水平居中；长名称保持在单元范围内裁剪并显示省略号，悬停仍可通过 Tooltip 查看完整名称。
+
 ### 自定义编辑器主题
 
-`GUISkin` 继承 `BAsset`，自定义主题以 `*.guiskin.yaml` 保存在工程中，因此可以创建多份、纳入版本控制并在不同工程成员之间共享。每个 Skin 包含编辑器调色板、Button、Label、TextField、Toolbar、Dock Tab、Tree View、Inspector 等全部内置样式槽，以及可由扩展包增加的 `customStyles`。`GUIStyle` 保存 Normal、Hover、Active、Focused、On 与 Disabled 状态的文字色、背景色、边框色、背景图片和布局参数。
+`Preferences` 和 `Project Settings` 都是普通、可持久化布局的 `EditorWindow`，可以像 Scene、Inspector 一样停靠、拖出和重新停靠；重复打开菜单会定位并聚焦已有窗口。Float 使用独立原生窗口，可以移动到任意显示器并拖回主窗口 Dock；显示器拓扑变化后会把离屏窗口恢复到最近的可见工作区。Float 内的 Popup 留在所属窗口，未聚焦 Float 降频绘制，最小化时停止 GPU 提交。`Preferences > General` 的 Editor Scale 使用带精确数值输入的 Slider，范围固定为 `0.5–1.8`。
 
-1. 打开 `Edit > Preferences > General`，在 `Theme` 列表查看 Light、Dark、Classic 和工程内所有自定义 Skin。
-2. 内置 Light、Dark、Classic 可以通过对应 ObjectField 选中并在 Inspector 查看，但它们是只读资源，不能修改或删除。
-3. 点击 `New` 会复制当前主题，在当前 Project 文件夹创建一份可重命名的 `*.guiskin.yaml`。也可以使用 `Assets > Create > GUI > GUISkin` 创建独立资产。
-4. 点击 Skin 的 ObjectField 会把它设为 `Selection.activeObject`，随后在 Inspector 编辑 Palette、内置样式和 `customStyles`；点击 Inspector 的 Apply 保存。
+`GUISkin` 继承 `BAsset`。Preferences 创建的自定义主题以 `*.guiskin.yaml` 保存在 `Output/EditorData/Preferences/Themes`，可以创建多份。每个 Skin 直接包含 `EditorStyles` 暴露的完整样式集合，以及可由扩展包增加的 `customStyles`；不存在独立的 SkinColors/Palette。`GUIStyle` 保存 Normal、Hover、Active、Focused、On 与 Disabled 状态的文字色、背景色、边框色、`Texture` 背景图片和布局参数。
+
+1. 打开 `Edit > Preferences > Theme`，在列表查看 Light、Dark、Classic 和所有自定义 Skin。
+2. 内置 Light、Dark、Classic 可以通过对应 ObjectField 选中并在 Inspector 查看；样式与状态 Foldout 可以展开，但字段只读，资源不能修改或删除。
+3. 点击 `New` 会复制当前主题，并在 `Output/EditorData/Preferences/Themes` 创建一份名称唯一的 `*.guiskin.yaml`。
+4. 点击 Skin 的 ObjectField 会把它设为 `Selection.activeObject`，随后在 Inspector 编辑内置样式和 `customStyles`。每个 `GUIStyleState.backgroundImage` 使用 Texture ObjectField；点击 Inspector 的 Apply 保存。
 5. 回到 Preferences 点击 `Set` 将该 Skin 应用到整个编辑器。`Delete` 只对自定义 Skin 可用；删除正在使用的 Skin 后会回到 Dark。
+6. 每个自定义 Skin 行下方的 Light、Dark、Classic 按钮可一键复制完整预设，然后继续微调各个 GUIStyle。
 
 扩展编辑器时，`GUI`、`EditorGUI`、`GUILayout`、`EditorGUILayout` 和 `EditorToolbar` 的绘制重载都可以接收 `GUIStyle?`。传入具体样式会覆盖主题；传入 `null` 则按控件语义回退到当前 `GUI.skin` 的对应槽，例如 Button 使用 `GUI.skin.button`、文本输入使用 `GUI.skin.textField`、工具栏按钮使用 `GUI.skin.toolbarButton`。因此扩展窗口应优先使用 `null` 或 `EditorStyles`，只在需要包专用外观时使用 `customStyles`。
 
@@ -154,7 +163,7 @@ var accent = GUI.skin.FindStyle("MyPackage/AccentButton") ?? GUI.skin.button;
 GUILayout.Button("Build", accent);
 ```
 
-直接赋值 `GUI.skin` 适合底层宿主或测试；编辑器工具应调用 `EditorAppearance.SetSkin`，以同步 `EditorAppearance.palette`、主题状态和窗口重绘。
+直接赋值 `GUI.skin` 适合底层宿主或测试；编辑器工具应调用 `EditorAppearance.SetSkin`，以同步主题状态、外观通知和窗口重绘。
 
 ## 完整编辑器工作流
 
@@ -240,6 +249,9 @@ public sealed class CombatModule : IEngineServiceModule
 | Add Component 找不到脚本 | 检查编译错误、程序集定义依赖和脚本类型是否为非抽象 Component |
 | 包菜单或 Drawer 不出现 | 确认代码位于 Editor 程序集，等待编译完成并查看 Console 的功能边界错误 |
 | 文档或示例按钮不可用 | Play Mode、编译或包切换期间会禁用导入；回到 Edit Mode 后重试 |
+| Example/Editor 启动失败 | 从 Hub 启动时，Hub 会等到 Editor 首帧报告 Ready；托管启动异常、原生崩溃、提前退出或启动超时都会由 Hub 弹窗，并显示实际诊断日志路径。直接运行 `BEngine.Editor.exe` 时，Editor 会用原生弹窗报告可捕获的启动异常 |
+
+启动布局可以恢复选中的页签与逻辑焦点，但不得在主原生窗口完成初始化前调用原生 `Focus`；真正的窗口聚焦由首帧之后的窗口生命周期接管。可捕获的 Editor 启动异常写入 `Output/EditorData/Logs/EditorBootstrap.log`；Editor 无法自行记录的崩溃或超时由 Hub 写入 `Output/EditorData/Logs/EditorStartup.log`。弹窗中的路径应始终指向本次故障实际生成的日志。
 
 离线网页手册位于 `Editor/Doc/index.html`，可从 `Help > Documentation` 或 Package Manager 打开。
 

@@ -69,7 +69,8 @@ internal sealed class EditorApplicationHarness : IDisposable
         openScenes.Add(initialEntry);
 
         DockWorkspace = Create("BEngine.Editor.ImGuiDockWorkspace");
-        _nativeWindow = Create("BEngine.Editor.ImGuiNativeWindow", "Hierarchy Test", 900, 640, false);
+        _nativeWindow = Create("BEngine.Editor.ImGuiNativeWindow", "Hierarchy Test", 900, 640,
+            false, true, 320, 200, int.MaxValue, int.MaxValue);
         HierarchyWindow = CreateNested("ImGuiHierarchyWindow", Application);
         SceneWindow = CreateNested("ImGuiSceneWindow", Application);
         GameWindow = CreateNested("ImGuiGameWindow", Application);

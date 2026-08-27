@@ -7,17 +7,29 @@ public static class EditorDataPaths
 
     public static string rootPath => Root.Value;
     public static string logsPath => EnsureDirectory(Path.Combine(rootPath, "Logs"));
-    public static string preferencesPath => Path.Combine(rootPath, "Preferences.yaml");
-    public static string editorPrefsPath => Path.Combine(rootPath, "EditorPrefs.yaml");
-    public static string launcherSettingsPath => Path.Combine(rootPath, "LauncherSettings.yaml");
+    public static string startupStatusDirectoryPath => EnsureDirectory(Path.Combine(rootPath, "Startup"));
+    public static string preferencesDirectoryPath => EnsureDirectory(Path.Combine(rootPath, "Preferences"));
+    public static string themesPath => EnsureDirectory(Path.Combine(preferencesDirectoryPath, "Themes"));
+    public static string preferencesPath => Path.Combine(preferencesDirectoryPath, "Preferences.yaml");
+    public static string editorPrefsPath => Path.Combine(preferencesDirectoryPath, "EditorPrefs.yaml");
+    public static string launcherSettingsPath => Path.Combine(preferencesDirectoryPath, "LauncherSettings.yaml");
     public static string editorBootstrapLogPath => Path.Combine(logsPath, "EditorBootstrap.log");
     public static string launcherBuildLogPath => Path.Combine(logsPath, "LauncherBuild.log");
+
+    public static string GetStartupStatusPath(string token)
+    {
+        if (!Guid.TryParseExact(token, "N", out var id))
+            throw new ArgumentException("The editor startup token must be a 32-character GUID.", nameof(token));
+        return Path.Combine(startupStatusDirectoryPath, $"{id:N}.json");
+    }
 
     private static string Initialize()
     {
         var root = ResolveRootPath();
         Directory.CreateDirectory(root);
+        MigrateRootPreferences(root);
         MigrateLegacyData(root);
+        Directory.CreateDirectory(Path.Combine(root, "Preferences", "Themes"));
         return root;
     }
 
@@ -49,9 +61,9 @@ public static class EditorDataPaths
 
         var knownFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Preferences.yaml"] = "Preferences.yaml",
-            ["EditorPrefs.yaml"] = "EditorPrefs.yaml",
-            ["LauncherSettings.yaml"] = "LauncherSettings.yaml",
+            ["Preferences.yaml"] = Path.Combine("Preferences", "Preferences.yaml"),
+            ["EditorPrefs.yaml"] = Path.Combine("Preferences", "EditorPrefs.yaml"),
+            ["LauncherSettings.yaml"] = Path.Combine("Preferences", "LauncherSettings.yaml"),
             ["EditorBootstrap.log"] = Path.Combine("Logs", "EditorBootstrap.log"),
             ["LauncherBuild.log"] = Path.Combine("Logs", "LauncherBuild.log")
         };
@@ -73,6 +85,24 @@ public static class EditorDataPaths
 
         try { DeleteEmptyDirectories(legacyRoot); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+    }
+
+    private static void MigrateRootPreferences(string root)
+    {
+        var preferencesDirectory = Path.Combine(root, "Preferences");
+        foreach (var fileName in new[] { "Preferences.yaml", "EditorPrefs.yaml", "LauncherSettings.yaml" })
+        {
+            var source = Path.Combine(root, fileName);
+            if (!File.Exists(source)) continue;
+            try
+            {
+                MovePreservingExisting(source, Path.Combine(preferencesDirectory, fileName));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // A running editor can briefly own the file. Retry on the next launch.
+            }
+        }
     }
 
     private static void MovePreservingExisting(string source, string destination)

@@ -77,7 +77,7 @@ internal static class TagLayerSettingsProvider
         if (!selected) return;
         var rect = GUILayoutUtility.GetLastRect();
         GUI.DrawRect(new Rect(rect.x, Fix64.Max(rect.y, rect.yMax - 2), rect.width, 2),
-            EditorAppearance.palette.Accent);
+            EditorStyles.progressBarBar.normal.backgroundColor);
     }
 
     private static void DrawError()

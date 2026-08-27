@@ -1,5 +1,16 @@
 namespace BEngine;
 
+public enum CursorMode
+{
+    Auto,
+    ForceSoftware
+}
+public enum CursorLockMode
+{
+    None,
+    Locked,
+    Confined
+}
 public static class Cursor
 {
     private static bool _visible = true;

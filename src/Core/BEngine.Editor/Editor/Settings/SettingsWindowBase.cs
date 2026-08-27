@@ -62,7 +62,7 @@ public abstract class SettingsWindowBase : EditorWindow
         var toolbarHeight = Fix64.Min(
             Fix64.Max(30, EditorGUIUtility.singleLineHeight + 8), height);
 
-        GUI.DrawRect(new Rect(0, 0, width, height), EditorAppearance.palette.Window);
+        GUI.Box(new Rect(0, 0, width, height), GUIContent.none, GUI.skin.window);
         DrawToolbar(new Rect(0, 0, width, toolbarHeight));
         if (height <= toolbarHeight) return;
 
@@ -73,11 +73,11 @@ public abstract class SettingsWindowBase : EditorWindow
         var content = new Rect(Fix64.Min(width, dividerX + 1), toolbarHeight,
             Fix64.Max(0, width - dividerX - 1), contentHeight);
 
-        GUI.DrawRect(navigation, EditorAppearance.palette.Panel);
+        GUI.Box(navigation, GUIContent.none, GUI.skin.box);
         if (dividerX < width)
-            GUI.DrawRect(new Rect(dividerX, toolbarHeight, 1, contentHeight),
-                EditorAppearance.palette.Border);
-        GUI.DrawRect(content, EditorAppearance.palette.Window);
+            GUI.Box(new Rect(dividerX, toolbarHeight, 1, contentHeight),
+                GUIContent.none, EditorStyles.separator);
+        GUI.Box(content, GUIContent.none, GUI.skin.window);
 
         DrawNavigation(navigation);
         DrawProvider(content);
@@ -85,10 +85,7 @@ public abstract class SettingsWindowBase : EditorWindow
 
     private void DrawToolbar(Rect rect)
     {
-        GUI.DrawRect(rect, EditorAppearance.palette.Toolbar);
-        if (rect.height > 0)
-            GUI.DrawRect(new Rect(rect.x, Fix64.Max(rect.y, rect.yMax - 1), rect.width, 1),
-                EditorAppearance.palette.Border);
+        GUI.Box(rect, GUIContent.none, EditorStyles.toolbar);
         if (rect.width < 24 || rect.height < 12) return;
 
         var controlHeight = Fix64.Min(EditorGUIUtility.singleLineHeight + 2,
@@ -262,8 +259,8 @@ public abstract class SettingsWindowBase : EditorWindow
     private void DrawProviderFooter(SettingsProvider selected, Rect footer)
     {
         if (footer.width <= 1 || footer.height <= 1) return;
-        GUI.DrawRect(new Rect(footer.x, footer.y, footer.width, 1),
-            EditorAppearance.palette.Border);
+        GUI.Box(new Rect(footer.x, footer.y, footer.width, 1),
+            GUIContent.none, EditorStyles.separator);
         GUILayout.BeginArea(new Rect(footer.x, footer.y + 2, footer.width,
             Fix64.Max(0, footer.height - 2)));
         try

@@ -119,6 +119,19 @@ internal sealed class EditorWindowLayer
         return true;
     }
 
+    internal void CancelInteractions()
+    {
+        foreach (var presentation in _presentations) CancelInteraction(presentation);
+        EditorWindow.SetMouseOverWindow(null);
+    }
+
+    internal void DismissPopups()
+    {
+        foreach (var presentation in _presentations
+                     .Where(item => item.State == EditorWindowState.Pop).ToArray())
+            RequestClose(presentation);
+    }
+
     public void Draw(Rect canvas, bool inputPass)
     {
         if (_presentations.Count == 0) return;
@@ -298,7 +311,7 @@ internal sealed class EditorWindowLayer
             }
             if (modal is not null)
             {
-                GUI.DrawRect(canvas, new Color(0, 0, 0, Fix64.FromDecimal(0.55m)));
+                DrawModalBackdrop(canvas);
                 DrawPresentation(modal);
             }
         }
@@ -308,13 +321,28 @@ internal sealed class EditorWindowLayer
         }
     }
 
+    private static void DrawModalBackdrop(Rect canvas)
+    {
+        var wasEnabled = GUI.enabled;
+        try
+        {
+            GUI.enabled = false;
+            GUI.Box(canvas, GUIContent.none, EditorStyles.notificationBackground);
+        }
+        finally
+        {
+            GUI.enabled = wasEnabled;
+        }
+    }
+
     private static void DrawPresentation(FloatingEditorWindow presentation)
     {
         var bounds = presentation.Bounds;
         if (Event.current.type == EventType.Repaint)
         {
+            var shadow = GUI.skin.window.normal.borderColor;
             GUI.DrawRect(new Rect(bounds.x + 5, bounds.y + 5, bounds.width, bounds.height),
-                EditorAppearance.palette.Shadow);
+                new Color(shadow.r, shadow.g, shadow.b, Fix64.FromDecimal(0.72m)));
             var sceneSurface = presentation.Window.titleContent.text is "Scene" or "Game";
             if (sceneSurface) DrawSurfaceBorder(bounds);
             else GUI.Box(bounds, GUIContent.none, GUI.skin.window);
@@ -342,14 +370,15 @@ internal sealed class EditorWindowLayer
 
     private static void DrawSurfaceBorder(Rect bounds)
     {
+        var border = GUI.skin.window.normal.borderColor;
         GUI.DrawRect(new Rect(bounds.x, bounds.y, bounds.width, BorderWidth),
-            EditorAppearance.palette.Border);
+            border);
         GUI.DrawRect(new Rect(bounds.x, bounds.yMax - BorderWidth, bounds.width, BorderWidth),
-            EditorAppearance.palette.Border);
+            border);
         GUI.DrawRect(new Rect(bounds.x, bounds.y, BorderWidth, bounds.height),
-            EditorAppearance.palette.Border);
+            border);
         GUI.DrawRect(new Rect(bounds.xMax - BorderWidth, bounds.y, BorderWidth, bounds.height),
-            EditorAppearance.palette.Border);
+            border);
     }
 
     private static void DrawResizeCursors(Rect bounds)

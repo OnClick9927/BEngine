@@ -148,10 +148,9 @@ internal static class Program
             foreach (var theme in Enum.GetNames<EditorTheme>())
             {
                 EditorAppearance.Apply(new EditorPreferencesDocument { EditorTheme = theme });
-                var palette = EditorAppearance.palette;
                 foreach (var style in new[] { EditorStyles.toolbarButton, EditorStyles.toolbarIconButton })
                 {
-                    Require(style.normal.backgroundColor.Equals(palette.Toolbar),
+                    Require(style.normal.backgroundColor.Equals(EditorStyles.toolbar.normal.backgroundColor),
                         $"{theme} toolbar button normal color was not restored.");
                     Require(style.borderWidth == Fix64.Zero &&
                             style.normal.borderColor.Equals(palette.Border) &&
@@ -178,7 +177,7 @@ internal static class Program
         }
 
         var commands = RenderConsole();
-        var separator = GpuCanvasColor.FromColor(EditorAppearance.palette.Border);
+        var separator = GpuCanvasColor.FromColor(EditorStyles.toolbarButton.normal.borderColor);
         foreach (var label in new[] { "Clear", "Collapse", "Error Pause" })
         {
             var text = commands.Single(command => command.Type == GpuCanvasCommandType.Text &&

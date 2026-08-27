@@ -5,7 +5,6 @@ public sealed class GUISkinEditor : BAssetEditor
 {
     private readonly HashSet<string> _expandedStyles = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedStates = new(StringComparer.OrdinalIgnoreCase);
-    private bool _paletteExpanded = true;
 
     public override void OnInspectorGUI()
     {
@@ -15,16 +14,13 @@ public sealed class GUISkinEditor : BAssetEditor
                 MessageType.Info);
 
         EditorGUI.BeginChangeCheck();
-        using (new EditorGUI.DisabledScope(skin.isReadOnly))
-        {
-            DrawPalette(skin);
-            EditorGUILayout.LabelField("Built-in Styles", EditorStyles.boldLabel);
-            foreach (var (slot, style) in skin.EnumerateBuiltInStyles()) DrawStyle(slot, style, canRename: false);
+        EditorGUILayout.LabelField("Built-in Styles", EditorStyles.boldLabel);
+        foreach (var (slot, style) in skin.EnumerateBuiltInStyles())
+            DrawStyle(slot, style, canRename: false, readOnly: skin.isReadOnly);
 
-            GUILayout.Space(6);
-            EditorGUILayout.LabelField("Custom Styles", EditorStyles.boldLabel);
-            DrawCustomStyles(skin);
-        }
+        GUILayout.Space(6);
+        EditorGUILayout.LabelField("Custom Styles", EditorStyles.boldLabel);
+        DrawCustomStyles(skin, skin.isReadOnly);
 
         if (EditorGUI.EndChangeCheck() && !skin.isReadOnly)
         {
@@ -37,57 +33,34 @@ public sealed class GUISkinEditor : BAssetEditor
 
     public override void SaveChanges()
     {
-        var skin = target as GUISkin;
-        base.SaveChanges();
-        if (skin is not null && EditorAppearance.IsActiveSkin(skin))
-            EditorAppearance.RefreshSkin(skin);
+        if (target is not GUISkin skin || skin.isReadOnly) return;
+        serializedObject.ApplyModifiedProperties();
+        if (EditorSkinPreferences.SaveSkin(skin)) hasUnsavedChanges = false;
     }
 
     public override void DiscardChanges()
     {
-        var skin = target as GUISkin;
-        base.DiscardChanges();
-        if (skin is not null && EditorAppearance.IsActiveSkin(skin))
-            EditorAppearance.RefreshSkin(skin);
+        if (target is not GUISkin skin || skin.isReadOnly) return;
+        var path = AssetDatabase.GetAssetPath(skin);
+        var restored = false;
+        if (Path.IsPathFullyQualified(path))
+        {
+            BAsset.Invalidate(path);
+            if (BAsset.Load<GUISkin>(path) is { } persisted)
+            {
+                skin.CopyFrom(persisted);
+                EditorUtility.ClearDirty(skin);
+                restored = true;
+            }
+        }
+        else restored = AssetDatabase.RevertAsset(skin);
+        if (!restored) return;
+        serializedObject.Update();
+        hasUnsavedChanges = false;
+        if (EditorAppearance.IsActiveSkin(skin)) EditorAppearance.RefreshSkin(skin);
     }
 
-    private void DrawPalette(GUISkin skin)
-    {
-        _paletteExpanded = EditorGUILayout.Foldout(_paletteExpanded, "Skin Colors");
-        if (!_paletteExpanded) return;
-        var value = skin.palette;
-        EditorGUI.indentLevel++;
-        skin.palette = new EditorThemePalette(
-            EditorGUILayout.ColorField("Window", value.Window),
-            EditorGUILayout.ColorField("Panel", value.Panel),
-            EditorGUILayout.ColorField("Toolbar", value.Toolbar),
-            EditorGUILayout.ColorField("Field", value.Field),
-            EditorGUILayout.ColorField("Button", value.Button),
-            EditorGUILayout.ColorField("Hover", value.Hover),
-            EditorGUILayout.ColorField("Active", value.Active),
-            EditorGUILayout.ColorField("Text", value.Text),
-            EditorGUILayout.ColorField("Muted Text", value.MutedText),
-            EditorGUILayout.ColorField("Accent", value.Accent),
-            EditorGUILayout.ColorField("Border", value.Border),
-            EditorGUILayout.ColorField("Panel Raised", value.PanelRaised),
-            EditorGUILayout.ColorField("Title Bar", value.TitleBar),
-            EditorGUILayout.ColorField("Field Hover", value.FieldHover),
-            EditorGUILayout.ColorField("Field Focused", value.FieldFocused),
-            EditorGUILayout.ColorField("Button Hover", value.ButtonHover),
-            EditorGUILayout.ColorField("Button Pressed", value.ButtonPressed),
-            EditorGUILayout.ColorField("Disabled Text", value.DisabledText),
-            EditorGUILayout.ColorField("Focus Border", value.FocusBorder),
-            EditorGUILayout.ColorField("Selection", value.Selection),
-            EditorGUILayout.ColorField("Selection Inactive", value.SelectionInactive),
-            EditorGUILayout.ColorField("Scroll Track", value.ScrollTrack),
-            EditorGUILayout.ColorField("Scroll Thumb", value.ScrollThumb),
-            EditorGUILayout.ColorField("Scroll Thumb Hover", value.ScrollThumbHover),
-            EditorGUILayout.ColorField("Shadow", value.Shadow));
-        EditorGUI.indentLevel--;
-        GUILayout.Space(6);
-    }
-
-    private void DrawCustomStyles(GUISkin skin)
+    private void DrawCustomStyles(GUISkin skin, bool readOnly)
     {
         var custom = skin.customStyles ?? [];
         var removeIndex = -1;
@@ -95,15 +68,17 @@ public sealed class GUISkinEditor : BAssetEditor
         {
             var style = custom[index] ?? new GUIStyle($"customStyle{index + 1}");
             custom[index] = style;
-            DrawStyle($"Custom/{index}/{style.name}", style, canRename: true);
-            if (_expandedStyles.Contains($"Custom/{index}/{style.name}") &&
-                GUILayout.Button("Remove", GUILayout.Width(72))) removeIndex = index;
+            var styleKey = $"Custom/{index}";
+            DrawStyle(styleKey, style, canRename: true, readOnly: readOnly);
+            if (_expandedStyles.Contains(styleKey) &&
+                !readOnly && GUILayout.Button("Remove", GUILayout.Width(72))) removeIndex = index;
         }
         if (removeIndex >= 0)
         {
             skin.customStyles = custom.Where((_, index) => index != removeIndex).ToArray();
             GUI.changed = true;
         }
+        using var disabled = new EditorGUI.DisabledScope(readOnly);
         if (!GUILayout.Button("Add Custom Style")) return;
         var usedNames = custom.Where(static style => style is not null)
             .Select(static style => style.name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -113,7 +88,7 @@ public sealed class GUISkinEditor : BAssetEditor
         GUI.changed = true;
     }
 
-    private void DrawStyle(string slot, GUIStyle style, bool canRename)
+    private void DrawStyle(string slot, GUIStyle style, bool canRename, bool readOnly)
     {
         var expanded = _expandedStyles.Contains(slot);
         var nextExpanded = EditorGUILayout.Foldout(expanded, canRename ? style.name : slot);
@@ -122,29 +97,36 @@ public sealed class GUISkinEditor : BAssetEditor
         if (!nextExpanded) return;
 
         EditorGUI.indentLevel++;
-        if (canRename) style.name = EditorGUILayout.TextField("Name", style.name);
-        style.fixedWidth = (Fix64)Math.Max(0, EditorGUILayout.FloatField("Fixed Width", (float)style.fixedWidth));
-        style.fixedHeight = (Fix64)Math.Max(0, EditorGUILayout.FloatField("Fixed Height", (float)style.fixedHeight));
-        style.borderWidth = (Fix64)Math.Max(0, EditorGUILayout.FloatField("Border Width", (float)style.borderWidth));
-        style.fontSize = (Fix64)Math.Max(1, EditorGUILayout.FloatField("Font Size", (float)style.fontSize));
-        style.alignment = (TextAnchor)EditorGUILayout.EnumPopup("Alignment", style.alignment);
-        style.wordWrap = EditorGUILayout.Toggle("Word Wrap", style.wordWrap);
-        style.richText = EditorGUILayout.Toggle("Rich Text", style.richText);
-        style.stretchWidth = EditorGUILayout.Toggle("Stretch Width", style.stretchWidth);
-        style.stretchHeight = EditorGUILayout.Toggle("Stretch Height", style.stretchHeight);
-        DrawState(slot, "Normal", style.normal);
-        DrawState(slot, "Hover", style.hover);
-        DrawState(slot, "Active", style.active);
-        DrawState(slot, "Focused", style.focused);
-        DrawState(slot, "On Normal", style.onNormal);
-        DrawState(slot, "On Hover", style.onHover);
-        DrawState(slot, "On Active", style.onActive);
-        DrawState(slot, "On Focused", style.onFocused);
-        DrawState(slot, "Disabled", style.disabled);
+        using (new EditorGUI.DisabledScope(readOnly))
+        {
+            if (canRename) style.name = EditorGUILayout.TextField("Name", style.name);
+            style.fixedWidth = (Fix64)Math.Max(0,
+                EditorGUILayout.FloatField("Fixed Width", (float)style.fixedWidth));
+            style.fixedHeight = (Fix64)Math.Max(0,
+                EditorGUILayout.FloatField("Fixed Height", (float)style.fixedHeight));
+            style.borderWidth = (Fix64)Math.Max(0,
+                EditorGUILayout.FloatField("Border Width", (float)style.borderWidth));
+            style.fontSize = (Fix64)Math.Max(1,
+                EditorGUILayout.FloatField("Font Size", (float)style.fontSize));
+            style.alignment = (TextAnchor)EditorGUILayout.EnumPopup("Alignment", style.alignment);
+            style.wordWrap = EditorGUILayout.Toggle("Word Wrap", style.wordWrap);
+            style.richText = EditorGUILayout.Toggle("Rich Text", style.richText);
+            style.stretchWidth = EditorGUILayout.Toggle("Stretch Width", style.stretchWidth);
+            style.stretchHeight = EditorGUILayout.Toggle("Stretch Height", style.stretchHeight);
+        }
+        DrawState(slot, "Normal", style.normal, readOnly);
+        DrawState(slot, "Hover", style.hover, readOnly);
+        DrawState(slot, "Active", style.active, readOnly);
+        DrawState(slot, "Focused", style.focused, readOnly);
+        DrawState(slot, "On Normal", style.onNormal, readOnly);
+        DrawState(slot, "On Hover", style.onHover, readOnly);
+        DrawState(slot, "On Active", style.onActive, readOnly);
+        DrawState(slot, "On Focused", style.onFocused, readOnly);
+        DrawState(slot, "Disabled", style.disabled, readOnly);
         EditorGUI.indentLevel--;
     }
 
-    private void DrawState(string slot, string stateName, GUIStyleState state)
+    private void DrawState(string slot, string stateName, GUIStyleState state, bool readOnly)
     {
         var key = $"{slot}/{stateName}";
         var expanded = _expandedStates.Contains(key);
@@ -154,11 +136,14 @@ public sealed class GUISkinEditor : BAssetEditor
         if (!nextExpanded) return;
 
         EditorGUI.indentLevel++;
-        state.textColor = EditorGUILayout.ColorField("Text Color", state.textColor);
-        state.backgroundColor = EditorGUILayout.ColorField("Background Color", state.backgroundColor);
-        state.borderColor = EditorGUILayout.ColorField("Border Color", state.borderColor);
-        state.backgroundImage = EditorGUILayout.ObjectField("Background Image", state.backgroundImage,
-            allowSceneObjects: false);
+        using (new EditorGUI.DisabledScope(readOnly))
+        {
+            state.textColor = EditorGUILayout.ColorField("Text Color", state.textColor);
+            state.backgroundColor = EditorGUILayout.ColorField("Background Color", state.backgroundColor);
+            state.borderColor = EditorGUILayout.ColorField("Border Color", state.borderColor);
+            state.backgroundImage = EditorGUILayout.ObjectField("Background Image", state.backgroundImage,
+                allowSceneObjects: false);
+        }
         EditorGUI.indentLevel--;
     }
 }

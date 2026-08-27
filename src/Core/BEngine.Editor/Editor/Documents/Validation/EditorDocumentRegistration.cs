@@ -81,8 +81,12 @@ internal static class EditorDocumentRegistration
         // fixed editor font size when loaded, while malformed values remain invalid.
         if (document.EditorFontSize <= 0)
             throw new InvalidDataException("Editor font size must be positive.");
-        if (!float.IsFinite(document.EditorScale) || document.EditorScale is < 0.75f or > 2f)
-            throw new InvalidDataException("Editor scale must be between 0.75 and 2.0.");
+        if (!float.IsFinite(document.EditorScale) ||
+            document.EditorScale < EditorAppearance.MinimumScale ||
+            document.EditorScale > EditorAppearance.MaximumScale)
+            throw new InvalidDataException(
+                $"Editor scale must be between {EditorAppearance.MinimumScale:0.0} and " +
+                $"{EditorAppearance.MaximumScale:0.0}.");
         if (string.IsNullOrWhiteSpace(document.Locale) || string.IsNullOrWhiteSpace(document.EditorFont) ||
             string.IsNullOrWhiteSpace(document.EditorTheme))
             throw new InvalidDataException("Editor locale, font, and theme cannot be empty.");
@@ -107,7 +111,7 @@ internal static class EditorDocumentRegistration
             throw new InvalidDataException("The editor window size is too small.");
         if (!float.IsFinite(document.HierarchyWidth) || !float.IsFinite(document.InspectorWidth) ||
             !float.IsFinite(document.BottomHeight) || !float.IsFinite(document.ProjectFoldersWidth) ||
-            !float.IsFinite(document.ProjectThumbnailSize))
+            !float.IsFinite(document.ProjectPackagesHeight) || !float.IsFinite(document.ProjectThumbnailSize))
             throw new InvalidDataException("Editor layout panel sizes must be finite numbers.");
 
         float[] values =

@@ -16,7 +16,7 @@ internal static class BuiltInSettingsProviders
 
     [SettingsProvider]
     private static SettingsProvider GeneralPreferences() => new("Preferences/General", SettingsScope.User,
-        ["scale", "font", "language", "locale", "theme", "缩放", "字体", "语言", "主题"])
+        ["scale", "font", "language", "locale", "缩放", "字体", "语言"])
     {
         label = EditorLocalization.Tr("General"),
         guiHandler = _ => DrawGeneralPreferences(),
@@ -26,6 +26,18 @@ internal static class BuiltInSettingsProviders
             if (GUILayout.Button(EditorLocalization.Tr("Reset"), GUILayout.Width(120)))
                 EditorPreferences.ResetToDefaults();
             GUILayout.EndHorizontal();
+        }
+    };
+
+    [SettingsProvider]
+    private static SettingsProvider ThemePreferences() => new("Preferences/Theme", SettingsScope.User,
+        ["theme", "skin", "GUISkin", "Light", "Dark", "Classic", "主题", "皮肤"])
+    {
+        label = EditorLocalization.Tr("Theme"),
+        guiHandler = _ =>
+        {
+            if (!EditorSkinPreferences.Draw(EditorPreferences.current)) return;
+            EditorPreferences.Save();
         }
     };
 
@@ -76,8 +88,8 @@ internal static class BuiltInSettingsProviders
         var locale = Math.Max(0, Array.IndexOf(LocaleValues, value.Locale));
         var nextLocale = EditorGUILayout.Popup(EditorLocalization.Tr("Language"), locale, Locales);
         if (nextLocale != locale) { value.Locale = LocaleValues[nextLocale]; changed = true; }
-        var scale = Math.Clamp(EditorGUILayout.FloatField(EditorLocalization.Tr("Editor Scale"), value.EditorScale),
-            0.75f, 2f);
+        var scale = EditorGUILayout.Slider(EditorLocalization.Tr("Editor Scale"), value.EditorScale,
+            EditorAppearance.MinimumScale, EditorAppearance.MaximumScale);
         if (Math.Abs(scale - value.EditorScale) > .001f) { value.EditorScale = scale; changed = true; }
         var font = Math.Max(0, Array.IndexOf(Fonts, value.EditorFont));
         var nextFont = EditorGUILayout.Popup(EditorLocalization.Tr("Font"), font, Fonts);
@@ -85,7 +97,6 @@ internal static class BuiltInSettingsProviders
         EditorGUI.BeginDisabledGroup(true);
         _ = EditorGUILayout.IntField(EditorLocalization.Tr("Font Size"), EditorAppearance.DefaultFontSize);
         EditorGUI.EndDisabledGroup();
-        changed |= EditorSkinPreferences.Draw(value);
         var refresh = EditorGUILayout.Toggle(EditorLocalization.Tr("Auto Refresh Assets"), value.AutoRefreshAssets);
         if (refresh != value.AutoRefreshAssets) { value.AutoRefreshAssets = refresh; changed = true; }
         var meta = EditorGUILayout.Toggle(EditorLocalization.Tr("Show Meta Files"), value.ShowAssetMetaFiles);

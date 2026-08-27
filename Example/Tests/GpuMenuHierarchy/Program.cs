@@ -65,7 +65,7 @@ internal static class Program
 
             var disabled = commands.Single(command => command.Type == GpuCanvasCommandType.Text &&
                                                        command.Content == "Disabled");
-            Require(disabled.Color == GpuCanvasColor.FromColor(EditorAppearance.palette.DisabledText),
+            Require(disabled.Color == GpuCanvasColor.FromColor(GUI.skin.menuItemDisabled.normal.textColor),
                 "Disabled menu item was not visually disabled.");
             var scrollEvent = new Event(EventType.ScrollWheel)
             {
@@ -101,7 +101,7 @@ internal static class Program
                 "A right-edge submenu overlaps its parent instead of opening to the left.");
             Require(commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                             command.Color == GpuCanvasColor.FromColor(
-                                                EditorAppearance.palette.Shadow)),
+                                                GUI.skin.notificationBackground.disabled.backgroundColor)),
                 "Popup menus do not render the Unity-style shadow layer.");
             popupType.GetMethod("Close")!.Invoke(popup, null);
 
@@ -341,7 +341,7 @@ internal static class Program
         var panel = commands
             .Where(command => command.Type == GpuCanvasCommandType.SolidRect &&
                               command.Color == GpuCanvasColor.FromColor(
-                                  EditorAppearance.palette.PanelRaised))
+                                  GUI.skin.dropDownList.normal.backgroundColor))
             .OrderByDescending(command => command.Rect.Width * command.Rect.Height)
             .First();
         Require(panel.Rect.X >= 0 && panel.Rect.Y >= 0 &&
@@ -355,7 +355,7 @@ internal static class Program
         panel = commands
             .Where(command => command.Type == GpuCanvasCommandType.SolidRect &&
                               command.Color == GpuCanvasColor.FromColor(
-                                  EditorAppearance.palette.PanelRaised))
+                                  GUI.skin.dropDownList.normal.backgroundColor))
             .OrderByDescending(command => command.Rect.Width * command.Rect.Height)
             .First();
         Require(panel.Rect.X >= 0 && panel.Rect.Y >= 0 &&

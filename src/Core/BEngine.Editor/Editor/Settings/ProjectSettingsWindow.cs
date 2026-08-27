@@ -11,8 +11,7 @@ public sealed class ProjectSettingsWindow : SettingsWindowBase
 
     public static ProjectSettingsWindow Open(string settingsPath = "")
     {
-        var window = (ProjectSettingsWindow)GetWindow(typeof(ProjectSettingsWindow), utility: true,
-            EditorLocalization.Tr("Project Settings"), focus: false);
+        var window = GetWindow<ProjectSettingsWindow>(EditorLocalization.Tr("Project Settings"), focus: false);
         window.SelectPath(settingsPath);
         window.Focus();
         return window;

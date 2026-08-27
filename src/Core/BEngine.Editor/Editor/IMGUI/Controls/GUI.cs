@@ -4,6 +4,8 @@ namespace BEngine.Editor;
 
 public static class GUI
 {
+    internal const int ContentImageTextOffset = 22;
+
     [ThreadStatic] private static ImGuiContext? _context;
     [ThreadStatic] private static Dictionary<int, TextState>? _textStates;
     [ThreadStatic] private static string? _focusedControlName;
@@ -32,7 +34,7 @@ public static class GUI
 
     static GUI()
     {
-        skin.ApplyPaletteDefaults(skin.palette, EditorAppearance.DefaultFontSize);
+        skin.ApplyDefaultTheme();
         initialSkin = skin;
     }
     public static string tooltip => _context?.Tooltip ?? string.Empty;
@@ -83,6 +85,8 @@ public static class GUI
         Label(position, new GUIContent(text), style);
     public static void Label(Rect position, GUIContent content, GUIStyle? style = null) =>
         DrawContent(position, content, style ?? skin.label, false, false);
+    internal static void Label(Rect position, GUIContent content, GUIStyle style, Fix64 leadingTextOffset) =>
+        DrawContent(position, content, style, false, false, leadingTextOffset: leadingTextOffset);
     public static void Box(Rect position, string text = "") => Box(position, new GUIContent(text), null);
     public static void Box(Rect position, string text, GUIStyle? style) =>
         Box(position, new GUIContent(text), style);
@@ -388,7 +392,9 @@ public static class GUI
             GUIUtility.keyboardControl = id;
             var visibleValue = mask is null ? value : new string(mask.Value, value.Length);
             var pointer = PointerPosition;
-            var localX = Fix64.Max(0, pointer.x - absolute.x - TextHorizontalInset);
+            var interactionTextRect = GetContentTextRect(rect, visibleValue, style, true, false);
+            var absoluteTextRect = _context?.Translate(interactionTextRect) ?? interactionTextRect;
+            var localX = Fix64.Max(0, pointer.x - absoluteTextRect.x);
             var clickedIndex = ClosestTextBoundary(visibleValue, localX, style);
             _context?.SetText(id, new TextState(value,
                 evt.clickCount >= 2 ? value.Length : clickedIndex,
@@ -424,6 +430,7 @@ public static class GUI
         GUIUtility.textFieldInput = focused;
         var displayed = new GUIContent(mask is null ? state.Text : new string(mask.Value, state.Text.Length));
         DrawContent(rect, displayed, style, true, false, focused);
+        var textRect = GetContentTextRect(rect, displayed.text, style, true, false);
         var visualState = ResolveStyleState(style, false, false, focused, hovered);
         if (focused && Event.current.type == EventType.Repaint && state.Caret != state.Anchor)
         {
@@ -432,18 +439,18 @@ public static class GUI
             var visibleText = displayed.text;
             var selectionX = TextBoundaryOffset(visibleText, start, style);
             var selectionWidth = TextBoundaryOffset(visibleText, start + length, style) - selectionX;
-            DrawRect(new Rect(rect.x + TextHorizontalInset + selectionX, rect.y + 3,
+            DrawRect(new Rect(textRect.x + selectionX, rect.y + 3,
                 selectionWidth, Fix64.Max(0, rect.height - 6)),
-                skin.palette.Selection);
+                EditorStyles.selectionRect.normal.backgroundColor);
         }
         if (focused && state.Caret != state.Anchor) DrawContent(rect, displayed, style, false, false, true);
         if (focused && Event.current.type == EventType.Repaint &&
             (Environment.TickCount64 - _caretBlinkStart) / 500 % 2 == 0)
         {
             var visibleText = displayed.text;
-            var caretOffset = Fix64.Min(Fix64.Max(0, rect.width - TextHorizontalInset * 2),
+            var caretOffset = Fix64.Min(Fix64.Max(0, textRect.width),
                 TextBoundaryOffset(visibleText, state.Caret, style));
-            DrawRect(new Rect(rect.x + TextHorizontalInset + caretOffset, rect.y + 3,
+            DrawRect(new Rect(textRect.x + caretOffset, rect.y + 3,
                 1, Fix64.Max(0, rect.height - 6)),
                 visualState.textColor * contentColor * color);
         }
@@ -544,7 +551,7 @@ public static class GUI
     }
 
     private static void DrawContent(Rect rect, GUIContent content, GUIStyle style, bool background, bool active,
-        bool focused = false, bool on = false)
+        bool focused = false, bool on = false, Fix64 leadingTextOffset = default)
     {
         if (_context is null || Event.current.type != EventType.Repaint) return;
         var absolute = _context?.Translate(rect) ?? rect;
@@ -560,11 +567,8 @@ public static class GUI
                 new Rect(rect.x + 3, rect.y + (rect.height - iconSize) / 2, iconSize, iconSize),
                 state.textColor * contentColor * color, content.image);
         }
-        var inset = background ? (Fix64)4 : Fix64.Zero;
-        var textRect = hasImage
-            ? new Rect(rect.x + 22, rect.y, Fix64.Max(0, rect.width - 24), rect.height)
-            : new Rect(rect.x + inset, rect.y, Fix64.Max(0, rect.width - inset * 2), rect.height);
-        textRect = AlignTextRect(textRect, content.text, style);
+        var textRect = GetContentTextRect(rect, content.text, style, background, hasImage,
+            leadingTextOffset);
         if (!string.IsNullOrEmpty(content.text)) AddCommand(GpuCanvasCommandType.Text, textRect,
             state.textColor * contentColor * color, content.text, (float)style.fontSize);
         if (hovered && _context is { } context)
@@ -605,11 +609,11 @@ public static class GUI
         x = Fix64.Clamp(x, 4, Fix64.Max(4, GUIUtility.currentViewWidth - width - 4));
         y = Fix64.Clamp(y, 4, Fix64.Max(4, GUIUtility.currentViewHeight - height - 4));
         var panel = new Rect(x, y, width, height);
-        DrawRect(panel, EditorAppearance.palette.PanelRaised);
-        DrawBorder(panel, EditorAppearance.palette.Border, 1);
+        var style = EditorStyles.tooltip;
+        DrawStyleBackground(panel, style.normal, style.borderWidth);
         AddCommand(GpuCanvasCommandType.Text,
             new Rect(panel.x + 6, panel.y + 3, Fix64.Max(1, panel.width - 12), panel.height - 6),
-            EditorAppearance.palette.Text, value, (float)fontSize);
+            style.normal.textColor, value, (float)fontSize);
     }
 
     private static bool PointerInsideClip(Vector2 pointer)
@@ -796,14 +800,30 @@ public static class GUI
 
     private static Rect AlignTextRect(Rect rect, string text, GUIStyle style)
     {
-        if (string.IsNullOrEmpty(text) || style.alignment is TextAnchor.UpperLeft or
-            TextAnchor.MiddleLeft or TextAnchor.LowerLeft) return rect;
-        var textWidth = Fix64.Min(rect.width,
-            GUITextMetrics.MeasureWidth(text, style.fontSize, GUIUtility.fontFamily));
+        if (style.alignment is TextAnchor.UpperLeft or TextAnchor.MiddleLeft or TextAnchor.LowerLeft)
+            return rect;
+        var textWidth = string.IsNullOrEmpty(text) ? Fix64.Zero : Fix64.Min(rect.width,
+            GUITextMetrics.MeasureRenderedAdvance(text, style.fontSize, GUIUtility.fontFamily,
+                _context?.ScaleFactor ?? Fix64.One));
         var x = style.alignment is TextAnchor.UpperCenter or TextAnchor.MiddleCenter or TextAnchor.LowerCenter
             ? rect.x + (rect.width - textWidth) / 2
             : rect.xMax - textWidth;
         return new Rect(x, rect.y, textWidth, rect.height);
+    }
+
+    private static Rect GetContentTextRect(Rect rect, string text, GUIStyle style,
+        bool background, bool hasImage, Fix64 leadingTextOffset = default)
+    {
+        var inset = background ? TextHorizontalInset : Fix64.Zero;
+        var desiredLeading = hasImage
+            ? (Fix64)ContentImageTextOffset
+            : Fix64.Max(inset, Fix64.Max(0, leadingTextOffset));
+        var leading = Fix64.Min(Fix64.Max(0, rect.width), desiredLeading);
+        var trailing = Fix64.Min(Fix64.Max(0, rect.width - leading),
+            hasImage ? (Fix64)2 : inset);
+        var contentRect = new Rect(rect.x + leading, rect.y,
+            Fix64.Max(0, rect.width - leading - trailing), rect.height);
+        return AlignTextRect(contentRect, text, style);
     }
 
     private static int ClosestTextBoundary(string text, Fix64 localX, GUIStyle style)
@@ -823,7 +843,8 @@ public static class GUI
     {
         index = Math.Clamp(index, 0, text.Length);
         return index == 0 ? Fix64.Zero :
-            GUITextMetrics.MeasureWidth(text[..index], style.fontSize, GUIUtility.fontFamily);
+            GUITextMetrics.MeasureRenderedAdvance(text[..index], style.fontSize,
+                GUIUtility.fontFamily, _context?.ScaleFactor ?? Fix64.One);
     }
 
     private static void DrawStyleBackground(Rect rect, GUIStyleState state, Fix64 borderWidth)
@@ -832,10 +853,12 @@ public static class GUI
         if (GUIStyleBackground.IsSegmentedButton(state.backgroundImage))
         {
             if (tint.a > 0) DrawRect(rect, tint);
-            var highlight = EditorAppearance.palette.Text;
+            var highlight = state.textColor;
             DrawRect(new Rect(rect.x, rect.y, rect.width, Fix64.One),
                 new Color(highlight.r, highlight.g, highlight.b, Fix64.FromDecimal(.04m)));
-            var separator = state.borderColor.a > 0 ? state.borderColor : EditorAppearance.palette.Border;
+            var separator = state.borderColor.a > 0
+                ? state.borderColor
+                : EditorStyles.separator.normal.backgroundColor;
             DrawRect(new Rect(rect.xMax - 1, rect.y, 1, rect.height), separator);
         }
         else if (state.backgroundImage is { } image)

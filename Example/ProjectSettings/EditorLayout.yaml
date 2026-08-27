@@ -2,17 +2,18 @@ format: BEngine.EditorLayout
 version: 2
 name: Last Session
 activeLayout: Last Session
-windowX: 229
-windowY: 174
+windowX: 508
+windowY: 450
 windowWidth: 1753
-windowHeight: 889
+windowHeight: 1102
 windowMaximized: false
-hierarchyWidth: 275.46277
-inspectorWidth: 463.53723
-bottomHeight: 777
-projectFoldersWidth: 313
-projectThumbnailSize: 144
-projectBrowserMode: OneColumn
+hierarchyWidth: 353
+inspectorWidth: 617
+bottomHeight: 990
+projectFoldersWidth: 180.06378
+projectPackagesHeight: 269
+projectThumbnailSize: 32
+projectBrowserMode: TwoColumn
 showHierarchy: true
 showInspector: true
 showBottomPanel: true
@@ -30,16 +31,15 @@ sceneCameraBackgroundR: 0.055
 sceneCameraBackgroundG: 0.062
 sceneCameraBackgroundB: 0.071
 sceneCameraDrawGrid: true
-focusedWindowId: Project
 dockRoot:
   type: Split
   sideBySide: true
-  ratio: 0.5730594
+  ratio: 0.44121003
   panels: []
   first:
     type: Split
     sideBySide: true
-    ratio: 0.2572283
+    ratio: 0.4715852
     panels: []
     first:
       type: Group
@@ -83,7 +83,7 @@ dockRoot:
   second:
     type: Split
     sideBySide: true
-    ratio: 0.37411347
+    ratio: 0.36503068
     panels: []
     first:
       type: Group
@@ -106,53 +106,53 @@ windows:
   docked: true
   x: 2
   y: 86
-  width: 254
-  height: 777
+  width: 360.06378
+  height: 990
 - id: Game
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiGameWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 261
+  x: 367.06378
   y: 86
-  width: 741
-  height: 231.58458
+  width: 403.93622
+  height: 300.35513
 - id: PackageManager
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiPackageManagerWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 232.841
-  y: 83
-  width: 406.5676
-  height: 185.7151
+  x: 261
+  y: 86
+  width: 741.00006
+  height: 231.58458
 - id: Scene
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiSceneWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 261
-  y: 346.5846
-  width: 741
-  height: 287.6025
+  x: 367.06378
+  y: 415.35513
+  width: 403.93622
+  height: 371.3675
 - id: Console
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiConsoleWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 261
-  y: 663.18713
-  width: 741
-  height: 199.8129
+  x: 367.06378
+  y: 815.72266
+  width: 403.93622
+  height: 260.27737
 - id: Hierarchy
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiHierarchyWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 1007
+  x: 776
   y: 86
-  width: 275.46277
-  height: 777
+  width: 353
+  height: 990
 - id: Inspector
   typeName: BEngine.Editor.GpuEditorApplication+ImGuiInspectorWindow, BEngine.Editor, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
   state: Normal
   docked: true
-  x: 1287.4628
+  x: 1134
   y: 86
-  width: 463.53723
-  height: 777
+  width: 617
+  height: 990

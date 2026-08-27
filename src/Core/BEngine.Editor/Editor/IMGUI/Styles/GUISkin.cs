@@ -79,7 +79,6 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
     public GUIStyle inspectorDefaultMargins { get; set; } = Style("inspectorDefaultMargins");
     public GUIStyle separator { get; set; } = new("separator") { fixedHeight = 1 };
 
-    public EditorThemePalette palette { get; set; } = DefaultPalette;
     public GUIStyle[] customStyles { get; set; } = [];
 
     [YamlIgnore, HideInInspector]
@@ -99,7 +98,7 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
     {
         name = nameof(GUISkin);
         if (GUI.skin is not null)
-            ApplyPaletteDefaults(palette, EditorAppearance.DefaultFontSize);
+            ApplyDefaultTheme();
         Apply();
     }
 
@@ -120,7 +119,6 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
     public void CopyFrom(GUISkin other)
     {
         ArgumentNullException.ThrowIfNull(other);
-        palette = other.palette;
         var source = other.EnumerateBuiltInStyles().ToDictionary(static pair => pair.Name,
             static pair => pair.Style, StringComparer.OrdinalIgnoreCase);
         foreach (var (slot, destination) in EnumerateBuiltInStyles())
@@ -180,7 +178,6 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
 
     internal void ApplyPaletteDefaults(EditorThemePalette colors, int size)
     {
-        palette = colors;
         Configure(label, Transparent, colors.Text, size, disabledText: colors.DisabledText);
         Configure(box, colors.PanelRaised, colors.Text, size, border: colors.Border);
         Configure(button, colors.Button, colors.Text, size,
@@ -229,6 +226,8 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
         Apply();
     }
 
+    internal void ApplyDefaultTheme() => ApplyPaletteDefaults(DefaultPalette, EditorAppearance.DefaultFontSize);
+
     public void MakeCurrent() => EditorAppearance.SetSkin(this);
 
     public static GUISkin Load(string path)
@@ -245,7 +244,6 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
                 ? fileName[..^FileExtension.Length]
                 : Path.GetFileNameWithoutExtension(fileName);
             var skin = new GUISkin { name = displayName };
-            if (document.Palette is not null) skin.palette = document.Palette.ToPalette();
             var destinations = skin.EnumerateBuiltInStyles().ToDictionary(static pair => pair.Name,
                 static pair => pair.Style, StringComparer.OrdinalIgnoreCase);
             foreach (var (slot, style) in document.Styles)
@@ -269,7 +267,6 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
         YamlUtility.Save(new GUISkinFile
         {
             Name = name,
-            Palette = GUISkinPaletteFile.From(palette),
             Styles = EnumerateBuiltInStyles().ToDictionary(static pair => pair.Name,
                 static pair => GUIStyleFile.From(pair.Style), StringComparer.Ordinal),
             CustomStyles = customStyles.Where(static style => style is not null)
@@ -417,62 +414,8 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
         public string Format { get; set; } = "BEngine.GUISkin";
         public int Version { get; set; } = 1;
         public string Name { get; set; } = nameof(GUISkin);
-        public GUISkinPaletteFile? Palette { get; set; }
         public Dictionary<string, GUIStyleFile> Styles { get; set; } = new(StringComparer.Ordinal);
         public List<GUIStyleFile> CustomStyles { get; set; } = [];
-    }
-
-    private sealed class GUISkinPaletteFile
-    {
-        public ColorFile Window { get; set; } = new();
-        public ColorFile Panel { get; set; } = new();
-        public ColorFile Toolbar { get; set; } = new();
-        public ColorFile Field { get; set; } = new();
-        public ColorFile Button { get; set; } = new();
-        public ColorFile Hover { get; set; } = new();
-        public ColorFile Active { get; set; } = new();
-        public ColorFile Text { get; set; } = new();
-        public ColorFile MutedText { get; set; } = new();
-        public ColorFile Accent { get; set; } = new();
-        public ColorFile Border { get; set; } = new();
-        public ColorFile PanelRaised { get; set; } = new();
-        public ColorFile TitleBar { get; set; } = new();
-        public ColorFile FieldHover { get; set; } = new();
-        public ColorFile FieldFocused { get; set; } = new();
-        public ColorFile ButtonHover { get; set; } = new();
-        public ColorFile ButtonPressed { get; set; } = new();
-        public ColorFile DisabledText { get; set; } = new();
-        public ColorFile FocusBorder { get; set; } = new();
-        public ColorFile Selection { get; set; } = new();
-        public ColorFile SelectionInactive { get; set; } = new();
-        public ColorFile ScrollTrack { get; set; } = new();
-        public ColorFile ScrollThumb { get; set; } = new();
-        public ColorFile ScrollThumbHover { get; set; } = new();
-        public ColorFile Shadow { get; set; } = new();
-
-        internal static GUISkinPaletteFile From(EditorThemePalette value) => new()
-        {
-            Window = ColorFile.From(value.Window), Panel = ColorFile.From(value.Panel),
-            Toolbar = ColorFile.From(value.Toolbar), Field = ColorFile.From(value.Field),
-            Button = ColorFile.From(value.Button), Hover = ColorFile.From(value.Hover),
-            Active = ColorFile.From(value.Active), Text = ColorFile.From(value.Text),
-            MutedText = ColorFile.From(value.MutedText), Accent = ColorFile.From(value.Accent),
-            Border = ColorFile.From(value.Border), PanelRaised = ColorFile.From(value.PanelRaised),
-            TitleBar = ColorFile.From(value.TitleBar), FieldHover = ColorFile.From(value.FieldHover),
-            FieldFocused = ColorFile.From(value.FieldFocused), ButtonHover = ColorFile.From(value.ButtonHover),
-            ButtonPressed = ColorFile.From(value.ButtonPressed), DisabledText = ColorFile.From(value.DisabledText),
-            FocusBorder = ColorFile.From(value.FocusBorder), Selection = ColorFile.From(value.Selection),
-            SelectionInactive = ColorFile.From(value.SelectionInactive), ScrollTrack = ColorFile.From(value.ScrollTrack),
-            ScrollThumb = ColorFile.From(value.ScrollThumb), ScrollThumbHover = ColorFile.From(value.ScrollThumbHover),
-            Shadow = ColorFile.From(value.Shadow)
-        };
-
-        internal EditorThemePalette ToPalette() => new(Window.ToColor(), Panel.ToColor(), Toolbar.ToColor(),
-            Field.ToColor(), Button.ToColor(), Hover.ToColor(), Active.ToColor(), Text.ToColor(),
-            MutedText.ToColor(), Accent.ToColor(), Border.ToColor(), PanelRaised.ToColor(), TitleBar.ToColor(),
-            FieldHover.ToColor(), FieldFocused.ToColor(), ButtonHover.ToColor(), ButtonPressed.ToColor(),
-            DisabledText.ToColor(), FocusBorder.ToColor(), Selection.ToColor(), SelectionInactive.ToColor(),
-            ScrollTrack.ToColor(), ScrollThumb.ToColor(), ScrollThumbHover.ToColor(), Shadow.ToColor());
     }
 
     private sealed class GUIStyleFile

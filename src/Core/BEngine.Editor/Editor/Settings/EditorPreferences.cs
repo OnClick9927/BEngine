@@ -9,11 +9,13 @@ namespace BEngine.Editor;
 public static class EditorPreferences
 {
     private static EditorPreferencesDocument _current = new();
+    private static bool _initialized;
     public static EditorPreferencesDocument current => _current;
     public static event Action? preferencesChanged;
 
     public static void Initialize()
     {
+        if (_initialized) return;
         try
         {
             _current = File.Exists(EditorDataPaths.preferencesPath)
@@ -27,7 +29,6 @@ public static class EditorPreferences
         }
         _current.EditorFontSize = EditorAppearance.DefaultFontSize;
         _current.EditorSkin ??= string.Empty;
-        _current.CustomThemeColors ??= new Dictionary<string, string>(StringComparer.Ordinal);
         var skinBeforeApply = _current.EditorSkin;
         EditorAppearance.Apply(_current);
         if (!skinBeforeApply.Equals(_current.EditorSkin, StringComparison.Ordinal))
@@ -38,13 +39,13 @@ public static class EditorPreferences
                 Debug.LogWarning($"Normalized editor skin preference could not be saved: {exception.Message}");
             }
         }
+        _initialized = true;
     }
 
     public static void Save()
     {
         _current.EditorFontSize = EditorAppearance.DefaultFontSize;
         _current.EditorSkin ??= string.Empty;
-        _current.CustomThemeColors ??= new Dictionary<string, string>(StringComparer.Ordinal);
         _current.Save(EditorDataPaths.preferencesPath);
         EditorAppearance.Apply(_current);
         EditorCallbackDispatcher.Invoke(preferencesChanged, nameof(preferencesChanged));

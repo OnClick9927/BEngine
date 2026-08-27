@@ -6,6 +6,7 @@ namespace BEngine.Editor;
 
 public sealed class SerializedObject : IDisposable
 {
+    private static readonly ConditionalWeakTable<Type, MemberInfo[]> ChildMemberCache = new();
     private bool _modified;
     private int _changeVersion;
     private readonly string[] _propertyPaths;
@@ -43,8 +44,8 @@ public sealed class SerializedObject : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyPath);
         if (_properties.TryGetValue(propertyPath, out var cached)) return cached;
-        return PropertyPath.TryResolve(targetObject, propertyPath, out _)
-            ? _properties[propertyPath] = new SerializedProperty(this, propertyPath)
+        return TryResolve(targetObject, propertyPath, out _)
+            ? GetOrCreateProperty(propertyPath)
             : null;
     }
 
@@ -73,7 +74,43 @@ public sealed class SerializedObject : IDisposable
     public void Dispose() { }
 
     internal object? GetValue(string path) => PropertyPath.Resolve(targetObject, path).GetValue();
+    internal bool TryGetValue(string path, out object? value) =>
+        TryGetValue(targetObject, path, out value);
     internal int changeVersion => _changeVersion;
+
+    internal IReadOnlyList<SerializedProperty> GetVisibleChildren(SerializedProperty property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        if (!TryGetValues(property.propertyPath, out var values) || values[0] is not { } value) return [];
+
+        if (value is IList list)
+        {
+            var count = list.Count;
+            for (var index = 1; index < values.Length; index++)
+            {
+                if (values[index] is not IList candidate) return [];
+                count = Math.Min(count, candidate.Count);
+            }
+            var children = new List<SerializedProperty>(count);
+            for (var index = 0; index < count; index++)
+            {
+                var path = $"{property.propertyPath}[{index}]";
+                if (CanResolveForAllTargets(path)) children.Add(GetOrCreateProperty(path));
+            }
+            return children;
+        }
+
+        var runtimeType = value.GetType();
+        if (runtimeType.IsValueType || value is string or BObject || typeof(Delegate).IsAssignableFrom(runtimeType))
+            return [];
+        if (values.Skip(1).Any(candidate => candidate is null || !runtimeType.IsInstanceOfType(candidate))) return [];
+
+        return GetSerializableChildMembers(runtimeType)
+            .Select(member => $"{property.propertyPath}.{member.Name}")
+            .Where(CanResolveForAllTargets)
+            .Select(GetOrCreateProperty)
+            .ToArray();
+    }
 
     internal bool IsVisible(string path) =>
         !SerializedMemberMetadata.For(PropertyPath.Resolve(targetObject, path).MemberInfo).IsHidden;
@@ -106,4 +143,71 @@ public sealed class SerializedObject : IDisposable
     }
 
     private string[] GetPropertyPaths() => _propertyPaths;
+
+    private SerializedProperty GetOrCreateProperty(string path)
+    {
+        if (_properties.TryGetValue(path, out var cached)) return cached;
+        return _properties[path] = new SerializedProperty(this, path);
+    }
+
+    private bool CanResolveForAllTargets(string path)
+    {
+        foreach (var target in targetObjects)
+            if (!TryResolve(target, path, out _)) return false;
+        return true;
+    }
+
+    internal bool TryGetValues(string path, out object?[] values)
+    {
+        values = new object?[targetObjects.Length];
+        for (var index = 0; index < targetObjects.Length; index++)
+        {
+            if (!TryGetValue(targetObjects[index], path, out values[index])) return false;
+        }
+        return true;
+    }
+
+    private bool TryGetValue(BObject target, string path, out object? value) =>
+        EditorFeatureGuard.TryInvoke(ReadFeatureName(target, path),
+            () => PropertyPath.Resolve(target, path).GetValue(), fallback: null, out value);
+
+    private bool TryResolve(BObject target, string path, out PropertyAccessor accessor)
+    {
+        var resolved = default(PropertyAccessor);
+        var wasResolved = false;
+        var succeeded = EditorFeatureGuard.Invoke(ReadFeatureName(target, path),
+            () => wasResolved = PropertyPath.TryResolve(target, path, out resolved));
+        accessor = resolved;
+        return succeeded && wasResolved;
+    }
+
+    private static string ReadFeatureName(BObject target, string path) =>
+        $"SerializedProperty {target.GetType().FullName ?? target.GetType().Name}.{path}.get";
+
+    private static MemberInfo[] GetSerializableChildMembers(Type type)
+    {
+        return ChildMemberCache.GetValue(type, static childType =>
+            RuntimeTypeCache.GetInstanceMembers(childType)
+                .Where(IsSerializableChildMember)
+                .Where(member => !SerializedMemberMetadata.For(member).IsHidden)
+                .GroupBy(member => member.Name, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .OrderBy(member => member.Name, StringComparer.Ordinal)
+                .ToArray());
+    }
+
+    private static bool IsSerializableChildMember(MemberInfo member) => member switch
+    {
+        FieldInfo field => !field.IsStatic && !field.IsInitOnly &&
+                           !typeof(Delegate).IsAssignableFrom(field.FieldType) &&
+                           !field.IsDefined(typeof(CompilerGeneratedAttribute), inherit: true) &&
+                           !field.IsDefined(typeof(NonSerializedAttribute), inherit: true) &&
+                           (field.IsPublic || field.IsDefined(typeof(SerializeFieldAttribute), inherit: true) ||
+                            field.IsDefined(typeof(SerializeReferenceAttribute), inherit: true)),
+        PropertyInfo property => property.GetIndexParameters().Length == 0 &&
+                                 property.GetMethod is { IsPublic: true } &&
+                                 property.SetMethod is { IsPublic: true } &&
+                                 !typeof(Delegate).IsAssignableFrom(property.PropertyType),
+        _ => false
+    };
 }

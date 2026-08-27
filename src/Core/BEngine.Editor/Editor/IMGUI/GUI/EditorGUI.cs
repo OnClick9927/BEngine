@@ -6,6 +6,8 @@ namespace BEngine.Editor;
 public static class EditorGUI
 {
     private const int NumericDecimals = 4;
+    private const int MaxNestedPropertyDepth = 8;
+    private const int PropertyIndentWidth = 15;
     private static readonly Fix64 VectorAxisLabelMinimumWidth = 20;
     private static readonly Fix64 VectorNumericMinimumWidth = 66;
     private static readonly Fix64 VectorAxisSpacing = 1;
@@ -91,23 +93,31 @@ public static class EditorGUI
     public static Rect PrefixLabel(Rect totalPosition, GUIContent label) =>
         PrefixLabel(totalPosition, label, null);
 
+    public static Rect IndentedRect(Rect source)
+    {
+        var indentation = Fix64.Min(Fix64.Max(0, source.width),
+            Fix64.Max(0, (Fix64)indentLevel * PropertyIndentWidth));
+        return new Rect(source.x + indentation, source.y,
+            Fix64.Max(0, source.width - indentation), source.height);
+    }
+
     public static Rect PrefixLabel(Rect totalPosition, GUIContent label, GUIStyle? style)
     {
-        var left = Fix64.Min(totalPosition.width, labelWidth + indentLevel * 15);
-        GUI.Label(new Rect(totalPosition.x + indentLevel * 15, totalPosition.y,
-            Fix64.Max(0, left - indentLevel * 15), totalPosition.height), label,
-            style ?? EditorStyles.label);
-        return new Rect(totalPosition.x + left, totalPosition.y,
-            Fix64.Max(0, totalPosition.width - left), totalPosition.height);
+        var indented = IndentedRect(totalPosition);
+        var prefixWidth = Fix64.Min(indented.width, labelWidth);
+        var labelRect = new Rect(indented.x, indented.y, prefixWidth, indented.height);
+        DrawHierarchyLabel(labelRect, label, style ?? EditorStyles.label);
+        return new Rect(indented.x + prefixWidth, indented.y,
+            Fix64.Max(0, indented.width - prefixWidth), indented.height);
     }
 
     public static void LabelField(Rect position, string label) => LabelField(position, label, null);
     public static void LabelField(Rect position, string label, GUIStyle? style) =>
-        GUI.Label(position, label, style ?? EditorStyles.label);
+        DrawHierarchyLabel(IndentedRect(position), new GUIContent(label), style ?? EditorStyles.label);
     public static void LabelField(Rect position, GUIContent label, GUIStyle? style = null) =>
-        GUI.Label(position, label, style ?? EditorStyles.label);
+        DrawHierarchyLabel(IndentedRect(position), label, style ?? EditorStyles.label);
     public static void SelectableLabel(Rect position, string text, GUIStyle? style = null) =>
-        GUI.Label(position, text, style ?? EditorStyles.label);
+        DrawHierarchyLabel(IndentedRect(position), new GUIContent(text), style ?? EditorStyles.label);
     public static bool Toggle(Rect position, bool value) => Toggle(position, value, (GUIStyle?)null);
     public static bool Toggle(Rect position, bool value, GUIStyle? style) =>
         GUI.Toggle(position, value, GUIContent.none, style ?? GUI.skin.toggle);
@@ -501,8 +511,13 @@ public static class EditorGUI
         var arrowWidth = Fix64.Min(20, Fix64.Max(0, position.width));
         var arrow = new Rect(position.xMax - arrowWidth, position.y, arrowWidth, position.height);
         if (Event.current.type == EventType.Repaint && arrowWidth > 0)
+        {
+            var separator = style.normal.borderColor.a > 0
+                ? style.normal.borderColor
+                : EditorStyles.separator.normal.backgroundColor;
             GUI.DrawRect(new Rect(arrow.x, arrow.y + 1, 1, Fix64.Max(0, arrow.height - 2)),
-                GUI.skin.palette.Border);
+                separator);
+        }
         GUI.Label(arrow, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.FoldoutOpen, string.Empty),
             EditorStyles.label);
         return pressed;
@@ -654,6 +669,7 @@ public static class EditorGUI
         GUIStyle? style)
     {
         _ = toggleOnLabelClick;
+        position = IndentedRect(position);
         var icon = foldout ? EditorBuiltinIcons.Toolbar.FoldoutOpen : EditorBuiltinIcons.Toolbar.FoldoutClosed;
         if (GUI.Button(position, new GUIContent(content, icon, foldout ? "Collapse" : "Expand"),
                 style ?? EditorStyles.foldout)) foldout = !foldout;
@@ -665,6 +681,7 @@ public static class EditorGUI
 
     public static void HelpBox(Rect position, string message, MessageType type, GUIStyle? style)
     {
+        position = IndentedRect(position);
         var icon = type switch
         {
             MessageType.Warning => EditorBuiltinIcons.Toolbar.Warning,
@@ -689,35 +706,17 @@ public static class EditorGUI
     {
         ArgumentNullException.ThrowIfNull(property);
         label ??= new GUIContent(property.displayName, tooltip: property.tooltip);
-        if (PropertyDrawerRegistry.TryCreate(property, out var drawer))
-        {
-            if (EditorFeatureGuard.Invoke(
-                    $"PropertyDrawer {drawer.GetType().FullName}.{nameof(PropertyDrawer.OnGUI)}",
-                    () => drawer.OnGUI(position, property, label)))
-                return property.isExpanded;
-        }
-        return DefaultPropertyField(position, property, label, includeChildren, style);
+        return DrawPropertyField(position, property, label, includeChildren, style, 0,
+            new HashSet<object>(ReferenceEqualityComparer.Instance));
     }
 
     public static Fix64 GetPropertyHeight(SerializedProperty property, GUIContent? label = null,
         bool includeChildren = false)
     {
         ArgumentNullException.ThrowIfNull(property);
-        if (PropertyDrawerRegistry.TryCreate(property, out var drawer))
-        {
-            var content = label ?? new GUIContent(property.displayName);
-            if (EditorFeatureGuard.TryInvoke(
-                    $"PropertyDrawer {drawer.GetType().FullName}.{nameof(PropertyDrawer.GetPropertyHeight)}",
-                    () => drawer.GetPropertyHeight(property, content), EditorGUIUtility.singleLineHeight,
-                    out var height))
-                return height;
-        }
-        return property.propertyType switch
-        {
-            SerializedPropertyType.Vector2 => GetVectorFieldHeight(2),
-            SerializedPropertyType.Vector4 => GetVectorFieldHeight(4),
-            _ => EditorGUIUtility.singleLineHeight
-        };
+        var content = label ?? new GUIContent(property.displayName, tooltip: property.tooltip);
+        return GetPropertyHeight(property, content, includeChildren, 0,
+            new HashSet<object>(ReferenceEqualityComparer.Instance));
     }
 
     public static bool DefaultPropertyField(Rect position, SerializedProperty property, GUIContent label,
@@ -728,52 +727,175 @@ public static class EditorGUI
 
     public static bool DefaultPropertyField(Rect position, SerializedProperty property, GUIContent label,
         bool includeChildren, GUIStyle? style)
+        => DrawDefaultPropertyField(position, property, label, includeChildren, style, 0,
+            new HashSet<object>(ReferenceEqualityComparer.Instance));
+
+    private static bool DrawPropertyField(Rect position, SerializedProperty property, GUIContent label,
+        bool includeChildren, GUIStyle? style, int nestingDepth, HashSet<object> ancestors)
+    {
+        if (PropertyDrawerRegistry.TryCreate(property, out var drawer) &&
+            EditorFeatureGuard.Invoke(
+                $"PropertyDrawer {drawer.GetType().FullName}.{nameof(PropertyDrawer.OnGUI)}",
+                () => drawer.OnGUI(position, property, label)))
+            return property.isExpanded;
+        return DrawDefaultPropertyField(position, property, label, includeChildren, style,
+            nestingDepth, ancestors);
+    }
+
+    private static bool DrawDefaultPropertyField(Rect position, SerializedProperty property, GUIContent label,
+        bool includeChildren, GUIStyle? style, int nestingDepth, HashSet<object> ancestors)
     {
         var oldEnabled = GUI.enabled;
         GUI.enabled &= property.editable;
         try
         {
-            var range = property.GetAttribute<RangeAttribute>();
-            switch (property.propertyType)
+            var ownHeight = GetSinglePropertyHeight(property);
+            var row = new Rect(position.x, position.y, position.width, ownHeight);
+            var children = GetExpandableChildren(property, nestingDepth, ancestors);
+            if (children.Count > 0)
             {
-                case SerializedPropertyType.Boolean:
-                    property.boolValue = Toggle(position, label.text, property.boolValue, style); break;
-                case SerializedPropertyType.Integer:
-                case SerializedPropertyType.LayerMask:
-                    property.intValue = range is null
-                        ? IntField(position, label.text, property.intValue, style)
-                        : IntSlider(position, label.text, property.intValue,
-                            (int)MathF.Ceiling(range.min), (int)MathF.Floor(range.max), style);
-                    break;
-                case SerializedPropertyType.Float:
-                    property.floatValue = range is null
-                        ? FloatField(position, label.text, property.floatValue, style)
-                        : Slider(position, label.text, property.floatValue, range.min, range.max, style);
-                    break;
-                case SerializedPropertyType.String:
-                    property.stringValue = TextField(position, label.text, property.stringValue, style); break;
-                case SerializedPropertyType.Color:
-                    var usage = property.GetAttribute<ColorUsageAttribute>();
-                    property.colorValue = ColorField(position, label.text, property.colorValue,
-                        true, usage?.showAlpha ?? true, usage?.hdr ?? false, style);
-                    break;
-                case SerializedPropertyType.Enum:
-                    property.enumValueIndex = Popup(position, label.text, property.enumValueIndex,
-                        property.enumDisplayNames, style); break;
-                case SerializedPropertyType.Vector2:
-                    property.vector2Value = Vector2Field(position, label.text, property.vector2Value, style); break;
-                case SerializedPropertyType.Vector4:
-                    property.vector4Value = Vector4Field(position, label.text, property.vector4Value, style); break;
-                case SerializedPropertyType.ObjectReference:
-                    ObjectField(position, property, property.valueType, label, style); break;
-                default:
-                    GUI.Label(PrefixLabel(position, label), property.boxedValue?.ToString() ?? "None",
-                        style ?? EditorStyles.label); break;
+                property.isExpanded = Foldout(row, property.isExpanded, label.text,
+                    toggleOnLabelClick: true, style);
+            }
+            else
+            {
+                DrawSinglePropertyField(row, property, label, style);
+            }
+
+            if (!includeChildren || !property.isExpanded || children.Count == 0) return property.isExpanded;
+            if (!property.TryGetBoxedValue(out var container)) return property.isExpanded;
+            var tracked = TryTrackContainer(container, ancestors);
+            var y = row.yMax + EditorGUIUtility.standardVerticalSpacing;
+            var previousIndent = indentLevel;
+            try
+            {
+                indentLevel = previousIndent + 1;
+                foreach (var child in children)
+                {
+                    var childLabel = new GUIContent(child.displayName, tooltip: child.tooltip);
+                    var childHeight = GetPropertyHeight(child, childLabel, includeChildren: true,
+                        nestingDepth + 1, ancestors);
+                    DrawPropertyField(new Rect(position.x, y, position.width, childHeight), child, childLabel,
+                        includeChildren: true, style, nestingDepth + 1, ancestors);
+                    y += childHeight + EditorGUIUtility.standardVerticalSpacing;
+                }
+            }
+            finally
+            {
+                indentLevel = previousIndent;
+                if (tracked) ancestors.Remove(container!);
             }
             return property.isExpanded;
         }
         finally { GUI.enabled = oldEnabled; }
     }
+
+    private static void DrawSinglePropertyField(Rect position, SerializedProperty property, GUIContent label,
+        GUIStyle? style)
+    {
+        var feature = $"Inspector property {property.serializedObject.targetObject.GetType().FullName}." +
+                      $"{property.propertyPath}";
+        if (EditorFeatureGuard.Invoke(feature,
+                () => DrawSinglePropertyFieldUnsafe(position, property, label, style))) return;
+
+        GUI.Label(PrefixLabel(position, label), new GUIContent("Unavailable",
+            "The property getter failed. See the Console for details."), style ?? EditorStyles.label);
+    }
+
+    private static void DrawSinglePropertyFieldUnsafe(Rect position, SerializedProperty property, GUIContent label,
+        GUIStyle? style)
+    {
+        var range = property.GetAttribute<RangeAttribute>();
+        switch (property.propertyType)
+        {
+            case SerializedPropertyType.Boolean:
+                property.boolValue = Toggle(position, label.text, property.boolValue, style); break;
+            case SerializedPropertyType.Integer:
+            case SerializedPropertyType.LayerMask:
+                property.intValue = range is null
+                    ? IntField(position, label.text, property.intValue, style)
+                    : IntSlider(position, label.text, property.intValue,
+                        (int)MathF.Ceiling(range.min), (int)MathF.Floor(range.max), style);
+                break;
+            case SerializedPropertyType.Float:
+                property.floatValue = range is null
+                    ? FloatField(position, label.text, property.floatValue, style)
+                    : Slider(position, label.text, property.floatValue, range.min, range.max, style);
+                break;
+            case SerializedPropertyType.String:
+                property.stringValue = TextField(position, label.text, property.stringValue, style); break;
+            case SerializedPropertyType.Color:
+                var usage = property.GetAttribute<ColorUsageAttribute>();
+                property.colorValue = ColorField(position, label.text, property.colorValue,
+                    true, usage?.showAlpha ?? true, usage?.hdr ?? false, style);
+                break;
+            case SerializedPropertyType.Enum:
+                property.enumValueIndex = Popup(position, label.text, property.enumValueIndex,
+                    property.enumDisplayNames, style); break;
+            case SerializedPropertyType.Vector2:
+                property.vector2Value = Vector2Field(position, label.text, property.vector2Value, style); break;
+            case SerializedPropertyType.Vector4:
+                property.vector4Value = Vector4Field(position, label.text, property.vector4Value, style); break;
+            case SerializedPropertyType.ObjectReference:
+                ObjectField(position, property, property.valueType, label, style); break;
+            default:
+                GUI.Label(PrefixLabel(position, label), property.boxedValue?.ToString() ?? "None",
+                    style ?? EditorStyles.label); break;
+        }
+    }
+
+    private static Fix64 GetPropertyHeight(SerializedProperty property, GUIContent label,
+        bool includeChildren, int nestingDepth, HashSet<object> ancestors)
+    {
+        if (PropertyDrawerRegistry.TryCreate(property, out var drawer) &&
+            EditorFeatureGuard.TryInvoke(
+                $"PropertyDrawer {drawer.GetType().FullName}.{nameof(PropertyDrawer.GetPropertyHeight)}",
+                () => drawer.GetPropertyHeight(property, label), EditorGUIUtility.singleLineHeight,
+                out var drawerHeight))
+            return drawerHeight;
+
+        var height = GetSinglePropertyHeight(property);
+        if (!includeChildren || !property.isExpanded) return height;
+        var children = GetExpandableChildren(property, nestingDepth, ancestors);
+        if (children.Count == 0) return height;
+
+        if (!property.TryGetBoxedValue(out var container)) return height;
+        var tracked = TryTrackContainer(container, ancestors);
+        try
+        {
+            foreach (var child in children)
+            {
+                height += EditorGUIUtility.standardVerticalSpacing;
+                height += GetPropertyHeight(child,
+                    new GUIContent(child.displayName, tooltip: child.tooltip), includeChildren: true,
+                    nestingDepth + 1, ancestors);
+            }
+            return height;
+        }
+        finally
+        {
+            if (tracked) ancestors.Remove(container!);
+        }
+    }
+
+    private static Fix64 GetSinglePropertyHeight(SerializedProperty property) => property.propertyType switch
+    {
+        SerializedPropertyType.Vector2 => GetVectorFieldHeight(2),
+        SerializedPropertyType.Vector4 => GetVectorFieldHeight(4),
+        _ => EditorGUIUtility.singleLineHeight
+    };
+
+    private static IReadOnlyList<SerializedProperty> GetExpandableChildren(SerializedProperty property,
+        int nestingDepth, HashSet<object> ancestors)
+    {
+        if (nestingDepth >= MaxNestedPropertyDepth ||
+            !property.TryGetBoxedValue(out var candidate) || candidate is not { } value) return [];
+        if (!value.GetType().IsValueType && ancestors.Contains(value)) return [];
+        return property.GetVisibleChildren();
+    }
+
+    private static bool TryTrackContainer(object? value, HashSet<object> ancestors) =>
+        value is not null && !value.GetType().IsValueType && ancestors.Add(value);
 
     internal static string FormatFloat(float value) => Math.Abs(value) < 0.00005f
         ? "0"
@@ -781,7 +903,8 @@ public static class EditorGUI
 
     internal static Fix64 GetVectorFieldHeight(int dimensions)
     {
-        var availableWidth = Fix64.Max(0, GUI.visibleViewWidth - 8);
+        var indentation = Fix64.Max(0, (Fix64)indentLevel * PropertyIndentWidth);
+        var availableWidth = Fix64.Max(0, GUI.visibleViewWidth - 8 - indentation);
         if (dimensions is < 2 or > 4) throw new ArgumentOutOfRangeException(nameof(dimensions));
         var minimumFieldWidth = GetVectorMinimumFieldWidth(dimensions);
         var result = availableWidth < minimumFieldWidth
@@ -796,32 +919,47 @@ public static class EditorGUI
 
     private static Rect PrepareVectorField(Rect position, string label, Fix64 minimumFieldWidth)
     {
-        var indent = indentLevel * 15;
+        var indented = IndentedRect(position);
         if (position.height >= EditorGUIUtility.singleLineHeight * 2)
         {
-            GUI.Label(new Rect(position.x + indent, position.y, Fix64.Max(0, position.width - indent),
-                EditorGUIUtility.singleLineHeight), label);
-            return new Rect(position.x + indent,
+            var labelRect = new Rect(indented.x, indented.y, indented.width,
+                EditorGUIUtility.singleLineHeight);
+            DrawHierarchyLabel(labelRect, new GUIContent(label), EditorStyles.label);
+            return new Rect(indented.x,
                 position.y + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing,
-                Fix64.Max(0, position.width - indent), EditorGUIUtility.singleLineHeight);
+                indented.width, EditorGUIUtility.singleLineHeight);
         }
         var measuredLabelWidth = GUITextMetrics.MeasureWidth(label, EditorStyles.label.fontSize,
             GUIUtility.fontFamily) + 8;
-        var desired = Fix64.Max(labelWidth, measuredLabelWidth) + indent;
-        var availableLabel = Fix64.Max(VectorCompactLabelWidth + indent, position.width - minimumFieldWidth);
+        var desired = Fix64.Max(labelWidth, measuredLabelWidth);
+        var compactMinimum = Fix64.Min(VectorCompactLabelWidth, indented.width);
+        var availableLabel = Fix64.Clamp(indented.width - minimumFieldWidth,
+            compactMinimum, indented.width);
         var width = Fix64.Min(desired, availableLabel);
-        GUI.Label(new Rect(position.x + indent, position.y, Fix64.Max(0, width - indent), position.height), label);
-        return new Rect(position.x + width, position.y, Fix64.Max(0, position.width - width), position.height);
+        var compactLabelRect = new Rect(indented.x, indented.y, width, indented.height);
+        DrawHierarchyLabel(compactLabelRect, new GUIContent(label), EditorStyles.label);
+        return new Rect(indented.x + width, indented.y,
+            Fix64.Max(0, indented.width - width), indented.height);
     }
 
     private static Rect PrepareVerticalVectorField(Rect position, string label)
     {
-        var indent = indentLevel * 15;
-        GUI.Label(new Rect(position.x + indent, position.y, Fix64.Max(0, position.width - indent),
-            EditorGUIUtility.singleLineHeight), label);
-        return new Rect(position.x + indent,
+        var indented = IndentedRect(position);
+        var labelRect = new Rect(indented.x, indented.y, indented.width,
+            EditorGUIUtility.singleLineHeight);
+        DrawHierarchyLabel(labelRect, new GUIContent(label), EditorStyles.label);
+        return new Rect(indented.x,
             position.y + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing,
-            Fix64.Max(0, position.width - indent), EditorGUIUtility.singleLineHeight);
+            indented.width, EditorGUIUtility.singleLineHeight);
+    }
+
+    private static void DrawHierarchyLabel(Rect position, GUIContent content, GUIStyle style)
+    {
+        var reserveFoldoutSpace = indentLevel > 0 && string.IsNullOrWhiteSpace(content.image) &&
+                                  style.alignment is TextAnchor.UpperLeft or TextAnchor.MiddleLeft or
+                                      TextAnchor.LowerLeft;
+        GUI.Label(position, content, style,
+            reserveFoldoutSpace ? GUI.ContentImageTextOffset : Fix64.Zero);
     }
 
     private static Rect WithVisibleWidth(Rect position) => new(position.x, position.y,
@@ -836,15 +974,11 @@ public static class EditorGUI
 
     private static Rect HorizontalAxisRect(Rect field, int index, int dimensions)
     {
-        var fixedWidth = VectorAxisSpacing * (dimensions - 1);
-        for (var axisIndex = 0; axisIndex < dimensions; axisIndex++)
-            fixedWidth += GetVectorAxisLabelWidth(VectorAxisNames[axisIndex]) + 1;
-        var numericWidth = Fix64.Max(0, (field.width - fixedWidth) / dimensions);
-        var x = field.x;
-        for (var axisIndex = 0; axisIndex < index; axisIndex++)
-            x += GetVectorAxisLabelWidth(VectorAxisNames[axisIndex]) + 1 + numericWidth + VectorAxisSpacing;
-        return new Rect(x, field.y,
-            GetVectorAxisLabelWidth(VectorAxisNames[index]) + 1 + numericWidth, field.height);
+        var spacingCount = Math.Max(0, dimensions - 1);
+        var totalSpacing = Fix64.Min(field.width, VectorAxisSpacing * spacingCount);
+        var spacing = spacingCount > 0 ? totalSpacing / spacingCount : Fix64.Zero;
+        var width = Fix64.Max(0, (field.width - totalSpacing) / dimensions);
+        return new Rect(field.x + (width + spacing) * index, field.y, width, field.height);
     }
 
     private static float AxisFloatField(Rect position, string axis, Fix64 value, GUIStyle? style)

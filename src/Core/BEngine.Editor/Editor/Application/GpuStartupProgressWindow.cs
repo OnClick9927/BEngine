@@ -69,16 +69,22 @@ internal sealed class GpuStartupProgressWindow : IDisposable
 
     private void OnGUI()
     {
-        GUI.DrawRect(new Rect(0, 0, _window.width, _window.height),
-            new Color(Fix64.FromDecimal(0.18m), Fix64.FromDecimal(0.18m), Fix64.FromDecimal(0.18m), 1));
-        GUI.Label(new Rect(24, 22, _window.width - 48, 32),
-            new GUIContent(_state.Title, "Icons/BEngine.png"), EditorStyles.largeLabel);
-        GUI.Label(new Rect(24, 68, _window.width - 48, 24), _state.Info);
-        var bar = new Rect(24, 108, _window.width - 48, 24);
-        GUI.DrawRect(bar, new Color(Fix64.FromDecimal(0.10m), Fix64.FromDecimal(0.10m),
-            Fix64.FromDecimal(0.10m), 1));
-        GUI.DrawRect(new Rect(bar.x, bar.y, bar.width * (Fix64)Math.Clamp(_state.Progress, 0, 1), bar.height),
-            new Color(Fix64.FromDecimal(0.18m), Fix64.FromDecimal(0.48m), Fix64.FromDecimal(0.72m), 1));
-        GUI.Label(bar, $"{_state.Progress:P0}");
+        DrawProgress(new Rect(0, 0, _window.width, _window.height), _state);
+    }
+
+    internal static void DrawProgress(Rect bounds, EditorProgressInfo state)
+    {
+        GUI.Box(bounds, GUIContent.none, GUI.skin.window);
+        GUI.Label(new Rect(bounds.x + 24, bounds.y + 22, Fix64.Max(0, bounds.width - 48), 32),
+            new GUIContent(state.Title, "Icons/BEngine.png"), EditorStyles.largeLabel);
+        GUI.Label(new Rect(bounds.x + 24, bounds.y + 68, Fix64.Max(0, bounds.width - 48), 24),
+            state.Info);
+        var bar = new Rect(bounds.x + 24, bounds.y + 108, Fix64.Max(0, bounds.width - 48), 24);
+        GUI.Box(bar, GUIContent.none, EditorStyles.progressBarBack);
+        var normalizedProgress = Math.Clamp(state.Progress, 0, 1);
+        var progress = (Fix64)normalizedProgress;
+        GUI.Box(new Rect(bar.x, bar.y, bar.width * progress, bar.height), GUIContent.none,
+            EditorStyles.progressBarBar);
+        GUI.Label(bar, $"{normalizedProgress:P0}", EditorStyles.progressBarText);
     }
 }

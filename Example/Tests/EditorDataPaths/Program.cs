@@ -4,6 +4,12 @@ var expected = Path.Combine(Path.GetTempPath(), $"BEngine-EditorDataPaths-{Guid.
 try
 {
     Environment.SetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH", expected);
+    Directory.CreateDirectory(Path.Combine(expected, "Preferences"));
+    File.WriteAllText(Path.Combine(expected, "Preferences.yaml"), "legacy-preferences");
+    File.WriteAllText(Path.Combine(expected, "EditorPrefs.yaml"), "legacy-editor-prefs");
+    File.WriteAllText(Path.Combine(expected, "LauncherSettings.yaml"), "legacy-launcher-settings");
+    File.WriteAllText(Path.Combine(expected, "Preferences", "Preferences.yaml"), "current-preferences");
+
     var actual = Path.GetFullPath(EditorDataPaths.rootPath);
     expected = Path.GetFullPath(expected);
     Require(actual.Equals(expected, StringComparison.OrdinalIgnoreCase),
@@ -12,20 +18,66 @@ try
     Require(EditorDataPaths.logsPath.Equals(Path.Combine(expected, "Logs"), StringComparison.OrdinalIgnoreCase) &&
             Directory.Exists(EditorDataPaths.logsPath),
         "Editor log path was not created inside the configured data root.");
-    Require(EditorDataPaths.preferencesPath.Equals(Path.Combine(expected, "Preferences.yaml"),
+    Require(EditorDataPaths.startupStatusDirectoryPath.Equals(Path.Combine(expected, "Startup"),
+                StringComparison.OrdinalIgnoreCase) &&
+            Directory.Exists(EditorDataPaths.startupStatusDirectoryPath),
+        "Editor startup status directory was not created inside the configured data root.");
+    var startupToken = Guid.NewGuid().ToString("N");
+    Require(EditorDataPaths.GetStartupStatusPath(startupToken).Equals(
+            Path.Combine(expected, "Startup", $"{startupToken}.json"),
+            StringComparison.OrdinalIgnoreCase),
+        "A valid startup token did not resolve to its isolated status file.");
+    var invalidStartupTokenRejected = false;
+    try
+    {
+        EditorDataPaths.GetStartupStatusPath("not-a-startup-token");
+    }
+    catch (ArgumentException)
+    {
+        invalidStartupTokenRejected = true;
+    }
+    Require(invalidStartupTokenRejected,
+        "An invalid startup token can escape or alias the startup status directory.");
+    Require(EditorDataPaths.preferencesDirectoryPath.Equals(Path.Combine(expected, "Preferences"),
+                StringComparison.OrdinalIgnoreCase) &&
+            Directory.Exists(EditorDataPaths.preferencesDirectoryPath),
+        "Editor preferences directory was not created inside the configured data root.");
+    Require(EditorDataPaths.themesPath.Equals(Path.Combine(expected, "Preferences", "Themes"),
+                StringComparison.OrdinalIgnoreCase) &&
+            Directory.Exists(EditorDataPaths.themesPath),
+        "Editor GUI skin directory was not created inside Preferences.");
+    Require(EditorDataPaths.preferencesPath.Equals(
+            Path.Combine(expected, "Preferences", "Preferences.yaml"),
             StringComparison.OrdinalIgnoreCase),
         "Preferences path escaped the configured data root.");
-    Require(EditorDataPaths.editorPrefsPath.Equals(Path.Combine(expected, "EditorPrefs.yaml"),
+    Require(EditorDataPaths.editorPrefsPath.Equals(
+            Path.Combine(expected, "Preferences", "EditorPrefs.yaml"),
             StringComparison.OrdinalIgnoreCase),
         "EditorPrefs path escaped the configured data root.");
-    Require(EditorDataPaths.launcherSettingsPath.Equals(Path.Combine(expected, "LauncherSettings.yaml"),
+    Require(!File.Exists(Path.Combine(expected, "Preferences.yaml")) &&
+            !File.Exists(Path.Combine(expected, "EditorPrefs.yaml")) &&
+            File.ReadAllText(EditorDataPaths.preferencesPath) == "current-preferences" &&
+            File.ReadAllText(EditorDataPaths.editorPrefsPath) == "legacy-editor-prefs",
+        "Root editor preference files were not migrated without overwriting the current preferences.");
+    var migratedPreferences = Directory.EnumerateFiles(
+        Path.Combine(expected, "Preferences", "MigratedLegacy"), "Preferences-*.yaml").SingleOrDefault();
+    Require(migratedPreferences is not null &&
+            File.ReadAllText(migratedPreferences) == "legacy-preferences",
+        "A conflicting legacy Preferences file was not preserved as a migration backup.");
+    Require(EditorDataPaths.launcherSettingsPath.Equals(
+            Path.Combine(expected, "Preferences", "LauncherSettings.yaml"),
             StringComparison.OrdinalIgnoreCase),
         "Launcher settings path escaped the configured data root.");
+    Require(!File.Exists(Path.Combine(expected, "LauncherSettings.yaml")) &&
+            File.ReadAllText(EditorDataPaths.launcherSettingsPath) == "legacy-launcher-settings",
+        "Root LauncherSettings file was not migrated into the Preferences directory.");
     Require(EditorDataPaths.editorBootstrapLogPath.Equals(
             Path.Combine(expected, "Logs", "EditorBootstrap.log"), StringComparison.OrdinalIgnoreCase),
         "Editor bootstrap log path escaped the configured log directory.");
 
-    Console.WriteLine("EDITOR_DATA_PATHS_OK|environment-override,root,logs,preferences");
+    Console.WriteLine("EDITOR_DATA_PATHS_OK|environment-override,root,logs,preferences-directory," +
+                      "startup-status-path,invalid-startup-token,themes-directory," +
+                      "root-preferences-migration,launcher-migration,conflict-backup");
     return 0;
 }
 catch (Exception exception)

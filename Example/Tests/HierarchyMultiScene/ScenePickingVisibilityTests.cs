@@ -174,7 +174,8 @@ internal static class ScenePickingVisibilityTests
                                row.Rect.Y >= row.ClipRect.Y - 0.5f &&
                                row.Rect.Bottom <= row.ClipRect.Bottom + 0.5f,
                 "Scene picking did not scroll the selected GameObject into the visible Hierarchy viewport.");
-            var inactiveSelection = GpuCanvasColor.FromColor(EditorAppearance.palette.SelectionInactive);
+            var inactiveSelection = GpuCanvasColor.FromColor(
+                EditorStyles.treeViewRowSelected.disabled.backgroundColor);
             TestAssert.Require(revealed.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                                        command.Color == inactiveSelection &&
                                                        command.Rect.Y <= row.Rect.Y + 0.5f &&

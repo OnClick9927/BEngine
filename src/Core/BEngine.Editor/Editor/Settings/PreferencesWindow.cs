@@ -11,8 +11,7 @@ public sealed class PreferencesWindow : SettingsWindowBase
 
     public static PreferencesWindow Open(string settingsPath = "")
     {
-        var window = (PreferencesWindow)GetWindow(typeof(PreferencesWindow), utility: true,
-            EditorLocalization.Tr("Preferences"), focus: false);
+        var window = GetWindow<PreferencesWindow>(EditorLocalization.Tr("Preferences"), focus: false);
         window.SelectPath(settingsPath);
         window.Focus();
         return window;

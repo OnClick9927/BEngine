@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics;
 
 namespace BEngine.Editor;
 
@@ -7,6 +8,7 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        EditorStartupReporter? startupReporter = null;
         try
         {
             EditorLogStore.Initialize();
@@ -18,12 +20,15 @@ internal static class Program
             {
                 throw new ArgumentException("A BEngine project path is required. Start the engine with BEngine.bat.");
             }
+            startupReporter = EditorStartupReporter.Create(args);
+            startupReporter?.ReportStarting();
             var projectPath = Path.GetFullPath(args[0]);
             var openEditorStatus = args.Skip(1).Any(argument =>
                 argument.Equals("--editor-status", StringComparison.OrdinalIgnoreCase));
             var openUiBuilder = args.Skip(1).Any(argument =>
                 argument.Equals("--ui-builder", StringComparison.OrdinalIgnoreCase));
             using var instance = EditorInstanceContext.Create(projectPath);
+            EditorPreferences.Initialize();
             using var loadingWindow = GpuStartupProgressWindow.Show();
             using var serviceProvider = new ServiceCollection()
                 .AddBEngineEditor(new EditorLaunchOptions(projectPath, openEditorStatus, openUiBuilder))
@@ -34,22 +39,56 @@ internal static class Program
                 });
             using var projectScope = serviceProvider.CreateScope();
             using var editor = projectScope.ServiceProvider.GetRequiredService<GpuEditorApplication>();
-            editor.Run(loadingWindow.Complete);
+            editor.Run(() =>
+            {
+                loadingWindow.Complete();
+                startupReporter?.TryReportReady();
+            });
             return 0;
         }
         catch (Exception exception)
         {
-            var logPath = EditorDataPaths.editorBootstrapLogPath;
-            File.AppendAllText(logPath,
-                $"[{DateTimeOffset.Now:O}] {exception}{Environment.NewLine}",
-                new System.Text.UTF8Encoding(false));
-            NativeStartupDialog.ShowError("BEngine",
-                $"BEngine Editor failed to start.\n\n{exception.Message}\n\nLog: {logPath}");
+            string? logPath = null;
+            try
+            {
+                var candidateLogPath = EditorDataPaths.editorBootstrapLogPath;
+                File.AppendAllText(candidateLogPath,
+                    $"[{DateTimeOffset.Now:O}] {exception}{Environment.NewLine}",
+                    new System.Text.UTF8Encoding(false));
+                logPath = candidateLogPath;
+            }
+            catch (Exception logException)
+            {
+                Trace.WriteLine($"BEngine Editor startup failure could not be logged: {logException}");
+            }
+
+            var reportedToLauncher = startupReporter?.TryReportFailure(exception, logPath) == true;
+            if (!reportedToLauncher)
+            {
+                var logInformation = logPath is null ? string.Empty : $"\n\nLog: {logPath}";
+                try
+                {
+                    NativeStartupDialog.ShowError("BEngine",
+                        $"BEngine Editor failed to start.\n\n{exception.GetBaseException().Message}" +
+                        logInformation);
+                }
+                catch (Exception dialogException)
+                {
+                    Trace.WriteLine($"BEngine Editor startup dialog failed: {dialogException}");
+                }
+            }
             return 1;
         }
         finally
         {
-            EditorUtility.ClearProgressBar();
+            try
+            {
+                EditorUtility.ClearProgressBar();
+            }
+            catch (Exception progressException)
+            {
+                Trace.WriteLine($"BEngine Editor progress cleanup failed: {progressException}");
+            }
         }
     }
 

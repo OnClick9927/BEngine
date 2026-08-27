@@ -20,12 +20,14 @@ internal static class Program
         try
         {
             VerifyOneAndTwoColumnSwitching();
+            VerifyProjectPackagesSplitterDragging();
             VerifyTwoColumnProjectPresentation();
+            VerifyTwoColumnGridLabelsStayCenteredAtScale();
             VerifyFolderFirstNameOrdering();
             VerifyFolderTreeAndBreadcrumbNavigation();
             VerifyGuiContentTooltipPipeline();
             Console.WriteLine(
-                "PROJECT_BROWSER_PRESENTATION_OK|one-column,two-column,folder-first-name-order,folder-tree,direct-children,zoom,tile-labels,breadcrumb,tooltip-delay,tooltip-bounds,blank-tooltip");
+                "PROJECT_BROWSER_PRESENTATION_OK|one-column,two-column,packages-splitter-drag,folder-first-name-order,folder-tree,folder-occupancy-icons,direct-children,zoom,tile-labels,centered-grid-labels,scaled-grid-labels,long-label-clipping,breadcrumb,tooltip-delay,tooltip-bounds,blank-tooltip");
             return 0;
         }
         catch (Exception exception)
@@ -33,6 +35,53 @@ internal static class Program
             Console.Error.WriteLine($"PROJECT_BROWSER_PRESENTATION_FAILED|{exception}");
             return 1;
         }
+    }
+
+    private static void VerifyProjectPackagesSplitterDragging()
+    {
+        const int width = 1040;
+        const int height = 620;
+        const int footerHeight = 24;
+        var (projectType, itemType, project) = CreateProjectWindow();
+        SetItemsAndSelection(projectType, project, itemType, "Assets");
+        Require(SetProjectMode(projectType, project, twoColumn: false),
+            "Project window has no one-column state for Packages splitter dragging.");
+        RenderProject(projectType, project, width, height);
+
+        SetFix64Member(projectType, project, "packagesHeight", 120);
+        SetBooleanMember(projectType, project, "packagesHeightInitialized", true);
+        var before = RenderProject(projectType, project, width, height);
+        var packagesBefore = FindText(before, "Packages", takeLast: true);
+        var separatorY = height - footerHeight - 1 - 120;
+        RenderProject(projectType, project, width, height,
+            new Event(EventType.MouseDown) { button = 0, mousePosition = new Vector2(320, separatorY) });
+        RenderProject(projectType, project, width, height,
+            new Event(EventType.MouseDrag) { button = 0, mousePosition = new Vector2(320, separatorY - 40) });
+        RenderProject(projectType, project, width, height,
+            new Event(EventType.MouseUp) { button = 0, mousePosition = new Vector2(320, separatorY - 40) });
+
+        var resizedHeight = GetFix64Member(projectType, project, "packagesHeight");
+        Require(resizedHeight == 160,
+            $"Dragging the Project separator upward did not enlarge Packages by 40 pixels: {resizedHeight}.");
+        var after = RenderProject(projectType, project, width, height);
+        var packagesAfter = FindText(after, "Packages", takeLast: true);
+        Require(Math.Abs((packagesBefore.Rect.Y - packagesAfter.Rect.Y) - 40) <= 0.1f,
+            "The draggable Project separator changed its value without moving the Packages presentation.");
+        Require(GUIUtility.hotControl == 0,
+            "The Project Packages splitter retained pointer capture after MouseUp.");
+
+        Require(SetProjectMode(projectType, project, twoColumn: true),
+            "Project window has no two-column state for Packages splitter dragging.");
+        SetFix64Member(projectType, project, "packagesHeight", 120);
+        RenderProject(projectType, project, width, height);
+        RenderProject(projectType, project, width, height,
+            new Event(EventType.MouseDown) { button = 0, mousePosition = new Vector2(100, separatorY) });
+        RenderProject(projectType, project, width, height,
+            new Event(EventType.MouseDrag) { button = 0, mousePosition = new Vector2(100, separatorY - 30) });
+        RenderProject(projectType, project, width, height,
+            new Event(EventType.MouseUp) { button = 0, mousePosition = new Vector2(100, separatorY - 30) });
+        Require(GetFix64Member(projectType, project, "packagesHeight") == 150 && GUIUtility.hotControl == 0,
+            "TwoColumn Project mode did not resize or release its Packages splitter in window coordinates.");
     }
 
     private static void VerifyOneAndTwoColumnSwitching()
@@ -119,6 +168,58 @@ internal static class Program
         }
     }
 
+    private static void VerifyTwoColumnGridLabelsStayCenteredAtScale()
+    {
+        const int thumbnailSize = 96;
+        var (projectType, itemType, project) = CreateProjectWindow();
+        SetItemsAndSelection(projectType, project, itemType, "Assets/Scenes");
+        Require(SetProjectMode(projectType, project, twoColumn: true),
+            "Project window has no TwoColumn state for centered grid labels.");
+        Require(SetAssetScale(projectType, project, thumbnailSize),
+            "Project window has no resource scale for centered grid-label verification.");
+
+        var previousEditorScale = GUIUtility.pixelsPerPoint;
+        try
+        {
+            foreach (var scaleValue in new[] { .5m, 1m, 1.8m })
+            {
+                var scale = Fix64.FromDecimal(scaleValue);
+                GUIUtility.pixelsPerPoint = scale;
+                var commands = RenderProject(projectType, project,
+                    (int)Math.Ceiling(1040 * (double)scaleValue),
+                    (int)Math.Ceiling(620 * (double)scaleValue));
+                var physicalThumbnailSize = thumbnailSize * (float)scaleValue;
+
+                foreach (var name in new[] { "SubScenes", "Unnamed.asset" })
+                {
+                    var label = FindText(commands, name, takeLast: true);
+                    var preview = FindGridPreview(commands, label, physicalThumbnailSize);
+                    Require(label.Rect.Width < preview.Rect.Width - (float)scaleValue,
+                        $"TwoColumn grid label '{name}' did not use its measured text width at " +
+                        $"EditorScale {scaleValue:0.0}; it will render left-aligned inside the tile.");
+                    Require(Math.Abs(CenterX(label.Rect) - CenterX(preview.Rect)) <= .15f,
+                        $"TwoColumn grid label '{name}' is not horizontally centered at " +
+                        $"EditorScale {scaleValue:0.0}: label={CenterX(label.Rect):0.###}, " +
+                        $"preview={CenterX(preview.Rect):0.###}.");
+                }
+
+                var longLabel = FindText(commands, "Lighting.material.yaml", takeLast: true);
+                var longPreview = FindGridPreview(commands, longLabel, physicalThumbnailSize);
+                Require(Math.Abs(CenterX(longLabel.Rect) - CenterX(longPreview.Rect)) <= .15f,
+                    $"Long TwoColumn grid label lost its center axis at EditorScale {scaleValue:0.0}.");
+                Require(longLabel.Rect.Width <= longPreview.Rect.Width + 14.1f * (float)scaleValue &&
+                        longLabel.Rect.X >= longLabel.ClipRect.X - .1f &&
+                        longLabel.Rect.Right <= longLabel.ClipRect.Right + .1f,
+                    $"Long TwoColumn grid label escaped its ellipsis/clipping bounds at " +
+                    $"EditorScale {scaleValue:0.0}.");
+            }
+        }
+        finally
+        {
+            GUIUtility.pixelsPerPoint = previousEditorScale;
+        }
+    }
+
     private static void VerifyFolderTreeAndBreadcrumbNavigation()
     {
         var (projectType, itemType, project) = CreateProjectWindow();
@@ -129,13 +230,22 @@ internal static class Program
         var commands = RenderProject(projectType, project, 1040, 620);
         var onlyFiles = FindLeftTreeText(commands, "OnlyFiles", 260);
         var nested = FindLeftTreeText(commands, "Nested", 260);
+        var empty = FindLeftTreeText(commands, "Empty", 260);
         Require(!commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
                                          command.Content == "Leaf.cs"),
             "The TwoColumn left pane leaked a file row instead of directories only.");
+        Require(HasIconOnRow(commands, onlyFiles, EditorAssetIcons.ClosedFolder) &&
+                !HasIconOnRow(commands, onlyFiles, EditorAssetIcons.EmptyFolder),
+            "A directory containing only files uses the empty-folder icon in the TwoColumn tree.");
         Require(!HasFoldoutOnRow(commands, onlyFiles),
             "A directory whose direct children are files incorrectly exposes a foldout.");
+        Require(HasIconOnRow(commands, nested, EditorAssetIcons.ClosedFolder),
+            "A directory containing a child directory does not use the non-empty folder icon.");
         Require(HasFoldoutOnRow(commands, nested),
             "A directory with a child directory has no foldout.");
+        Require(HasIconOnRow(commands, empty, EditorAssetIcons.EmptyFolder) &&
+                !HasFoldoutOnRow(commands, empty),
+            "A genuinely empty directory does not retain the empty-folder presentation.");
         Require(commands.Where(command => command.Type == GpuCanvasCommandType.Text)
                 .All(command => !string.IsNullOrWhiteSpace(command.Content)),
             "Project rendering emitted an empty-name text node.");
@@ -269,6 +379,7 @@ internal static class Program
             ("Assets/Scripts/Player.cs", "Player.cs", "C:/Project/Assets/Scripts/Player.cs", "Script", false, false),
             ("Assets/OnlyFiles", "OnlyFiles", "C:/Project/Assets/OnlyFiles", "Folder", true, false),
             ("Assets/OnlyFiles/Leaf.cs", "Leaf.cs", "C:/Project/Assets/OnlyFiles/Leaf.cs", "Script", false, false),
+            ("Assets/Empty", "Empty", "C:/Project/Assets/Empty", "Folder", true, false),
             ("Assets/Nested", "Nested", "C:/Project/Assets/Nested", "Folder", true, false),
             ("Assets/Nested/Child", "Child", "C:/Project/Assets/Nested/Child", "Folder", true, false),
             ("Assets/Readme.md", "Readme.md", "C:/Project/Assets/Readme.md", "Text", false, false),
@@ -356,6 +467,35 @@ internal static class Program
             return true;
         }
         return false;
+    }
+
+    private static void SetFix64Member(Type type, object instance, string name, Fix64 value)
+    {
+        var member = CandidateMembers(type, name).FirstOrDefault(candidate =>
+                         GetMemberType(candidate) == typeof(Fix64)) ??
+                     throw new MissingMemberException(type.FullName, name);
+        SetMemberValue(member, instance, value);
+    }
+
+    private static Fix64 GetFix64Member(Type type, object instance, string name)
+    {
+        var member = CandidateMembers(type, name).FirstOrDefault(candidate =>
+                         GetMemberType(candidate) == typeof(Fix64)) ??
+                     throw new MissingMemberException(type.FullName, name);
+        return member switch
+        {
+            FieldInfo field => (Fix64)field.GetValue(instance)!,
+            PropertyInfo property => (Fix64)property.GetValue(instance)!,
+            _ => throw new NotSupportedException(member.MemberType.ToString())
+        };
+    }
+
+    private static void SetBooleanMember(Type type, object instance, string name, bool value)
+    {
+        var member = CandidateMembers(type, name).FirstOrDefault(candidate =>
+                         GetMemberType(candidate) == typeof(bool)) ??
+                     throw new MissingMemberException(type.FullName, name);
+        SetMemberValue(member, instance, value);
     }
 
     private static IEnumerable<MemberInfo> CandidateMembers(Type type, params string[] names)
@@ -448,6 +588,34 @@ internal static class Program
                                 command.Rect.X < label.Rect.X &&
                                 command.Rect.Bottom >= label.Rect.Y &&
                                 command.Rect.Y <= label.Rect.Bottom);
+
+    private static bool HasIconOnRow(
+        IEnumerable<GpuCanvasCommand> commands,
+        GpuCanvasCommand label,
+        string icon) =>
+        commands.Any(command => command.Type == GpuCanvasCommandType.Image &&
+                                command.Content == icon &&
+                                command.Rect.X < label.Rect.X &&
+                                command.Rect.Bottom >= label.Rect.Y &&
+                                command.Rect.Y <= label.Rect.Bottom);
+
+    private static GpuCanvasCommand FindGridPreview(
+        IEnumerable<GpuCanvasCommand> commands, GpuCanvasCommand label, float expectedSize)
+    {
+        var preview = commands
+            .Where(command => command.Type == GpuCanvasCommandType.Image &&
+                              Math.Abs(command.Rect.Width - expectedSize) <= 2 &&
+                              Math.Abs(command.Rect.Height - expectedSize) <= 2 &&
+                              command.Rect.Bottom <= label.Rect.Y + 4)
+            .OrderBy(command => Math.Abs(CenterX(command.Rect) - CenterX(label.Rect)) +
+                                Math.Abs(command.Rect.Bottom - label.Rect.Y))
+            .FirstOrDefault();
+        Require(preview.Type == GpuCanvasCommandType.Image,
+            $"Project grid label '{label.Content}' has no matching thumbnail preview.");
+        return preview;
+    }
+
+    private static float CenterX(GpuCanvasRect rect) => rect.X + rect.Width / 2;
 
     private static void VerifyGridTilesHaveLabels(
         IReadOnlyList<GpuCanvasCommand> commands,

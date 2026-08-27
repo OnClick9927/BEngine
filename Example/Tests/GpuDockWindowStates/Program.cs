@@ -13,10 +13,14 @@ internal static class Program
             VerifyWindowStates();
             EditorWindowLayerRegressionTests.Run();
             VerifyDragOutAndDockBack();
+            VerifyNativeCrossMonitorDockTracking();
+            VerifyNativeGeometryRecovery();
+            VerifyNativeWindowFrameScheduling();
+            VerifyDockHostHoverIsolation();
             VerifyTitleContextMenu();
             VerifyNarrowTitleStability();
             Console.WriteLine(
-                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,in-process-layer,z-order,input-gating,popup-dismiss,drag-out,dock-back,title-context-menu,narrow-title-stability,narrow-title-ellipsis");
+                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,native-float,cross-monitor,dpi-coordinates,cross-dpi-caption,resize-not-dock,offscreen-recovery,negative-monitor,inactive-render-throttle,repaint-wakeup,restore-wakeup,focus-wakeup,dock-host-hover-isolation,in-process-transients,z-order,input-gating,popup-dismiss,drag-out-immediate,splitter-not-float,dock-back,title-context-menu,narrow-title-stability,narrow-title-ellipsis");
             return 0;
         }
         catch (Exception exception)
@@ -76,6 +80,8 @@ internal static class Program
         {
             mousePosition = new Vector2(310, -30), button = 0
         });
+        Require(ReferenceEquals(undocked, draggedPanel),
+            "Dragging a docked title beyond the workspace did not request Float immediately.");
         RenderDock(dock, new Event(EventType.MouseUp)
         {
             mousePosition = new Vector2(310, -30), button = 0
@@ -87,8 +93,208 @@ internal static class Program
         var dockedAgain = dock.DockExternal(draggedPanel.Id, dragged, new Vector2(430, 220));
         Require(ReferenceEquals(anchorPanel.Group, dockedAgain.Group) && dock.IsSelected(dragged),
             "A floating Normal window could not return to the target dock tab group.");
+
+        undocked = null;
+        RenderDock(dock, new Event(EventType.Layout));
+        var splitterPoint = Enumerable.Range(1, 698)
+            .Select(y => new Vector2(500, y))
+            .First(point => !dock.CanDockAt(point));
+        RenderDock(dock, new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(310, 12), button = 0
+        });
+        RenderDock(dock, new Event(EventType.MouseDrag)
+        {
+            mousePosition = splitterPoint, button = 0
+        });
+        RenderDock(dock, new Event(EventType.MouseUp)
+        {
+            mousePosition = splitterPoint, button = 0
+        });
+        Require(undocked is null,
+            "Releasing a dragged tab over an in-workspace splitter incorrectly requested Float.");
         anchor.CloseInternal();
         dragged.CloseInternal();
+    }
+
+    private static void VerifyNativeCrossMonitorDockTracking()
+    {
+        var logical = new Vector2(240, 135);
+        foreach (var scale in new[] { Fix64.FromDecimal(0.5m), Fix64.One, Fix64.FromDecimal(1.8m) })
+        {
+            var client = ImGuiNativeWindow.GUIToClient(logical, scale);
+            Require(ImGuiNativeWindow.ClientToGUI(client, scale) == logical,
+                $"GUI/client coordinate conversion did not round-trip at editor scale {scale}.");
+        }
+        var highDpiClient = ImGuiNativeWindow.GUIToClient(logical,
+            Fix64.FromDecimal(1.25m), Fix64.FromDecimal(1.5m));
+        Require(ImGuiNativeWindow.ClientToGUI(highDpiClient,
+                    Fix64.FromDecimal(1.25m), Fix64.FromDecimal(1.5m)) == logical,
+            "GUI/client coordinate conversion did not round-trip with per-monitor DPI scaling.");
+
+        var tracker = new NativeWindowDockTracker();
+        var size = new Vector2(480, 320);
+        tracker.Reset(new Vector2(1800, 120), size);
+        Require(tracker.Observe(new Vector2(1800, 120), size, true, null).Phase == NativeDockDragPhase.None,
+            "Pressing a native title bar without moving incorrectly started a dock operation.");
+        Require(tracker.Observe(new Vector2(2420, -180), size, true, null).Phase == NativeDockDragPhase.None,
+            "Moving a native float onto another monitor incorrectly clamped it to the main workspace.");
+        var dockPoint = new Vector2(460, 280);
+        var preview = tracker.Observe(new Vector2(-820, 90), size, true, dockPoint);
+        Require(preview == new NativeDockDragUpdate(NativeDockDragPhase.Preview, dockPoint),
+            "A cross-monitor native drag did not produce a dock preview after re-entering the main window.");
+        var drop = tracker.Observe(new Vector2(-820, 90), size, false, dockPoint);
+        Require(drop == new NativeDockDragUpdate(NativeDockDragPhase.Drop, dockPoint),
+            "Releasing a cross-monitor native drag over the editor did not request docking.");
+
+        // Win32 can hold the editor thread in its native move loop. In that case the final moved
+        // position is first observed after mouse release and must still complete the dock.
+        tracker.Reset(new Vector2(1700, 80), size);
+        tracker.Observe(new Vector2(1700, 80), size, true, null);
+        var modalMoveDrop = tracker.Observe(new Vector2(320, 150), size, false, dockPoint);
+        Require(modalMoveDrop == new NativeDockDragUpdate(NativeDockDragPhase.Drop, dockPoint),
+            "A native modal move loop lost the dock request when movement became visible after release.");
+
+        tracker.Reset(new Vector2(900, 200), size);
+        tracker.Observe(new Vector2(900, 200), size, true, null);
+        Require(tracker.Observe(new Vector2(940, 200), new Vector2(440, 320), true, dockPoint).Phase ==
+                NativeDockDragPhase.None &&
+                tracker.Observe(new Vector2(940, 200), new Vector2(440, 320), false, dockPoint).Phase ==
+                NativeDockDragPhase.None,
+            "Resizing a native float from its left border incorrectly requested docking.");
+
+        tracker.Reset(new Vector2(900, 200), size);
+        tracker.Observe(new Vector2(900, 200), size, true, null);
+        Require(tracker.Observe(new Vector2(900, 240), new Vector2(480, 280), false, dockPoint).Phase ==
+                NativeDockDragPhase.None,
+            "A native top-border resize observed after the modal loop incorrectly requested docking.");
+
+        tracker.Reset(new Vector2(1900, 120), size);
+        tracker.Observe(new Vector2(1900, 120), size, true, null,
+            NativeWindowPointerOperation.CaptionMove);
+        var dpiAdjustedSize = new Vector2(720, 480);
+        Require(tracker.Observe(new Vector2(300, 140), dpiAdjustedSize, true, dockPoint).Phase ==
+                NativeDockDragPhase.Preview &&
+                tracker.Observe(new Vector2(300, 140), dpiAdjustedSize, false, dockPoint).Phase ==
+                NativeDockDragPhase.Drop,
+            "A caption drag with a per-monitor DPI size adjustment was misclassified as a resize.");
+
+        tracker.Reset(new Vector2(900, 200), size);
+        tracker.Observe(new Vector2(900, 200), size, true, null,
+            NativeWindowPointerOperation.BorderResize);
+        Require(tracker.Observe(new Vector2(940, 200), size, false, dockPoint).Phase ==
+                NativeDockDragPhase.None,
+            "An explicitly hit-tested native border resize incorrectly requested docking.");
+    }
+
+    private static void VerifyNativeGeometryRecovery()
+    {
+        var workAreas = new[]
+        {
+            new Rect(-1920, 0, 1920, 1040),
+            new Rect(0, 0, 1920, 1040),
+            new Rect(1920, -220, 2560, 1400)
+        };
+        var negativeMonitorWindow = new Rect(-1700, 80, 640, 480);
+        Require(NativeFloatingWindowGeometry.RestoreToVisibleWorkArea(
+                    negativeMonitorWindow, workAreas).Equals(negativeMonitorWindow),
+            "A visible float on a negative-coordinate monitor was moved to another display.");
+
+        var removedMonitorWindow = new Rect(5100, 120, 700, 500);
+        var recovered = NativeFloatingWindowGeometry.RestoreToVisibleWorkArea(
+            removedMonitorWindow, workAreas);
+        Require(recovered.x >= 1920 && recovered.xMax <= 4480 &&
+                recovered.y >= -220 && recovered.yMax <= 1180,
+            $"An off-screen saved float was not recovered to the nearest remaining work area: {recovered}.");
+
+        var oversized = NativeFloatingWindowGeometry.RestoreToVisibleWorkArea(
+            new Rect(6000, 3000, 5000, 2400), workAreas);
+        Require(oversized.width == 5000 && oversized.height == 2400 &&
+                oversized.x == 1920 && oversized.y == -220,
+            "Recovering an oversized float changed its constrained size or selected the wrong work area.");
+
+        var constrained = NativeFloatingWindowGeometry.ConstrainSize(
+            new Rect(50, 60, 1200, 90), new Vector2(300, 180), new Vector2(900, 700));
+        Require(constrained.Equals(new Rect(50, 60, 900, 180)),
+            "Native float geometry did not enforce EditorWindow minSize/maxSize.");
+    }
+
+    private static void VerifyNativeWindowFrameScheduling()
+    {
+        var interval = NativeWindowFrameScheduler.UnfocusedFrameIntervalTicks;
+        var scheduler = new NativeWindowFrameScheduler();
+        var initial = scheduler.Evaluate(focused: false, minimized: false, timestamp: 100);
+        Require(initial.ShouldRender, "A manually pumped native window skipped its first frame.");
+        scheduler.NotifyRendered(initial);
+
+        Require(!scheduler.Evaluate(false, false, 100 + interval - 1).ShouldRender,
+            "An idle unfocused native window rendered before its throttle interval elapsed.");
+        var periodic = scheduler.Evaluate(false, false, 100 + interval);
+        Require(periodic.ShouldRender,
+            "An unfocused native window did not receive its low-frequency maintenance frame.");
+        scheduler.NotifyRendered(periodic);
+
+        scheduler.RequestRender();
+        var repaint = scheduler.Evaluate(false, false, 101 + interval);
+        Require(repaint.ShouldRender, "Repaint did not wake an unfocused native window immediately.");
+        scheduler.RequestRender();
+        scheduler.NotifyRendered(repaint);
+        Require(scheduler.Evaluate(false, false, 101 + interval).ShouldRender,
+            "A repaint requested during rendering was lost when that frame completed.");
+
+        var minimizedScheduler = new NativeWindowFrameScheduler();
+        Require(!minimizedScheduler.Evaluate(false, true, 200).ShouldRender,
+            "A minimized native window submitted its initial GPU frame.");
+        minimizedScheduler.RequestRender();
+        Require(!minimizedScheduler.Evaluate(false, true, 201).ShouldRender,
+            "A repaint forced GPU submission while the native window was minimized.");
+        Require(minimizedScheduler.Evaluate(false, false, 202).ShouldRender,
+            "Restoring a minimized native window did not render immediately.");
+
+        var focusScheduler = new NativeWindowFrameScheduler();
+        var unfocused = focusScheduler.Evaluate(false, false, 300);
+        focusScheduler.NotifyRendered(unfocused);
+        Require(!focusScheduler.Evaluate(false, false, 301).ShouldRender,
+            "The focus scheduling probe did not enter its idle state.");
+        Require(focusScheduler.Evaluate(true, false, 302).ShouldRender,
+            "Refocusing a native window did not render immediately.");
+    }
+
+    private static void VerifyDockHostHoverIsolation()
+    {
+        var docked = new ProbeWindow("Docked hover");
+        var otherHost = new ProbeWindow("Other native host");
+        docked.OpenInternal();
+        otherHost.OpenInternal();
+        var dock = new ImGuiDockWorkspace();
+        dock.Add("Docked hover", docked, DockArea.Center, true);
+        var pointer = new Vector2(300, 100);
+
+        try
+        {
+            RenderDock(dock, new Event(EventType.Repaint) { mousePosition = pointer },
+                hostIsInteractive: true);
+            Require(ReferenceEquals(EditorWindow.mouseOverWindow, docked),
+                "An interactive dock host did not publish its hovered EditorWindow.");
+
+            EditorWindow.SetMouseOverWindow(otherHost);
+            RenderDock(dock, new Event(EventType.Repaint) { mousePosition = pointer },
+                hostIsInteractive: false);
+            Require(ReferenceEquals(EditorWindow.mouseOverWindow, otherHost),
+                "An unfocused main dock stole hover ownership from another native host.");
+
+            EditorWindow.SetMouseOverWindow(docked);
+            RenderDock(dock, new Event(EventType.Repaint) { mousePosition = pointer },
+                hostIsInteractive: false);
+            Require(EditorWindow.mouseOverWindow is null,
+                "An unfocused main dock retained stale hover ownership for one of its panels.");
+        }
+        finally
+        {
+            EditorWindow.SetMouseOverWindow(null);
+            docked.CloseInternal();
+            otherHost.CloseInternal();
+        }
     }
 
     private static void VerifyTitleContextMenu()
@@ -249,10 +455,12 @@ internal static class Program
     }
 
     private static void RenderDock(ImGuiDockWorkspace dock, Event evt,
-        List<GpuCanvasCommand>? commands = null, Rect? bounds = null)
+        List<GpuCanvasCommand>? commands = null, Rect? bounds = null,
+        bool hostIsInteractive = true)
     {
         var area = bounds ?? new Rect(0, 0, 1000, 700);
         GUI.BeginFrame(evt, (int)area.width, (int)area.height, commands ?? []);
+        dock.HostIsInteractive = hostIsInteractive;
         try { dock.OnGUI(area); }
         finally { GUI.EndFrame(); }
     }

@@ -10,6 +10,7 @@ using BEngine.Editor.Documents;
 using BEngine.DependencyInjection;
 using BEngine.SceneManagement;
 using Microsoft.Extensions.DependencyInjection;
+using UnityEditor.IMGUI.Controls;
 using NVector2 = System.Numerics.Vector2;
 using NVector4 = System.Numerics.Vector4;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
@@ -37,8 +38,15 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private readonly ImGuiDockWorkspace _dock = new();
     private readonly Dictionary<EditorWindow, ImGuiDockPanel> _editorPanels = [];
     private readonly EditorWindowLayer _windowLayer = new();
+    private readonly Dictionary<EditorWindow, NativeFloatingEditorWindow> _nativeFloatingWindows = [];
+    private readonly Dictionary<EditorWindow, NativeFloatingEditorWindow> _nativeTransientOwners = [];
+    private readonly Dictionary<NativeFloatingEditorWindow, NativeWindowDockTracker> _nativeDockTrackers = [];
+    private readonly Dictionary<NativeFloatingEditorWindow, Vector2> _nativeFloatingCarries = [];
     private readonly List<(EditorWindow Window, DockArea Area)> _builtInWindows = [];
     private readonly Queue<PendingUndock> _pendingUndocks = [];
+    private readonly Queue<(NativeFloatingEditorWindow Presentation, Vector2 ScreenPoint, bool RequireTarget)>
+        _pendingNativeDocks = [];
+    private readonly HashSet<EditorWindow> _pendingNativeCloses = [];
     private readonly string _instanceLogPath;
     private readonly EditorSessionLogWriter _sessionLogWriter;
     private string _scenePath;
@@ -86,9 +94,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private bool _pendingRefreshShaders;
     private bool _disposed;
     private bool _closing;
+    private bool _applicationFocusLossPending;
     private bool _closePendingAfterPlayModeTransition;
     private Tool _tool = Tool.Move;
-    private PortableSceneRenderer? _sceneRenderer;
+    private readonly Dictionary<IGraphicsDevice, PortableSceneRenderer> _sceneRenderers =
+        new(ReferenceEqualityComparer.Instance);
     private int _lastWidth;
     private int _lastHeight;
     private NVector2 _editorCameraPosition;
@@ -231,16 +241,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _mainWindow.gui += OnGUI;
         _mainWindow.updating += OnUpdate;
         _mainWindow.closing += OnClosing;
-        _mainWindow.focusChanged += focused =>
-        {
-            if (focused && _windowLayer.TopModalWindow is { } modal)
-            {
-                _windowLayer.Focus(modal);
-                return;
-            }
-            if (!focused && EditorWindow.focusedWindow is { } window)
-                window.LoseFocusInternal();
-        };
+        _mainWindow.focusChanged += OnMainWindowFocusChanged;
         _dock.UndockRequested += QueueUndock;
         _windowLayer.WindowClosed += CloseEditorWindow;
         _windowLayer.DockRequested += DockFloatingWindow;
@@ -309,8 +310,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _windowLayer.Remove(presentation.Window);
             presentation.Window.CloseInternal();
         }
+        foreach (var renderer in _sceneRenderers.Values) renderer.Dispose();
+        _sceneRenderers.Clear();
+        foreach (var presentation in _nativeFloatingWindows.Values.ToArray())
+            RemoveNativeFloatingWindow(presentation, closeWindow: true);
         foreach (var editorWindow in _editorPanels.Keys.ToArray()) editorWindow.CloseInternal();
-        _sceneRenderer?.Dispose();
         StopAllRuntimes();
         foreach (var scene in _openScenes.Select(item => item.Scene)
                      .Append(_scene).Distinct().ToArray())
@@ -353,6 +357,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _windowLayer.Focus(window);
             return;
         }
+        if (_nativeFloatingWindows.TryGetValue(window, out var native))
+        {
+            native.Focus();
+            return;
+        }
 
         window.OpenInternal();
         window.windowState = EditorWindowState.Normal;
@@ -366,6 +375,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (_editorPanels.TryGetValue(_gameView, out var panel))
         {
             _dock.Show(panel.Id);
+            return;
+        }
+        if (_nativeFloatingWindows.TryGetValue(_gameView, out var native))
+        {
+            native.Focus();
             return;
         }
         _windowLayer.Focus(_gameView);
@@ -424,6 +438,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             DrawPrefabStageBar(new Rect(0, baseContentY, width, prefabBarHeight));
         }
+        _dock.HostIsInteractive = _mainWindow.isFocused;
         _dock.OnGUI(_dockBounds);
         if (Event.current.type != EventType.Used) HandleGlobalKeyboard();
         DrawStatusBar(new Rect(0, height - statusHeight, width, statusHeight));
@@ -437,8 +452,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void DrawMenuBar(Rect rect)
     {
-        GUI.DrawRect(rect, EditorAppearance.palette.Toolbar);
-        GUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1), EditorAppearance.palette.Border);
+        GUI.Box(rect, GUIContent.none, EditorStyles.toolbar);
         var roots = BuiltInMenuRoots
             .Concat(_menuItems.Roots).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var x = (Fix64)4;
@@ -642,8 +656,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void DrawToolbar(Rect rect)
     {
-        GUI.DrawRect(rect, EditorAppearance.palette.Toolbar);
-        GUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1), EditorAppearance.palette.Border);
+        GUI.Box(rect, GUIContent.none, EditorStyles.toolbar);
         var buttonHeight = Fix64.Min(rect.height - 6,
             Fix64.Max(18, EditorStyles.toolbarIconButton.fixedHeight));
         var buttonY = rect.y + (rect.height - buttonHeight) / 2;
@@ -679,8 +692,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void DrawPrefabStageBar(Rect rect)
     {
-        GUI.DrawRect(rect, C(0.16f, 0.28f, 0.39f));
-        GUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1), EditorAppearance.palette.Border);
+        GUI.Box(rect, GUIContent.none, EditorStyles.notificationBackground);
+        GUI.Box(new Rect(rect.x, rect.yMax - 1, rect.width, 1), GUIContent.none,
+            EditorStyles.separator);
         var buttonHeight = Fix64.Min(rect.height - 4,
             Fix64.Max(18, EditorStyles.toolbarIconButton.fixedHeight));
         var buttonY = rect.y + (rect.height - buttonHeight) / 2;
@@ -695,8 +709,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void DrawStatusBar(Rect rect)
     {
-        GUI.DrawRect(rect, EditorAppearance.palette.Toolbar);
-        GUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 1), EditorAppearance.palette.Border);
+        GUI.Box(rect, GUIContent.none, EditorStyles.statusBar);
         var text = _progress.IsVisible
             ? $"{_progress.Title}: {_progress.Info} ({_progress.Progress:P0})"
             : $"IMGUI | {_mainWindow.backend} | {Event.current.type}" +
@@ -706,7 +719,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         GUI.Label(new Rect(rect.x + 6, rect.y, rect.width - 12, rect.height), text, EditorStyles.statusBar);
         if (_progress.IsVisible)
             GUI.DrawRect(new Rect(rect.x, rect.y, rect.width * (Fix64)_progress.Progress, 2),
-                EditorAppearance.palette.Accent);
+                EditorStyles.progressBarBar.normal.backgroundColor);
     }
 
     private void DrawGenericPopup()
@@ -770,7 +783,62 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 EditorFeatureGuard.Invoke(runtime, "SceneRuntime.Tick", () => runtime.Tick(Time.deltaTime));
         foreach (var window in EditorWindow.EnumerateOpenWindows()) window.UpdateInternal();
         EditorFeatureGuard.Invoke("DockWorkspace.ProcessPendingUndocks", ProcessPendingUndocks);
+        EditorFeatureGuard.Invoke("NativeFloatingWindows.Pump", PumpNativeFloatingWindows);
+        ApplyPendingApplicationFocusLoss();
         ProcessProjectSourceChanges();
+    }
+
+    private void OnMainWindowFocusChanged(bool focused)
+    {
+        if (!focused)
+        {
+            CloseTransientMenus();
+            _windowLayer.DismissPopups();
+        }
+        if (focused && EditorWindow.focusedWindow is { } focusedWindow &&
+            (_nativeFloatingWindows.ContainsKey(focusedWindow) ||
+             _nativeTransientOwners.ContainsKey(focusedWindow)))
+            focusedWindow.LoseFocusInternal();
+        if (focused && _windowLayer.TopModalWindow is { } modal)
+            _windowLayer.Focus(modal);
+        UpdateApplicationFocus();
+    }
+
+    private void OnNativeWindowFocusChanged(NativeFloatingEditorWindow presentation, bool focused)
+    {
+        if (focused && _windowLayer.TopModalWindow is { } modal)
+        {
+            _windowLayer.Focus(modal);
+            _mainWindow.Focus();
+        }
+        else if (focused && !(EditorWindow.focusedWindow is { } focusedWindow &&
+                              _nativeTransientOwners.TryGetValue(focusedWindow, out var owner) &&
+                              ReferenceEquals(owner, presentation)))
+            presentation.Window.FocusInternal();
+        UpdateApplicationFocus();
+    }
+
+    private void UpdateApplicationFocus()
+    {
+        if (_mainWindow.isFocused || _nativeFloatingWindows.Values.Any(window => window.IsFocused))
+        {
+            _applicationFocusLossPending = false;
+            return;
+        }
+        _applicationFocusLossPending = true;
+    }
+
+    private void ApplyPendingApplicationFocusLoss()
+    {
+        if (!_applicationFocusLossPending || _mainWindow.isFocused ||
+            _nativeFloatingWindows.Values.Any(window => window.IsFocused)) return;
+        _applicationFocusLossPending = false;
+        GUIUtility.ReleaseInputFocus();
+        _dock.CancelInteractions();
+        _windowLayer.CancelInteractions();
+        DragAndDrop.Cancel();
+        CloseTransientMenus();
+        EditorWindow.focusedWindow?.LoseFocusInternal();
     }
 
     private void OnClosing()
@@ -801,59 +869,80 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void RenderSceneBackground(IGraphicsDevice device, int width, int height)
     {
-        _sceneRenderer ??= new PortableSceneRenderer(device);
+        var renderer = SceneRendererFor(device);
 
         if (_dock.IsSelected(_sceneView) && !_windowLayer.Contains(_sceneView))
-            RenderEditorSceneViewport(device, width, height);
+            RenderEditorSceneViewport(renderer, device, width, height);
         if (_dock.IsSelected(_gameView) && !_windowLayer.Contains(_gameView))
-            RenderGameViewport(device, width, height);
+            RenderGameViewport(renderer, device, width, height);
 
         foreach (var presentation in _windowLayer.Presentations)
         {
             if (ReferenceEquals(presentation.Window, _sceneView))
-                RenderEditorSceneViewport(device, width, height);
+                RenderEditorSceneViewport(renderer, device, width, height);
             else if (ReferenceEquals(presentation.Window, _gameView))
-                RenderGameViewport(device, width, height);
+                RenderGameViewport(renderer, device, width, height);
         }
     }
 
-    private void RenderEditorSceneViewport(IGraphicsDevice device, int frameWidth, int frameHeight)
+    private void RenderNativeWindowBackground(NativeFloatingEditorWindow presentation,
+        IGraphicsDevice device, int width, int height)
+    {
+        if (ReferenceEquals(presentation.Window, _sceneView))
+            RenderEditorSceneViewport(SceneRendererFor(device), device, width, height);
+        else if (ReferenceEquals(presentation.Window, _gameView))
+            RenderGameViewport(SceneRendererFor(device), device, width, height);
+    }
+
+    private PortableSceneRenderer SceneRendererFor(IGraphicsDevice device)
+    {
+        if (_sceneRenderers.TryGetValue(device, out var renderer)) return renderer;
+        renderer = new PortableSceneRenderer(device);
+        _sceneRenderers.Add(device, renderer);
+        return renderer;
+    }
+
+    private void RenderEditorSceneViewport(PortableSceneRenderer renderer, IGraphicsDevice device,
+        int frameWidth, int frameHeight)
     {
         if (!TryGetRenderViewport(_sceneView, device, frameWidth, frameHeight, out var viewport)) return;
         _lastWidth = viewport.Width;
         _lastHeight = viewport.Height;
         var scenes = LoadedScenes();
-        var renderScale = Math.Max(0.01f, (float)_mainWindow.renderScale);
+        var renderScale = Math.Max(0.01f, (float)RenderScaleFor(_sceneView));
         var editorCamera = EditorCamera(viewport.Height / renderScale);
-        _sceneRenderer!.RenderViewport(scenes, _scene, editorCamera, viewport,
+        renderer.RenderViewport(scenes, _scene, editorCamera, viewport,
             initializeColor: true, drawGrid: true, drawUi: false, drawGizmos: false,
             objectFilter: SceneVisibilityManager.instance.IsVisible);
         if (!SceneGizmoVisibility.Enabled) return;
         var gizmos = SceneGizmoPass.Collect(scenes, _selected, viewport.Width, viewport.Height);
-        _sceneRenderer.DrawGizmos(gizmos.Lines, editorCamera, viewport);
+        renderer.DrawGizmos(gizmos.Lines, editorCamera, viewport);
     }
 
-    private void RenderGameViewport(IGraphicsDevice device, int frameWidth, int frameHeight)
+    private void RenderGameViewport(PortableSceneRenderer renderer, IGraphicsDevice device,
+        int frameWidth, int frameHeight)
     {
         if (!TryGetRenderViewport(_gameView, device, frameWidth, frameHeight, out var availableViewport)) return;
         var viewport = _gameView.FitRenderViewport(availableViewport);
         if (viewport != availableViewport)
-            _sceneRenderer!.FillViewport(availableViewport, new NVector4(0.025f, 0.028f, 0.032f, 1));
+            renderer.FillViewport(availableViewport, new NVector4(0.025f, 0.028f, 0.032f, 1));
         var targetSize = _gameView.ApplyTargetSize(viewport);
         var cameras = EngineRenderer.ResolveGameCameras(LoadedScenes());
-        _sceneRenderer!.RenderCameras(LoadedScenes(), _scene, cameras, viewport,
+        renderer.RenderCameras(LoadedScenes(), _scene, cameras, viewport,
             targetSize.Width, targetSize.Height, drawUi: true);
-        _gameView.UpdateRenderStatistics(_sceneRenderer.LastRenderStatistics);
+        _gameView.UpdateRenderStatistics(renderer.LastRenderStatistics);
     }
 
     private bool TryGetRenderViewport(EditorWindow window, IGraphicsDevice device,
         int frameWidth, int frameHeight, out GraphicsRect viewport)
     {
-        var rect = _windowLayer.TryGetContentRect(window, out var floatingContent)
-            ? floatingContent
-            : window.position;
+        var rect = _nativeFloatingWindows.TryGetValue(window, out var native)
+            ? native.ContentRect(frameWidth, frameHeight)
+            : _windowLayer.TryGetContentRect(window, out var floatingContent)
+                ? floatingContent
+                : window.position;
         var toolbarHeight = EditorStyles.toolbar.fixedHeight;
-        var scale = Math.Max(0.01f, (float)_mainWindow.renderScale);
+        var scale = Math.Max(0.01f, (float)RenderScaleFor(window));
         var left = Math.Clamp((int)MathF.Floor((float)rect.x * scale), 0, frameWidth);
         var top = Math.Clamp((int)MathF.Floor((float)(rect.y + toolbarHeight) * scale), 0, frameHeight);
         var right = Math.Clamp((int)MathF.Ceiling((float)rect.xMax * scale), left, frameWidth);
@@ -872,6 +961,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         viewport = new GraphicsRect(left, graphicsY, viewportWidth, viewportHeight);
         return true;
     }
+
+    private Fix64 RenderScaleFor(EditorWindow window) =>
+        _nativeFloatingWindows.TryGetValue(window, out var native)
+            ? native.RenderScale
+            : _mainWindow.renderScale;
 
     private RenderCamera EditorCamera(float viewportHeight)
     {
@@ -2941,13 +3035,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void FrameSelectedInScene()
     {
-        _dock.Show(_sceneView.PersistentId);
+        if (_nativeFloatingWindows.TryGetValue(_sceneView, out var nativeScene)) nativeScene.Focus();
+        else _dock.Show(_sceneView.PersistentId);
         if (!TryGetSelectedBounds(out var pivot, out var radius)) return;
         _editorCameraPivot = pivot;
         var framedSize = Math.Max(0.01f, radius * 1.2f);
         if (_lastHeight > 0 && _editorCameraReferenceHeight > 0)
         {
-            var renderScale = Math.Max(0.01f, (float)_mainWindow.renderScale);
+            var renderScale = Math.Max(0.01f, (float)RenderScaleFor(_sceneView));
             var viewportHeight = _lastHeight / renderScale;
             framedSize *= _editorCameraReferenceHeight / viewportHeight;
         }
@@ -3005,9 +3100,25 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     bool IEditorHost.IsChangingPlayMode => _enteringPlayMode || _exitingPlayMode;
     bool IEditorHost.IsPaused { get => _paused; set => _paused = _playing && value; }
     void IEditorHost.ShowWindow(EditorWindow window) => ShowEditorWindow(window);
+    void IEditorHost.FocusWindow(EditorWindow window) => FocusEditorWindow(window);
     void IEditorHost.CloseWindow(EditorWindow window) => CloseEditorWindow(window);
-    void IEditorHost.RepaintWindow(EditorWindow window) { }
-    void IEditorHost.RepaintAllWindows() { }
+    void IEditorHost.RepaintWindow(EditorWindow window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (!window.IsOpen) return;
+        if (_nativeFloatingWindows is not null &&
+            _nativeFloatingWindows.TryGetValue(window, out var native)) native.Repaint();
+        else if (_nativeTransientOwners is not null &&
+                 _nativeTransientOwners.TryGetValue(window, out var owner)) owner.Repaint();
+        else if (_mainWindow is not null) _mainWindow.Repaint();
+    }
+
+    void IEditorHost.RepaintAllWindows()
+    {
+        if (_mainWindow is not null) _mainWindow.Repaint();
+        if (_nativeFloatingWindows is null) return;
+        foreach (var native in _nativeFloatingWindows.Values) native.Repaint();
+    }
     Tool IEditorHost.CurrentTool { get => _tool; set => _tool = value; }
     bool IEditorHost.ExecuteMenuItem(string itemName) => _menuItems.Execute(itemName);
     string? IEditorHost.ActiveProjectAssetPath => _project.SelectedAssetPath;
@@ -3301,6 +3412,12 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 continue;
             document.Windows.Add(CaptureWindow(presentation.Window, false));
         }
+        foreach (var presentation in _nativeFloatingWindows.Values)
+        {
+            if (!presentation.Window.saveToLayout) continue;
+            presentation.Window.position = presentation.ScreenBounds;
+            document.Windows.Add(CaptureWindow(presentation.Window, false));
+        }
         return document;
     }
 
@@ -3335,6 +3452,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         var existing = _editorPanels.Keys
             .Concat(_windowLayer.Presentations.Select(item => item.Window))
+            .Concat(_nativeFloatingWindows.Keys)
             .GroupBy(window => window.PersistentId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         var desiredRecords = document.Windows
@@ -3363,6 +3481,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         foreach (var (_, item) in resolved)
         {
             _windowLayer.Remove(item.Window);
+            if (_nativeFloatingWindows.TryGetValue(item.Window, out var native))
+                RemoveNativeFloatingWindow(native, closeWindow: false);
         }
         var dockedWindows = resolved.Where(pair => pair.Value.Record.Docked &&
                                                    pair.Value.State == EditorWindowState.Normal)
@@ -3378,7 +3498,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         foreach (var item in resolved.Values.Where(item => !item.Record.Docked ||
                                                             item.State == EditorWindowState.Aux))
-            ShowFloating(item.Window, item.State);
+            ShowFloating(item.Window, item.State, positionIsScreenSpace: true);
         if (document.FocusedWindowId is { } focusedId && resolved.TryGetValue(focusedId, out var focused))
             focused.Window.Focus();
     }
@@ -3427,6 +3547,26 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
             _windowLayer.Remove(window);
         }
+        else if (_nativeTransientOwners.TryGetValue(window, out var transientOwner))
+        {
+            if (requestedState == EditorWindowState.Pop && transientOwner.ContainsTransient(window))
+            {
+                transientOwner.FocusTransient(window);
+                return;
+            }
+            transientOwner.RemoveTransient(window);
+            _nativeTransientOwners.Remove(window);
+        }
+        else if (_nativeFloatingWindows.TryGetValue(window, out var native))
+        {
+            if (native.State == requestedState ||
+                native.State == EditorWindowState.Normal && requestedState == EditorWindowState.Normal)
+            {
+                native.Focus();
+                return;
+            }
+            RemoveNativeFloatingWindow(native, closeWindow: false);
+        }
 
         window.OpenInternal();
         var id = string.IsNullOrWhiteSpace(window.PersistentId)
@@ -3441,18 +3581,80 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         window.FocusInternal();
     }
 
-    private void ShowFloating(EditorWindow window, EditorWindowState state)
+    private void FocusEditorWindow(EditorWindow window)
+    {
+        if (_editorPanels.TryGetValue(window, out var panel))
+        {
+            _dock.Show(panel.Id);
+            window.FocusInternal();
+            _mainWindow.Focus();
+            return;
+        }
+        if (_nativeFloatingWindows.TryGetValue(window, out var native))
+        {
+            native.Focus();
+            return;
+        }
+        if (_nativeTransientOwners.TryGetValue(window, out var transientOwner) &&
+            transientOwner.FocusTransient(window))
+            return;
+        if (_windowLayer.Focus(window))
+        {
+            _mainWindow.Focus();
+            return;
+        }
+        window.FocusInternal();
+    }
+
+    private void ShowFloating(EditorWindow window, EditorWindowState state,
+        bool positionIsScreenSpace = false)
     {
         if (state == EditorWindowState.Modal)
+        {
             CloseTransientMenus();
+            foreach (var native in _nativeFloatingWindows.Values) native.CancelTransientUi();
+        }
+        if (state is EditorWindowState.Normal or EditorWindowState.Aux)
+        {
+            if (!positionIsScreenSpace)
+            {
+                var screenPosition = _mainWindow.GUIToScreen(window.position.position,
+                    GUIUtility.pixelsPerPoint);
+                var clientSize = ImGuiNativeWindow.GUIToClient(window.position.size,
+                    GUIUtility.pixelsPerPoint);
+                window.position = new Rect(screenPosition.x, screenPosition.y,
+                    clientSize.x, clientSize.y);
+            }
+            ShowNativeFloating(window, state);
+            return;
+        }
+        if (state == EditorWindowState.Pop &&
+            TryGetNativeOwner(EditorWindow.currentDrawingWindow ?? EditorWindow.focusedWindow,
+                out var transientOwner))
+        {
+            ShowNativeTransient(transientOwner, window, state);
+            return;
+        }
         _windowLayer.Show(window, state);
         _windowLayer.Focus(window);
+        if (state == EditorWindowState.Modal) _mainWindow.Focus();
     }
 
     private void CloseEditorWindow(EditorWindow window)
     {
         if (_editorPanels.Remove(window, out var panel)) _dock.Remove(panel.Id);
+        if (_nativeTransientOwners.Remove(window, out var transientOwner))
+        {
+            transientOwner.RemoveTransient(window);
+            window.CloseInternal();
+            return;
+        }
         _windowLayer.Remove(window);
+        if (_nativeFloatingWindows.ContainsKey(window))
+        {
+            _pendingNativeCloses.Add(window);
+            return;
+        }
         window.CloseInternal();
     }
 
@@ -3469,12 +3671,21 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             var window = pending.Panel.Window;
             if (!_editorPanels.Remove(window, out var panel) || !ReferenceEquals(panel, pending.Panel)) continue;
-            var size = window.position.size;
+            var dockedBounds = panel.Group?.Bounds ?? window.position;
             _dock.Remove(panel.Id);
-            window.position = new Rect(pending.CanvasPosition.x - 96, pending.CanvasPosition.y - 13,
-                Fix64.Max(window.minSize.x, size.x), Fix64.Max(window.minSize.y, size.y));
-            _windowLayer.Show(window, EditorWindowState.Normal);
-            _windowLayer.Focus(window);
+            var screenPoint = _mainWindow.GUIToScreen(pending.CanvasPosition, GUIUtility.pixelsPerPoint);
+            var dockedScreenOrigin = _mainWindow.GUIToScreen(dockedBounds.position,
+                GUIUtility.pixelsPerPoint);
+            var clientSize = ImGuiNativeWindow.GUIToClient(new Vector2(
+                    Fix64.Max(window.minSize.x, dockedBounds.width),
+                    Fix64.Max(window.minSize.y, dockedBounds.height)),
+                GUIUtility.pixelsPerPoint);
+            window.position = new Rect(dockedScreenOrigin.x, dockedScreenOrigin.y,
+                clientSize.x, clientSize.y);
+            ShowNativeFloating(window, EditorWindowState.Normal);
+            if (_nativeFloatingWindows.TryGetValue(window, out var presentation) &&
+                presentation.LeftMouseButtonPressed)
+                _nativeFloatingCarries[presentation] = screenPoint - presentation.ScreenPosition;
         }
     }
 
@@ -3486,6 +3697,198 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _editorPanels[window] = _dock.DockExternal(window.PersistentId, window, pointer);
         _dock.SetExternalDragPoint(null);
     }
+
+    private void ShowNativeFloating(EditorWindow window, EditorWindowState state)
+    {
+        if (_nativeFloatingWindows.TryGetValue(window, out var existing))
+        {
+            existing.Focus();
+            return;
+        }
+
+        var presentation = new NativeFloatingEditorWindow(window, state, window.position);
+        presentation.CloseRequested += QueueNativeClose;
+        presentation.DockRequested += QueueNativeDock;
+        presentation.FocusChanged += OnNativeWindowFocusChanged;
+        presentation.TransientClosed += OnNativeTransientClosed;
+        presentation.RenderBackground = (device, width, height) =>
+            RenderNativeWindowBackground(presentation, device, width, height);
+        _nativeFloatingWindows.Add(window, presentation);
+        _nativeDockTrackers.Add(presentation, new NativeWindowDockTracker());
+        window.windowState = state;
+        window.docked = false;
+        try
+        {
+            presentation.Initialize();
+            _nativeDockTrackers[presentation].Reset(
+                presentation.ScreenPosition, presentation.ScreenBounds.size);
+            presentation.Focus();
+        }
+        catch
+        {
+            RemoveNativeFloatingWindow(presentation, closeWindow: false);
+            throw;
+        }
+    }
+
+    private void QueueNativeClose(NativeFloatingEditorWindow presentation) =>
+        _pendingNativeCloses.Add(presentation.Window);
+
+    private void QueueNativeDock(NativeFloatingEditorWindow presentation, Vector2 screenPoint) =>
+        _pendingNativeDocks.Enqueue((presentation, screenPoint, false));
+
+    private void OnNativeTransientClosed(NativeFloatingEditorWindow presentation, EditorWindow window)
+    {
+        if (!_nativeTransientOwners.TryGetValue(window, out var owner) ||
+            !ReferenceEquals(owner, presentation)) return;
+        _nativeTransientOwners.Remove(window);
+        window.CloseInternal();
+    }
+
+    private void PumpNativeFloatingWindows()
+    {
+        var previewActive = false;
+        foreach (var presentation in _nativeFloatingWindows.Values.ToArray())
+        {
+            if (!_nativeDockTrackers.TryGetValue(presentation, out var tracker)) continue;
+            presentation.InputBlocked = _windowLayer.HasModal;
+            var hasPointer = ImGuiNativeWindow.TryGetPointerScreenPosition(out var screenPointer);
+            var dockPoint = hasPointer ? MainDockPoint(screenPointer) : null;
+            var pointerDown = presentation.LeftMouseButtonPressed;
+
+            if (_nativeFloatingCarries.TryGetValue(presentation, out var pointerOffset))
+            {
+                if (hasPointer && pointerDown)
+                {
+                    presentation.Move(screenPointer - pointerOffset);
+                    if (dockPoint is not null)
+                    {
+                        _dock.SetExternalDragPoint(dockPoint);
+                        previewActive = true;
+                    }
+                }
+                else if (!pointerDown)
+                {
+                    _nativeFloatingCarries.Remove(presentation);
+                    tracker.Reset(presentation.ScreenPosition, presentation.ScreenBounds.size);
+                    if (hasPointer && dockPoint is not null)
+                        _pendingNativeDocks.Enqueue((presentation, screenPointer, true));
+                }
+
+                presentation.Pump();
+                if (presentation.IsClosing) _pendingNativeCloses.Add(presentation.Window);
+                continue;
+            }
+
+            if (presentation.State != EditorWindowState.Normal || presentation.InputBlocked)
+            {
+                tracker.Reset(presentation.ScreenPosition, presentation.ScreenBounds.size);
+                presentation.Pump();
+                if (presentation.IsClosing) _pendingNativeCloses.Add(presentation.Window);
+                continue;
+            }
+            var pointerOperation = pointerDown && tracker.NeedsPointerOperation
+                ? presentation.PointerOperation
+                : NativeWindowPointerOperation.Unknown;
+            var update = tracker.Observe(presentation.ScreenPosition, presentation.ScreenBounds.size,
+                pointerDown, dockPoint, pointerOperation);
+            if (update.Phase == NativeDockDragPhase.Preview)
+            {
+                _dock.SetExternalDragPoint(update.DockPoint);
+                previewActive = true;
+            }
+            else if (update.Phase == NativeDockDragPhase.Drop && update.DockPoint is { } point)
+                _pendingNativeDocks.Enqueue((presentation, MainScreenPoint(point), true));
+
+            presentation.Pump();
+            if (presentation.IsClosing) _pendingNativeCloses.Add(presentation.Window);
+        }
+
+        if (!previewActive) _dock.SetExternalDragPoint(null);
+        ProcessPendingNativeCloses();
+        ProcessPendingNativeDocks();
+    }
+
+    private void ProcessPendingNativeCloses()
+    {
+        foreach (var window in _pendingNativeCloses.ToArray())
+        {
+            _pendingNativeCloses.Remove(window);
+            if (!_nativeFloatingWindows.TryGetValue(window, out var presentation)) continue;
+            RemoveNativeFloatingWindow(presentation, closeWindow: true);
+        }
+    }
+
+    private void ProcessPendingNativeDocks()
+    {
+        while (_pendingNativeDocks.TryDequeue(out var pending))
+        {
+            if (!_nativeFloatingWindows.TryGetValue(pending.Presentation.Window, out var current) ||
+                !ReferenceEquals(current, pending.Presentation)) continue;
+            var dockPoint = MainDockPoint(pending.ScreenPoint);
+            if (dockPoint is null && pending.RequireTarget) continue;
+            var window = pending.Presentation.Window;
+            RemoveNativeFloatingWindow(pending.Presentation, closeWindow: false);
+            window.windowState = EditorWindowState.Normal;
+            window.docked = true;
+            _editorPanels[window] = _dock.DockExternal(window.PersistentId, window,
+                dockPoint ?? _dockBounds.center);
+            _dock.SetExternalDragPoint(null);
+            window.FocusInternal();
+            _mainWindow.Focus();
+        }
+    }
+
+    private void RemoveNativeFloatingWindow(NativeFloatingEditorWindow presentation, bool closeWindow)
+    {
+        presentation.CloseRequested -= QueueNativeClose;
+        presentation.DockRequested -= QueueNativeDock;
+        presentation.FocusChanged -= OnNativeWindowFocusChanged;
+        presentation.TransientClosed -= OnNativeTransientClosed;
+        foreach (var transient in _nativeTransientOwners
+                     .Where(pair => ReferenceEquals(pair.Value, presentation))
+                     .Select(pair => pair.Key).ToArray())
+        {
+            presentation.RemoveTransient(transient);
+            _nativeTransientOwners.Remove(transient);
+            transient.CloseInternal();
+        }
+        _nativeFloatingWindows.Remove(presentation.Window);
+        _nativeDockTrackers.Remove(presentation);
+        _nativeFloatingCarries.Remove(presentation);
+        _pendingNativeCloses.Remove(presentation.Window);
+        if (presentation.GraphicsDevice is { } device && _sceneRenderers.Remove(device, out var renderer))
+            renderer.Dispose();
+        presentation.Dispose();
+        if (closeWindow) presentation.Window.CloseInternal();
+    }
+
+    private bool TryGetNativeOwner(EditorWindow? source, out NativeFloatingEditorWindow owner)
+    {
+        if (source is not null)
+        {
+            if (_nativeFloatingWindows.TryGetValue(source, out owner!)) return true;
+            if (_nativeTransientOwners.TryGetValue(source, out owner!)) return true;
+        }
+        owner = null!;
+        return false;
+    }
+
+    private void ShowNativeTransient(NativeFloatingEditorWindow owner, EditorWindow window,
+        EditorWindowState state)
+    {
+        _nativeTransientOwners[window] = owner;
+        owner.ShowTransient(window, state);
+    }
+
+    private Vector2? MainDockPoint(Vector2 screenPoint)
+    {
+        var point = _mainWindow.ScreenToGUI(screenPoint, GUIUtility.pixelsPerPoint);
+        return _dockBounds.Contains(point) && _dock.CanDockAt(point) ? point : null;
+    }
+
+    private Vector2 MainScreenPoint(Vector2 dockPoint) =>
+        _mainWindow.GUIToScreen(dockPoint, GUIUtility.pixelsPerPoint);
 
     private string ResolveAssetPath(string path) => Path.IsPathRooted(path) ? Path.GetFullPath(path) :
         _workspace.ResolveInside(path.Replace('\\', '/'));
@@ -3499,6 +3902,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private Vector2 _position;
         private Fix64 _contentHeight = 1;
         private Fix64 _viewportHeight = 1;
+        internal Vector2 position { get => _position; set => _position = value; }
         public void Begin(Fix64 minimumContentWidth = default)
         {
             var viewport = GUILayoutUtility.GetControlRect(60, GUILayout.ExpandWidth(true),
@@ -3535,7 +3939,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private static void DrawWindowToolbarBackground()
     {
         var height = EditorStyles.toolbar.fixedHeight + 8;
-        GUI.DrawRect(new Rect(0, 0, GUIUtility.currentViewWidth, height), EditorAppearance.palette.Toolbar);
+        GUI.Box(new Rect(0, 0, GUIUtility.currentViewWidth, height), GUIContent.none,
+            EditorStyles.toolbar);
     }
 
     private static GUIStyle TreeRowStyle(bool selected) =>
@@ -3543,6 +3948,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private sealed class ImGuiHierarchyWindow(GpuEditorApplication app) : EditorWindow
     {
+        private GpuEditorApplication Application => app;
         private static readonly Guid DontDestroyOnLoadId = new("D0D0D0D0-0000-0000-0000-000000000001");
         private string _search = string.Empty;
         private readonly HashSet<Guid> _expanded = [];
@@ -3557,6 +3963,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private Vector2 _dragStart;
         private bool _showRowActions = true;
         private Guid? _pendingRevealId;
+        private readonly TreeViewState<Guid> _treeState = new();
+        private HierarchyTreeView? _treeView;
+        private bool _treeDirty = true;
         public ImGuiHierarchyWindow() : this(null!) { }
         protected override void OnGUI()
         {
@@ -3564,10 +3973,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             HandleKeyboard();
             UpdateResponsiveState();
             var toolbarHeight = EditorStyles.toolbar.fixedHeight;
-            GUI.DrawRect(new Rect(0, 0, GUIUtility.currentViewWidth, toolbarHeight),
-                EditorAppearance.palette.Toolbar);
-            GUI.DrawRect(new Rect(0, Fix64.Max(0, toolbarHeight - 1), GUIUtility.currentViewWidth, 1),
-                EditorAppearance.palette.Border);
+            GUI.Box(new Rect(0, 0, GUIUtility.currentViewWidth, toolbarHeight),
+                GUIContent.none, EditorStyles.toolbar);
             GUILayout.BeginHorizontal(GUILayout.Height(toolbarHeight));
             var createPressed = EditorToolbar.IconButton(EditorBuiltinIcons.Toolbar.Add,
                 "Create GameObject", GUILayout.Width(24));
@@ -3580,28 +3987,313 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 ShowCreateMenu(createPressed ? createRect : createMenuRect);
             _search = EditorToolbar.SearchField(_search, "All", GUILayout.ExpandWidth(true));
             GUILayout.EndHorizontal();
-            _scroll.Begin();
-            try
-            {
-                if (app._prefabStage is not null)
-                    DrawScene(app.Scene, null, app.Scene.name, true, app._dirty);
-                else
-                    foreach (var entry in app.OpenSceneEntries)
-                        DrawScene(entry.Scene, entry, entry.DisplayName, entry.IsLoaded, entry.IsDirty);
-
-                if (app._playing)
-                {
-                    var persistentRoots = app.OpenSceneEntries.Where(item => item.IsLoaded)
-                        .SelectMany(item => item.Scene.rootGameObjects)
-                        .Where(item => item.isDontDestroyOnLoad).ToArray();
-                    if (persistentRoots.Length > 0)
-                        DrawVirtualScene("DontDestroyOnLoad", persistentRoots);
-                }
-            }
-            finally { _scroll.End(); }
+            var treeTop = GUILayoutUtility.GetLastRect().yMax;
+            var treeRect = new Rect(0, treeTop, GUIUtility.currentViewWidth,
+                Fix64.Max(1, GUIUtility.currentViewHeight - treeTop));
+            DrawTreeView(treeRect);
             if ((Event.current.type is EventType.MouseUp or EventType.DragPerform or EventType.DragExited) &&
                 _draggedId is not null) ClearDrag();
         }
+
+        protected override void OnHierarchyChange()
+        {
+            _treeDirty = true;
+            Repaint();
+        }
+
+        private void DrawTreeView(Rect rect)
+        {
+            _treeView ??= new HierarchyTreeView(this, _treeState);
+            if (_treeDirty)
+            {
+                _treeState.searchString = _search;
+                _treeState.expandedIDs = [.. _expandedScenes, .. _expanded];
+                _treeView.Reload();
+                _treeDirty = false;
+            }
+            else
+                _treeView.searchString = _search;
+            _treeView.SetExpanded([.. _expandedScenes, .. _expanded]);
+            _treeView.SetSelection(app.Selected is { } selected ? [selected.Id] : []);
+            if (_pendingRevealId is { } reveal)
+            {
+                _treeView.FrameItem(reveal);
+                _pendingRevealId = null;
+            }
+            _treeView.OnGUI(rect);
+            SynchronizeExpandedState();
+            _scroll.position = _treeState.scrollPos;
+        }
+
+        private void SynchronizeExpandedState()
+        {
+            if (_treeView is null) return;
+            var expanded = _treeView.GetExpanded().ToHashSet();
+            _expandedScenes.RemoveWhere(id => !expanded.Contains(id));
+            _expanded.RemoveWhere(id => !expanded.Contains(id));
+            foreach (var id in expanded)
+            {
+                if (_treeView.IsScene(id)) _expandedScenes.Add(id);
+                else _expanded.Add(id);
+            }
+        }
+
+        private HierarchyTreeItem BuildTreeRoot()
+        {
+            var root = new HierarchyTreeItem(Guid.Empty, -1, "Hierarchy", HierarchyNodeKind.Root);
+            if (app._prefabStage is not null)
+                root.AddChild(BuildSceneTree(app.Scene, null, app.Scene.name, true, app._dirty));
+            else
+                foreach (var entry in app.OpenSceneEntries)
+                    root.AddChild(BuildSceneTree(entry.Scene, entry, entry.DisplayName, entry.IsLoaded,
+                        entry.IsDirty));
+
+            if (app._playing)
+            {
+                var persistentRoots = app.OpenSceneEntries.Where(item => item.IsLoaded)
+                    .SelectMany(item => item.Scene.rootGameObjects)
+                    .Where(item => item.isDontDestroyOnLoad).ToArray();
+                if (persistentRoots.Length > 0)
+                {
+                    if (_knownScenes.Add(DontDestroyOnLoadId)) _expandedScenes.Add(DontDestroyOnLoadId);
+                    var persistent = new HierarchyTreeItem(DontDestroyOnLoadId, 0, "DontDestroyOnLoad",
+                        HierarchyNodeKind.VirtualScene) { Loaded = true };
+                    foreach (var item in persistentRoots) persistent.AddChild(BuildGameObjectTree(item));
+                    root.AddChild(persistent);
+                }
+            }
+            return root;
+        }
+
+        private HierarchyTreeItem BuildSceneTree(Scene scene, EditorOpenScene? entry, string displayName,
+            bool loaded, bool dirty)
+        {
+            if (_knownScenes.Add(scene.Id) && loaded) _expandedScenes.Add(scene.Id);
+            var node = new HierarchyTreeItem(scene.Id, 0, displayName, HierarchyNodeKind.Scene)
+            {
+                Scene = scene,
+                SceneEntry = entry,
+                Loaded = loaded,
+                Dirty = dirty
+            };
+            if (!loaded) return node;
+            foreach (var item in scene.rootGameObjects.Where(item => !app._playing || !item.isDontDestroyOnLoad))
+                node.AddChild(BuildGameObjectTree(item));
+            return node;
+        }
+
+        private static HierarchyTreeItem BuildGameObjectTree(GameObject item)
+        {
+            var node = new HierarchyTreeItem(item.Id, 0, item.name, HierarchyNodeKind.GameObject)
+                { GameObject = item };
+            foreach (var child in item.transform.children) node.AddChild(BuildGameObjectTree(child.gameObject));
+            return node;
+        }
+
+        private void DrawHierarchyTreeRow(TreeView<Guid>.RowGUIArgs args, HierarchyTreeView tree)
+        {
+            if (args.item is not HierarchyTreeItem item) return;
+            var rowRect = args.rowRect;
+            var rowHeight = rowRect.height;
+            if (item.Kind is HierarchyNodeKind.Scene or HierarchyNodeKind.VirtualScene)
+            {
+                DrawSceneTreeRow(item, rowRect, tree);
+                return;
+            }
+            if (item.GameObject is not { } gameObject) return;
+
+            if (!args.selected)
+                GUI.Box(rowRect, GUIContent.none, EditorStyles.treeViewRow);
+            if (_dropTargetId == gameObject.Id)
+                GUI.Box(rowRect, GUIContent.none, EditorStyles.treeViewRowSelected);
+            HandleDrag(gameObject, rowRect);
+
+            const int sceneStateButtonWidth = 18;
+            const int sceneStateActionWidth = sceneStateButtonWidth * 2;
+            var treeLeft = rowRect.x + sceneStateActionWidth;
+            const int minimumLabelWidth = 13;
+            var objectDepth = Math.Max(0, item.depth - 1);
+            var desiredFoldoutX = treeLeft + objectDepth * 14;
+            var maximumFoldoutX = Fix64.Max(treeLeft, rowRect.xMax - 18 - minimumLabelWidth);
+            var foldoutRect = new Rect(Fix64.Min(desiredFoldoutX, maximumFoldoutX), rowRect.y, 18, rowHeight);
+            if (item.hasChildren)
+            {
+                var expanded = tree.IsExpanded(item.id);
+                var foldoutIcon = expanded ? EditorBuiltinIcons.Toolbar.FoldoutOpen :
+                    EditorBuiltinIcons.Toolbar.FoldoutClosed;
+                if (GUI.Button(foldoutRect,
+                        new GUIContent(string.Empty, foldoutIcon, expanded ? "Collapse" : "Expand"),
+                        EditorStyles.foldout))
+                    tree.SetItemExpanded(item.id, !expanded);
+            }
+
+            var itemLabelRect = new Rect(foldoutRect.xMax, rowRect.y,
+                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax), rowHeight);
+            if (_renamingId == gameObject.Id)
+            {
+                var commit = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
+                var cancel = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
+                GUI.SetNextControlName("HierarchyRename");
+                _renameValue = GUI.TextField(itemLabelRect, _renameValue);
+                if (commit) CommitRename(gameObject);
+                else if (cancel) CancelRename();
+            }
+            else
+            {
+                var sceneHidden = SceneVisibilityManager.instance.IsHidden(gameObject);
+                var style = args.selected ? EditorStyles.hierarchyRowSelected :
+                    gameObject.activeInHierarchy && !sceneHidden
+                        ? EditorStyles.hierarchyRow
+                        : EditorStyles.hierarchyRowInactive;
+                var icon = PrefabUtility.IsPartOfPrefabInstance(gameObject)
+                    ? EditorBuiltinIcons.Assets.Prefab : EditorBuiltinIcons.Components.GameObject;
+                var visibleIcon = itemLabelRect.width >= 28 ? icon : string.Empty;
+                GUI.Label(itemLabelRect, new GUIContent(gameObject.name, visibleIcon, string.Empty), style);
+            }
+
+            var sceneVisibility = SceneVisibilityManager.instance;
+            var hidden = sceneVisibility.IsHidden(gameObject);
+            var visibilityRect = new Rect(rowRect.x, rowRect.y, sceneStateButtonWidth, rowHeight);
+            if (GUI.Button(visibilityRect, new GUIContent(string.Empty,
+                    hidden ? EditorBuiltinIcons.Toolbar.Hidden : EditorBuiltinIcons.Toolbar.Visible,
+                    hidden ? $"Show {gameObject.name} in Scene view" : $"Hide {gameObject.name} in Scene view"),
+                    EditorStyles.hierarchyAction))
+                sceneVisibility.ToggleVisibility(gameObject, includeDescendants: true);
+
+            var pickingDisabled = sceneVisibility.IsPickingDisabled(gameObject);
+            var pickingRect = new Rect(visibilityRect.xMax, rowRect.y, sceneStateButtonWidth, rowHeight);
+            if (GUI.Button(pickingRect, new GUIContent(string.Empty,
+                    pickingDisabled ? EditorBuiltinIcons.Toolbar.Lock : EditorBuiltinIcons.Toolbar.Unlock,
+                    pickingDisabled ? $"Enable Scene picking for {gameObject.name}" :
+                        $"Disable Scene picking for {gameObject.name}"), EditorStyles.hierarchyAction))
+                sceneVisibility.TogglePicking(gameObject, includeDescendants: true);
+        }
+
+        private void DrawSceneTreeRow(HierarchyTreeItem item, Rect rowRect, HierarchyTreeView tree)
+        {
+            var scene = item.Scene;
+            var active = scene is not null && ReferenceEquals(app.Scene, scene);
+            GUI.Box(rowRect, GUIContent.none,
+                active ? EditorStyles.hierarchySceneHeaderActive : EditorStyles.hierarchySceneHeader);
+            GUI.Box(new Rect(rowRect.x, Fix64.Max(rowRect.y, rowRect.yMax - 1), rowRect.width, 1),
+                GUIContent.none, EditorStyles.separator);
+            if (item.SceneEntry is not null) HandleSceneDrop(item.SceneEntry, rowRect);
+
+            var foldoutRect = new Rect(rowRect.x + 4, rowRect.y, 18, rowRect.height);
+            if (item.hasChildren)
+            {
+                var expanded = tree.IsExpanded(item.id);
+                var icon = expanded ? EditorBuiltinIcons.Toolbar.FoldoutOpen :
+                    EditorBuiltinIcons.Toolbar.FoldoutClosed;
+                if (GUI.Button(foldoutRect, new GUIContent(string.Empty, icon,
+                            expanded ? "Collapse" : "Expand"), EditorStyles.foldout))
+                    tree.SetItemExpanded(item.id, !expanded);
+            }
+
+            var showAction = item.SceneEntry is not null && _showRowActions;
+            var labelRect = new Rect(foldoutRect.xMax, rowRect.y,
+                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax - (showAction ? 22 : 0)), rowRect.height);
+            var suffix = item.Loaded ? item.Dirty ? " *" : string.Empty : " (Not Loaded)";
+            var sceneIcon = labelRect.width >= 28 ? EditorBuiltinIcons.Assets.Scene : string.Empty;
+            var tooltip = string.IsNullOrWhiteSpace(item.SceneEntry?.AssetPath)
+                ? item.displayName : item.SceneEntry.AssetPath;
+            var style = item.Loaded
+                ? active ? EditorStyles.hierarchySceneHeaderActive : EditorStyles.hierarchySceneHeader
+                : EditorStyles.hierarchyRowInactive;
+            GUI.Label(labelRect, new GUIContent(item.displayName + suffix, sceneIcon, tooltip), style);
+
+            if (!showAction) return;
+            var moreRect = new Rect(rowRect.xMax - 22, rowRect.y, 22, rowRect.height);
+            if (GUI.Button(moreRect, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More,
+                    $"{item.displayName} options"), EditorStyles.hierarchyAction) && scene is not null)
+                ShowSceneMenu(item.SceneEntry!, scene, item.Loaded, moreRect);
+        }
+
+        private sealed class HierarchyTreeView(ImGuiHierarchyWindow owner, TreeViewState<Guid> state)
+            : TreeView<Guid>(state)
+        {
+            protected override TreeViewItem<Guid> BuildRoot() => owner.BuildTreeRoot();
+
+            protected override IList<TreeViewItem<Guid>> BuildRows(TreeViewItem<Guid> root)
+            {
+                var rows = new List<TreeViewItem<Guid>>();
+                if (root.children is null) return rows;
+                foreach (var child in root.children) AddVisible(child, rows);
+                return rows;
+            }
+
+            private void AddVisible(TreeViewItem<Guid> item, ICollection<TreeViewItem<Guid>> rows)
+            {
+                if (hasSearch && !BranchMatches(item)) return;
+                rows.Add(item);
+                if (item.children is null || (!hasSearch && !IsExpanded(item.id))) return;
+                foreach (var child in item.children) AddVisible(child, rows);
+            }
+
+            private bool BranchMatches(TreeViewItem<Guid> item) =>
+                item.displayName.Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
+                item.children?.Any(BranchMatches) == true;
+
+            protected override bool CanChangeExpandedState(TreeViewItem<Guid> item) => false;
+            protected override bool CanMultiSelect(TreeViewItem<Guid> item) => false;
+            protected override bool CanRename(TreeViewItem<Guid> item) => false;
+            protected override void RowGUI(RowGUIArgs args) => owner.DrawHierarchyTreeRow(args, this);
+
+            protected override void SelectionChanged(IList<Guid> selectedIds)
+            {
+                var id = selectedIds.LastOrDefault();
+                if (id == Guid.Empty) return;
+                if (FindItem(id, rootItem) is not HierarchyTreeItem item) return;
+                if (item.GameObject is { } gameObject) owner.Application.Select(gameObject);
+                else SetSelection(owner.Application.Selected is { } selected ? [selected.Id] : []);
+            }
+
+            protected override void SingleClickedItem(Guid id)
+            {
+                if (FindItem(id, rootItem) is HierarchyTreeItem
+                    { Kind: HierarchyNodeKind.Scene, Loaded: true, Scene: { } scene })
+                    owner.Application.SetActiveEditorScene(scene);
+            }
+
+            protected override void DoubleClickedItem(Guid id)
+            {
+                if (FindItem(id, rootItem) is HierarchyTreeItem { GameObject: not null })
+                    owner.Application.FrameSelectedInScene();
+            }
+
+            protected override void ContextClickedItem(Guid id)
+            {
+                if (FindItem(id, rootItem) is not HierarchyTreeItem item) return;
+                if (item.GameObject is { } gameObject)
+                {
+                    owner.Application.Select(gameObject);
+                    owner.ShowItemMenu(gameObject);
+                }
+                else if (item is { SceneEntry: not null, Scene: { } scene })
+                    owner.ShowSceneMenu(item.SceneEntry, scene, item.Loaded);
+            }
+
+            protected override DragAndDropVisualMode HandleDragAndDrop(DragAndDropArgs args) =>
+                DragAndDrop.visualMode;
+
+            protected override void ExpandedStateChanged() => owner.SynchronizeExpandedState();
+            internal void SetItemExpanded(Guid id, bool expanded) => SetExpanded(id, expanded);
+            internal bool IsScene(Guid id) => FindItem(id, rootItem) is HierarchyTreeItem
+                { Kind: HierarchyNodeKind.Scene or HierarchyNodeKind.VirtualScene };
+        }
+
+        private sealed class HierarchyTreeItem(Guid id, int depth, string name, HierarchyNodeKind kind)
+            : TreeViewItem<Guid>(id, depth, name)
+        {
+            internal HierarchyNodeKind Kind { get; } = kind;
+            internal Scene? Scene { get; init; }
+            internal EditorOpenScene? SceneEntry { get; init; }
+            internal GameObject? GameObject { get; init; }
+            internal bool Loaded { get; init; }
+            internal bool Dirty { get; init; }
+        }
+
+        private enum HierarchyNodeKind { Root, Scene, VirtualScene, GameObject }
 
         private void DrawScene(Scene scene, EditorOpenScene? entry, string displayName, bool loaded, bool dirty)
         {
@@ -3834,22 +4526,32 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         private void DrawSceneRowBackground(Rect rowRect, bool active)
         {
-            var palette = EditorAppearance.palette;
-            var hovered = rowRect.Contains(Event.current.mousePosition);
             var fullRow = FullRowRect(rowRect);
-            GUI.DrawRect(fullRow, hovered ? palette.Hover : active ? palette.PanelRaised : palette.TitleBar);
-            GUI.DrawRect(new Rect(fullRow.x, Fix64.Max(fullRow.y, fullRow.yMax - 1), fullRow.width, 1),
-                palette.Border);
+            GUI.Box(fullRow, GUIContent.none,
+                active ? EditorStyles.hierarchySceneHeaderActive : EditorStyles.hierarchySceneHeader);
+            GUI.Box(new Rect(fullRow.x, Fix64.Max(fullRow.y, fullRow.yMax - 1), fullRow.width, 1),
+                GUIContent.none, EditorStyles.separator);
         }
 
         private void DrawObjectRowBackground(Rect rowRect, bool selected)
         {
-            var palette = EditorAppearance.palette;
             var fullRow = FullRowRect(rowRect);
-            if (selected)
-                GUI.DrawRect(fullRow, hasFocus ? palette.Selection : palette.SelectionInactive);
-            else if (rowRect.Contains(Event.current.mousePosition))
-                GUI.DrawRect(fullRow, palette.Hover);
+            if (!selected)
+            {
+                GUI.Box(fullRow, GUIContent.none, EditorStyles.treeViewRow);
+                return;
+            }
+
+            var wasEnabled = GUI.enabled;
+            try
+            {
+                GUI.enabled = hasFocus;
+                GUI.Box(fullRow, GUIContent.none, EditorStyles.treeViewRowSelected);
+            }
+            finally
+            {
+                GUI.enabled = wasEnabled;
+            }
         }
 
         private static Rect FullRowRect(Rect rowRect) =>
@@ -3906,6 +4608,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 Undo.RecordObject(item, "Rename GameObject");
                 item.name = value;
                 if (item.scene is { } scene) app.MarkDirty(scene);
+                _treeDirty = true;
             }
             CancelRename();
         }
@@ -3914,7 +4617,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             _renamingId = null;
             _renameValue = string.Empty;
-            GUI.FocusControl(string.Empty);
+            GUIUtility.ReleaseInputFocus();
             Repaint();
         }
 
@@ -4747,11 +5450,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 EditorStyles.toolbar.fixedHeight + 6,
                 panelWidth,
                 panelHeight);
-            GUI.DrawRect(panel, EditorAppearance.palette.PanelRaised);
-            GUI.DrawRect(new Rect(panel.x, panel.y, panel.width, 1), EditorAppearance.palette.Border);
-            GUI.DrawRect(new Rect(panel.x, panel.yMax - 1, panel.width, 1), EditorAppearance.palette.Border);
-            GUI.DrawRect(new Rect(panel.x, panel.y, 1, panel.height), EditorAppearance.palette.Border);
-            GUI.DrawRect(new Rect(panel.xMax - 1, panel.y, 1, panel.height), EditorAppearance.palette.Border);
+            GUI.Box(panel, GUIContent.none, EditorStyles.helpBox);
 
             GUI.Label(new Rect(panel.x + 6, panel.y + 4, panel.width - 12, lineHeight),
                 "Statistics", EditorStyles.centeredBoldLabel);
@@ -5048,9 +5747,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 var componentIcon = EditorIconRegistry.GetComponentIconPath(componentType);
                 var header = GUILayoutUtility.GetControlRect(EditorStyles.inspectorTitlebar.fixedHeight,
                     GUILayout.ExpandWidth(true));
-                GUI.DrawRect(header, EditorAppearance.palette.PanelRaised);
-                GUI.DrawRect(new Rect(header.x, header.yMax - 1, header.width, 1),
-                    EditorAppearance.palette.Border);
+                GUI.Box(header, GUIContent.none, EditorStyles.inspectorTitlebar);
                 var collapsed = _collapsedComponents.Contains(component);
                 var foldoutRect = new Rect(header.x + 3, header.y + 1, 18, Fix64.Max(18, header.height - 2));
                 var foldoutClicked = Event.current.type == EventType.MouseDown && Event.current.button == 0 &&
@@ -5217,10 +5914,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var width = GUIUtility.currentViewWidth;
             var headerHeight = Fix64.Max(22, EditorStyles.inspectorTitlebar.fixedHeight);
             var header = new Rect(0, 0, width, Fix64.Min(headerHeight, paneHeight));
-            GUI.DrawRect(header, EditorAppearance.palette.PanelRaised);
-            GUI.DrawRect(new Rect(header.x, header.y, header.width, 1), EditorAppearance.palette.Border);
-            GUI.DrawRect(new Rect(header.x, header.yMax - 1, header.width, 1),
-                EditorAppearance.palette.Border);
+            GUI.Box(header, GUIContent.none, EditorStyles.inspectorTitlebar);
             var foldout = new Rect(header.x + 3, header.y + 1, 20, Fix64.Max(18, header.height - 2));
             if (GUI.Button(foldout, new GUIContent(string.Empty,
                     _previewExpanded ? EditorBuiltinIcons.Toolbar.FoldoutOpen :
@@ -5240,7 +5934,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var informationHeight = string.IsNullOrWhiteSpace(information) ? Fix64.Zero : (Fix64)22;
             var body = new Rect(4, header.yMax + 4, Fix64.Max(0, width - 8),
                 Fix64.Max(0, paneHeight - header.height - informationHeight - 8));
-            GUI.DrawRect(body, EditorAppearance.palette.Panel);
+            GUI.Box(body, GUIContent.none, EditorStyles.viewBackground);
             GUI.BeginClip(body);
             try
             {
@@ -5248,12 +5942,6 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     Fix64.Max(0, body.width - 4), Fix64.Max(0, body.height - 4)));
             }
             finally { GUI.EndClip(); }
-            GUI.DrawRect(new Rect(body.x, body.y, body.width, 1), EditorAppearance.palette.Border);
-            GUI.DrawRect(new Rect(body.x, body.yMax - 1, body.width, 1), EditorAppearance.palette.Border);
-            GUI.DrawRect(new Rect(body.x, body.y + 1, 1, Fix64.Max(0, body.height - 2)),
-                EditorAppearance.palette.Border);
-            GUI.DrawRect(new Rect(body.xMax - 1, body.y + 1, 1, Fix64.Max(0, body.height - 2)),
-                EditorAppearance.palette.Border);
             if (informationHeight > 0)
                 GUI.Label(new Rect(7, body.yMax + 1, Fix64.Max(0, width - 14), informationHeight),
                     information, EditorStyles.miniLabel);
@@ -5495,11 +6183,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private sealed class ImGuiProjectWindow(GpuEditorApplication app) : EditorWindow
     {
+        private GpuEditorApplication Application => app;
         private string _search = string.Empty;
         private string _parsedSearch = string.Empty;
         private ProjectSearchFilter _searchFilter = ProjectSearchFilter.Parse(string.Empty);
         private string _projectBrowserMode = "OneColumn";
         private Fix64 _foldersWidth = 240;
+        private Fix64 _packagesHeight;
+        private bool _packagesHeightInitialized;
+        private Fix64 _packagesDragStartY;
+        private Fix64 _packagesDragStartHeight;
         private Fix64 _thumbnailSize = 64;
         private Vector2 _assetScroll;
         private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase) { "Assets", "Packages" };
@@ -5515,9 +6208,23 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private string? _draggedPath;
         private string? _dropTargetPath;
         private Vector2 _dragStart;
-        private readonly ImGuiScrollRegion _scroll = new();
+        private readonly ImGuiScrollRegion _assetsScroll = new();
+        private readonly ImGuiScrollRegion _packagesScroll = new();
+        private readonly TreeViewState<ulong> _assetsTreeState = new();
+        private readonly TreeViewState<ulong> _packagesTreeState = new();
+        private ProjectTreeView? _assetsTreeView;
+        private ProjectTreeView? _packagesTreeView;
+        private readonly Dictionary<string, ulong> _projectTreeIds = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<ulong, string> _projectTreePaths = [];
         public ImGuiProjectWindow() : this(null!) { }
-        internal void Invalidate() { _cache = null; _indexedCache = null; Repaint(); }
+        internal void Invalidate()
+        {
+            _cache = null;
+            _indexedCache = null;
+            _assetsTreeView?.Invalidate();
+            _packagesTreeView?.Invalidate();
+            Repaint();
+        }
         internal void Toggle(string path)
         {
             path = ProjectBrowserPath.Normalize(path);
@@ -5596,6 +6303,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             document.ProjectBrowserMode = IsTwoColumn ? "TwoColumn" : "OneColumn";
             document.ProjectFoldersWidth = (float)_foldersWidth;
+            document.ProjectPackagesHeight = _packagesHeightInitialized ? (float)_packagesHeight : 0;
             document.ProjectThumbnailSize = (float)_thumbnailSize;
         }
 
@@ -5604,26 +6312,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _projectBrowserMode = document.ProjectBrowserMode.Equals("TwoColumn", StringComparison.OrdinalIgnoreCase)
                 ? "TwoColumn" : "OneColumn";
             _foldersWidth = Fix64.Clamp((Fix64)document.ProjectFoldersWidth, 120, 600);
+            _packagesHeight = Fix64.Max(0, (Fix64)document.ProjectPackagesHeight);
+            _packagesHeightInitialized = _packagesHeight > 0;
             _thumbnailSize = Fix64.Clamp((Fix64)document.ProjectThumbnailSize, 32, 144);
         }
 
         private void DrawOneColumn(IReadOnlyList<ProjectBrowserItem> items, Rect contentRect)
         {
-            using var area = GUILayout.Area(contentRect);
-            _scroll.Begin();
-            try
-            {
-                var hasVisibleAssetItem = false;
-                foreach (var item in VisibleItems(items))
-                {
-                    if (hasVisibleAssetItem &&
-                        item.VirtualPath.Equals("Packages", StringComparison.OrdinalIgnoreCase))
-                        EditorTreeViewGUI.Separator();
-                    DrawItem(item);
-                    if (!item.IsPackage) hasVisibleAssetItem = true;
-                }
-            }
-            finally { _scroll.End(); }
+            DrawProjectTreePanes(items, contentRect, foldersOnly: false);
         }
 
         private void DrawTwoColumn(IReadOnlyList<ProjectBrowserItem> items, Rect contentRect)
@@ -5631,29 +6327,98 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _foldersWidth = Fix64.Clamp(_foldersWidth, 120, Fix64.Max(120, contentRect.width - 180));
             var splitter = new Rect(contentRect.x + _foldersWidth - 2, contentRect.y, 5, contentRect.height);
             HandleFoldersSplitter(splitter, contentRect);
-            GUI.DrawRect(new Rect(contentRect.x + _foldersWidth, contentRect.y, 1, contentRect.height),
-                EditorAppearance.palette.Border);
+            GUI.Box(new Rect(contentRect.x + _foldersWidth, contentRect.y, 1, contentRect.height),
+                GUIContent.none, EditorStyles.separator);
 
-            using (GUILayout.Area(new Rect(contentRect.x, contentRect.y, _foldersWidth, contentRect.height)))
-            {
-                _scroll.Begin();
-                try
-                {
-                    var drewAssets = false;
-                    foreach (var item in VisibleFolders(items))
-                    {
-                        if (drewAssets && item.VirtualPath.Equals("Packages", StringComparison.OrdinalIgnoreCase))
-                            EditorTreeViewGUI.Separator();
-                        DrawFolderItem(item);
-                        if (!item.IsPackage) drewAssets = true;
-                    }
-                }
-                finally { _scroll.End(); }
-            }
+            DrawProjectTreePanes(items,
+                new Rect(contentRect.x, contentRect.y, _foldersWidth, contentRect.height), foldersOnly: true);
 
             var right = new Rect(contentRect.x + _foldersWidth + 1, contentRect.y,
                 Fix64.Max(1, contentRect.width - _foldersWidth - 1), contentRect.height);
             DrawAssetGrid(items, right);
+        }
+
+        private void DrawProjectTreePanes(
+            IReadOnlyList<ProjectBrowserItem> items,
+            Rect treeRect,
+            bool foldersOnly)
+        {
+            var visible = (foldersOnly ? VisibleFolders(items) : VisibleItems(items)).ToArray();
+            var visibleAssets = visible.Where(item => !item.IsPackage).ToArray();
+            var visiblePackages = visible.Where(item => item.IsPackage).ToArray();
+            if (visibleAssets.Length == 0)
+            {
+                DrawProjectTreePane(treeRect, _packagesScroll, visiblePackages, foldersOnly,
+                    packages: true);
+                return;
+            }
+            if (visiblePackages.Length == 0)
+            {
+                DrawProjectTreePane(treeRect, _assetsScroll, visibleAssets, foldersOnly,
+                    packages: false);
+                return;
+            }
+            if (!_packagesHeightInitialized)
+            {
+                var visibleAssetRows = visibleAssets.Length;
+                _packagesHeight = ProjectBrowserSplitLayoutUtility.FromAssetContentHeight(treeRect,
+                    visibleAssetRows * EditorTreeViewGUI.rowHeight + 4);
+                _packagesHeightInitialized = true;
+            }
+
+            var layout = ProjectBrowserSplitLayoutUtility.Calculate(treeRect, _packagesHeight);
+            HandlePackagesSplitter(layout, treeRect);
+            DrawProjectTreePane(layout.Assets, _assetsScroll, visibleAssets, foldersOnly, packages: false);
+            DrawProjectTreePane(layout.Packages, _packagesScroll, visiblePackages, foldersOnly, packages: true);
+            GUI.Box(layout.Separator, GUIContent.none, EditorStyles.separator);
+        }
+
+        private void DrawProjectTreePane(
+            Rect rect,
+            ImGuiScrollRegion scroll,
+            IEnumerable<ProjectBrowserItem> items,
+            bool foldersOnly,
+            bool packages)
+        {
+            var materialized = items.ToArray();
+            var tree = packages
+                ? _packagesTreeView ??= new ProjectTreeView(this, _packagesTreeState, true)
+                : _assetsTreeView ??= new ProjectTreeView(this, _assetsTreeState, false);
+            tree.Configure(_cache ?? materialized, foldersOnly, _search);
+            tree.OnGUI(rect);
+            if (packages) _packagesScroll.position = _packagesTreeState.scrollPos;
+            else _assetsScroll.position = _assetsTreeState.scrollPos;
+        }
+
+        private void HandlePackagesSplitter(ProjectBrowserSplitLayout layout, Rect treeRect)
+        {
+            var id = GUIUtility.GetControlID("ProjectPackagesSplitter".GetHashCode(StringComparison.Ordinal),
+                FocusType.Passive, layout.SeparatorHitArea);
+            var current = Event.current;
+            EditorGUIUtility.AddCursorRect(GUIUtility.hotControl == id
+                    ? new Rect(0, 0, GUIUtility.currentViewWidth, GUIUtility.currentViewHeight)
+                    : layout.SeparatorHitArea,
+                MouseCursor.ResizeVertical);
+            switch (current.GetTypeForControl(id))
+            {
+                case EventType.MouseDown when current.button == 0 &&
+                                                  layout.SeparatorHitArea.Contains(current.mousePosition):
+                    GUIUtility.hotControl = id;
+                    _packagesDragStartY = current.mousePosition.y;
+                    _packagesDragStartHeight = layout.Packages.height;
+                    current.Use();
+                    break;
+                case EventType.MouseDrag when GUIUtility.hotControl == id:
+                    _packagesHeight = ProjectBrowserSplitLayoutUtility.ResizePackagesHeight(
+                        _packagesDragStartHeight, current.mousePosition.y - _packagesDragStartY, treeRect.height);
+                    current.Use();
+                    Repaint();
+                    break;
+                case EventType.MouseUp when GUIUtility.hotControl == id:
+                    GUIUtility.hotControl = 0;
+                    current.Use();
+                    break;
+            }
         }
 
         private void HandleFoldersSplitter(Rect splitter, Rect contentRect)
@@ -5742,7 +6507,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var labelRect = new Rect(cell.x + 2, preview.yMax + 2, cell.width - 4,
                 EditorGUIUtility.singleLineHeight + 2);
             GUI.Label(labelRect, new GUIContent(item.EffectiveDisplayName,
-                tooltip: ItemTooltip(item)), EditorStyles.miniLabel);
+                tooltip: ItemTooltip(item)), EditorStyles.centeredMiniLabel);
             if (clicked)
             {
                 _selectedPath = item.NormalizedPath;
@@ -5819,27 +6584,28 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private void DrawFolderItem(ProjectBrowserItem item)
             => DrawTreeItem(item, _folderParentPaths);
 
-        private void DrawTreeItem(ProjectBrowserItem item, IReadOnlySet<string> childPaths)
+        private void DrawTreeItem(ProjectBrowserItem item, IReadOnlySet<string> expandablePaths)
         {
             var rowHeight = EditorTreeViewGUI.BeginRow();
             var rowRect = GUILayoutUtility.GetLastRect();
             HandleDrag(item, rowRect);
             GUILayout.Space(item.Depth * 14);
-            var children = item.IsDirectory && childPaths.Contains(item.NormalizedPath);
+            var canExpand = item.IsDirectory && expandablePaths.Contains(item.NormalizedPath);
+            var hasEntries = item.IsDirectory && _parentPaths.Contains(item.NormalizedPath);
             var expanded = !string.IsNullOrWhiteSpace(_search) || _expanded.Contains(item.NormalizedPath);
             var icon = item.AssetType == "Missing Package"
                 ? EditorBuiltinIcons.Toolbar.Warning
                 : item.AssetType == "Package" || item.VirtualPath == "Packages"
                     ? "Icons/Windows/PackageManager.png"
                 : item.IsDirectory
-                    ? children
-                        ? expanded ? EditorAssetIcons.OpenFolder : EditorAssetIcons.ClosedFolder
+                    ? hasEntries
+                        ? canExpand && expanded ? EditorAssetIcons.OpenFolder : EditorAssetIcons.ClosedFolder
                         : EditorAssetIcons.EmptyFolder
                     : EditorAssetIcons.GetIconPath(item.SourcePath);
             var selected = item.NormalizedPath.Equals(_selectedPath, StringComparison.OrdinalIgnoreCase) ||
                            item.NormalizedPath.Equals(_pingedAssetPath, StringComparison.OrdinalIgnoreCase) ||
                            item.NormalizedPath.Equals(_dropTargetPath, StringComparison.OrdinalIgnoreCase);
-            if (children)
+            if (canExpand)
             {
                 var foldoutIcon = expanded ? EditorBuiltinIcons.Toolbar.FoldoutOpen :
                     EditorBuiltinIcons.Toolbar.FoldoutClosed;
@@ -5885,6 +6651,215 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 ShowItemContextMenu(item);
                 Event.current.Use();
             }
+        }
+
+        private ProjectTreeItem BuildProjectTreeRoot(bool packages, bool foldersOnly,
+            IReadOnlyList<ProjectBrowserItem> items)
+        {
+            var root = new ProjectTreeItem(packages ? ulong.MaxValue - 1 : ulong.MaxValue, -1,
+                packages ? "Packages Root" : "Assets Root", null);
+            var section = packages ? "Packages" : "Assets";
+            var byParent = items.Where(item => item.IsPackage == packages && (!foldersOnly || item.IsDirectory))
+                .GroupBy(item => item.ParentPath ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+            var sectionItem = items.FirstOrDefault(item => item.IsPackage == packages &&
+                item.NormalizedPath.Equals(section, StringComparison.OrdinalIgnoreCase));
+            if (sectionItem is not null) root.AddChild(BuildProjectTreeItem(sectionItem, byParent));
+            return root;
+        }
+
+        private ProjectTreeItem BuildProjectTreeItem(ProjectBrowserItem item,
+            IReadOnlyDictionary<string, ProjectBrowserItem[]> byParent)
+        {
+            var node = new ProjectTreeItem(ProjectTreeId(item.NormalizedPath), 0,
+                item.EffectiveDisplayName, item);
+            if (item.IsDirectory && byParent.TryGetValue(item.NormalizedPath, out var children))
+                foreach (var child in ProjectBrowserItemOrdering.Sort(children))
+                    node.AddChild(BuildProjectTreeItem(child, byParent));
+            return node;
+        }
+
+        private ulong ProjectTreeId(string path)
+        {
+            path = ProjectBrowserPath.Normalize(path);
+            if (_projectTreeIds.TryGetValue(path, out var existing)) return existing;
+            var hash = 14695981039346656037UL;
+            foreach (var character in path)
+            {
+                var normalized = char.ToUpperInvariant(character);
+                hash ^= normalized;
+                hash *= 1099511628211UL;
+            }
+            if (hash is 0 or ulong.MaxValue or ulong.MaxValue - 1) hash ^= 0x9E3779B97F4A7C15UL;
+            while (_projectTreePaths.TryGetValue(hash, out var collision) &&
+                   !collision.Equals(path, StringComparison.OrdinalIgnoreCase))
+                hash = unchecked(hash * 1099511628211UL + 0x9E3779B97F4A7C15UL);
+            _projectTreeIds[path] = hash;
+            _projectTreePaths[hash] = path;
+            return hash;
+        }
+
+        private void SynchronizeProjectExpanded(ProjectTreeView tree)
+        {
+            var sectionPaths = tree.GetExpanded().Select(id => _projectTreePaths.GetValueOrDefault(id))
+                .Where(path => path is not null).Cast<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var path in _expanded.Where(path => tree.OwnsPath(path) && !sectionPaths.Contains(path))
+                         .ToArray())
+                _expanded.Remove(path);
+            foreach (var path in sectionPaths) _expanded.Add(path);
+        }
+
+        private void DrawProjectTreeRow(TreeView<ulong>.RowGUIArgs args, ProjectTreeView tree)
+        {
+            if (args.item is not ProjectTreeItem { Item: { } item } node) return;
+            var rowRect = args.rowRect;
+            GUI.Box(rowRect, GUIContent.none,
+                args.selected ? EditorStyles.treeViewRowSelected : EditorStyles.treeViewRow);
+            if (_dropTargetPath?.Equals(item.NormalizedPath, StringComparison.OrdinalIgnoreCase) == true)
+                GUI.Box(rowRect, GUIContent.none, EditorStyles.treeViewRowSelected);
+            HandleDrag(item, rowRect);
+
+            var hasEntries = item.IsDirectory && _parentPaths.Contains(item.NormalizedPath);
+            var expanded = tree.Searching || tree.IsExpanded(node.id);
+            var icon = item.AssetType == "Missing Package"
+                ? EditorBuiltinIcons.Toolbar.Warning
+                : item.AssetType == "Package" || item.VirtualPath == "Packages"
+                    ? "Icons/Windows/PackageManager.png"
+                    : item.IsDirectory
+                        ? hasEntries
+                            ? node.hasChildren && expanded ? EditorAssetIcons.OpenFolder : EditorAssetIcons.ClosedFolder
+                            : EditorAssetIcons.EmptyFolder
+                        : EditorAssetIcons.GetIconPath(item.SourcePath);
+            var foldoutX = rowRect.x + Math.Max(0, node.depth) * 14;
+            var foldoutRect = new Rect(foldoutX, rowRect.y, 18, rowRect.height);
+            if (!tree.Searching && node.hasChildren)
+            {
+                var foldoutIcon = expanded ? EditorBuiltinIcons.Toolbar.FoldoutOpen :
+                    EditorBuiltinIcons.Toolbar.FoldoutClosed;
+                if (GUI.Button(foldoutRect, new GUIContent(string.Empty, foldoutIcon,
+                            expanded ? "Collapse" : "Expand"), EditorStyles.foldout))
+                    tree.SetItemExpanded(node.id, !expanded);
+            }
+            var labelRect = new Rect(foldoutRect.xMax + 3, rowRect.y,
+                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax - 3), rowRect.height);
+            if (_renamingPath?.Equals(item.VirtualPath, StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var commit = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
+                var cancel = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape;
+                GUI.SetNextControlName("ProjectRename");
+                _renameValue = GUI.TextField(labelRect, _renameValue);
+                if (commit) CommitRename(item);
+                else if (cancel) CancelRename();
+            }
+            else
+                GUI.Label(labelRect, new GUIContent(item.EffectiveDisplayName, icon, ItemTooltip(item)),
+                    args.selected ? EditorStyles.treeViewRowSelected : EditorStyles.treeViewRow);
+        }
+
+        private sealed class ProjectTreeView(
+            ImGuiProjectWindow owner,
+            TreeViewState<ulong> state,
+            bool packages) : TreeView<ulong>(state)
+        {
+            private IReadOnlyList<ProjectBrowserItem> _items = [];
+            private bool _foldersOnly;
+            private bool _invalid = true;
+
+            internal void Invalidate() => _invalid = true;
+
+            internal void Configure(IReadOnlyList<ProjectBrowserItem> items, bool foldersOnly, string search)
+            {
+                var sourceChanged = !ReferenceEquals(_items, items) || _foldersOnly != foldersOnly;
+                var searchChanged = !state.searchString.Equals(search ?? string.Empty, StringComparison.Ordinal);
+                _items = items;
+                _foldersOnly = foldersOnly;
+                state.searchString = search ?? string.Empty;
+                var expanded = owner._expanded.Where(OwnsPath).Select(owner.ProjectTreeId).ToList();
+                if (_invalid || sourceChanged || searchChanged || !isInitialized)
+                {
+                    state.expandedIDs = expanded;
+                    Reload();
+                    _invalid = false;
+                }
+                else
+                    SetExpanded(expanded);
+
+                var selection = owner._selectedPath is { } path && OwnsPath(path)
+                    ? new[] { owner.ProjectTreeId(path) }
+                    : [];
+                SetSelection(selection);
+            }
+
+            protected override TreeViewItem<ulong> BuildRoot() =>
+                owner.BuildProjectTreeRoot(packages, _foldersOnly, _items);
+
+            protected override IList<TreeViewItem<ulong>> BuildRows(TreeViewItem<ulong> root)
+            {
+                var rows = new List<TreeViewItem<ulong>>();
+                if (root.children is null) return rows;
+                foreach (var child in root.children) AddVisible(child, rows);
+                return rows;
+            }
+
+            private void AddVisible(TreeViewItem<ulong> item, ICollection<TreeViewItem<ulong>> rows)
+            {
+                if (hasSearch && !BranchMatches(item)) return;
+                rows.Add(item);
+                if (item.children is null || (!hasSearch && !IsExpanded(item.id))) return;
+                foreach (var child in item.children) AddVisible(child, rows);
+            }
+
+            private bool BranchMatches(TreeViewItem<ulong> item) =>
+                item is ProjectTreeItem { Item: { } projectItem } && owner.Matches(projectItem) ||
+                item.children?.Any(BranchMatches) == true;
+
+            protected override bool CanChangeExpandedState(TreeViewItem<ulong> item) => false;
+            protected override bool CanRename(TreeViewItem<ulong> item) => false;
+            protected override bool CanMultiSelect(TreeViewItem<ulong> item) => false;
+            protected override void RowGUI(RowGUIArgs args) => owner.DrawProjectTreeRow(args, this);
+
+            protected override void SelectionChanged(IList<ulong> selectedIds)
+            {
+                var id = selectedIds.LastOrDefault();
+                if (id == 0 || FindItem(id, rootItem) is not ProjectTreeItem { Item: { } item }) return;
+                owner._selectedPath = item.NormalizedPath;
+                owner._pingedAssetPath = null;
+                if (owner.Application is not null) owner.Application.Select(item);
+            }
+
+            protected override void DoubleClickedItem(ulong id)
+            {
+                if (FindItem(id, rootItem) is not ProjectTreeItem { Item: { } item }) return;
+                if (item.IsDirectory) SetExpanded(id, true);
+                else if (item.Asset is { } asset && owner.Application is not null) owner.Application.OpenAsset(asset);
+                else OpenExternal(item.SourcePath);
+            }
+
+            protected override void ContextClickedItem(ulong id)
+            {
+                if (FindItem(id, rootItem) is ProjectTreeItem { Item: { } item })
+                {
+                    owner._selectedPath = item.NormalizedPath;
+                    if (owner.Application is not null) owner.Application.Select(item);
+                    owner.ShowItemContextMenu(item);
+                }
+            }
+
+            protected override DragAndDropVisualMode HandleDragAndDrop(DragAndDropArgs args) =>
+                DragAndDrop.visualMode;
+            protected override void ExpandedStateChanged() => owner.SynchronizeProjectExpanded(this);
+            internal void SetItemExpanded(ulong id, bool expanded) => SetExpanded(id, expanded);
+            internal bool Searching => hasSearch;
+            internal bool OwnsPath(string path) => ProjectBrowserPath.Normalize(path).Equals(
+                packages ? "Packages" : "Assets", StringComparison.OrdinalIgnoreCase) ||
+                ProjectBrowserPath.Normalize(path).StartsWith(packages ? "Packages/" : "Assets/",
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        private sealed class ProjectTreeItem(ulong id, int depth, string displayName, ProjectBrowserItem? item)
+            : TreeViewItem<ulong>(id, depth, displayName)
+        {
+            internal ProjectBrowserItem? Item { get; } = item;
         }
 
         private void ShowItemContextMenu(ProjectBrowserItem item)
@@ -5953,7 +6928,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             _renamingPath = null;
             _renameValue = string.Empty;
-            GUI.FocusControl(string.Empty);
+            GUIUtility.ReleaseInputFocus();
             Repaint();
         }
 
@@ -6249,8 +7224,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         private void DrawFooter(Rect rect, IReadOnlyList<ProjectBrowserItem> items)
         {
-            GUI.DrawRect(rect, EditorAppearance.palette.Toolbar);
-            GUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 1), EditorAppearance.palette.Border);
+            GUI.Box(rect, GUIContent.none, EditorStyles.statusBar);
             var zoomWidth = IsTwoColumn ? Fix64.Min(142, Fix64.Max(92, rect.width * Fix64.FromDecimal(0.18m))) :
                 Fix64.Zero;
             if (zoomWidth > 0) DrawZoomControl(new Rect(rect.xMax - zoomWidth, rect.y, zoomWidth, rect.height));
@@ -6563,8 +7537,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 DrawLogList();
 
             if (_selected is not { } selected || detailsHeight <= 0) return;
-            GUI.DrawRect(new Rect(separatorRect.x, separatorRect.y + 2, separatorRect.width, 2),
-                EditorAppearance.palette.Border);
+            GUI.Box(new Rect(separatorRect.x, separatorRect.y + 2, separatorRect.width, 2),
+                GUIContent.none, EditorStyles.separator);
             using (GUILayout.Area(new Rect(0, contentY + listHeight + separatorHeight,
                        GUIUtility.currentViewWidth, detailsHeight)))
                 DrawDetails(selected);
@@ -6980,7 +7954,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 }
                 finally { _packageScroll.End(); }
             }
-            GUI.DrawRect(new Rect(leftWidth, 0, 2, height), EditorAppearance.palette.Border);
+            GUI.Box(new Rect(leftWidth, 0, 2, height), GUIContent.none, EditorStyles.separator);
             using (GUILayout.Area(new Rect(leftWidth + 2, 0, Fix64.Max(1, width - leftWidth - 2), height)))
             {
                 _detailsScroll.Begin();

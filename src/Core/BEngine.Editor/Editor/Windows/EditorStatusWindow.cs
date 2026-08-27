@@ -100,8 +100,8 @@ internal sealed class EditorStatusWindow : EditorWindow
             DrawLogList();
 
         if (_selected is not { } selected || detailsHeight <= 0) return;
-        GUI.DrawRect(new Rect(separatorRect.x, separatorRect.y + 2, separatorRect.width, 2),
-            EditorAppearance.palette.Border);
+        GUI.Box(new Rect(separatorRect.x, separatorRect.y + 2, separatorRect.width, 2),
+            GUIContent.none, EditorStyles.separator);
         using (GUILayout.Area(new Rect(0, contentY + listHeight + separatorHeight,
                    GUIUtility.currentViewWidth, detailsHeight)))
             DrawDetails(selected);
@@ -109,8 +109,8 @@ internal sealed class EditorStatusWindow : EditorWindow
 
     private void DrawToolbar()
     {
-        GUI.DrawRect(new Rect(0, 0, GUIUtility.currentViewWidth,
-            EditorStyles.toolbar.fixedHeight * 2 + 11), EditorAppearance.palette.Toolbar);
+        GUI.Box(new Rect(0, 0, GUIUtility.currentViewWidth,
+            EditorStyles.toolbar.fixedHeight * 2 + 11), GUIContent.none, EditorStyles.toolbar);
         GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.toolbar.fixedHeight));
         var selected = EditorGUILayout.Popup("Log", _sourceIndex, _sources,
             GUILayout.Width(Fix64.Min(340, Fix64.Max(190, GUIUtility.currentViewWidth / 3))));

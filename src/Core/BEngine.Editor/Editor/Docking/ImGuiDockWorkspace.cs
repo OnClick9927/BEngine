@@ -26,6 +26,8 @@ internal sealed class ImGuiDockWorkspace
     private DockDropPosition _dropPosition;
     private EditorWindow? _hoveredWindow;
     private Vector2? _externalDragPoint;
+    private Rect _workspaceBounds;
+    public bool HostIsInteractive { get; set; } = true;
     public IReadOnlyList<ImGuiDockPanel> Panels => _panels;
     public event Action<ImGuiDockPanel, Vector2>? UndockRequested;
 
@@ -100,6 +102,15 @@ internal sealed class ImGuiDockWorkspace
 
     public void SetExternalDragPoint(Vector2? point) => _externalDragPoint = point;
 
+    internal void CancelInteractions()
+    {
+        _pressedTab = null;
+        _dragging = null;
+        _dropTarget = null;
+        _externalDragPoint = null;
+        _hoveredWindow = null;
+    }
+
     public EditorDockNodeDocument? CaptureLayout() => CaptureNode(_root);
 
     public IReadOnlyDictionary<EditorWindow, ImGuiDockPanel> RestoreLayout(
@@ -165,13 +176,17 @@ internal sealed class ImGuiDockWorkspace
 
     public void OnGUI(Rect rect)
     {
+        _workspaceBounds = rect;
         _hoveredWindow = null;
         if (_root is null) GUI.Box(rect, string.Empty);
         else if (_maximizedGroup is not null) DrawNode(_maximizedGroup, rect);
         else DrawNode(_root, rect);
         DrawDockHint();
         DrawExternalDockHint();
-        EditorWindow.SetMouseOverWindow(_hoveredWindow);
+        if (HostIsInteractive)
+            EditorWindow.SetMouseOverWindow(_hoveredWindow);
+        else if (_panels.Any(panel => ReferenceEquals(panel.Window, EditorWindow.mouseOverWindow)))
+            EditorWindow.SetMouseOverWindow(null);
     }
 
     private void DrawNode(DockNode node, Rect rect)
@@ -226,7 +241,7 @@ internal sealed class ImGuiDockWorkspace
             evt.Use();
         }
         if (Event.current.type == EventType.Repaint)
-            GUI.DrawRect(separator, EditorAppearance.palette.Border);
+            GUI.Box(separator, GUIContent.none, EditorStyles.separator);
         DrawNode(split.First, firstRect);
         DrawNode(split.Second, secondRect);
         EditorGUIUtility.AddCursorRect(separatorHitRect, split.SideBySide
@@ -241,11 +256,11 @@ internal sealed class ImGuiDockWorkspace
         var selected = panels.FirstOrDefault(item => item.Id == group.SelectedId) ?? panels[0];
         group.SelectedId = selected.Id;
         var sceneSurface = selected.Window.titleContent.text is "Scene" or "Game";
-        if (!sceneSurface) GUI.DrawRect(rect, EditorAppearance.palette.Panel);
+        if (!sceneSurface) GUI.Box(rect, GUIContent.none, GUI.skin.window);
         var titleBarHeight = Fix64.Max(EditorStyles.windowTitle.fixedHeight + 2,
             Fix64.Max(EditorStyles.dockTab.fixedHeight + 2, EditorStyles.toolbarIconButton.fixedHeight + 2));
         var titleBar = new Rect(rect.x, rect.y, rect.width, titleBarHeight);
-        GUI.DrawRect(titleBar, EditorAppearance.palette.TitleBar);
+        GUI.Box(titleBar, GUIContent.none, EditorStyles.windowTitle);
 
         var actionHeight = Fix64.Min(titleBarHeight - 2,
             Fix64.Max(18, EditorStyles.toolbarIconButton.fixedHeight));
@@ -312,8 +327,8 @@ internal sealed class ImGuiDockWorkspace
             if (visibleTab && active && Event.current.type == EventType.Repaint)
                 GUI.DrawRect(new Rect(tab.x, tab.y, tab.width, 2),
                     panel.Window.hasFocus
-                        ? EditorAppearance.palette.Accent
-                        : EditorAppearance.palette.SelectionInactive);
+                        ? EditorStyles.progressBarBar.normal.backgroundColor
+                        : EditorStyles.dockTab.normal.textColor);
             if (visibleTab && Event.current.type == EventType.ContextClick && tab.Contains(pointer))
             {
                 group.SelectedId = panel.Id;
@@ -361,7 +376,7 @@ internal sealed class ImGuiDockWorkspace
         var content = new Rect(rect.x + 2, rect.y + titleBarHeight, Fix64.Max(1, rect.width - 4),
             Fix64.Max(1, rect.height - titleBarHeight - 2));
         selected.Window.position = content;
-        if (content.Contains(pointer)) _hoveredWindow = selected.Window;
+        if (HostIsInteractive && content.Contains(pointer)) _hoveredWindow = selected.Window;
         if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && content.Contains(pointer))
             selected.Window.FocusInternal();
         if (ShouldDispatch(selected.Window, content, pointer))
@@ -479,15 +494,18 @@ internal sealed class ImGuiDockWorkspace
         var point = Event.current.mousePosition;
         if (!TryGetDrop(point, out var target, out var position, out var preview))
         {
-            if (Event.current.rawType == EventType.MouseUp)
+            var outsideWorkspace = !_workspaceBounds.Contains(point);
+            if (outsideWorkspace && Event.current.rawType is EventType.MouseDrag or EventType.MouseUp)
             {
                 var panel = _dragging;
-                _dragging = null;
-                _pressedTab = null;
-                _dropTarget = null;
-                GUIUtility.hotControl = 0;
-                Event.current.Use();
+                ClearTabDrag();
+                if (Event.current.type != EventType.Used) Event.current.Use();
                 EditorCallbackDispatcher.Invoke(UndockRequested, panel, point, nameof(UndockRequested));
+            }
+            else if (Event.current.rawType == EventType.MouseUp)
+            {
+                ClearTabDrag();
+                if (Event.current.type != EventType.Used) Event.current.Use();
             }
             return;
         }
@@ -497,12 +515,17 @@ internal sealed class ImGuiDockWorkspace
         if (Event.current.rawType == EventType.MouseUp)
         {
             PerformDrop(_dragging, _dropTarget, _dropPosition);
-            _dragging = null;
-            _pressedTab = null;
-            _dropTarget = null;
-            GUIUtility.hotControl = 0;
-            Event.current.Use();
+            ClearTabDrag();
+            if (Event.current.type != EventType.Used) Event.current.Use();
         }
+    }
+
+    private void ClearTabDrag()
+    {
+        _dragging = null;
+        _pressedTab = null;
+        _dropTarget = null;
+        GUIUtility.hotControl = 0;
     }
 
     private void DrawExternalDockHint()
@@ -514,7 +537,7 @@ internal sealed class ImGuiDockWorkspace
 
     private static void DrawDockPreview(Rect preview)
     {
-        var accent = EditorAppearance.palette.Accent;
+        var accent = EditorStyles.selectionRect.normal.backgroundColor;
         GUI.DrawRect(preview, new Color(accent.r, accent.g, accent.b, Fix64.FromDecimal(0.22m)));
         DrawBorder(preview, 2, accent);
     }
@@ -591,6 +614,9 @@ internal sealed class ImGuiDockWorkspace
         };
         return true;
     }
+
+    internal bool CanDockAt(Vector2 point) => _workspaceBounds.Contains(point) &&
+                                               TryGetDrop(point, out _, out _, out _);
 
     private static EditorDockNodeDocument? CaptureNode(DockNode? node)
     {
@@ -699,7 +725,7 @@ internal sealed class ImGuiDockWorkspace
     }
 
     private static void DrawBorder(Rect rect, Fix64 width)
-        => DrawBorder(rect, width, EditorAppearance.palette.Border);
+        => DrawBorder(rect, width, EditorStyles.separator.normal.backgroundColor);
 
     private static void DrawBorder(Rect rect, Fix64 width, Color color)
     {

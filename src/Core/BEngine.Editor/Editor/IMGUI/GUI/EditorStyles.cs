@@ -19,14 +19,15 @@ public static class EditorStyles
     public static GUIStyle whiteBoldLabel => GUI.skin.whiteBoldLabel;
     public static GUIStyle radioButton => GUI.skin.radioButton;
     public static GUIStyle textField => GUI.skin.textField;
-    internal static GUIStyle boldTextField => GUI.skin.boldTextField;
+    public static GUIStyle boldTextField => GUI.skin.boldTextField;
     public static GUIStyle textArea => GUI.skin.textArea;
     public static GUIStyle miniTextField => GUI.skin.miniTextField;
     public static GUIStyle numberField => GUI.skin.numberField;
     public static GUIStyle popup => GUI.skin.popup;
+    [Obsolete("Use EditorStyles.label instead.")]
     public static GUIStyle structHeadingLabel => GUI.skin.label;
     public static GUIStyle objectField => GUI.skin.objectField;
-    internal static GUIStyle objectFieldButton => GUI.skin.objectFieldButton;
+    public static GUIStyle objectFieldButton => GUI.skin.objectFieldButton;
     public static GUIStyle objectFieldThumb => GUI.skin.objectFieldThumb;
     public static GUIStyle objectFieldMiniThumb => GUI.skin.objectFieldMiniThumb;
     public static GUIStyle dropDownButton => GUI.skin.dropDownButton;
@@ -34,40 +35,40 @@ public static class EditorStyles
     public static GUIStyle layerMaskField => GUI.skin.layerMaskField;
     public static GUIStyle colorPickerSwatch => GUI.skin.colorPickerSwatch;
     public static GUIStyle toggle => GUI.skin.toggle;
-    internal static GUIStyle toggleMixed => GUI.skin.toggleMixed;
+    public static GUIStyle toggleMixed => GUI.skin.toggleMixed;
     public static GUIStyle helpBox => GUI.skin.helpBox;
     public static GUIStyle toolbar => GUI.skin.toolbar;
-    internal static GUIStyle contentToolbar => GUI.skin.contentToolbar;
+    public static GUIStyle contentToolbar => GUI.skin.contentToolbar;
     public static GUIStyle toolbarButton => GUI.skin.toolbarButton;
-    internal static GUIStyle toolbarButtonLeft => GUI.skin.toolbarButtonLeft;
-    internal static GUIStyle toolbarButtonRight => GUI.skin.toolbarButtonRight;
+    public static GUIStyle toolbarButtonLeft => GUI.skin.toolbarButtonLeft;
+    public static GUIStyle toolbarButtonRight => GUI.skin.toolbarButtonRight;
     public static GUIStyle toolbarPopup => GUI.skin.toolbarPopup;
-    internal static GUIStyle toolbarPopupLeft => GUI.skin.toolbarPopupLeft;
-    internal static GUIStyle toolbarPopupRight => GUI.skin.toolbarPopupRight;
-    internal static GUIStyle toolbarDropDownLeft => GUI.skin.toolbarDropDownLeft;
+    public static GUIStyle toolbarPopupLeft => GUI.skin.toolbarPopupLeft;
+    public static GUIStyle toolbarPopupRight => GUI.skin.toolbarPopupRight;
+    public static GUIStyle toolbarDropDownLeft => GUI.skin.toolbarDropDownLeft;
     public static GUIStyle toolbarDropDown => GUI.skin.toolbarDropDown;
-    internal static GUIStyle toolbarDropDownRight => GUI.skin.toolbarDropDownRight;
-    internal static GUIStyle toolbarDropDownToggle => GUI.skin.toolbarDropDownToggle;
-    internal static GUIStyle toolbarDropDownToggleButton => GUI.skin.toolbarDropDownToggleButton;
-    internal static GUIStyle toolbarDropDownToggleRight => GUI.skin.toolbarDropDownToggleRight;
-    internal static GUIStyle toolbarCreateAddNewDropDown => GUI.skin.toolbarCreateAddNewDropDown;
+    public static GUIStyle toolbarDropDownRight => GUI.skin.toolbarDropDownRight;
+    public static GUIStyle toolbarDropDownToggle => GUI.skin.toolbarDropDownToggle;
+    public static GUIStyle toolbarDropDownToggleButton => GUI.skin.toolbarDropDownToggleButton;
+    public static GUIStyle toolbarDropDownToggleRight => GUI.skin.toolbarDropDownToggleRight;
+    public static GUIStyle toolbarCreateAddNewDropDown => GUI.skin.toolbarCreateAddNewDropDown;
     public static GUIStyle toolbarTextField => GUI.skin.toolbarTextField;
-    internal static GUIStyle toolbarLabel => GUI.skin.toolbarLabel;
+    public static GUIStyle toolbarLabel => GUI.skin.toolbarLabel;
     public static GUIStyle toolbarIconButton => GUI.skin.toolbarIconButton;
     public static GUIStyle toolbarIconButtonSelected => GUI.skin.toolbarIconButtonSelected;
     public static GUIStyle toolbarSearchField => GUI.skin.toolbarSearchField;
-    internal static GUIStyle toolbarSearchFieldPopup => GUI.skin.toolbarSearchFieldPopup;
-    internal static GUIStyle toolbarSearchFieldWithJumpSynced => GUI.skin.toolbarSearchFieldWithJumpSynced;
-    internal static GUIStyle toolbarSearchFieldWithJumpPopupSynced =>
+    public static GUIStyle toolbarSearchFieldPopup => GUI.skin.toolbarSearchFieldPopup;
+    public static GUIStyle toolbarSearchFieldWithJumpSynced => GUI.skin.toolbarSearchFieldWithJumpSynced;
+    public static GUIStyle toolbarSearchFieldWithJumpPopupSynced =>
         GUI.skin.toolbarSearchFieldWithJumpPopupSynced;
-    internal static GUIStyle toolbarSearchFieldWithJump => GUI.skin.toolbarSearchFieldWithJump;
-    internal static GUIStyle toolbarSearchFieldWithJumpPopup => GUI.skin.toolbarSearchFieldWithJumpPopup;
-    internal static GUIStyle toolbarSearchFieldJumpButton => GUI.skin.toolbarSearchFieldJumpButton;
-    internal static GUIStyle toolbarSearchFieldCancelButton => GUI.skin.toolbarSearchFieldCancelButton;
-    internal static GUIStyle toolbarSearchFieldCancelButtonEmpty => GUI.skin.toolbarSearchFieldCancelButtonEmpty;
-    internal static GUIStyle toolbarSearchFieldCancelButtonWithJump =>
+    public static GUIStyle toolbarSearchFieldWithJump => GUI.skin.toolbarSearchFieldWithJump;
+    public static GUIStyle toolbarSearchFieldWithJumpPopup => GUI.skin.toolbarSearchFieldWithJumpPopup;
+    public static GUIStyle toolbarSearchFieldJumpButton => GUI.skin.toolbarSearchFieldJumpButton;
+    public static GUIStyle toolbarSearchFieldCancelButton => GUI.skin.toolbarSearchFieldCancelButton;
+    public static GUIStyle toolbarSearchFieldCancelButtonEmpty => GUI.skin.toolbarSearchFieldCancelButtonEmpty;
+    public static GUIStyle toolbarSearchFieldCancelButtonWithJump =>
         GUI.skin.toolbarSearchFieldCancelButtonWithJump;
-    internal static GUIStyle toolbarSearchFieldCancelButtonWithJumpEmpty =>
+    public static GUIStyle toolbarSearchFieldCancelButtonWithJumpEmpty =>
         GUI.skin.toolbarSearchFieldCancelButtonWithJumpEmpty;
     public static GUIStyle dockTab => GUI.skin.dockTab;
     public static GUIStyle dockTabActive => GUI.skin.dockTabActive;
@@ -90,47 +91,47 @@ public static class EditorStyles
     public static GUIStyle hierarchyAction => GUI.skin.hierarchyAction;
     public static GUIStyle statusBar => GUI.skin.statusBar;
     public static GUIStyle foldout => GUI.skin.foldout;
-    internal static GUIStyle titlebarFoldout => GUI.skin.titlebarFoldout;
+    public static GUIStyle titlebarFoldout => GUI.skin.titlebarFoldout;
     public static GUIStyle foldoutPreDrop => GUI.skin.foldoutPreDrop;
     public static GUIStyle foldoutHeader => GUI.skin.foldoutHeader;
     public static GUIStyle foldoutHeaderIcon => GUI.skin.foldoutHeaderIcon;
-    internal static GUIStyle optionsButtonStyle => GUI.skin.optionsButtonStyle;
+    public static GUIStyle optionsButtonStyle => GUI.skin.optionsButtonStyle;
     public static GUIStyle toggleGroup => GUI.skin.toggleGroup;
-    internal static GUIStyle textFieldDropDown => GUI.skin.textFieldDropDown;
-    internal static GUIStyle textFieldDropDownText => GUI.skin.textFieldDropDownText;
-    internal static GUIStyle overrideMargin => GUI.skin.overrideMargin;
+    public static GUIStyle textFieldDropDown => GUI.skin.textFieldDropDown;
+    public static GUIStyle textFieldDropDownText => GUI.skin.textFieldDropDownText;
+    public static GUIStyle overrideMargin => GUI.skin.overrideMargin;
     public static GUIStyle linkLabel => GUI.skin.linkLabel;
     public static GUIStyle inspectorDefaultMargins => GUI.skin.inspectorDefaultMargins;
-    internal static GUIStyle inspectorHorizontalDefaultMargins => GUI.skin.inspectorHorizontalDefaultMargins;
+    public static GUIStyle inspectorHorizontalDefaultMargins => GUI.skin.inspectorHorizontalDefaultMargins;
     public static GUIStyle inspectorFullWidthMargins => GUI.skin.inspectorFullWidthMargins;
-    internal static GUIStyle defaultContentMargins => GUI.skin.defaultContentMargins;
-    internal static GUIStyle frameBox => GUI.skin.frameBox;
-    internal static GUIStyle colorPickerBox => GUI.skin.colorPickerBox;
-    internal static GUIStyle viewBackground => GUI.skin.viewBackground;
-    internal static GUIStyle inspectorBig => GUI.skin.inspectorBig;
-    internal static GUIStyle inspectorTitlebarFlat => GUI.skin.inspectorTitlebarFlat;
-    internal static GUIStyle inspectorTitlebarText => GUI.skin.inspectorTitlebarText;
-    internal static GUIStyle foldoutSelected => GUI.skin.foldoutSelected;
+    public static GUIStyle defaultContentMargins => GUI.skin.defaultContentMargins;
+    public static GUIStyle frameBox => GUI.skin.frameBox;
+    public static GUIStyle colorPickerBox => GUI.skin.colorPickerBox;
+    public static GUIStyle viewBackground => GUI.skin.viewBackground;
+    public static GUIStyle inspectorBig => GUI.skin.inspectorBig;
+    public static GUIStyle inspectorTitlebarFlat => GUI.skin.inspectorTitlebarFlat;
+    public static GUIStyle inspectorTitlebarText => GUI.skin.inspectorTitlebarText;
+    public static GUIStyle foldoutSelected => GUI.skin.foldoutSelected;
     public static GUIStyle iconButton => GUI.skin.iconButton;
-    internal static GUIStyle tooltip => GUI.skin.tooltip;
-    internal static GUIStyle notificationText => GUI.skin.notificationText;
-    internal static GUIStyle notificationBackground => GUI.skin.notificationBackground;
-    internal static GUIStyle assetLabel => GUI.skin.assetLabel;
-    internal static GUIStyle assetLabelPartial => GUI.skin.assetLabelPartial;
-    internal static GUIStyle assetLabelIcon => GUI.skin.assetLabelIcon;
-    internal static GUIStyle searchField => GUI.skin.searchField;
-    internal static GUIStyle searchFieldCancelButton => GUI.skin.searchFieldCancelButton;
-    internal static GUIStyle searchFieldCancelButtonEmpty => GUI.skin.searchFieldCancelButtonEmpty;
+    public static GUIStyle tooltip => GUI.skin.tooltip;
+    public static GUIStyle notificationText => GUI.skin.notificationText;
+    public static GUIStyle notificationBackground => GUI.skin.notificationBackground;
+    public static GUIStyle assetLabel => GUI.skin.assetLabel;
+    public static GUIStyle assetLabelPartial => GUI.skin.assetLabelPartial;
+    public static GUIStyle assetLabelIcon => GUI.skin.assetLabelIcon;
+    public static GUIStyle searchField => GUI.skin.searchField;
+    public static GUIStyle searchFieldCancelButton => GUI.skin.searchFieldCancelButton;
+    public static GUIStyle searchFieldCancelButtonEmpty => GUI.skin.searchFieldCancelButtonEmpty;
     public static GUIStyle selectionRect => GUI.skin.selectionRect;
-    internal static GUIStyle toolbarSlider => GUI.skin.toolbarSlider;
-    internal static GUIStyle minMaxHorizontalSliderThumb => GUI.skin.minMaxHorizontalSliderThumb;
-    internal static GUIStyle dropDownList => GUI.skin.dropDownList;
-    internal static GUIStyle dropDownToggleButton => GUI.skin.dropDownToggleButton;
-    internal static GUIStyle minMaxStateDropdown => GUI.skin.minMaxStateDropdown;
-    internal static GUIStyle progressBarBack => GUI.skin.progressBarBack;
-    internal static GUIStyle progressBarBar => GUI.skin.progressBarBar;
-    internal static GUIStyle progressBarText => GUI.skin.progressBarText;
-    internal static GUIStyle scrollViewAlt => GUI.skin.scrollViewAlt;
+    public static GUIStyle toolbarSlider => GUI.skin.toolbarSlider;
+    public static GUIStyle minMaxHorizontalSliderThumb => GUI.skin.minMaxHorizontalSliderThumb;
+    public static GUIStyle dropDownList => GUI.skin.dropDownList;
+    public static GUIStyle dropDownToggleButton => GUI.skin.dropDownToggleButton;
+    public static GUIStyle minMaxStateDropdown => GUI.skin.minMaxStateDropdown;
+    public static GUIStyle progressBarBack => GUI.skin.progressBarBack;
+    public static GUIStyle progressBarBar => GUI.skin.progressBarBar;
+    public static GUIStyle progressBarText => GUI.skin.progressBarText;
+    public static GUIStyle scrollViewAlt => GUI.skin.scrollViewAlt;
     public static GUIStyle separator => GUI.skin.separator;
 
     internal static void ApplyAppearance(GUISkin skin, EditorThemePalette palette, int fontSize)
@@ -333,7 +334,13 @@ public static class EditorStyles
         CopyStyle(GUI.skin.horizontalSlider, toolbarSlider);
         CopyStyle(GUI.skin.horizontalSliderThumb, minMaxHorizontalSliderThumb);
         CopyStyle(GUI.skin.scrollView, scrollViewAlt);
-        CopyStyle(colorField, progressBarBar);
+        ApplySurface(viewBackground, palette.Panel, palette.Panel, palette.Panel,
+            palette.Panel, palette.Border, palette.FocusBorder, palette.Text, palette.DisabledText);
+        treeViewRowSelected.disabled.backgroundColor = palette.SelectionInactive;
+        selectionRect.disabled.backgroundColor = palette.SelectionInactive;
+        notificationBackground.disabled.backgroundColor = palette.Shadow;
+        ApplySurface(progressBarBar, palette.Accent, palette.Accent, palette.Accent,
+            palette.Accent, Transparent, Transparent, palette.Text, palette.DisabledText, false);
     }
 
     private static void CopyStyle(GUIStyle source, params GUIStyle[] destinations)

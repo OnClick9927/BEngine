@@ -49,7 +49,8 @@ internal sealed class EditorKeyboardHarness : IDisposable
 
         var dock = Create(editorAssembly, "BEngine.Editor.ImGuiDockWorkspace");
         _nativeWindow = Create(editorAssembly, "BEngine.Editor.ImGuiNativeWindow",
-            "Keyboard Commands Test", 900, 640, false);
+            "Keyboard Commands Test", 900, 640, false, true, 320, 200,
+            int.MaxValue, int.MaxValue);
         HierarchyWindow = CreateNested("ImGuiHierarchyWindow", Application);
         ProjectWindow = CreateNested("ImGuiProjectWindow", Application);
         var sceneWindow = CreateNested("ImGuiSceneWindow", Application);

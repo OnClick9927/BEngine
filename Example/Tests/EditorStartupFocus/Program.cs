@@ -26,6 +26,39 @@ internal static class Program
             Require(nativeWindowType.GetEvent("focusChanged", BindingFlags.Instance |
                         BindingFlags.Public | BindingFlags.NonPublic) is not null,
                 "The native GPU editor window does not publish focus lifecycle changes.");
+
+            var canQueryNativeFocusState = nativeWindowType.GetMethod("CanQueryNativeFocusState",
+                BindingFlags.Static | BindingFlags.NonPublic,
+                binder: null, [typeof(bool), typeof(bool), typeof(bool)], modifiers: null) ??
+                throw new InvalidOperationException(
+                    "The native focus guard cannot stop GLFW state queries before initialization.");
+            Require(!CanQueryNativeFocusState(canQueryNativeFocusState, disposed: false,
+                    initialized: false, focused: false),
+                "Layout restoration can query GLFW state before the native window is initialized.");
+            Require(CanQueryNativeFocusState(canQueryNativeFocusState, disposed: false,
+                    initialized: true, focused: false),
+                "A live background editor window cannot query the native focus state.");
+
+            var canInvokeNativeFocus = nativeWindowType.GetMethod("CanInvokeNativeFocus",
+                BindingFlags.Static | BindingFlags.NonPublic,
+                binder: null, [typeof(bool), typeof(bool), typeof(bool), typeof(bool)], modifiers: null) ??
+                throw new InvalidOperationException(
+                    "The native focus guard does not account for initialization, shutdown, and current focus.");
+            Require(!CanInvokeNativeFocus(canInvokeNativeFocus, disposed: true, initialized: true,
+                    closing: false, focused: false),
+                "A disposed editor window can still invoke GLFW focus.");
+            Require(!CanInvokeNativeFocus(canInvokeNativeFocus, disposed: false, initialized: false,
+                    closing: false, focused: false),
+                "Layout restoration can invoke GLFW focus before the native window is initialized.");
+            Require(!CanInvokeNativeFocus(canInvokeNativeFocus, disposed: false, initialized: true,
+                    closing: true, focused: false),
+                "A closing editor window can still invoke GLFW focus.");
+            Require(!CanInvokeNativeFocus(canInvokeNativeFocus, disposed: false, initialized: true,
+                    closing: false, focused: true),
+                "An already focused editor window redundantly invokes GLFW focus.");
+            Require(CanInvokeNativeFocus(canInvokeNativeFocus, disposed: false, initialized: true,
+                    closing: false, focused: false),
+                "A live background editor window cannot request native focus.");
             Require(windowLayerType.GetMethod("Focus", BindingFlags.Instance | BindingFlags.Public) is not null &&
                     windowLayerType.GetProperty("TopModalWindow", BindingFlags.Instance |
                         BindingFlags.Public | BindingFlags.NonPublic) is not null,
@@ -40,7 +73,8 @@ internal static class Program
                 "Launcher does not transfer foreground permission to the Editor process.");
 
             Console.WriteLine(
-                "EDITOR_STARTUP_FOCUS_OK|launcher-permission,first-frame-focus,native-focus-events,modal-focus");
+                "EDITOR_STARTUP_FOCUS_OK|launcher-permission,first-frame-focus,native-focus-events," +
+                "preinitialize-focus-guard,closing-focus-guard,already-focused-guard,modal-focus");
             return 0;
         }
         catch (Exception exception)
@@ -54,4 +88,12 @@ internal static class Program
     {
         if (!condition) throw new InvalidOperationException(message);
     }
+
+    private static bool CanInvokeNativeFocus(MethodInfo method, bool disposed, bool initialized,
+        bool closing, bool focused) =>
+        method.Invoke(null, [disposed, initialized, closing, focused]) is true;
+
+    private static bool CanQueryNativeFocusState(MethodInfo method, bool disposed, bool initialized,
+        bool focused) =>
+        method.Invoke(null, [disposed, initialized, focused]) is true;
 }

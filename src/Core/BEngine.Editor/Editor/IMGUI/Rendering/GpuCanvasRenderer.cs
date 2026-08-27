@@ -279,11 +279,11 @@ public sealed class GpuCanvasRenderer : IDisposable
         var size = requestedSize > 0 ? requestedSize : 14;
         var cell = Math.Max(1f, size / 7f);
         var advance = cell * 6;
-        var x = rect.X + 4;
+        var x = rect.X;
         var y = rect.Y + Math.Max(0, (rect.Height - cell * 7) * 0.5f);
         foreach (var character in text.Replace("\r", string.Empty, StringComparison.Ordinal))
         {
-            if (character == '\n') { x = rect.X + 4; y += cell * 8; continue; }
+            if (character == '\n') { x = rect.X; y += cell * 8; continue; }
             if (x + cell * 5 > rect.Right) break;
             if (character != ' ')
             {
@@ -562,7 +562,7 @@ public sealed class GpuCanvasRenderer : IDisposable
 
     private static int EstimateTextWidth(string text, float fontSize)
     {
-        var em = Math.Max(8, fontSize);
+        var em = Math.Max(1, fontSize);
         var width = 8f;
         foreach (var rune in text.EnumerateRunes())
         {

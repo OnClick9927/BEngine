@@ -1,20 +1,27 @@
-using System.Globalization;
 using BEngine.Editor.Documents;
 
 namespace BEngine.Editor;
 
 public static class EditorAppearance
 {
+    public const float MinimumScale = 0.5f;
+    public const float MaximumScale = 1.8f;
     public static EditorTheme theme { get; private set; } = EditorTheme.Dark;
     public static string fontFamily { get; private set; } = "BEngine Built-in";
     public const int DefaultFontSize = 14;
     public static int fontSize { get; private set; } = DefaultFontSize;
     public static GUISkin activeSkin => GUI.skin;
     public static IReadOnlyList<GUISkin> builtInSkins => BuiltInSkins;
-    public static EditorThemePalette palette => activeSkin.palette;
-    public static bool isDarkTheme => (double)(palette.Window.r * Fix64.FromDecimal(.2126m) +
-        palette.Window.g * Fix64.FromDecimal(.7152m) + palette.Window.b * Fix64.FromDecimal(.0722m)) < .5;
-    public static IReadOnlyList<string> customThemeColorNames => PaletteColorNames;
+    public static bool isDarkTheme
+    {
+        get
+        {
+            var background = activeSkin.window.normal.backgroundColor;
+            return (double)(background.r * Fix64.FromDecimal(.2126m) +
+                            background.g * Fix64.FromDecimal(.7152m) +
+                            background.b * Fix64.FromDecimal(.0722m)) < .5;
+        }
+    }
     public static event Action? appearanceChanged;
 
     private static readonly GUISkin[] BuiltInSkins;
@@ -43,7 +50,10 @@ public static class EditorAppearance
         preferences.EditorFontSize = DefaultFontSize;
         fontSize = DefaultFontSize;
         GUIUtility.fontFamily = fontFamily;
-        GUIUtility.pixelsPerPoint = (Fix64)Math.Clamp(preferences.EditorScale, 0.75f, 2f);
+        preferences.EditorScale = float.IsFinite(preferences.EditorScale)
+            ? Math.Clamp(preferences.EditorScale, MinimumScale, MaximumScale)
+            : 1f;
+        GUIUtility.pixelsPerPoint = (Fix64)preferences.EditorScale;
         SetSkin(ResolvePreferredSkin(preferences), notify: false);
         EditorLocalization.SetLocale(preferences.Locale);
         NotifyAppearanceChanged();
@@ -70,7 +80,8 @@ public static class EditorAppearance
     private static void SetSkin(GUISkin skin, bool notify)
     {
         ArgumentNullException.ThrowIfNull(skin);
-        if (skin.isBuiltIn) ConfigureSkin(skin, skin.palette, fontSize);
+        if (skin.isBuiltIn && Enum.TryParse<EditorTheme>(skin.name, true, out var builtInPreset))
+            ConfigureSkin(skin, GetPresetPalette(builtInPreset), fontSize);
         else skin.Apply();
         GUI.skin = skin;
         theme = skin.isBuiltIn && Enum.TryParse<EditorTheme>(skin.name, true, out var preset)
@@ -99,10 +110,12 @@ public static class EditorAppearance
         {
             try
             {
-                if (BAsset.Load<GUISkin>(token) is { } custom) return custom;
+                if (BAsset.Load<GUISkin>(EditorSkinPreferences.ResolveTokenPath(token)) is { } custom)
+                    return custom;
             }
-            catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException or
-                                              YamlDotNet.Core.YamlException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                                              InvalidDataException or FormatException or ArgumentException or
+                                              NotSupportedException or YamlDotNet.Core.YamlException)
             {
                 Debug.LogWarning($"Could not load GUI skin '{token}': {exception.Message}");
             }
@@ -123,8 +136,10 @@ public static class EditorAppearance
             return builtIn;
         }
 
-        // Preserve an older inline Custom palette until the user saves it as a GUISkin asset.
-        return CreateSkin("Legacy Custom", GetCustomThemePalette(preferences), fontSize, builtIn: false);
+        var legacyFallback = GetBuiltInSkin(EditorTheme.Dark);
+        preferences.EditorSkin = EditorSkinPreferences.GetToken(legacyFallback);
+        preferences.EditorTheme = nameof(EditorTheme.Dark);
+        return legacyFallback;
     }
 
     private static GUISkin GetBuiltInSkin(EditorTheme preset) => BuiltInSkins.First(skin =>
@@ -132,7 +147,7 @@ public static class EditorAppearance
 
     private static GUISkin CreateSkin(string name, EditorThemePalette colors, int size, bool builtIn)
     {
-        var skin = new GUISkin { name = name, palette = colors };
+        var skin = new GUISkin { name = name };
         ConfigureSkin(skin, colors, size);
         if (builtIn) skin.MarkBuiltIn(name);
         return skin;
@@ -141,7 +156,7 @@ public static class EditorAppearance
     private static void ConfigureSkin(GUISkin skin, EditorThemePalette colors, int size)
         => skin.ApplyPaletteDefaults(colors, size);
 
-    public static EditorThemePalette GetPresetPalette(EditorTheme preset) => preset switch
+    internal static EditorThemePalette GetPresetPalette(EditorTheme preset) => preset switch
     {
         EditorTheme.Dark => DarkPalette,
         EditorTheme.Light => LightPalette,
@@ -149,127 +164,6 @@ public static class EditorAppearance
         _ => throw new ArgumentOutOfRangeException(nameof(preset), preset,
             "Only Dark, Light and Classic are built-in presets.")
     };
-
-    public static EditorThemePalette GetCustomThemePalette(EditorPreferencesDocument preferences)
-    {
-        ArgumentNullException.ThrowIfNull(preferences);
-        var colors = preferences.CustomThemeColors ??= new Dictionary<string, string>(StringComparer.Ordinal);
-        var fallback = DarkPalette;
-        return new EditorThemePalette(
-            ReadColor(colors, nameof(EditorThemePalette.Window), fallback.Window),
-            ReadColor(colors, nameof(EditorThemePalette.Panel), fallback.Panel),
-            ReadColor(colors, nameof(EditorThemePalette.Toolbar), fallback.Toolbar),
-            ReadColor(colors, nameof(EditorThemePalette.Field), fallback.Field),
-            ReadColor(colors, nameof(EditorThemePalette.Button), fallback.Button),
-            ReadColor(colors, nameof(EditorThemePalette.Hover), fallback.Hover),
-            ReadColor(colors, nameof(EditorThemePalette.Active), fallback.Active),
-            ReadColor(colors, nameof(EditorThemePalette.Text), fallback.Text),
-            ReadColor(colors, nameof(EditorThemePalette.MutedText), fallback.MutedText),
-            ReadColor(colors, nameof(EditorThemePalette.Accent), fallback.Accent),
-            ReadColor(colors, nameof(EditorThemePalette.Border), fallback.Border),
-            ReadColor(colors, nameof(EditorThemePalette.PanelRaised), fallback.PanelRaised),
-            ReadColor(colors, nameof(EditorThemePalette.TitleBar), fallback.TitleBar),
-            ReadColor(colors, nameof(EditorThemePalette.FieldHover), fallback.FieldHover),
-            ReadColor(colors, nameof(EditorThemePalette.FieldFocused), fallback.FieldFocused),
-            ReadColor(colors, nameof(EditorThemePalette.ButtonHover), fallback.ButtonHover),
-            ReadColor(colors, nameof(EditorThemePalette.ButtonPressed), fallback.ButtonPressed),
-            ReadColor(colors, nameof(EditorThemePalette.DisabledText), fallback.DisabledText),
-            ReadColor(colors, nameof(EditorThemePalette.FocusBorder), fallback.FocusBorder),
-            ReadColor(colors, nameof(EditorThemePalette.Selection), fallback.Selection),
-            ReadColor(colors, nameof(EditorThemePalette.SelectionInactive), fallback.SelectionInactive),
-            ReadColor(colors, nameof(EditorThemePalette.ScrollTrack), fallback.ScrollTrack),
-            ReadColor(colors, nameof(EditorThemePalette.ScrollThumb), fallback.ScrollThumb),
-            ReadColor(colors, nameof(EditorThemePalette.ScrollThumbHover), fallback.ScrollThumbHover),
-            ReadColor(colors, nameof(EditorThemePalette.Shadow), fallback.Shadow));
-    }
-
-    public static void SetCustomThemePreset(EditorPreferencesDocument preferences, EditorTheme preset)
-    {
-        ArgumentNullException.ThrowIfNull(preferences);
-        preferences.CustomThemeColors = EnumeratePalette(GetPresetPalette(preset))
-            .ToDictionary(static item => item.Name, static item => EncodeColor(item.Color),
-                StringComparer.Ordinal);
-        preferences.EditorTheme = nameof(EditorTheme.Custom);
-        preferences.EditorSkin = string.Empty;
-    }
-
-    public static Color GetCustomThemeColor(EditorPreferencesDocument preferences, string name)
-    {
-        ArgumentNullException.ThrowIfNull(preferences);
-        if (!PaletteColorNames.Contains(name, StringComparer.Ordinal))
-            throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown editor theme color.");
-        var paletteValue = GetCustomThemePalette(preferences);
-        return EnumeratePalette(paletteValue).FirstOrDefault(item => item.Name == name).Color;
-    }
-
-    public static void SetCustomThemeColor(EditorPreferencesDocument preferences, string name, Color color)
-    {
-        ArgumentNullException.ThrowIfNull(preferences);
-        if (!PaletteColorNames.Contains(name, StringComparer.Ordinal))
-            throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown editor theme color.");
-        var colors = preferences.CustomThemeColors ??= new Dictionary<string, string>(StringComparer.Ordinal);
-        if (colors.Count == 0)
-            foreach (var item in EnumeratePalette(DarkPalette)) colors[item.Name] = EncodeColor(item.Color);
-        colors[name] = EncodeColor(color);
-        preferences.EditorTheme = nameof(EditorTheme.Custom);
-        preferences.EditorSkin = string.Empty;
-    }
-
-    private static Color ReadColor(IReadOnlyDictionary<string, string> colors, string name, Color fallback) =>
-        colors.TryGetValue(name, out var encoded) && TryDecodeColor(encoded, out var parsed) ? parsed : fallback;
-
-    private static string EncodeColor(Color color)
-    {
-        static byte Byte(Fix64 value) => (byte)Math.Clamp((int)Math.Round((double)value * 255), 0, 255);
-        return string.Create(CultureInfo.InvariantCulture,
-            $"#{Byte(color.r):X2}{Byte(color.g):X2}{Byte(color.b):X2}{Byte(color.a):X2}");
-    }
-
-    private static bool TryDecodeColor(string? encoded, out Color color)
-    {
-        color = default;
-        var value = encoded?.Trim().TrimStart('#') ?? string.Empty;
-        if (value.Length is not (6 or 8) || !value.All(Uri.IsHexDigit)) return false;
-        if (!uint.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var packed))
-            return false;
-        if (value.Length == 6) packed = packed << 8 | 0xFF;
-        color = new Color((Fix64)(((packed >> 24) & 0xFF) / 255f),
-            (Fix64)(((packed >> 16) & 0xFF) / 255f),
-            (Fix64)(((packed >> 8) & 0xFF) / 255f), (Fix64)((packed & 0xFF) / 255f));
-        return true;
-    }
-
-    private static IEnumerable<(string Name, Color Color)> EnumeratePalette(EditorThemePalette value) =>
-    [
-        (nameof(EditorThemePalette.Window), value.Window),
-        (nameof(EditorThemePalette.Panel), value.Panel),
-        (nameof(EditorThemePalette.Toolbar), value.Toolbar),
-        (nameof(EditorThemePalette.Field), value.Field),
-        (nameof(EditorThemePalette.Button), value.Button),
-        (nameof(EditorThemePalette.Hover), value.Hover),
-        (nameof(EditorThemePalette.Active), value.Active),
-        (nameof(EditorThemePalette.Text), value.Text),
-        (nameof(EditorThemePalette.MutedText), value.MutedText),
-        (nameof(EditorThemePalette.Accent), value.Accent),
-        (nameof(EditorThemePalette.Border), value.Border),
-        (nameof(EditorThemePalette.PanelRaised), value.PanelRaised),
-        (nameof(EditorThemePalette.TitleBar), value.TitleBar),
-        (nameof(EditorThemePalette.FieldHover), value.FieldHover),
-        (nameof(EditorThemePalette.FieldFocused), value.FieldFocused),
-        (nameof(EditorThemePalette.ButtonHover), value.ButtonHover),
-        (nameof(EditorThemePalette.ButtonPressed), value.ButtonPressed),
-        (nameof(EditorThemePalette.DisabledText), value.DisabledText),
-        (nameof(EditorThemePalette.FocusBorder), value.FocusBorder),
-        (nameof(EditorThemePalette.Selection), value.Selection),
-        (nameof(EditorThemePalette.SelectionInactive), value.SelectionInactive),
-        (nameof(EditorThemePalette.ScrollTrack), value.ScrollTrack),
-        (nameof(EditorThemePalette.ScrollThumb), value.ScrollThumb),
-        (nameof(EditorThemePalette.ScrollThumbHover), value.ScrollThumbHover),
-        (nameof(EditorThemePalette.Shadow), value.Shadow)
-    ];
-
-    private static readonly string[] PaletteColorNames = EnumeratePalette(DarkPalette)
-        .Select(static item => item.Name).ToArray();
 
     private static Color C(float r, float g, float b, float a = 1) =>
         new((Fix64)r, (Fix64)g, (Fix64)b, (Fix64)a);

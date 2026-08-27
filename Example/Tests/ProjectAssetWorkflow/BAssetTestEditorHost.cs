@@ -45,6 +45,7 @@ internal sealed class TestEditorHost : IEditorHost, IDisposable
     public bool CloseScene(Scene scene, bool removeScene) => true;
     public bool SetActiveScene(Scene scene) => true;
     public void ShowWindow(EditorWindow window) { }
+    public void FocusWindow(EditorWindow window) { }
     public void CloseWindow(EditorWindow window) { }
     public void RepaintWindow(EditorWindow window) { }
     public void RepaintAllWindows() { }

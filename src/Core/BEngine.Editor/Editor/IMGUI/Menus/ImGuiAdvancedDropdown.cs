@@ -215,7 +215,7 @@ internal sealed class ImGuiAdvancedDropdown
     {
         if (Event.current.type == EventType.Repaint)
             GUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1),
-                EditorAppearance.palette.Border);
+                EditorStyles.separator.normal.backgroundColor);
 
         if (_search.Length > 0)
         {
@@ -265,7 +265,7 @@ internal sealed class ImGuiAdvancedDropdown
                 var clicked = GUI.Button(row, GUIContent.none,
                     item.Enabled ? EditorStyles.menuItem : EditorStyles.menuItemDisabled);
                 if (index == _selectedIndex && Event.current.type == EventType.Repaint)
-                    GUI.DrawRect(row, EditorAppearance.palette.Selection);
+                    GUI.DrawRect(row, EditorStyles.selectionRect.normal.backgroundColor);
                 var style = item.Enabled ? EditorStyles.menuItem : EditorStyles.menuItemDisabled;
                 if (item.On)
                     GUI.Label(new Rect(row.x + 5, row.y, 16, row.height),
@@ -438,13 +438,10 @@ internal sealed class ImGuiAdvancedDropdown
     private static void DrawSurface(Rect rect)
     {
         if (Event.current.type != EventType.Repaint) return;
+        var style = EditorStyles.dropDownList;
         GUI.DrawRect(new Rect(rect.x + 3, rect.y + 3, rect.width, rect.height),
-            EditorAppearance.palette.Shadow);
-        GUI.DrawRect(rect, EditorAppearance.palette.PanelRaised);
-        GUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 1), EditorAppearance.palette.Border);
-        GUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1), EditorAppearance.palette.Border);
-        GUI.DrawRect(new Rect(rect.x, rect.y, 1, rect.height), EditorAppearance.palette.Border);
-        GUI.DrawRect(new Rect(rect.xMax - 1, rect.y, 1, rect.height), EditorAppearance.palette.Border);
+            style.disabled.backgroundColor);
+        GUI.Box(rect, GUIContent.none, style);
     }
 
     private static string NormalizePath(string path) => string.Join('/', SplitPath(path));

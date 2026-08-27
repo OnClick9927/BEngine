@@ -17,6 +17,8 @@ internal static class Program
         {
             VerifyEventApi();
             VerifyGpuCommandsAndTextEditing();
+            VerifyScaledTextCaretAndHitTesting();
+            VerifyAlignedTextEditingAtScale();
             VerifyNumericEditingBuffers();
             VerifyNativeMouseMoveClassification();
             VerifyWindowCoordinatesAndScrolling();
@@ -25,7 +27,7 @@ internal static class Program
             VerifyIconToolbarLanguage();
             VerifyPrefabWorkflow();
             VerifyAssemblyBoundary();
-            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,double-click,numeric-edit-buffer,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
+            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,scaled-caret,aligned-text-editing,cjk-hit-testing,double-click,numeric-edit-buffer,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
             return 0;
         }
         catch (Exception exception)
@@ -137,7 +139,8 @@ internal static class Program
     {
         var commands = new List<GpuCanvasCommand>();
         Dispatch(new Event(EventType.Layout), commands, false);
-        var secondBoundary = GUI.skin.textField.CalcSize(new GUIContent("ab")).x;
+        var secondBoundary = GUITextMetrics.MeasureRenderedAdvance("ab", GUI.skin.textField.fontSize,
+            GUIUtility.fontFamily, Fix64.One);
         var click = new Event(EventType.MouseDown)
         {
             mousePosition = new Vector2(4 + 4 + secondBoundary, 12), button = 0, clickCount = 1
@@ -158,6 +161,208 @@ internal static class Program
         }, commands, false);
         Dispatch(new Event(EventType.KeyDown) { character = 'Z' }, commands, false);
         Require(_text == "Z", "Double-click did not select all text before replacement.");
+    }
+
+    private static void VerifyScaledTextCaretAndHitTesting()
+    {
+        const string text = "Wi中文 Scale";
+        const string prefix = "Wi中";
+        const int boundary = 3;
+        var field = new Rect(8, 6, 340, 28);
+        var style = GUI.skin.textField;
+        var previousEditorScale = GUIUtility.pixelsPerPoint;
+        var previousDeviceScale = GUIUtility.devicePixelsPerPoint;
+
+        try
+        {
+            var scaleCases = new[] { .5m, .75m, 1m, 1.25m, 1.5m, 1.8m }
+                .Select(value => (Editor: value, Device: 1m))
+                .Append((Editor: 1.25m, Device: 1.5m));
+            foreach (var scaleCase in scaleCases)
+            {
+                var editorScale = Fix64.FromDecimal(scaleCase.Editor);
+                var deviceScale = Fix64.FromDecimal(scaleCase.Device);
+                var renderScale = editorScale * deviceScale;
+                GUIUtility.pixelsPerPoint = editorScale;
+                GUIUtility.devicePixelsPerPoint = deviceScale;
+                GUIUtility.keyboardControl = 0;
+                GUIUtility.hotControl = 0;
+                var value = text;
+
+                void Draw(Event evt, List<GpuCanvasCommand>? commands = null)
+                {
+                    GUI.BeginFrame(evt, 760, 120, commands ?? []);
+                    try { value = GUI.TextField(field, value, style: style); }
+                    finally { GUI.EndFrame(); }
+                }
+
+                var boundaryOffset = GUITextMetrics.MeasureRenderedAdvance(prefix, style.fontSize,
+                    GUIUtility.fontFamily, renderScale);
+                var logicalPointer = new Vector2(field.x + 4 + boundaryOffset, field.y + field.height / 2);
+                Draw(new Event(EventType.MouseDown)
+                {
+                    mousePosition = logicalPointer * editorScale,
+                    button = 0,
+                    clickCount = 1
+                });
+                Draw(new Event(EventType.KeyDown) { character = '|' });
+                Require(value == text.Insert(boundary, "|"),
+                    $"EditorScale {scaleCase.Editor:0.##} at device scale {scaleCase.Device:0.##} " +
+                    $"placed the ASCII/CJK click at the wrong text boundary: '{value}'.");
+
+                Draw(new Event(EventType.KeyDown) { keyCode = KeyCode.Backspace });
+                var commands = new List<GpuCanvasCommand>();
+                Draw(new Event(EventType.Repaint), commands);
+                var caretColor = GpuCanvasColor.FromColor(style.focused.textColor);
+                var caret = commands.Single(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                                       command.Color == caretColor &&
+                                                       Math.Abs(command.Rect.Width - (float)renderScale) < .02f);
+                var expectedX = (float)((field.x + 4 + boundaryOffset) * renderScale);
+                Require(Math.Abs(caret.Rect.X - expectedX) < .06f,
+                    $"EditorScale {scaleCase.Editor:0.##} at device scale {scaleCase.Device:0.##} " +
+                    "detached the caret from the rendered CJK boundary: " +
+                    $"actual={caret.Rect.X:0.###}, expected={expectedX:0.###}.");
+            }
+        }
+        finally
+        {
+            GUIUtility.keyboardControl = 0;
+            GUIUtility.hotControl = 0;
+            GUIUtility.devicePixelsPerPoint = previousDeviceScale;
+            GUIUtility.pixelsPerPoint = previousEditorScale;
+        }
+    }
+
+    private static void VerifyAlignedTextEditingAtScale()
+    {
+        const string source = "Wi中文 Scale";
+        const int boundary = 3;
+        var field = new Rect(24, 10, 380, 58);
+        var previousEditorScale = GUIUtility.pixelsPerPoint;
+        var previousDeviceScale = GUIUtility.devicePixelsPerPoint;
+        var controls = new[] { "TextField", "TextArea", "PasswordField" };
+        var alignments = new[]
+        {
+            TextAnchor.MiddleLeft,
+            TextAnchor.MiddleCenter,
+            TextAnchor.MiddleRight
+        };
+
+        try
+        {
+            GUIUtility.devicePixelsPerPoint = Fix64.One;
+            foreach (var scaleValue in new[] { .5m, 1m, 1.8m })
+            foreach (var control in controls)
+            foreach (var alignment in alignments)
+            {
+                var editorScale = Fix64.FromDecimal(scaleValue);
+                var renderScale = editorScale;
+                GUIUtility.pixelsPerPoint = editorScale;
+                GUIUtility.keyboardControl = 0;
+                GUIUtility.hotControl = 0;
+                var style = new GUIStyle(control == "TextArea" ? GUI.skin.textArea : GUI.skin.textField)
+                {
+                    alignment = alignment
+                };
+                var value = source;
+                var visible = control == "PasswordField" ? new string('#', source.Length) : source;
+
+                void Draw(Event evt, List<GpuCanvasCommand>? commands = null)
+                {
+                    GUI.BeginFrame(evt, 960, 180, commands ?? []);
+                    try
+                    {
+                        value = control switch
+                        {
+                            "TextArea" => GUI.TextArea(field, value, style: style),
+                            "PasswordField" => GUI.PasswordField(field, value, '#', -1, style),
+                            _ => GUI.TextField(field, value, style: style)
+                        };
+                    }
+                    finally { GUI.EndFrame(); }
+                }
+
+                var initialCommands = new List<GpuCanvasCommand>();
+                Draw(new Event(EventType.Repaint), initialCommands);
+                var textCommand = initialCommands.Single(command =>
+                    command.Type == GpuCanvasCommandType.Text && command.Content == visible);
+                var physicalFontSize = (float)(style.fontSize * renderScale);
+                Require(EditorGpuCanvasResourceResolver.Shared.TryMeasureTextAdvance(
+                        visible, physicalFontSize, GUIUtility.fontFamily, out var fullAdvance),
+                    $"{control} {alignment} could not measure its rendered text.");
+                Require(EditorGpuCanvasResourceResolver.Shared.TryMeasureTextAdvance(
+                        visible[..boundary], physicalFontSize, GUIUtility.fontFamily, out var prefixAdvance),
+                    $"{control} {alignment} could not measure its rendered prefix.");
+                Require(EditorGpuCanvasResourceResolver.Shared.TryMeasureTextAdvance(
+                        visible[..(boundary + 1)], physicalFontSize, GUIUtility.fontFamily, out var nextAdvance),
+                    $"{control} {alignment} could not measure its rendered selection boundary.");
+
+                var contentLeft = (float)((field.x + 4) * renderScale);
+                var contentRight = (float)((field.xMax - 4) * renderScale);
+                var expectedTextX = alignment switch
+                {
+                    TextAnchor.MiddleCenter => (contentLeft + contentRight - fullAdvance) / 2,
+                    TextAnchor.MiddleRight => contentRight - fullAdvance,
+                    _ => contentLeft
+                };
+                Require(Math.Abs(textCommand.Rect.X - expectedTextX) < .08f,
+                    $"{control} {alignment} at EditorScale {scaleValue:0.0} rendered from " +
+                    $"{textCommand.Rect.X:0.###}, expected {expectedTextX:0.###}.");
+
+                Draw(new Event(EventType.MouseDown)
+                {
+                    mousePosition = new Vector2(
+                        (Fix64)(textCommand.Rect.X + prefixAdvance),
+                        (field.y + field.height / 2) * editorScale),
+                    button = 0,
+                    clickCount = 1
+                });
+                Draw(new Event(EventType.KeyDown) { character = '|' });
+                Require(value == source.Insert(boundary, "|"),
+                    $"{control} {alignment} at EditorScale {scaleValue:0.0} clicked the wrong " +
+                    $"ASCII/CJK boundary: '{value}'.");
+
+                Draw(new Event(EventType.KeyDown) { keyCode = KeyCode.Backspace });
+                var caretCommands = new List<GpuCanvasCommand>();
+                Draw(new Event(EventType.Repaint), caretCommands);
+                var focusedText = caretCommands.Single(command =>
+                    command.Type == GpuCanvasCommandType.Text && command.Content == visible);
+                var caretColor = GpuCanvasColor.FromColor(style.focused.textColor);
+                var caret = caretCommands.Single(command =>
+                    command.Type == GpuCanvasCommandType.SolidRect &&
+                    command.Color == caretColor &&
+                    Math.Abs(command.Rect.Width - (float)renderScale) < .02f);
+                var expectedCaretX = focusedText.Rect.X + prefixAdvance;
+                Require(Math.Abs(caret.Rect.X - expectedCaretX) < .08f,
+                    $"{control} {alignment} at EditorScale {scaleValue:0.0} detached its caret " +
+                    $"from rendered text: {caret.Rect.X:0.###} vs {expectedCaretX:0.###}.");
+
+                Draw(new Event(EventType.KeyDown)
+                {
+                    keyCode = KeyCode.RightArrow,
+                    modifiers = EventModifiers.Shift
+                });
+                var selectionCommands = new List<GpuCanvasCommand>();
+                Draw(new Event(EventType.Repaint), selectionCommands);
+                var selectedText = selectionCommands.First(command =>
+                    command.Type == GpuCanvasCommandType.Text && command.Content == visible);
+                var selectionColor = GpuCanvasColor.FromColor(
+                    EditorStyles.selectionRect.normal.backgroundColor);
+                var selection = selectionCommands.Single(command =>
+                    command.Type == GpuCanvasCommandType.SolidRect && command.Color == selectionColor);
+                Require(Math.Abs(selection.Rect.X - (selectedText.Rect.X + prefixAdvance)) < .08f &&
+                        Math.Abs(selection.Rect.Width - (nextAdvance - prefixAdvance)) < .08f,
+                    $"{control} {alignment} at EditorScale {scaleValue:0.0} detached its selection " +
+                    "from the rendered glyph boundaries.");
+            }
+        }
+        finally
+        {
+            GUIUtility.keyboardControl = 0;
+            GUIUtility.hotControl = 0;
+            GUIUtility.devicePixelsPerPoint = previousDeviceScale;
+            GUIUtility.pixelsPerPoint = previousEditorScale;
+        }
     }
 
     private static void VerifyNumericEditingBuffers()
@@ -399,9 +604,15 @@ internal static class Program
         Require(first.hasFocus && ReferenceEquals(EditorWindow.focusedWindow, first) &&
                 ReferenceEquals(EditorWindow.mouseOverWindow, first),
             "EditorWindow focus or mouse-over compatibility state was not set.");
+        GUIUtility.hotControl = 71;
+        GUIUtility.keyboardControl = 72;
+        GUIUtility.textFieldInput = true;
         second.FocusInternal();
         Require(!first.hasFocus && second.hasFocus && first.LostFocusCount == 1 && second.FocusCount == 1,
             "EditorWindow focus lifecycle leaked between windows.");
+        Require(GUIUtility.hotControl == 0 && GUIUtility.keyboardControl == 0 &&
+                !GUIUtility.textFieldInput,
+            "An unfocused EditorWindow retained mouse capture or text keyboard ownership.");
 
         var dock = new ImGuiDockWorkspace();
         dock.Add("Hierarchy", left, DockArea.Left, true);
@@ -540,7 +751,7 @@ internal static class Program
             "A Project TreeView row clips the bottom of its text command.");
         Require(assets.Rect.Height >= 28 && packages.Rect.Height >= 28,
             "A Project TreeView row is shorter than the configured 20px font line height.");
-        var selectionColor = GpuCanvasColor.FromColor(EditorAppearance.palette.Selection);
+        var selectionColor = GpuCanvasColor.FromColor(EditorStyles.treeViewRowSelected.normal.backgroundColor);
         Require(commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                         command.Color == selectionColor &&
                                         command.Rect.Y <= assets.Rect.Y &&

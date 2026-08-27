@@ -17,6 +17,7 @@ public sealed class EditorLayoutDocument : Document
     public float InspectorWidth { get; set; } = 320f;
     public float BottomHeight { get; set; } = 190f;
     public float ProjectFoldersWidth { get; set; } = 240f;
+    public float ProjectPackagesHeight { get; set; }
     public float ProjectThumbnailSize { get; set; } = 64f;
     public string ProjectBrowserMode { get; set; } = "OneColumn";
     public bool ShowHierarchy { get; set; } = true;

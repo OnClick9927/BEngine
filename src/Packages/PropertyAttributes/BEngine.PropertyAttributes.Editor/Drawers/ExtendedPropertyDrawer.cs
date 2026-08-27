@@ -26,7 +26,7 @@ public sealed class ExtendedPropertyDrawer : PropertyDrawer
         var line = new Rect(position.x, position.y, position.width, EditorGUIUtility.singleLineHeight);
         if (attributes.OfType<TitleAttribute>().LastOrDefault() is { } title)
         {
-            GUI.Label(line, new GUIContent(string.IsNullOrWhiteSpace(title.subtitle) ? title.title :
+            EditorGUI.LabelField(line, new GUIContent(string.IsNullOrWhiteSpace(title.subtitle) ? title.title :
                 $"{title.title} - {title.subtitle}"), EditorStyles.boldLabel);
             line = Next(line);
         }
@@ -49,7 +49,8 @@ public sealed class ExtendedPropertyDrawer : PropertyDrawer
         line = Next(line);
         foreach (var button in attributes.OfType<InlineButtonAttribute>())
         {
-            if (GUI.Button(line, button.label)) InvokeAction(property.serializedObject.targetObject,
+            if (GUI.Button(EditorGUI.IndentedRect(line), button.label))
+                InvokeAction(property.serializedObject.targetObject,
                 button.methodName, property.boxedValue);
             line = Next(line);
         }
@@ -81,6 +82,7 @@ public sealed class ExtendedPropertyDrawer : PropertyDrawer
         }
         if (attributes.OfType<ProgressBarAttribute>().LastOrDefault() is { } progress)
         {
+            position = EditorGUI.IndentedRect(position);
             var value = property.floatValue;
             GUI.DrawRect(position, new Color(Fix64.FromDecimal(0.12m), Fix64.FromDecimal(0.12m),
                 Fix64.FromDecimal(0.12m), 1));

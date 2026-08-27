@@ -33,15 +33,16 @@ public sealed class SerializedProperty : IDisposable
         get
         {
             if (_serializedObject.targetObjects.Length < 2) return false;
-            var first = PropertyPath.Resolve(_serializedObject.targetObjects[0], propertyPath).GetValue();
-            for (var index = 1; index < _serializedObject.targetObjects.Length; index++)
-                if (!Equals(first, PropertyPath.Resolve(_serializedObject.targetObjects[index], propertyPath).GetValue()))
+            if (!_serializedObject.TryGetValues(propertyPath, out var values)) return false;
+            var first = values[0];
+            for (var index = 1; index < values.Length; index++)
+                if (!Equals(first, values[index]))
                     return true;
             return false;
         }
     }
-    public bool isArray => boxedValue is IList or Array;
-    public bool hasVisibleChildren => isArray && arraySize > 0;
+    public bool isArray => TryGetBoxedValue(out var value) && value is IList;
+    public bool hasVisibleChildren => _serializedObject.GetVisibleChildren(this).Count > 0;
     public bool isExpanded { get; set; }
     public SerializedPropertyType propertyType => GetPropertyType(valueType);
 
@@ -221,6 +222,12 @@ public sealed class SerializedProperty : IDisposable
     public SerializedProperty Copy() => new(_serializedObject, propertyPath) { isExpanded = isExpanded };
     public void Dispose() { }
 
+    internal IReadOnlyList<SerializedProperty> GetVisibleChildren() =>
+        _serializedObject.GetVisibleChildren(this);
+
+    internal bool TryGetBoxedValue(out object? value) =>
+        _serializedObject.TryGetValue(propertyPath, out value);
+
     private object ConvertNumeric(object value)
     {
         var valueType = PropertyPath.Resolve(_serializedObject.targetObject, propertyPath).ValueType;
@@ -255,12 +262,22 @@ public sealed class SerializedProperty : IDisposable
         _metadata = SerializedMemberMetadata.For(_memberInfo);
         _valueType = accessor.ValueType;
         _editable = accessor.CanWrite;
-        _displayName = _metadata.DisplayName ?? ObjectNames.NicifyVariableName(_name);
+        _displayName = _metadata.DisplayName ?? GetDisplayName(_propertyPath, _name);
         _depth = 0;
-        foreach (var character in _propertyPath) if (character == '.') _depth++;
+        foreach (var character in _propertyPath)
+            if (character is '.' or '[') _depth++;
     }
 
     internal PropertyAttribute[] GetPropertyAttributes() => _metadata.PropertyAttributes;
+
+    private static string GetDisplayName(string path, string fallback)
+    {
+        var bracket = path.LastIndexOf('[');
+        if (bracket < 0 || !path.EndsWith(']')) return ObjectNames.NicifyVariableName(fallback);
+        return int.TryParse(path.AsSpan(bracket + 1, path.Length - bracket - 2), out var index)
+            ? $"Element {index}"
+            : ObjectNames.NicifyVariableName(fallback);
+    }
 
     private static SerializedPropertyType GetPropertyType(Type type)
     {

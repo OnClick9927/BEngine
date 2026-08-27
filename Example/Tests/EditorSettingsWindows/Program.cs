@@ -24,6 +24,8 @@ internal static class Program
             var projectProviders = SettingsProviderRegistry.GetProviders(SettingsScope.Project);
             Require(userProviders.Any(item => item.settingsPath == "Preferences/General"),
                 "Built-in General preferences provider was not discovered.");
+            Require(userProviders.Any(item => item.settingsPath == "Preferences/Theme"),
+                "Built-in Theme preferences provider was not discovered as a separate page.");
             Require(projectProviders.All(item => !item.settingsPath.Equals(
                         "Project/Editor", StringComparison.OrdinalIgnoreCase)),
                 "Project Settings must not expose the removed Editor page; editor preferences belong in Preferences.");
@@ -49,6 +51,9 @@ internal static class Program
             Require(userProviders.All(item => item.scope == SettingsScope.User) &&
                     projectProviders.All(item => item.scope == SettingsScope.Project),
                 "User and project setting scopes were mixed.");
+
+            VerifyDockableSettingsWindows();
+            VerifyEditorScaleRange(testDirectory);
 
             var preferencesPath = Path.Combine(testDirectory, "Preferences.yaml");
             var preferences = new EditorPreferencesDocument
@@ -77,7 +82,7 @@ internal static class Program
                     EditorLocalization.locale == "en-US" && !EditorGUIUtility.isProSkin,
                 "Editor scale, localization, or theme flag was not applied.");
 
-            VerifyCustomThemeAndLegacyFontMigration(testDirectory);
+            VerifyCustomSkinAndLegacyFontMigration(testDirectory);
             EditorAppearance.Apply(restored);
 
             var resolverType = typeof(EditorWindow).Assembly.GetType(
@@ -109,7 +114,8 @@ internal static class Program
 
             VerifyTagLayerDraftAndDocumentRewrites();
             var renderMarkers = SettingsWindowRenderRegressionTests.Run(testDirectory, projectPath);
-            Console.WriteLine("EDITOR_SETTINGS_WINDOWS_OK|reflection,scopes,yaml,appearance,scale,locale," +
+            Console.WriteLine("EDITOR_SETTINGS_WINDOWS_OK|reflection,scopes,yaml,appearance,scale," +
+                              "scale-range,settings-dock-reuse,locale," +
                               "fixed-font,custom-theme-presets,custom-theme-persistence,skin-selection," +
                               $"font-gpu,project,tag-layer-draft,tag-reference-rewrite,{string.Join(',', renderMarkers)}");
             return 0;
@@ -126,83 +132,135 @@ internal static class Program
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private static void VerifyCustomThemeAndLegacyFontMigration(string testDirectory)
+    private static void VerifyDockableSettingsWindows()
     {
-        var themePath = Path.Combine(testDirectory, "CustomThemePreferences.yaml");
-        foreach (var preset in new[] { EditorTheme.Light, EditorTheme.Dark, EditorTheme.Classic })
+        PreferencesWindow? preferences = null;
+        ProjectSettingsWindow? projectSettings = null;
+        try
         {
-            var value = new EditorPreferencesDocument();
-            EditorAppearance.SetCustomThemePreset(value, preset);
-            Require(value.EditorTheme == nameof(EditorTheme.Custom) &&
-                    value.CustomThemeColors.Count == EditorAppearance.customThemeColorNames.Count &&
-                    EditorAppearance.customThemeColorNames.All(value.CustomThemeColors.ContainsKey),
-                $"{preset} did not populate every custom theme color.");
-            value.Save(themePath);
-            var restored = Document.Load<EditorPreferencesDocument>(themePath);
-            Require(restored.CustomThemeColors.Count == value.CustomThemeColors.Count &&
-                    value.CustomThemeColors.All(item =>
-                        restored.CustomThemeColors.TryGetValue(item.Key, out var encoded) && encoded == item.Value),
-                $"{preset} custom theme colors did not round-trip through preferences YAML.");
-            Require(PalettesNear(EditorAppearance.GetPresetPalette(preset),
-                    EditorAppearance.GetCustomThemePalette(restored)),
-                $"{preset} custom theme values do not reproduce their built-in preset.");
+            preferences = PreferencesWindow.Open("Preferences/General");
+            Require(preferences.ConsumeRequestedState() == EditorWindowState.Normal &&
+                    preferences.saveToLayout,
+                "Preferences did not open as a dockable, layout-persistent EditorWindow.");
+            preferences.OpenInternal();
+            var reopenedPreferences = PreferencesWindow.Open("Preferences/Theme");
+            Require(ReferenceEquals(preferences, reopenedPreferences) &&
+                    reopenedPreferences.ConsumeRequestedState() == EditorWindowState.Normal,
+                "Opening Preferences again did not reuse and focus its dockable window.");
+
+            projectSettings = ProjectSettingsWindow.Open("Project/Player");
+            Require(projectSettings.ConsumeRequestedState() == EditorWindowState.Normal &&
+                    projectSettings.saveToLayout,
+                "Project Settings did not open as a dockable, layout-persistent EditorWindow.");
+            projectSettings.OpenInternal();
+            var reopenedProjectSettings = ProjectSettingsWindow.Open("Project/Graphics");
+            Require(ReferenceEquals(projectSettings, reopenedProjectSettings) &&
+                    reopenedProjectSettings.ConsumeRequestedState() == EditorWindowState.Normal,
+                "Opening Project Settings again did not reuse and focus its dockable window.");
+        }
+        finally
+        {
+            projectSettings?.CloseInternal();
+            preferences?.CloseInternal();
+        }
+    }
+
+    private static void VerifyEditorScaleRange(string testDirectory)
+    {
+        Require(Math.Abs(EditorAppearance.MinimumScale - 0.5f) < .001f &&
+                Math.Abs(EditorAppearance.MaximumScale - 1.8f) < .001f,
+            "The public editor scale contract is not 0.5 through 1.8.");
+
+        foreach (var endpoint in new[] { EditorAppearance.MinimumScale, EditorAppearance.MaximumScale })
+        {
+            var path = Path.Combine(testDirectory, $"Scale-{endpoint:0.0}.yaml");
+            new EditorPreferencesDocument { EditorScale = endpoint }.Save(path);
+            var restored = Document.Load<EditorPreferencesDocument>(path);
+            EditorAppearance.Apply(restored);
+            Require(Math.Abs(restored.EditorScale - endpoint) < .001f &&
+                    Math.Abs((double)GUIUtility.pixelsPerPoint - endpoint) < .001,
+                $"Editor scale endpoint {endpoint:0.0} was not accepted and applied exactly.");
         }
 
-        var custom = Document.Load<EditorPreferencesDocument>(themePath);
+        foreach (var invalid in new[] { 0.49f, 1.81f, float.NaN })
+        {
+            try
+            {
+                new EditorPreferencesDocument { EditorScale = invalid }.Save(
+                    Path.Combine(testDirectory, $"InvalidScale-{Guid.NewGuid():N}.yaml"));
+                throw new InvalidOperationException($"Invalid editor scale {invalid} was persisted.");
+            }
+            catch (InvalidDataException)
+            {
+            }
+        }
+
+        var below = new EditorPreferencesDocument { EditorScale = -1 };
+        EditorAppearance.Apply(below);
+        var above = new EditorPreferencesDocument { EditorScale = 5 };
+        EditorAppearance.Apply(above);
+        var nonFinite = new EditorPreferencesDocument { EditorScale = float.NaN };
+        EditorAppearance.Apply(nonFinite);
+        Require(Math.Abs(below.EditorScale - EditorAppearance.MinimumScale) < .001f &&
+                Math.Abs(above.EditorScale - EditorAppearance.MaximumScale) < .001f &&
+                Math.Abs(nonFinite.EditorScale - 1f) < .001f,
+            "Direct appearance application did not normalize out-of-range scale values.");
+    }
+
+    private static void VerifyCustomSkinAndLegacyFontMigration(string testDirectory)
+    {
+        var themePath = Path.Combine(testDirectory, "CustomThemePreferences.yaml");
+        var customSkin = EditorSkinPreferences.CreateSkin(EditorTheme.Light);
+        foreach (var preset in new[] { EditorTheme.Light, EditorTheme.Dark, EditorTheme.Classic })
+        {
+            Require(EditorSkinPreferences.ApplyPreset(customSkin, preset),
+                $"{preset} could not be copied into the custom GUISkin.");
+            var builtIn = EditorAppearance.builtInSkins.Single(skin => skin.name == preset.ToString());
+            Require(customSkin.button.normal.backgroundColor.Equals(builtIn.button.normal.backgroundColor) &&
+                    customSkin.window.normal.backgroundColor.Equals(builtIn.window.normal.backgroundColor) &&
+                    customSkin.textField.focused.borderColor.Equals(builtIn.textField.focused.borderColor),
+                $"{preset} did not copy the complete GUIStyle preset.");
+        }
+
         var accent = new Color((Fix64).11f, (Fix64).42f, (Fix64).73f, Fix64.One);
-        EditorAppearance.SetCustomThemeColor(custom, nameof(EditorThemePalette.Accent), accent);
+        customSkin.selectionRect.normal.backgroundColor = accent;
+        Require(EditorSkinPreferences.SaveSkin(customSkin), "The customized GUISkin could not be saved.");
+        var custom = new EditorPreferencesDocument
+        {
+            EditorTheme = nameof(EditorTheme.Custom),
+            EditorSkin = EditorSkinPreferences.GetToken(customSkin)
+        };
         custom.Save(themePath);
         var customRestored = Document.Load<EditorPreferencesDocument>(themePath);
         EditorAppearance.Apply(customRestored);
         Require(EditorAppearance.theme == EditorTheme.Custom &&
-                ColorNear(EditorAppearance.palette.Accent, accent),
-            "A customized theme color was not persisted and applied.");
+                ColorNear(EditorAppearance.activeSkin.selectionRect.normal.backgroundColor, accent),
+            "A customized GUIStyle state was not persisted and applied.");
 
         var legacyPath = EditorDataPaths.preferencesPath;
         new EditorPreferencesDocument { Locale = "en-US", EditorFontSize = 24 }.Save(legacyPath);
-        EditorPreferences.Initialize();
+        var appearanceChangeCount = 0;
+        void OnAppearanceChanged() => appearanceChangeCount++;
+        EditorAppearance.appearanceChanged += OnAppearanceChanged;
+        try
+        {
+            EditorPreferences.Initialize();
+            EditorPreferences.Initialize();
+        }
+        finally
+        {
+            EditorAppearance.appearanceChanged -= OnAppearanceChanged;
+        }
         Require(EditorPreferences.current.EditorFontSize == EditorAppearance.DefaultFontSize &&
                 EditorAppearance.fontSize == EditorAppearance.DefaultFontSize,
             "A legacy variable font size was not normalized to 14 when preferences loaded.");
+        Require(appearanceChangeCount == 1,
+            "Repeated editor preference initialization reapplied the skin or emitted duplicate appearance changes.");
         EditorPreferences.Save();
         Require(Document.Load<EditorPreferencesDocument>(legacyPath).EditorFontSize ==
                 EditorAppearance.DefaultFontSize,
             "The normalized fixed font size was not persisted back to preferences.");
     }
-
-    private static bool PalettesNear(EditorThemePalette left, EditorThemePalette right) =>
-        EditorAppearance.customThemeColorNames.All(name => ColorNear(
-            PaletteColor(left, name), PaletteColor(right, name)));
-
-    private static Color PaletteColor(EditorThemePalette value, string name) => name switch
-    {
-        nameof(EditorThemePalette.Window) => value.Window,
-        nameof(EditorThemePalette.Panel) => value.Panel,
-        nameof(EditorThemePalette.Toolbar) => value.Toolbar,
-        nameof(EditorThemePalette.Field) => value.Field,
-        nameof(EditorThemePalette.Button) => value.Button,
-        nameof(EditorThemePalette.Hover) => value.Hover,
-        nameof(EditorThemePalette.Active) => value.Active,
-        nameof(EditorThemePalette.Text) => value.Text,
-        nameof(EditorThemePalette.MutedText) => value.MutedText,
-        nameof(EditorThemePalette.Accent) => value.Accent,
-        nameof(EditorThemePalette.Border) => value.Border,
-        nameof(EditorThemePalette.PanelRaised) => value.PanelRaised,
-        nameof(EditorThemePalette.TitleBar) => value.TitleBar,
-        nameof(EditorThemePalette.FieldHover) => value.FieldHover,
-        nameof(EditorThemePalette.FieldFocused) => value.FieldFocused,
-        nameof(EditorThemePalette.ButtonHover) => value.ButtonHover,
-        nameof(EditorThemePalette.ButtonPressed) => value.ButtonPressed,
-        nameof(EditorThemePalette.DisabledText) => value.DisabledText,
-        nameof(EditorThemePalette.FocusBorder) => value.FocusBorder,
-        nameof(EditorThemePalette.Selection) => value.Selection,
-        nameof(EditorThemePalette.SelectionInactive) => value.SelectionInactive,
-        nameof(EditorThemePalette.ScrollTrack) => value.ScrollTrack,
-        nameof(EditorThemePalette.ScrollThumb) => value.ScrollThumb,
-        nameof(EditorThemePalette.ScrollThumbHover) => value.ScrollThumbHover,
-        nameof(EditorThemePalette.Shadow) => value.Shadow,
-        _ => throw new ArgumentOutOfRangeException(nameof(name), name, null)
-    };
 
     private static bool ColorNear(Color left, Color right)
     {

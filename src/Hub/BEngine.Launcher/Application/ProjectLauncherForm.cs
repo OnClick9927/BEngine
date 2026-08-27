@@ -26,6 +26,7 @@ internal sealed class ProjectLauncherForm : Form
     private readonly LauncherProjectService _projectService;
     private LauncherSettingsData _settings = new();
     private IReadOnlyList<LauncherPackageInfo> _packages = [];
+    private bool _launchingEditor;
 
     private readonly Panel _pageHost = new();
     private readonly Panel _projectsPage = new();
@@ -563,17 +564,18 @@ internal sealed class ProjectLauncherForm : Form
         }
     }
 
-    private void BrowseForExistingProject()
+    private async void BrowseForExistingProject()
     {
+        if (_launchingEditor) return;
         using var dialog = CreateFolderDialog("Select a BEngine project folder");
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try
         {
-            LaunchEditor(_projectService.Open(dialog.SelectedPath));
+            await LaunchEditorAsync(_projectService.Open(dialog.SelectedPath));
         }
         catch (Exception exception)
         {
-            SetStatus(exception.Message, true);
+            ShowLaunchFailure(exception.Message);
         }
     }
 
@@ -585,50 +587,114 @@ internal sealed class ProjectLauncherForm : Form
         if (dialog.ShowDialog(this) == DialogResult.OK) _directoryField.Text = dialog.SelectedPath;
     }
 
-    private void CreateProject()
+    private async void CreateProject()
     {
+        if (_launchingEditor) return;
         try
         {
             var workspace = _projectService.Create(
                 _directoryField.Text.Trim(), _nameField.Text.Trim());
-            LaunchEditor(workspace);
+            await LaunchEditorAsync(workspace);
         }
         catch (Exception exception)
         {
             SetCreateStatus(exception.Message, true);
+            ShowLaunchFailure(exception.Message);
         }
     }
 
-    private void OpenSelectedProject()
+    private async void OpenSelectedProject()
     {
+        if (_launchingEditor) return;
         var project = SelectedProject;
         if (project is null) return;
         try
         {
-            LaunchEditor(_projectService.Open(project.Path));
+            await LaunchEditorAsync(_projectService.Open(project.Path));
         }
         catch (Exception exception)
         {
-            SetStatus(exception.Message, true);
+            ShowLaunchFailure(exception.Message);
         }
     }
 
-    private void LaunchEditor(ProjectWorkspace workspace)
+    private async Task LaunchEditorAsync(ProjectWorkspace workspace)
     {
         if (!File.Exists(_editorPath))
             throw new FileNotFoundException("BEngine.Editor.exe was not found. Rebuild src/BEngine.sln.", _editorPath);
 
         _settings = _historyStore.Remember(_settings, workspace.RootPath, workspace.Project.Name);
         RefreshProjectList();
-        var editorProcess = Process.Start(new ProcessStartInfo
+        var startupToken = Guid.NewGuid().ToString("N");
+        var statusPath = BEngine.Editor.EditorDataPaths.GetStartupStatusPath(startupToken);
+        EditorStartupMonitor.TryDeleteStatus(statusPath);
+        using var editorProcess = Process.Start(new ProcessStartInfo
         {
             FileName = _editorPath,
             WorkingDirectory = workspace.RootPath,
             UseShellExecute = true,
-            ArgumentList = { workspace.ProjectFilePath }
+            ArgumentList = { workspace.ProjectFilePath, "--startup-token", startupToken }
         }) ?? throw new InvalidOperationException("BEngine Editor process could not be started.");
+        _launchingEditor = true;
+        SetStatus($"Starting '{workspace.Project.Name}'...", false);
         AllowSetForegroundWindow(editorProcess.Id);
-        Close();
+        Hide();
+        try
+        {
+            var outcome = await EditorStartupMonitor.WaitAsync(editorProcess, statusPath);
+            if (outcome.IsReady)
+            {
+                Close();
+                return;
+            }
+
+            var logPath = outcome.LogPath ?? WriteStartupFailureLog(workspace, editorProcess, outcome);
+            ShowLaunchFailure(outcome.Message, logPath);
+        }
+        finally
+        {
+            EditorStartupMonitor.TryDeleteStatus(statusPath);
+            _launchingEditor = false;
+        }
+    }
+
+    private string? WriteStartupFailureLog(
+        ProjectWorkspace workspace,
+        Process editorProcess,
+        EditorStartupOutcome outcome)
+    {
+        try
+        {
+            var logPath = Path.Combine(BEngine.Editor.EditorDataPaths.logsPath, "EditorStartup.log");
+            var processId = 0;
+            try { processId = editorProcess.Id; }
+            catch (InvalidOperationException) { }
+            File.AppendAllText(logPath,
+                $"[{DateTimeOffset.Now:O}] {outcome.Kind}: {outcome.Message}{Environment.NewLine}" +
+                $"Project: {workspace.ProjectFilePath}{Environment.NewLine}" +
+                $"Editor: {_editorPath}{Environment.NewLine}" +
+                $"Process: {processId}{Environment.NewLine}{Environment.NewLine}");
+            return logPath;
+        }
+        catch (Exception exception)
+        {
+            Trace.WriteLine($"Editor startup failure could not be logged: {exception}");
+            return null;
+        }
+    }
+
+    private void ShowLaunchFailure(string message, string? logPath = null)
+    {
+        if (IsDisposed) return;
+        if (!Visible) Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
+        BringToFront();
+        SetStatus(message, true);
+        var details = $"BEngine Editor failed to start.{Environment.NewLine}{Environment.NewLine}{message}";
+        if (!string.IsNullOrWhiteSpace(logPath))
+            details += $"{Environment.NewLine}{Environment.NewLine}Log:{Environment.NewLine}{logPath}";
+        MessageBox.Show(this, details, "BEngine", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     private void RemoveSelectedProject()

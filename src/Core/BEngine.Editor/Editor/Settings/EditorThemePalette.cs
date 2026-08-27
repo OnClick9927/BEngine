@@ -1,6 +1,6 @@
 namespace BEngine.Editor;
 
-public readonly record struct EditorThemePalette(
+internal readonly record struct EditorThemePalette(
     Color Window,
     Color Panel,
     Color Toolbar,

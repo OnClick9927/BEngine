@@ -77,10 +77,10 @@ internal sealed class ImGuiPopupMenu
         _visibleRects.Add(menuRect);
         if (Event.current.type == EventType.Repaint)
         {
+            var surfaceStyle = EditorStyles.dropDownList;
             GUI.DrawRect(new Rect(menuRect.x + 3, menuRect.y + 3, menuRect.width, menuRect.height),
-                EditorAppearance.palette.Shadow);
-            GUI.DrawRect(menuRect, EditorAppearance.palette.PanelRaised);
-            DrawBorder(menuRect, EditorAppearance.palette.Border);
+                surfaceStyle.disabled.backgroundColor);
+            GUI.Box(menuRect, GUIContent.none, surfaceStyle);
         }
 
         var cursorY = menuRect.y + 3;
@@ -91,7 +91,7 @@ internal sealed class ImGuiPopupMenu
             if (node.Separator)
             {
                 GUI.DrawRect(new Rect(menuRect.x + 5, cursorY + separatorHeight / 2,
-                    menuRect.width - 10, 1), EditorAppearance.palette.Border);
+                    menuRect.width - 10, 1), EditorStyles.separator.normal.backgroundColor);
                 cursorY += separatorHeight;
                 continue;
             }
@@ -143,14 +143,6 @@ internal sealed class ImGuiPopupMenu
 
         if (child is not null)
             DrawLevel(child.Children, new Vector2(menuRect.xMax - 1, childRow.y), depth + 1, menuRect);
-    }
-
-    private static void DrawBorder(Rect rect, Color color)
-    {
-        GUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 1), color);
-        GUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1), color);
-        GUI.DrawRect(new Rect(rect.x, rect.y, 1, rect.height), color);
-        GUI.DrawRect(new Rect(rect.xMax - 1, rect.y, 1, rect.height), color);
     }
 
     private void OpenSubmenu(int depth, PopupNode node)

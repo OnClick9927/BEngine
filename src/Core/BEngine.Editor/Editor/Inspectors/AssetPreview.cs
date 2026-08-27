@@ -224,8 +224,8 @@ public static class AssetPreview
 
         var fitted = DrawImage(area, image.Value);
         if (atlas.Width <= 0 || atlas.Height <= 0) return;
-        var outline = new Color(EditorAppearance.palette.Accent.r, EditorAppearance.palette.Accent.g,
-            EditorAppearance.palette.Accent.b, Fix64.FromDecimal(0.72m));
+        var selection = EditorStyles.selectionRect.normal.backgroundColor;
+        var outline = new Color(selection.r, selection.g, selection.b, Fix64.FromDecimal(0.72m));
         foreach (var sprite in atlas.Sprites.Take(128))
         {
             var spriteRect = new Rect(
@@ -253,7 +253,7 @@ public static class AssetPreview
             fitted.y + fitted.height * region.Y / atlas.Height,
             fitted.width * region.Width / atlas.Width,
             fitted.height * region.Height / atlas.Height);
-        DrawBorder(regionRect, EditorAppearance.palette.Accent);
+        DrawBorder(regionRect, EditorStyles.selectionRect.normal.backgroundColor);
     }
 
     private static Rect DrawImage(Rect area, AssetPreviewImage image)
@@ -262,7 +262,7 @@ public static class AssetPreview
         var fitted = Fit(inner, image.Width, image.Height);
         DrawCheckerboard(fitted);
         GUI.DrawTexture(fitted, image.Source);
-        DrawBorder(fitted, EditorAppearance.palette.Border);
+        DrawBorder(fitted, StyleBorder(EditorStyles.frameBox));
         return fitted;
     }
 
@@ -274,7 +274,7 @@ public static class AssetPreview
             inner.width * Fix64.FromDecimal(0.76m), inner.height * Fix64.FromDecimal(0.66m));
         DrawCheckerboard(swatch);
         GUI.DrawRect(swatch, material.color);
-        DrawBorder(swatch, EditorAppearance.palette.Border);
+        DrawBorder(swatch, StyleBorder(EditorStyles.colorPickerBox));
         var label = new Rect(inner.x, swatch.yMax + 4, inner.width,
             Fix64.Max(0, inner.yMax - swatch.yMax - 4));
         GUI.Label(label, material.shader.shaderName, EditorStyles.centeredMiniLabel);
@@ -282,8 +282,10 @@ public static class AssetPreview
 
     private static void DrawShader(Shader shader, Rect area)
     {
-        var palette = EditorAppearance.palette;
-        GUI.DrawGradientRect(area, palette.Panel, palette.Accent, palette.PanelRaised, palette.Active);
+        var background = EditorStyles.viewBackground;
+        var selection = EditorStyles.selectionRect;
+        GUI.DrawGradientRect(area, background.normal.backgroundColor, selection.normal.backgroundColor,
+            background.hover.backgroundColor, selection.active.backgroundColor);
         DrawCenteredIcon(area, EditorBuiltinIcons.Assets.Shader, shader.shaderName);
     }
 
@@ -291,9 +293,9 @@ public static class AssetPreview
     {
         var headerHeight = Fix64.Min(28, area.height / 4);
         var header = new Rect(area.x, area.y, area.width, headerHeight);
-        GUI.DrawGradientRect(header, EditorAppearance.palette.PanelRaised,
-            EditorAppearance.palette.Active, EditorAppearance.palette.PanelRaised,
-            EditorAppearance.palette.PanelRaised);
+        var titlebar = EditorStyles.inspectorTitlebar;
+        GUI.DrawGradientRect(header, titlebar.normal.backgroundColor, titlebar.active.backgroundColor,
+            titlebar.hover.backgroundColor, titlebar.focused.backgroundColor);
         GUI.Label(Inset(header, 4), new GUIContent("Shader source", EditorBuiltinIcons.Assets.Shader),
             EditorStyles.boldLabel);
         DrawText(text, new Rect(area.x, header.yMax, area.width, Fix64.Max(0, area.yMax - header.yMax)));
@@ -301,8 +303,7 @@ public static class AssetPreview
 
     private static void DrawText(string text, Rect area)
     {
-        GUI.DrawRect(area, EditorAppearance.palette.Field);
-        DrawBorder(area, EditorAppearance.palette.Border);
+        GUI.Box(area, GUIContent.none, EditorStyles.textArea);
         var inner = Inset(area, 5);
         var lineHeight = Fix64.Max(16, EditorStyles.miniLabel.fontSize + 5);
         var visibleLines = Math.Max(1, (int)(inner.height / lineHeight));
@@ -311,9 +312,7 @@ public static class AssetPreview
         {
             var lineRect = new Rect(inner.x, inner.y + lineHeight * index, inner.width, lineHeight);
             if ((index & 1) != 0)
-                GUI.DrawRect(lineRect, new Color(EditorAppearance.palette.PanelRaised.r,
-                    EditorAppearance.palette.PanelRaised.g, EditorAppearance.palette.PanelRaised.b,
-                    Fix64.FromDecimal(0.36m)));
+                GUI.DrawRect(lineRect, EditorStyles.scrollViewAlt.normal.backgroundColor);
             var line = Sanitize(lines[index]);
             GUI.Label(lineRect, $"{index + 1,3}  {line}", EditorStyles.miniLabel);
         }
@@ -321,8 +320,7 @@ public static class AssetPreview
 
     private static void DrawIconSummary(Rect area, string icon, string title, string detail)
     {
-        GUI.DrawRect(area, EditorAppearance.palette.Panel);
-        DrawBorder(area, EditorAppearance.palette.Border);
+        GUI.Box(area, GUIContent.none, EditorStyles.viewBackground);
         var iconSize = Fix64.Clamp(Fix64.Min(area.width, area.height) * Fix64.FromDecimal(0.46m), 36, 88);
         var iconRect = new Rect(area.x + (area.width - iconSize) * Fix64.Half,
             area.y + Fix64.Max(8, (area.height - iconSize - 42) * Fix64.Half), iconSize, iconSize);
@@ -353,8 +351,8 @@ public static class AssetPreview
         var tile = Fix64.Max(8, Fix64.Max(area.width, area.height) / 24);
         var columns = Math.Max(1, (int)Math.Ceiling((double)(area.width / tile)));
         var rows = Math.Max(1, (int)Math.Ceiling((double)(area.height / tile)));
-        var first = EditorAppearance.palette.Field;
-        var second = EditorAppearance.palette.PanelRaised;
+        var first = EditorStyles.textField.normal.backgroundColor;
+        var second = EditorStyles.frameBox.normal.backgroundColor;
         for (var row = 0; row < rows; row++)
         for (var column = 0; column < columns; column++)
         {
@@ -363,6 +361,12 @@ public static class AssetPreview
             GUI.DrawRect(new Rect(x, y, Fix64.Min(tile, area.xMax - x), Fix64.Min(tile, area.yMax - y)),
                 ((row + column) & 1) == 0 ? first : second);
         }
+    }
+
+    private static Color StyleBorder(GUIStyle style)
+    {
+        var color = style.normal.borderColor;
+        return color.a > 0 ? color : EditorStyles.separator.normal.backgroundColor;
     }
 
     private static AtlasPreviewData? GetAtlas(DefaultAsset asset)

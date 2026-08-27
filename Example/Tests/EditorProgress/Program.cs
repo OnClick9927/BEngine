@@ -1,5 +1,6 @@
 using System.Reflection;
 using BEngine.Editor;
+using BEngine.Editor.Rendering;
 
 namespace BEngine.ExampleTests.EditorProgress;
 
@@ -52,6 +53,7 @@ internal static class Program
                 VerifyEditorUtilityDialogsAndPanels();
                 VerifyPopupMenuUsesMenuRegistry();
                 VerifyGpuStartupProgressContract();
+                VerifyGpuStartupProgressUsesSkin();
             }
             finally
             {
@@ -61,7 +63,7 @@ internal static class Program
             }
 
             Console.WriteLine("EDITOR_PROGRESS_OK|visible,clamp,cancel-request,clear,event,dialogs,file-panels," +
-                              "default-app,popup-menu,platform-lifecycle,imgui-startup-window");
+                              "default-app,popup-menu,platform-lifecycle,imgui-startup-window,skin-progress-style");
             return 0;
         }
         catch (Exception exception)
@@ -177,6 +179,61 @@ internal static class Program
         Assert(editorApplication.GetMethod("Run", BindingFlags.Instance | BindingFlags.Public,
                    binder: null, types: [typeof(Action)], modifiers: null) is not null,
             "Editor Run must keep the loading window alive until the first rendered frame.");
+    }
+
+    private static void VerifyGpuStartupProgressUsesSkin()
+    {
+        var previousSkin = GUI.skin;
+        var skin = new GUISkin();
+        var windowColor = new Color((Fix64).11f, (Fix64).21f, (Fix64).31f, 1);
+        var trackColor = new Color((Fix64).41f, (Fix64).12f, (Fix64).23f, 1);
+        var fillColor = new Color((Fix64).17f, (Fix64).67f, (Fix64).29f, 1);
+        var textColor = new Color((Fix64).91f, (Fix64).82f, (Fix64).13f, 1);
+        skin.window.normal.backgroundColor = windowColor;
+        skin.progressBarBack.normal.backgroundColor = trackColor;
+        skin.progressBarBar.normal.backgroundColor = fillColor;
+        skin.progressBarText.normal.textColor = textColor;
+        GUI.skin = skin;
+        try
+        {
+            var commands = new List<GpuCanvasCommand>();
+            GUI.BeginFrame(new Event(EventType.Repaint)
+            {
+                mousePosition = new Vector2(-100, -100)
+            }, 560, 200, commands);
+            try
+            {
+                GpuStartupProgressWindow.DrawProgress(new Rect(0, 0, 560, 200),
+                    new EditorProgressInfo("Open", "Loading", .5f, true, false, false));
+            }
+            finally { GUI.EndFrame(); }
+
+            Assert(HasSurface(commands, new Rect(0, 0, 560, 200), windowColor),
+                "Startup progress window did not use GUISkin.window.");
+            Assert(HasSurface(commands, new Rect(24, 108, 512, 24), trackColor),
+                "Startup progress track did not use GUISkin.progressBarBack.");
+            Assert(HasSurface(commands, new Rect(24, 108, 256, 24), fillColor),
+                "Startup progress fill did not use GUISkin.progressBarBar.");
+            Assert(commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                           command.Content.Contains("50", StringComparison.Ordinal) &&
+                                           command.Color == GpuCanvasColor.FromColor(textColor)),
+                "Startup progress label did not use GUISkin.progressBarText.");
+        }
+        finally
+        {
+            GUI.skin = previousSkin;
+        }
+    }
+
+    private static bool HasSurface(IEnumerable<GpuCanvasCommand> commands, Rect rect, Color color)
+    {
+        var expectedColor = GpuCanvasColor.FromColor(color);
+        return commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                       command.Color == expectedColor &&
+                                       Math.Abs(command.Rect.X - (float)rect.x) < .01f &&
+                                       Math.Abs(command.Rect.Y - (float)rect.y) < .01f &&
+                                       Math.Abs(command.Rect.Width - (float)rect.width) < .01f &&
+                                       Math.Abs(command.Rect.Height - (float)rect.height) < .01f);
     }
 
     private static void Assert(bool condition, string message)

@@ -105,7 +105,7 @@
             <tr><td>Sprite</td><td><code>PNG + .meta</code></td><td>在 PNG Inspector 将 Texture Type 设为 Sprite 后 Apply；同一图片可赋给 SpriteRenderer 或加入 Atlas</td></tr>
             <tr><td>TextureAtlas</td><td><code>MaxSize/Padding/Extrude/SpriteReferences</code></td><td>在 Texture Atlas 窗口 Build</td></tr>
             <tr><td>Material</td><td><code>shader/color/renderQueue</code></td><td>保存 `.material.yaml` 和材质属性</td></tr>
-            <tr><td>GUISkin</td><td><code>*.guiskin.yaml</code></td><td>继承 BAsset；保存调色板、全部编辑器样式槽和 customStyles</td></tr>
+            <tr><td>GUISkin</td><td><code>*.guiskin.yaml</code></td><td>继承 BAsset；保存全部 EditorStyles 样式槽和 customStyles</td></tr>
             <tr><td>TextureImporter</td><td><code>compressionFormat/filterMode/wrapMode</code></td><td>写入源图旁 `.meta`</td></tr>
             <tr><td>TextureImporter</td><td><code>generateMipMaps/maxTextureSize/pixelsPerUnit</code></td><td>修改后点击 Apply；Revert 重新读 meta</td></tr>
             <tr><td>BAsset</td><td><code>assetPath/guid</code></td><td>加载后绑定稳定工程路径和 GUID</td></tr>
@@ -156,7 +156,7 @@ public sealed class PlayerMover : MonoBehaviour
             <tr><td><code>EditorWindow.GetWindow&lt;T&gt;</code></td><td>创建或聚焦可停靠窗口</td></tr>
             <tr><td><code>[CustomEditor]</code></td><td>为 BObject 类型注册 Inspector</td></tr>
             <tr><td><code>[CustomPropertyDrawer]</code></td><td>为类型或 PropertyAttribute 注册字段 Drawer</td></tr>
-            <tr><td><code>SerializedObject/SerializedProperty</code></td><td>多选、Undo 与统一字段访问</td></tr>
+            <tr><td><code>SerializedObject/SerializedProperty</code></td><td>多选、Undo 与统一字段访问；嵌套普通对象用 Foldout 和按深度缩进绘制</td></tr>
             <tr><td><code>EditorGUI.ObjectField</code></td><td>BObject/BAsset 的选择、搜索和拖放</td></tr>
             <tr><td><code>Undo.RecordObject + SetDirty</code></td><td>记录编辑态变更并请求保存</td></tr>
             <tr><td><code>AssetDatabase</code></td><td>加载、创建、导入、刷新与保存资源</td></tr>
@@ -167,15 +167,22 @@ public sealed class PlayerMover : MonoBehaviour
         </table></div>
       </section>
 
+      <section id="project-window">
+        <h2>Project 窗口布局</h2>
+        <p>Project 窗口可在 One Column 与 Two Column 间切换。左侧目录分为 Assets 和 Packages 两个独立滚动区域；拖动两者之间的横向分隔线可调整下方 Packages 区域高度。该高度随编辑器布局保存，窗口缩小时会自动限制，确保上下区域都可继续操作。</p>
+        <p>Two Column 模式右侧以网格显示当前文件夹的直接子项。文件与文件夹名称均相对缩略图水平居中；长名称限制在单元内并以省略号显示，完整名称保留在 Tooltip 中。</p>
+      </section>
+
       <section id="themes">
         <h2>GUISkin 与自定义主题</h2>
-        <p><code>GUISkin</code> 位于 <code>BEngine.Editor</code>，继承 <code>BAsset</code>。自定义主题以 <code>*.guiskin.yaml</code> 保存，可以创建多份并纳入版本控制。Skin 同时持有编辑器 Palette、Label、Button、TextField、Toolbar、Dock Tab、Tree View、Inspector 等全部内置样式槽和可扩展的 <code>customStyles</code>。</p>
+        <p>Preferences 与 Project Settings 是普通、可持久化布局的 EditorWindow，可以像 Scene、Inspector 一样停靠、拖出和重新停靠；重复打开菜单会聚焦已有窗口。Float 使用独立原生窗口，可以跨显示器移动并拖回主窗口 Dock；显示器拓扑变化后会恢复离屏窗口。Float 内的 Popup 保持在所属窗口，未聚焦 Float 降频绘制，最小化时停止 GPU 提交。Preferences &gt; General 的 Editor Scale 使用带精确数值输入的 Slider，范围为 <code>0.5–1.8</code>。</p>
+        <p><code>GUISkin</code> 位于 <code>BEngine.Editor</code>，继承 <code>BAsset</code>。Preferences 创建的自定义主题以 <code>*.guiskin.yaml</code> 保存在 <code>Output/EditorData/Preferences/Themes</code>。Skin 直接持有完整的 <code>EditorStyles</code> 样式集合和可扩展的 <code>customStyles</code>，不存在独立的 SkinColors/Palette。</p>
         <h3>Preferences 工作流</h3>
         <ol class="steps">
-          <li>打开 <strong>Edit &gt; Preferences &gt; General</strong>，在 Theme 列表查看 Light、Dark、Classic 与工程内所有自定义 Skin。</li>
-          <li>点击一行的 ObjectField 会将该 Skin 设为 Selection，并在 Inspector 显示。Light、Dark、Classic 可查看但只读，不能删除。</li>
-          <li>点击 <strong>New</strong> 复制当前主题，在当前 Project 文件夹生成可重命名的 <code>*.guiskin.yaml</code>；也可以从 <strong>Assets &gt; Create &gt; GUI &gt; GUISkin</strong> 创建。</li>
-          <li>在 Inspector 修改 Palette、内置样式或 <code>customStyles</code> 并 Apply，再回到 Preferences 点击 <strong>Set</strong> 应用到整个编辑器。</li>
+          <li>打开 <strong>Edit &gt; Preferences &gt; Theme</strong>，查看 Light、Dark、Classic 与所有自定义 Skin。</li>
+          <li>点击一行的 ObjectField 会将该 Skin 设为 Selection，并在 Inspector 显示。内置 Skin 的 Foldout 可展开，但字段只读且不能删除。</li>
+          <li>点击 <strong>New</strong> 复制当前主题，在 <code>Output/EditorData/Preferences/Themes</code> 生成名称唯一的 <code>*.guiskin.yaml</code>。</li>
+          <li>在 Inspector 修改内置样式或 <code>customStyles</code> 并 Apply；背景图片通过 Texture ObjectField 设置。自定义 Skin 可一键套用 Light、Dark 或 Classic。</li>
           <li><strong>Delete</strong> 只删除自定义 Skin；删除正在使用的 Skin 时编辑器自动回到 Dark。</li>
         </ol>
         <h3>GUIStyle 与空值回退</h3>
@@ -275,8 +282,10 @@ public sealed class PulseModule : IEngineServiceModule
             <tr><td>Play 变更写入 Scene</td><td>记录日志并检查自定义 Editor 是否直接写 YAML；运行时不应保存</td></tr>
             <tr><td>菜单/Drawer 不出现</td><td>确认代码在 Editor 程序集、无编译错误、包已启用</td></tr>
             <tr><td>示例 Import 禁用</td><td>退出 Play、等待编译和包切换结束</td></tr>
+            <tr><td>Example/Editor 启动失败</td><td>从 Hub 启动时等待 Editor 首帧 Ready；托管失败、原生崩溃、提前退出或超时均由 Hub 弹窗并显示实际日志。直接运行 Editor 时，可捕获的启动异常由 Editor 原生弹窗报告</td></tr>
           </tbody>
         </table></div>
+        <div class="note">布局恢复只恢复页签与逻辑焦点，不得在主原生窗口初始化前调用原生 <code>Focus</code>；实际窗口聚焦在首帧后完成。可捕获的 Editor 启动异常记录到 <code>Output/EditorData/Logs/EditorBootstrap.log</code>；Editor 来不及记录的原生崩溃或启动超时由 Hub 记录到 <code>Output/EditorData/Logs/EditorStartup.log</code>。故障弹窗会给出本次诊断实际使用的日志路径。</div>
       </section>
 
       <p class="note">旧项目中的 <code>*.sprite.yaml</code> 只保留读取兼容；新内容直接通过图片的 Texture Import Settings 定义 Sprite。</p>
