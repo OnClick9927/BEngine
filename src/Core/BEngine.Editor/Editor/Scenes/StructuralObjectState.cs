@@ -33,19 +33,21 @@ internal sealed class StructuralObjectState
 
     internal static StructuralObjectState Capture(BObject target) => new(target);
 
+    internal bool TryRemove()
+    {
+        return _target switch
+        {
+            GameObject gameObject when gameObject.scene is { } scene => scene.Destroy(gameObject),
+            Component component when component is not Transform =>
+                component.gameObject.RemoveComponent(component),
+            _ => false
+        };
+    }
+
     internal void Remove()
     {
-        switch (_target)
-        {
-            case GameObject gameObject when gameObject.scene is { } scene:
-                scene.Destroy(gameObject);
-                break;
-            case Component component when component is not Transform:
-                if (!component.gameObject.RemoveComponent(component))
-                    throw new InvalidOperationException(
-                        $"{component.GetType().Name} cannot be removed because another component requires it.");
-                break;
-        }
+        if (!TryRemove())
+            throw new InvalidOperationException($"{_target.GetType().Name} could not be removed.");
     }
 
     internal void Restore()

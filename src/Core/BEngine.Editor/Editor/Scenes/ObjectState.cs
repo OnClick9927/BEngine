@@ -4,7 +4,7 @@ using BEngine.Serialization;
 
 namespace BEngine.Editor;
 
-internal sealed class ObjectState
+internal sealed class ObjectState : IUndoState
 {
     private readonly string _name;
     private readonly HideFlags _hideFlags;
@@ -12,6 +12,7 @@ internal sealed class ObjectState
     private readonly Vector2? _localPosition;
     private readonly Fix64? _localRotation;
     private readonly Vector2? _localScale;
+    private readonly int? _siblingIndex;
     private readonly (bool Active, string Tag, ulong Layer, bool IsStatic)? _gameObject;
     private readonly bool? _componentEnabled;
 
@@ -35,6 +36,7 @@ internal sealed class ObjectState
             _localPosition = transform.localPosition;
             _localRotation = transform.localRotation;
             _localScale = transform.localScale;
+            _siblingIndex = transform.GetSiblingIndex();
         }
         if (target is Component component) _componentEnabled = component.enabled;
         if (target is GameObject gameObject)
@@ -49,6 +51,8 @@ internal sealed class ObjectState
         return new ObjectState(target);
     }
 
+    IUndoState IUndoState.CaptureInverse() => Capture(Target);
+
     public void Restore()
     {
         Target.name = _name;
@@ -61,6 +65,7 @@ internal sealed class ObjectState
             transform.localPosition = position;
             transform.localRotation = rotation;
             transform.localScale = scale;
+            if (_siblingIndex is { } siblingIndex) transform.SetSiblingIndex(siblingIndex);
         }
         if (Target is GameObject gameObject && _gameObject is { } state)
         {

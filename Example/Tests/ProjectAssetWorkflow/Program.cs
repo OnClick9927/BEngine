@@ -21,6 +21,7 @@ internal static class Program
             var (applicationType, projectWindowType, itemType) = DiscoverProjectTypes(editorAssembly);
 
             VerifyProjectTypeSearch(projectWindowType, itemType);
+            VerifyProjectObjectDragSource(projectWindowType, itemType);
             VerifyCreateMenuUsesAssetMetadata(editorAssembly, projectWindowType);
             AssetMenuIntegrationTests.Run(editorAssembly, applicationType, projectWindowType, itemType);
             VerifyProjectSelectionsFeedInspector(editorAssembly, itemType);
@@ -31,7 +32,7 @@ internal static class Program
                 "PROJECT_ASSET_WORKFLOW_OK|assets-folder-inspector,assets-file-inspector,package-folder-inspector," +
                 "package-file-inspector,full-metadata,context-menu-text,type-search,unified-assets-create," +
                 "extended-create-types,assets-utilities,scene,script,typed-load,importer-meta-roundtrip," +
-                "dynamic-icon,basset-reference-roundtrip");
+                "dynamic-icon,basset-reference-roundtrip,project-object-drag");
             return 0;
         }
         catch (Exception exception)
@@ -76,6 +77,37 @@ internal static class Program
         {
             searchField.SetValue(projectWindow, filter);
             return matches.Invoke(projectWindow, [item]) is true;
+        }
+    }
+
+    private static void VerifyProjectObjectDragSource(Type projectWindowType, Type itemType)
+    {
+        var canStart = projectWindowType.GetMethod("CanStartObjectDrag",
+            BindingFlags.Static | BindingFlags.NonPublic) ??
+            throw new MissingMethodException(projectWindowType.FullName, "CanStartObjectDrag");
+        var dragObject = projectWindowType.GetMethod("DragObject",
+            BindingFlags.Static | BindingFlags.NonPublic) ??
+            throw new MissingMethodException(projectWindowType.FullName, "DragObject");
+        var source = Path.Combine(Path.GetTempPath(), $"BEnginePackageDrag-{Guid.NewGuid():N}.asset.yaml");
+        File.WriteAllText(source, "name: Package Drag Fixture");
+        try
+        {
+            var packageItem = CreateItem(itemType, "Packages/com.test/Package.asset.yaml",
+                "Package.asset.yaml", "YamlAsset", false, true, source);
+            Require(canStart.Invoke(null, [packageItem]) is true,
+                "A readable package asset could not start an ObjectField drag from Project.");
+            Require(dragObject.Invoke(null, [packageItem]) is DefaultAsset
+                    { assetPath: "Packages/com.test/Package.asset.yaml" },
+                "Project did not expose a stable read-only BAsset payload for a package drag.");
+
+            var packagesRoot = CreateItem(itemType, "Packages", "Packages", "Folder", true, true,
+                Path.GetDirectoryName(source));
+            Require(canStart.Invoke(null, [packagesRoot]) is false,
+                "The synthetic Packages root incorrectly started an ObjectField drag.");
+        }
+        finally
+        {
+            File.Delete(source);
         }
     }
 

@@ -57,6 +57,8 @@ public sealed class FileAssetEditor : Editor
         serializedObject.ApplyModifiedProperties();
         if (target is BAsset asset && EditorUtility.IsDirty(asset)) AssetDatabase.SaveAsset(asset);
         _importerObject?.ApplyModifiedProperties();
+        if (_importer is { assetPath.Length: > 0 })
+            Undo.RegisterImporterUndo(_importer.assetPath, "Apply Import Settings");
         _importer?.SaveAndReimport();
         hasUnsavedChanges = false;
     }

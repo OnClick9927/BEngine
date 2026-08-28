@@ -18,9 +18,10 @@ internal static class Program
             VerifyNativeWindowFrameScheduling();
             VerifyDockHostHoverIsolation();
             VerifyTitleContextMenu();
+            VerifyWindowLockChrome();
             VerifyNarrowTitleStability();
             Console.WriteLine(
-                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,native-float,cross-monitor,dpi-coordinates,cross-dpi-caption,resize-not-dock,offscreen-recovery,negative-monitor,inactive-render-throttle,repaint-wakeup,restore-wakeup,focus-wakeup,dock-host-hover-isolation,in-process-transients,z-order,input-gating,popup-dismiss,drag-out-immediate,splitter-not-float,dock-back,title-context-menu,narrow-title-stability,narrow-title-ellipsis");
+                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,native-float,cross-monitor,dpi-coordinates,cross-dpi-caption,resize-not-dock,offscreen-recovery,negative-monitor,inactive-render-throttle,repaint-wakeup,restore-wakeup,focus-wakeup,dock-host-hover-isolation,in-process-transients,z-order,input-gating,popup-dismiss,drag-out-immediate,splitter-not-float,dock-back,dock-float-lock-roundtrip,title-context-menu,window-lock,narrow-title-stability,narrow-title-ellipsis");
             return 0;
         }
         catch (Exception exception)
@@ -62,9 +63,10 @@ internal static class Program
     private static void VerifyDragOutAndDockBack()
     {
         var anchor = new ProbeWindow("Anchor");
-        var dragged = new ProbeWindow("Dragged");
+        var dragged = new LockProbeWindow();
         anchor.OpenInternal();
         dragged.OpenInternal();
+        dragged.isLocked = true;
         var dock = new ImGuiDockWorkspace();
         var anchorPanel = dock.Add("Anchor", anchor, DockArea.Center, true);
         var draggedPanel = dock.Add("Dragged", dragged, DockArea.Center, true);
@@ -90,9 +92,13 @@ internal static class Program
             "Releasing a dragged tab outside the workspace did not request a floating window.");
 
         dock.Remove(draggedPanel.Id);
+        Require(dragged.isLocked,
+            "Changing a locked docked window to Float discarded its lock state.");
         var dockedAgain = dock.DockExternal(draggedPanel.Id, dragged, new Vector2(430, 220));
         Require(ReferenceEquals(anchorPanel.Group, dockedAgain.Group) && dock.IsSelected(dragged),
             "A floating Normal window could not return to the target dock tab group.");
+        Require(dragged.isLocked,
+            "Docking a locked floating window discarded its lock state.");
 
         undocked = null;
         RenderDock(dock, new Event(EventType.Layout));
@@ -373,6 +379,44 @@ internal static class Program
         VerifyNarrowTitleStability(multipleTabs: true);
     }
 
+    private static void VerifyWindowLockChrome()
+    {
+        var window = new LockProbeWindow();
+        window.OpenInternal();
+        var dock = new ImGuiDockWorkspace();
+        dock.Add("LockProbe", window, DockArea.Center, true);
+        try
+        {
+            var commands = new List<GpuCanvasCommand>();
+            RenderDock(dock, new Event(EventType.Repaint), commands);
+            var unlocked = commands.Single(command => command.Type == GpuCanvasCommandType.Image &&
+                command.Content.EndsWith("Unlock.png", StringComparison.Ordinal));
+            var point = Center(unlocked.Rect);
+            RenderDock(dock, new Event(EventType.MouseDown) { mousePosition = point, button = 0 });
+            RenderDock(dock, new Event(EventType.MouseUp) { mousePosition = point, button = 0 });
+            Require(window.isLocked && window.LockChanges == 1,
+                "The dock title lock button did not change the EditorWindow lock state.");
+
+            commands.Clear();
+            RenderDock(dock, new Event(EventType.Repaint), commands);
+            Require(commands.Any(command => command.Type == GpuCanvasCommandType.Image &&
+                                            command.Content.EndsWith("Lock.png", StringComparison.Ordinal)),
+                "The dock title did not render the locked state icon.");
+
+            var nested = typeof(GpuEditorApplication).GetNestedTypes(BindingFlags.NonPublic)
+                .Where(type => type.Name is "ImGuiHierarchyWindow" or "ImGuiProjectWindow" or
+                    "ImGuiInspectorWindow").ToArray();
+            Require(nested.Length == 3 && nested.All(type =>
+            {
+                var instance = (EditorWindow)Activator.CreateInstance(type, nonPublic: true)!;
+                var property = typeof(EditorWindow).GetProperty("supportsLocking",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+                return (bool)property.GetValue(instance)!;
+            }), "Hierarchy, Project, and Inspector do not all expose title lock controls.");
+        }
+        finally { window.CloseInternal(); }
+    }
+
     private static void VerifyNarrowTitleStability(bool multipleTabs)
     {
         const string title = "Hierarchy Window With A Deliberately Long Title";
@@ -492,5 +536,15 @@ internal static class Program
             menu.AddItem(new GUIContent($"Probe/{title}"), false, () => { });
 
         protected override void OnEnable() => titleContent = new GUIContent(title);
+    }
+
+    private sealed class LockProbeWindow : EditorWindow
+    {
+        internal int LockChanges { get; private set; }
+        internal override bool supportsLocking => true;
+
+        internal LockProbeWindow() => titleContent = new GUIContent("Lock Probe");
+
+        protected override void OnLockStateChanged() => LockChanges++;
     }
 }

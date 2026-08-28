@@ -20,6 +20,7 @@ public sealed class SpriteEditor : Editor
         }
 
         var currentTexture = AssetDatabase.LoadAssetAtPath<BEngine.Texture>(sprite.Texture);
+        var undoState = ObjectState.Capture(sprite);
         var changedBefore = GUI.changed;
         var selectedTexture = EditorGUILayout.ObjectField("Texture", currentTexture,
             typeof(BEngine.Texture), allowSceneObjects: false) as BEngine.Texture;
@@ -35,6 +36,7 @@ public sealed class SpriteEditor : Editor
         if (!texturePath.Equals(sprite.Texture, StringComparison.Ordinal) ||
             nextPivot != sprite.pivot)
         {
+            Undo.RegisterSnapshot(undoState, "Edit Sprite");
             sprite.Texture = texturePath.Replace('\\', '/').Trim();
             sprite.PivotX = (float)nextPivot.x;
             sprite.PivotY = (float)nextPivot.y;

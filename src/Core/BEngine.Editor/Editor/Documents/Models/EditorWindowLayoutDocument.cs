@@ -6,6 +6,8 @@ public sealed class EditorWindowLayoutDocument
     public string TypeName { get; set; } = string.Empty;
     public string State { get; set; } = nameof(EditorWindowState.Normal);
     public bool Docked { get; set; } = true;
+    public bool Locked { get; set; }
+    public string? LockContext { get; set; }
     public float X { get; set; }
     public float Y { get; set; }
     public float Width { get; set; } = 480;

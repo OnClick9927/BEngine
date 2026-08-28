@@ -115,6 +115,7 @@ internal sealed class EditorApplicationHarness : IDisposable
         InitializeField("_builtInWindows");
         InitializeField("_runtimes");
         InitializeField("_scriptSourceCache");
+        InitializeField("_nativeFloatingWindows");
 
         AddBuiltIn(HierarchyWindow, "Left", true);
         AddBuiltIn(SceneWindow, "Center", true);

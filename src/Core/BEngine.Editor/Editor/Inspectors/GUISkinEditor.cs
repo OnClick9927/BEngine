@@ -13,6 +13,7 @@ public sealed class GUISkinEditor : BAssetEditor
             EditorGUILayout.HelpBox("Built-in GUI skins are read-only. Duplicate this skin to customize it.",
                 MessageType.Info);
 
+        var undoState = skin.isReadOnly ? null : ObjectState.Capture(skin);
         EditorGUI.BeginChangeCheck();
         EditorGUILayout.LabelField("Built-in Styles", EditorStyles.boldLabel);
         foreach (var (slot, style) in skin.EnumerateBuiltInStyles())
@@ -24,6 +25,7 @@ public sealed class GUISkinEditor : BAssetEditor
 
         if (EditorGUI.EndChangeCheck() && !skin.isReadOnly)
         {
+            Undo.RegisterSnapshot(undoState!, "Edit GUI Skin");
             skin.Apply();
             EditorUtility.SetDirty(skin);
             hasUnsavedChanges = true;

@@ -18,6 +18,8 @@ public static class GUI
     [ThreadStatic] private static string? _tooltipCandidate;
     [ThreadStatic] private static long _tooltipHoverStarted;
     [ThreadStatic] private static Vector2 _tooltipPointer;
+    [ThreadStatic] private static bool _endUndoGroupAfterPointerEvent;
+    [ThreadStatic] private static bool _endUndoGroupAfterKeyboardEvent;
     public static Color color { get; set; } = Color.white;
     public static Color backgroundColor { get; set; } = Color.white;
     public static Color contentColor { get; set; } = Color.white;
@@ -43,6 +45,10 @@ public static class GUI
 
     internal static void BeginFrame(Event inputEvent, int width, int height, List<GpuCanvasCommand> commands)
     {
+        var rawType = inputEvent.rawType;
+        if (rawType == EventType.MouseDown ||
+            rawType == EventType.KeyDown && !isEditingTextField)
+            Undo.EndCurrentEventGroup();
         var editorScale = Fix64.Clamp(GUIUtility.pixelsPerPoint, Fix64.FromDecimal(0.5m), (Fix64)4);
         var deviceScale = GUIUtility.devicePixelsPerPoint > 0
             ? Fix64.Clamp(GUIUtility.devicePixelsPerPoint, Fix64.FromDecimal(0.5m), (Fix64)4)
@@ -56,6 +62,9 @@ public static class GUI
         GUIUtility.currentViewHeight = logicalHeight;
         _requestedMouseCursor = MouseCursor.Arrow;
         DragAndDrop.BeginEvent(inputEvent);
+        _endUndoGroupAfterPointerEvent = rawType is EventType.MouseUp or EventType.DragPerform ||
+                                         inputEvent.type == EventType.DragPerform;
+        _endUndoGroupAfterKeyboardEvent = rawType is EventType.KeyUp or EventType.ExecuteCommand;
         Event.current = inputEvent;
         GUIUtility.BeginEvent();
         _textStates ??= [];
@@ -77,6 +86,11 @@ public static class GUI
         GUILayout.EndFrame();
         _context = null;
         DragAndDrop.EndEvent(Event.current);
+        if (_endUndoGroupAfterPointerEvent ||
+            _endUndoGroupAfterKeyboardEvent && !isEditingTextField)
+            Undo.EndCurrentEventGroup();
+        _endUndoGroupAfterPointerEvent = false;
+        _endUndoGroupAfterKeyboardEvent = false;
         Event.ClearCurrent();
     }
 

@@ -15,7 +15,7 @@ internal static class Program
             VerifyProjectPackagesSplitterLayout();
             VerifyLayoutRoundTrip(root);
             Console.WriteLine(
-                "EDITOR_LAYOUT_PERSISTENCE_OK|yaml-v2,named,last-session,dock-tree,selection,project-packages-splitter,project-packages-height");
+                "EDITOR_LAYOUT_PERSISTENCE_OK|yaml-v2,named,last-session,dock-tree,selection,lock-context,project-packages-splitter,project-packages-height");
             return 0;
         }
         catch (Exception exception)
@@ -33,7 +33,8 @@ internal static class Program
     {
         var bounds = new Rect(0, 0, 280, 300);
         var layout = ProjectBrowserSplitLayoutUtility.Calculate(bounds, 90);
-        Require(layout.Assets.height == 209 && layout.Separator.height == 1 &&
+        Require(layout.Assets.height == bounds.height - 90 - ProjectBrowserSplitLayoutUtility.SeparatorHeight &&
+                layout.Separator.height == ProjectBrowserSplitLayoutUtility.SeparatorHeight &&
                 layout.Packages.height == 90 && layout.Separator.y == layout.Assets.yMax &&
                 layout.Packages.y == layout.Separator.yMax,
             "The Project Packages splitter did not divide the available height without a gap or overlap.");
@@ -57,7 +58,7 @@ internal static class Program
                 compact.Assets.height + compact.Separator.height + compact.Packages.height == 70,
             "Shrinking the Project window produced an invalid Packages split layout.");
         var initial = ProjectBrowserSplitLayoutUtility.FromAssetContentHeight(new Rect(0, 0, 280, 500), 180);
-        Require(initial == 319,
+        Require(initial == 500 - ProjectBrowserSplitLayoutUtility.SeparatorHeight - 180,
             "The default Project Packages divider no longer starts immediately after visible Assets content.");
     }
 
@@ -76,6 +77,8 @@ internal static class Program
         dock.Add("Hierarchy", hierarchy, DockArea.Left, true);
         dock.Add("Scene", scene, DockArea.Center, true);
         Render(dock);
+        hierarchy.isLocked = true;
+        hierarchy.LockContext = "object:ca761232ed4211cebacd00aa0057b223";
         var document = new EditorLayoutDocument
         {
             Name = "Editing",
@@ -108,6 +111,15 @@ internal static class Program
         var loaded = store.Load("Editing");
         Require(loaded.Version == 2 && loaded.DockRoot is not null && loaded.Windows.Count == 2,
             "The v2 layout YAML did not preserve its window and dock records.");
+        var loadedHierarchy = loaded.Windows.Single(window => window.Id == "Hierarchy");
+        Require(loadedHierarchy.Locked && loadedHierarchy.LockContext == hierarchy.LockContext,
+            "The layout YAML did not preserve a locked EditorWindow context.");
+        hierarchy.isLocked = false;
+        hierarchy.LockContext = null;
+        hierarchy.isLocked = loadedHierarchy.Locked;
+        hierarchy.RestoreLockContext(loadedHierarchy.LockContext);
+        Require(hierarchy.isLocked && hierarchy.LockContext == loadedHierarchy.LockContext,
+            "Restoring a layout did not restore the EditorWindow lock state and context together.");
         Require(loaded.ProjectBrowserMode == "TwoColumn" && loaded.ProjectFoldersWidth == 312 &&
                 loaded.ProjectPackagesHeight == 168 && loaded.ProjectThumbnailSize == 104,
             "The layout YAML did not preserve Project browser mode, folder width, Packages height, and preview scale.");
@@ -143,6 +155,8 @@ internal static class Program
         TypeName = window.GetType().AssemblyQualifiedName!,
         State = nameof(EditorWindowState.Normal),
         Docked = true,
+        Locked = window.isLocked,
+        LockContext = window.CaptureLockContext(),
         Width = 480,
         Height = 320
     };

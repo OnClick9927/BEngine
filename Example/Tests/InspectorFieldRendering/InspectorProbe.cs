@@ -19,6 +19,8 @@ internal sealed class NestedInspectorComponent : MonoBehaviour
     public NestedInspectorData? nullable = null;
     public NestedInspectorData[] items = [new() { age = 31 }];
     public List<NestedInspectorData> entries = [new() { age = 37 }];
+    public NestedInspectorData[]? optionalItems = null;
+    public List<NestedInspectorData>? optionalEntries = null;
     public NestedInspectorCycle cycle = NestedInspectorCycle.CreateCycle();
     public NestedInspectorDepth deep = NestedInspectorDepth.Create(16);
     public NestedInspectorData throwing

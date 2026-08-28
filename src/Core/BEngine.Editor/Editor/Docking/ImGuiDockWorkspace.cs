@@ -266,7 +266,9 @@ internal sealed class ImGuiDockWorkspace
             Fix64.Max(18, EditorStyles.toolbarIconButton.fixedHeight));
         var actionY = rect.y + (titleBarHeight - actionHeight) / 2;
         var actionWidth = Fix64.Max(24, EditorStyles.toolbarIconButton.fixedWidth);
-        var actionsWidth = actionWidth * 3 + 4;
+        var showLock = selected.Window.supportsLocking;
+        var actionCount = showLock ? 4 : 3;
+        var actionsWidth = actionWidth * actionCount + (actionCount - 1) * 2;
         var tabAreaWidth = Fix64.Max(40, rect.width - actionsWidth - 4);
         var tabHeight = Fix64.Min(titleBarHeight - 2, Fix64.Max(18, EditorStyles.dockTab.fixedHeight));
         var tabY = rect.y + titleBarHeight - tabHeight;
@@ -358,7 +360,17 @@ internal sealed class ImGuiDockWorkspace
         }
         GUI.EndClip();
 
-        var menuRect = new Rect(rect.xMax - actionsWidth, actionY, actionWidth, actionHeight);
+        var actionX = rect.xMax - actionsWidth;
+        if (showLock)
+        {
+            var lockRect = new Rect(actionX, actionY, actionWidth, actionHeight);
+            if (EditorToolbar.Button(lockRect, new GUIContent(string.Empty,
+                    selected.Window.isLocked ? EditorBuiltinIcons.Toolbar.Lock :
+                        EditorBuiltinIcons.Toolbar.Unlock, string.Empty)))
+                selected.Window.isLocked = !selected.Window.isLocked;
+            actionX = lockRect.xMax + 2;
+        }
+        var menuRect = new Rect(actionX, actionY, actionWidth, actionHeight);
         if (EditorToolbar.Button(menuRect,
                 new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More, string.Empty)))
             ShowWindowContextMenu(selected, new Vector2(menuRect.x, menuRect.yMax));

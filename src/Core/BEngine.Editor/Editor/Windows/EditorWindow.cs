@@ -11,6 +11,7 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
 {
     private static readonly List<WeakReference<EditorWindow>> Windows = [];
     private bool _enabled;
+    private bool _isLocked;
     private double _lastInspectorUpdate;
     public static EditorWindow? focusedWindow { get; private set; }
     public static EditorWindow? mouseOverWindow { get; internal set; }
@@ -35,7 +36,17 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     public bool autoRepaintOnSceneChange { get; set; } = true;
     public bool saveToLayout { get; protected set; } = true;
     public bool docked { get; internal set; }
-    public bool isLocked { get; set; }
+    public bool isLocked
+    {
+        get => _isLocked;
+        set
+        {
+            if (_isLocked == value) return;
+            _isLocked = value;
+            if (_enabled) InvokeCallback(OnLockStateChanged, nameof(OnLockStateChanged));
+            Repaint();
+        }
+    }
     public EditorWindowState windowState { get; internal set; } = EditorWindowState.Normal;
     internal string PersistentId { get; set; } = string.Empty;
     internal bool IsOpen { get; private set; }
@@ -116,6 +127,7 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     protected virtual void OnBecameVisible() { }
     protected virtual void OnBecameInvisible() { }
     protected virtual void OnInspectorUpdate() { }
+    protected virtual void OnLockStateChanged() { }
     protected virtual void Update() { }
     protected virtual void OnGUI() { }
     public virtual void AddItemsToMenu(GenericMenu menu) { }
@@ -130,10 +142,17 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
         {
             _enabled = true;
             InvokeCallback(OnEnable, nameof(OnEnable));
+            if (_isLocked) InvokeCallback(OnLockStateChanged, nameof(OnLockStateChanged));
         }
         _lastInspectorUpdate = EditorApplication.timeSinceStartup;
         InvokeCallback(OnBecameVisible, nameof(OnBecameVisible));
     }
+
+    internal virtual bool supportsLocking => false;
+
+    internal virtual string? CaptureLockContext() => null;
+
+    internal virtual void RestoreLockContext(string? context) { }
 
     internal void CloseInternal()
     {

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using UnityEditorInternal;
 
 namespace BEngine.Editor;
 
@@ -17,6 +18,8 @@ public static class EditorGUI
     private static readonly Stack<bool> EnabledStack = new();
     private static readonly Stack<bool> ChangedStack = new();
     private static readonly Dictionary<int, int> PendingPopupSelections = [];
+    private static readonly ConditionalWeakTable<SerializedObject, Dictionary<string, ReorderableList>>
+        DefaultReorderableLists = new();
     public static int indentLevel { get; set; }
     public static Fix64 labelWidth { get; set; } = 150;
     public static Fix64 fieldWidth { get; set; } = 50;
@@ -751,6 +754,24 @@ public static class EditorGUI
         {
             var ownHeight = GetSinglePropertyHeight(property);
             var row = new Rect(position.x, position.y, position.width, ownHeight);
+            if (property.isArray)
+            {
+                property.isExpanded = Foldout(row, property.isExpanded, label.text,
+                    toggleOnLabelClick: true, style);
+                if (!includeChildren || !property.isExpanded) return property.isExpanded;
+
+                var arrayIndent = indentLevel;
+                try
+                {
+                    indentLevel = arrayIndent + 1;
+                    var list = GetDefaultReorderableList(property);
+                    var listHeight = (Fix64)list.GetHeight();
+                    list.DoList(new Rect(position.x,
+                        row.yMax + EditorGUIUtility.standardVerticalSpacing, position.width, listHeight));
+                }
+                finally { indentLevel = arrayIndent; }
+                return property.isExpanded;
+            }
             var children = GetExpandableChildren(property, nestingDepth, ancestors);
             if (children.Count > 0)
             {
@@ -806,42 +827,84 @@ public static class EditorGUI
         GUIStyle? style)
     {
         var range = property.GetAttribute<RangeAttribute>();
-        switch (property.propertyType)
+        var previousMixedValue = showMixedValue;
+        showMixedValue |= property.hasMultipleDifferentValues;
+        try
         {
-            case SerializedPropertyType.Boolean:
-                property.boolValue = Toggle(position, label.text, property.boolValue, style); break;
-            case SerializedPropertyType.Integer:
-            case SerializedPropertyType.LayerMask:
-                property.intValue = range is null
-                    ? IntField(position, label.text, property.intValue, style)
-                    : IntSlider(position, label.text, property.intValue,
-                        (int)MathF.Ceiling(range.min), (int)MathF.Floor(range.max), style);
-                break;
-            case SerializedPropertyType.Float:
-                property.floatValue = range is null
-                    ? FloatField(position, label.text, property.floatValue, style)
-                    : Slider(position, label.text, property.floatValue, range.min, range.max, style);
-                break;
-            case SerializedPropertyType.String:
-                property.stringValue = TextField(position, label.text, property.stringValue, style); break;
-            case SerializedPropertyType.Color:
-                var usage = property.GetAttribute<ColorUsageAttribute>();
-                property.colorValue = ColorField(position, label.text, property.colorValue,
-                    true, usage?.showAlpha ?? true, usage?.hdr ?? false, style);
-                break;
-            case SerializedPropertyType.Enum:
-                property.enumValueIndex = Popup(position, label.text, property.enumValueIndex,
-                    property.enumDisplayNames, style); break;
-            case SerializedPropertyType.Vector2:
-                property.vector2Value = Vector2Field(position, label.text, property.vector2Value, style); break;
-            case SerializedPropertyType.Vector4:
-                property.vector4Value = Vector4Field(position, label.text, property.vector4Value, style); break;
-            case SerializedPropertyType.ObjectReference:
-                ObjectField(position, property, property.valueType, label, style); break;
-            default:
-                GUI.Label(PrefixLabel(position, label), property.boxedValue?.ToString() ?? "None",
-                    style ?? EditorStyles.label); break;
+            switch (property.propertyType)
+            {
+                case SerializedPropertyType.Boolean:
+                    ApplyControlValue(
+                        () => Toggle(position, label.text, property.boolValue, style),
+                        value => property.boolValue = value);
+                    break;
+                case SerializedPropertyType.Integer:
+                case SerializedPropertyType.LayerMask:
+                    ApplyControlValue(
+                        () => range is null
+                            ? IntField(position, label.text, property.intValue, style)
+                            : IntSlider(position, label.text, property.intValue,
+                                (int)MathF.Ceiling(range.min), (int)MathF.Floor(range.max), style),
+                        value => property.intValue = value);
+                    break;
+                case SerializedPropertyType.Float:
+                    ApplyControlValue(
+                        () => range is null
+                            ? FloatField(position, label.text, property.floatValue, style)
+                            : Slider(position, label.text, property.floatValue, range.min, range.max, style),
+                        value => property.floatValue = value);
+                    break;
+                case SerializedPropertyType.String:
+                    ApplyControlValue(
+                        () => TextField(position, label.text, property.stringValue, style),
+                        value => property.stringValue = value);
+                    break;
+                case SerializedPropertyType.Color:
+                    var usage = property.GetAttribute<ColorUsageAttribute>();
+                    ApplyControlValue(
+                        () => ColorField(position, label.text, property.colorValue,
+                            true, usage?.showAlpha ?? true, usage?.hdr ?? false, style),
+                        value => property.colorValue = value);
+                    break;
+                case SerializedPropertyType.Enum:
+                    ApplyControlValue(
+                        () => Popup(position, label.text, property.enumValueIndex,
+                            property.enumDisplayNames, style),
+                        value => property.enumValueIndex = value);
+                    break;
+                case SerializedPropertyType.Vector2:
+                    ApplyControlValue(
+                        () => Vector2Field(position, label.text, property.vector2Value, style),
+                        value => property.vector2Value = value);
+                    break;
+                case SerializedPropertyType.Vector4:
+                    ApplyControlValue(
+                        () => Vector4Field(position, label.text, property.vector4Value, style),
+                        value => property.vector4Value = value);
+                    break;
+                case SerializedPropertyType.ObjectReference:
+                    ObjectField(position, property, property.valueType, label, style);
+                    break;
+                default:
+                    GUI.Label(PrefixLabel(position, label), property.boxedValue?.ToString() ?? "None",
+                        style ?? EditorStyles.label);
+                    break;
+            }
         }
+        finally { showMixedValue = previousMixedValue; }
+    }
+
+    private static void ApplyControlValue<T>(Func<T> drawControl, Action<T> applyValue)
+    {
+        BeginChangeCheck();
+        T value;
+        try { value = drawControl(); }
+        catch
+        {
+            _ = EndChangeCheck();
+            throw;
+        }
+        if (EndChangeCheck()) applyValue(value);
     }
 
     private static Fix64 GetPropertyHeight(SerializedProperty property, GUIContent label,
@@ -856,6 +919,17 @@ public static class EditorGUI
 
         var height = GetSinglePropertyHeight(property);
         if (!includeChildren || !property.isExpanded) return height;
+        if (property.isArray)
+        {
+            var previousIndent = indentLevel;
+            try
+            {
+                indentLevel = previousIndent + 1;
+                return height + EditorGUIUtility.standardVerticalSpacing +
+                       (Fix64)GetDefaultReorderableList(property).GetHeight();
+            }
+            finally { indentLevel = previousIndent; }
+        }
         var children = GetExpandableChildren(property, nestingDepth, ancestors);
         if (children.Count == 0) return height;
 
@@ -896,6 +970,25 @@ public static class EditorGUI
 
     private static bool TryTrackContainer(object? value, HashSet<object> ancestors) =>
         value is not null && !value.GetType().IsValueType && ancestors.Add(value);
+
+    private static ReorderableList GetDefaultReorderableList(SerializedProperty property)
+    {
+        var lists = DefaultReorderableLists.GetOrCreateValue(property.serializedObject);
+        if (lists.TryGetValue(property.propertyPath, out var existing))
+        {
+            existing.serializedProperty = property;
+            return existing;
+        }
+        var created = new ReorderableList(property.serializedObject, property,
+            draggable: true, displayHeader: false, displayAddButton: true, displayRemoveButton: true)
+        {
+            elementHeight = (float)EditorGUIUtility.singleLineHeight,
+            footerHeight = (float)EditorGUIUtility.singleLineHeight,
+            showDefaultBackground = true
+        };
+        lists[property.propertyPath] = created;
+        return created;
+    }
 
     internal static string FormatFloat(float value) => Math.Abs(value) < 0.00005f
         ? "0"

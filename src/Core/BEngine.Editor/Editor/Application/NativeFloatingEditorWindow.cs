@@ -179,13 +179,28 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
         var toolbarHeight = ToolbarHeight();
         var toolbar = new Rect(0, 0, GUIUtility.currentViewWidth, toolbarHeight);
         GUI.Box(toolbar, GUIContent.none, EditorStyles.toolbar);
-        var buttonWidth = State == EditorWindowState.Normal ? Fix64.Max(54,
+        var dockButtonWidth = State == EditorWindowState.Normal ? Fix64.Max(54,
             EditorStyles.toolbarButton.CalcSize(new GUIContent("Dock")).x + 12) : Fix64.Zero;
-        var labelWidth = Fix64.Max(0, toolbar.width - buttonWidth - 8);
+        var lockButtonWidth = Window.supportsLocking
+            ? Fix64.Max(24, EditorStyles.toolbarIconButton.fixedWidth)
+            : Fix64.Zero;
+        var actionsWidth = dockButtonWidth + lockButtonWidth +
+                           (dockButtonWidth > 0 && lockButtonWidth > 0 ? 2 : 0);
+        var labelWidth = Fix64.Max(0, toolbar.width - actionsWidth - 8);
         GUI.Label(new Rect(6, 0, labelWidth, toolbar.height), Window.titleContent,
             EditorStyles.windowTitle);
+        var actionX = toolbar.xMax - actionsWidth - 3;
+        if (Window.supportsLocking)
+        {
+            var lockRect = new Rect(actionX, 2, lockButtonWidth, Fix64.Max(18, toolbar.height - 4));
+            if (GUI.Button(lockRect, new GUIContent(string.Empty,
+                    Window.isLocked ? EditorBuiltinIcons.Toolbar.Lock : EditorBuiltinIcons.Toolbar.Unlock,
+                    string.Empty), EditorStyles.toolbarIconButton))
+                Window.isLocked = !Window.isLocked;
+            actionX = lockRect.xMax + 2;
+        }
         if (State == EditorWindowState.Normal && GUI.Button(
-                new Rect(toolbar.xMax - buttonWidth - 3, 2, buttonWidth, Fix64.Max(18, toolbar.height - 4)),
+                new Rect(actionX, 2, dockButtonWidth, Fix64.Max(18, toolbar.height - 4)),
                 new GUIContent("Dock"), EditorStyles.toolbarButton))
         {
             var point = ImGuiNativeWindow.TryGetPointerScreenPosition(out var screenPoint)

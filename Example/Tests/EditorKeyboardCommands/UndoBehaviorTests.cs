@@ -9,7 +9,7 @@ internal static class UndoBehaviorTests
         Undo.ClearAll();
         var target = new GameObject("Before");
         var notifications = new List<UndoRedoInfo>();
-        void OnUndoRedo(UndoRedoInfo info) => notifications.Add(info);
+        void OnUndoRedo(in UndoRedoInfo info) => notifications.Add(info);
         Undo.undoRedoEvent += OnUndoRedo;
         try
         {

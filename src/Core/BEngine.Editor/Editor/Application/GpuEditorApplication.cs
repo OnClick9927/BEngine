@@ -502,7 +502,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         var registeredEmitted = false;
         if (root.Equals("Component", StringComparison.OrdinalIgnoreCase))
         {
-            foreach (var item in ComponentRootMenuItems())
+            foreach (var item in ComponentRootMenuItems(ResolveGameObjectCommandTarget()))
                 yield return new(MenuDisplayLabel(root, item.Label), item.Enabled, item.Action, item.Checked);
             registeredEmitted = true;
         }
@@ -538,7 +538,10 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
         }
         if (registeredEmitted) yield break;
-        foreach (var node in FlattenMenu(_menuItems.GetRoot(root)))
+        var context = root.Equals("GameObject", StringComparison.OrdinalIgnoreCase)
+            ? ResolveGameObjectCommandTarget()
+            : null;
+        foreach (var node in FlattenMenu(_menuItems.GetRoot(root, context)))
             yield return new(MenuDisplayLabel(root, node.Label), node.Enabled, node.Action, node.Checked);
     }
 
@@ -589,9 +592,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
     }
 
-    private IEnumerable<MenuEntry> ComponentMenuItems()
+    private IEnumerable<MenuEntry> ComponentMenuItems(GameObject? selected)
     {
-        var selected = _selected;
         var components = TypeCache.GetTypesDerivedFrom<Component>()
             .Where(type => !type.IsAbstract && type != typeof(Transform) && type != typeof(MissingComponent))
             .Select(type => (Type: type, Menu: type.GetCustomAttribute<AddComponentMenuAttribute>()))
@@ -606,7 +608,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var enabled = selected is not null &&
                           (!disallowMultiple || selected.GetComponent(component.Type) is null);
             var type = component.Type;
-            yield return new MenuEntry(component.Path, enabled, () => AddSelectedComponent(type));
+            yield return new MenuEntry(component.Path, enabled, () => AddComponent(selected, type));
         }
     }
 
@@ -614,7 +616,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         foreach (var node in FlattenMenu(_menuItems.GetRoot("Component", context)))
             yield return new MenuEntry(node.Label, node.Enabled, node.Action, node.Checked);
-        foreach (var item in ComponentMenuItems()) yield return item;
+        var selected = context switch
+        {
+            GameObject gameObject => gameObject,
+            Component component => component.gameObject,
+            _ => null
+        };
+        foreach (var item in ComponentMenuItems(selected)) yield return item;
     }
 
     private static string ComponentMenuPath(Type componentType, AddComponentMenuAttribute? attribute)
@@ -626,13 +634,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             : componentType.Name;
     }
 
-    private void AddSelectedComponent(Type componentType)
+    private void AddComponent(GameObject? target, Type componentType)
     {
-        if (_selected is null) return;
+        if (target is null) return;
         try
         {
-            ObjectFactory.AddComponent(_selected, componentType);
-            MarkDirty(_selected.scene ?? _scene);
+            ObjectFactory.AddComponent(target, componentType);
+            MarkDirty(target.scene ?? _scene);
             _inspector.RebuildEditor();
         }
         catch (Exception exception)
@@ -643,8 +651,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void ShowAddComponentMenu()
     {
+        var target = _inspector.DisplayedGameObject ?? ResolveGameObjectCommandTarget();
         var menu = new GenericMenu();
-        foreach (var entry in ComponentRootMenuItems(_selected))
+        foreach (var entry in ComponentRootMenuItems(target))
         {
             if (entry.Enabled && entry.Action is not null)
                 menu.AddItem(new GUIContent(entry.Label), entry.Checked, entry.Action.Invoke);
@@ -1085,7 +1094,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _inspector.RebuildEditor();
         Selection.NotifyHostSelectionChanged(_selectedAsset);
     }
-    private void OnUndoRedo() { MarkDirty(_selected?.scene ?? _scene); _inspector.RebuildEditor(); }
+    private void OnUndoRedo() => _inspector.RebuildEditor();
     private void OnPackagesReloading()
     {
         CloseTransientMenus();
@@ -1488,6 +1497,17 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private static Vector2 ToEngineVector(NVector2 value) =>
         new((Fix64)value.X, (Fix64)value.Y);
 
+    private GameObject? ResolveGameObjectCommandTarget() =>
+        EditorWindow.focusedWindow is ImGuiHierarchyWindow hierarchy
+            ? hierarchy.CommandTarget
+            : _selected;
+
+    private void UpdateLockedHierarchyCommandTarget(GameObject? target)
+    {
+        if (EditorWindow.focusedWindow is ImGuiHierarchyWindow hierarchy)
+            hierarchy.SetCommandTarget(target);
+    }
+
     private bool CanExecuteMainMenuCommand(MainMenuCommand command)
     {
         var focused = EditorWindow.focusedWindow;
@@ -1507,13 +1527,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             MainMenuCommand.Paste => CanPasteSelection(),
             MainMenuCommand.Rename => focused is ImGuiProjectWindow
                 ? _project.CanExecuteCommand(ProjectAssetCommand.Rename)
-                : CanExecuteGameObjectCommand(GameObjectCommand.Rename, _selected),
+                : CanExecuteGameObjectCommand(GameObjectCommand.Rename, ResolveGameObjectCommandTarget()),
             MainMenuCommand.Delete => focused is ImGuiProjectWindow
                 ? _project.CanExecuteCommand(ProjectAssetCommand.Delete)
-                : CanExecuteGameObjectCommand(GameObjectCommand.Delete, _selected),
+                : CanExecuteGameObjectCommand(GameObjectCommand.Delete, ResolveGameObjectCommandTarget()),
             MainMenuCommand.SelectAll => _scene.isLoaded && _scene.gameObjects.Count > 0,
             MainMenuCommand.DeselectAll => Selection.count > 0 || _selected is not null || _selectedAsset is not null,
-            MainMenuCommand.FrameSelected => _selected is not null,
+            MainMenuCommand.FrameSelected => ResolveGameObjectCommandTarget() is not null,
             MainMenuCommand.Play => !_closing && !EditorApplication.isCompiling,
             MainMenuCommand.Pause or MainMenuCommand.Step => _playing,
             MainMenuCommand.RecompileScripts => !_playing && !EditorApplication.isCompiling &&
@@ -1588,7 +1608,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 _inspector.RebuildEditor();
                 break;
             case MainMenuCommand.FrameSelected:
-                FrameSelectedInScene();
+                FrameSelectedInScene(ResolveGameObjectCommandTarget());
                 break;
             case MainMenuCommand.Play:
                 TogglePlay();
@@ -1683,8 +1703,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         if (EditorWindow.focusedWindow is ImGuiProjectWindow)
             _project.ExecuteCommand(ProjectAssetCommand.Rename);
-        else if (_selected is not null)
-            _hierarchy.BeginRename(_selected);
+        else if (ResolveGameObjectCommandTarget() is { } target)
+            _hierarchy.BeginRename(target);
     }
 
     private void DeleteCurrentSelection()
@@ -1692,7 +1712,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (EditorWindow.focusedWindow is ImGuiProjectWindow)
             _project.ExecuteCommand(ProjectAssetCommand.Delete);
         else
-            DeleteSelected();
+            DeleteSelected(ResolveGameObjectCommandTarget());
     }
 
     private EditorWindow[] OpenEditorWindows() => _editorPanels.Keys
@@ -1876,36 +1896,51 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         return string.Join('/', segments);
     }
 
-    private void DuplicateSelected()
+    private void DuplicateSelected(GameObject? target = null)
     {
-        if (_selected is null) return;
-        var sourceParent = _selected.transform.parent;
-        var sourceSiblingIndex = _selected.transform.GetSiblingIndex();
-        var owner = _selected.scene ?? _scene;
-        var copy = (GameObject)BObject.Instantiate(_selected);
+        target ??= _selected;
+        if (target is null) return;
+        var sourceParent = target.transform.parent;
+        var sourceSiblingIndex = target.transform.GetSiblingIndex();
+        var owner = target.scene ?? _scene;
+        var copy = (GameObject)BObject.Instantiate(target);
         if (copy.scene is null) owner.Add(copy);
         else if (!ReferenceEquals(copy.scene, owner)) Scene.MoveGameObjectToScene(copy, owner);
         if (sourceParent is not null) copy.transform.SetParent(sourceParent, false);
         copy.transform.SetSiblingIndex(sourceSiblingIndex + 1);
-        copy.name = _selected.name + " (1)";
+        copy.name = target.name + " (1)";
         Undo.RegisterCreatedObjectUndo(copy, "Duplicate GameObject");
-        Select(copy); MarkDirty(owner); EditorApplication.RaiseHierarchyChanged();
+        Select(copy);
+        UpdateLockedHierarchyCommandTarget(copy);
+        MarkDirty(owner);
+        EditorApplication.RaiseHierarchyChanged();
     }
 
-    private void DeleteSelected()
+    private void DeleteSelected(GameObject? target = null)
     {
-        if (_selected is null) return;
-        var owner = _selected.scene ?? _scene;
-        Undo.DestroyObjectImmediate(_selected); _selected = owner.gameObjects.FirstOrDefault(); MarkDirty(owner);
-        Selection.NotifyHostSelectionChanged(_selected);
+        target ??= _selected;
+        if (target is null) return;
+        var owner = target.scene ?? _scene;
+        var selectedTarget = ReferenceEquals(_selected, target);
+        Undo.DestroyObjectImmediate(target);
+        var fallback = owner.gameObjects.FirstOrDefault();
+        UpdateLockedHierarchyCommandTarget(fallback);
+        if (selectedTarget)
+        {
+            _selected = fallback;
+            Selection.NotifyHostSelectionChanged(_selected);
+        }
+        MarkDirty(owner);
         _inspector.RebuildEditor();
     }
 
-    private bool CanCopySelection() => _selected is not null ||
-        EditorWindow.focusedWindow is ImGuiProjectWindow && _project.CanCopySelected();
+    private bool CanCopySelection() => EditorWindow.focusedWindow is ImGuiProjectWindow
+        ? _project.CanCopySelected()
+        : ResolveGameObjectCommandTarget() is not null;
 
-    private bool CanPasteSelection() => _copiedGameObject is not null ||
-        _copiedAssetPath is not null && EditorWindow.focusedWindow is ImGuiProjectWindow;
+    private bool CanPasteSelection() => EditorWindow.focusedWindow is ImGuiProjectWindow
+        ? _copiedAssetPath is not null
+        : _copiedGameObject is not null;
 
     private void CopySelection()
     {
@@ -1916,10 +1951,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             GUIUtility.systemCopyBuffer = assetPath;
             return;
         }
-        if (_selected is null) return;
-        _copiedGameObject = _selected;
+        var target = ResolveGameObjectCommandTarget();
+        if (target is null) return;
+        _copiedGameObject = target;
         _copiedAssetPath = null;
-        GUIUtility.systemCopyBuffer = _selected.name;
+        GUIUtility.systemCopyBuffer = target.name;
     }
 
     private void PasteSelection()
@@ -1930,14 +1966,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             return;
         }
         if (_copiedGameObject is null) return;
-        var owner = _selected?.scene ?? _scene;
+        var target = ResolveGameObjectCommandTarget();
+        var owner = target?.scene ?? _scene;
         var copy = (GameObject)BObject.Instantiate(_copiedGameObject);
         if (copy.scene is null) owner.Add(copy);
         else if (!ReferenceEquals(copy.scene, owner)) Scene.MoveGameObjectToScene(copy, owner);
         copy.name = _copiedGameObject.name + " (Copy)";
-        if (_selected?.transform.parent is { } parent) copy.transform.SetParent(parent, false);
+        if (target?.transform.parent is { } parent) copy.transform.SetParent(parent, false);
         Undo.RegisterCreatedObjectUndo(copy, "Paste GameObject");
         Select(copy);
+        UpdateLockedHierarchyCommandTarget(copy);
         MarkDirty(owner);
         EditorApplication.RaiseHierarchyChanged();
     }
@@ -1949,7 +1987,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _project.PasteAsset(assetPath);
             return;
         }
-        DuplicateSelected();
+        DuplicateSelected(ResolveGameObjectCommandTarget());
     }
 
     private void HandleGlobalKeyboard()
@@ -2494,6 +2532,21 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         .Select(item => item.Scene.Find(id))
         .FirstOrDefault(item => item is not null);
 
+    private BObject? FindBObject(Guid id)
+    {
+        foreach (var entry in _openScenes.Where(item => item.IsLoaded))
+        {
+            if (entry.Scene.Id == id) return entry.Scene;
+            foreach (var gameObject in entry.Scene.gameObjects)
+            {
+                if (gameObject.Id == id) return gameObject;
+                var component = gameObject.GetComponents<Component>().FirstOrDefault(item => item.Id == id);
+                if (component is not null) return component;
+            }
+        }
+        return null;
+    }
+
     private string ToAssetPath(string sourcePath) => Path.GetRelativePath(_workspace.RootPath,
         Path.GetFullPath(sourcePath)).Replace('\\', '/');
 
@@ -3033,11 +3086,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private static Color C(float r, float g, float b, float a = 1) =>
         new((Fix64)r, (Fix64)g, (Fix64)b, (Fix64)a);
 
-    private void FrameSelectedInScene()
+    private void FrameSelectedInScene(GameObject? target = null)
     {
         if (_nativeFloatingWindows.TryGetValue(_sceneView, out var nativeScene)) nativeScene.Focus();
         else _dock.Show(_sceneView.PersistentId);
-        if (!TryGetSelectedBounds(out var pivot, out var radius)) return;
+        if (!TryGetSelectedBounds(target ?? _selected, out var pivot, out var radius)) return;
         _editorCameraPivot = pivot;
         var framedSize = Math.Max(0.01f, radius * 1.2f);
         if (_lastHeight > 0 && _editorCameraReferenceHeight > 0)
@@ -3050,14 +3103,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _editorCameraPosition = pivot;
     }
 
-    private bool TryGetSelectedBounds(out NVector2 pivot, out float radius)
+    private static bool TryGetSelectedBounds(GameObject? target, out NVector2 pivot, out float radius)
     {
         pivot = default;
         radius = 0;
-        if (_selected is null) return false;
+        if (target is null) return false;
         var minimum = new NVector2(float.MaxValue);
         var maximum = new NVector2(float.MinValue);
-        foreach (var transform in _selected.GetComponentsInChildren<Transform>(true))
+        foreach (var transform in target.GetComponentsInChildren<Transform>(true))
         {
             var position = transform.position;
             var scale = transform.lossyScale;
@@ -3431,6 +3484,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             TypeName = window.GetType().AssemblyQualifiedName ?? window.GetType().FullName ?? window.GetType().Name,
             State = window.windowState.ToString(),
             Docked = docked,
+            Locked = window.isLocked,
+            LockContext = window.CaptureLockContext(),
             X = (float)position.x,
             Y = (float)position.y,
             Width = (float)size.x,
@@ -3471,10 +3526,12 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var window = ResolveLayoutWindow(record, existing);
             if (window is null) continue;
             window.PersistentId = record.Id;
+            window.isLocked = record.Locked;
             window.position = new Rect((Fix64)record.X, (Fix64)record.Y,
                 Fix64.Max(window.minSize.x, (Fix64)record.Width),
                 Fix64.Max(window.minSize.y, (Fix64)record.Height));
             window.OpenInternal();
+            window.RestoreLockContext(record.LockContext);
             resolved[record.Id] = (window, record, state);
         }
 
@@ -3966,7 +4023,41 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private readonly TreeViewState<Guid> _treeState = new();
         private HierarchyTreeView? _treeView;
         private bool _treeDirty = true;
+        private Guid? _lockedSelectionId;
         public ImGuiHierarchyWindow() : this(null!) { }
+        internal override bool supportsLocking => true;
+        internal GameObject? CommandTarget => isLocked
+            ? _lockedSelectionId is { } id ? app.FindGameObject(id) : null
+            : app.Selected;
+
+        protected override void OnLockStateChanged()
+        {
+            _lockedSelectionId = isLocked ? app?.Selected?.Id : null;
+            Repaint();
+        }
+
+        internal override string? CaptureLockContext() => isLocked
+            ? _lockedSelectionId?.ToString("N") ?? string.Empty
+            : null;
+
+        internal override void RestoreLockContext(string? context)
+        {
+            if (!isLocked || context is null) return;
+            _lockedSelectionId = Guid.TryParse(context, out var id) && app.FindGameObject(id) is not null
+                ? id
+                : null;
+            _pendingRevealId = _lockedSelectionId;
+            Repaint();
+        }
+
+        internal void SetCommandTarget(GameObject? target)
+        {
+            if (!isLocked) return;
+            _lockedSelectionId = target?.Id;
+            _pendingRevealId = _lockedSelectionId;
+            Repaint();
+        }
+
         protected override void OnGUI()
         {
             if (_draggedId is not null && !DragAndDrop.isDragging) ClearDrag();
@@ -4014,7 +4105,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             else
                 _treeView.searchString = _search;
             _treeView.SetExpanded([.. _expandedScenes, .. _expanded]);
-            _treeView.SetSelection(app.Selected is { } selected ? [selected.Id] : []);
+            var selectedId = isLocked ? _lockedSelectionId : app.Selected?.Id;
+            _treeView.SetSelection(selectedId is { } id ? [id] : []);
             if (_pendingRevealId is { } reveal)
             {
                 _treeView.FrameItem(reveal);
@@ -4244,8 +4336,18 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 var id = selectedIds.LastOrDefault();
                 if (id == Guid.Empty) return;
                 if (FindItem(id, rootItem) is not HierarchyTreeItem item) return;
-                if (item.GameObject is { } gameObject) owner.Application.Select(gameObject);
-                else SetSelection(owner.Application.Selected is { } selected ? [selected.Id] : []);
+                if (item.GameObject is { } gameObject)
+                {
+                    if (owner.isLocked) owner._lockedSelectionId = gameObject.Id;
+                    owner.Application.Select(gameObject);
+                }
+                else
+                {
+                    var selectedId = owner.isLocked
+                        ? owner._lockedSelectionId
+                        : owner.Application.Selected?.Id;
+                    SetSelection(selectedId is { } selected ? [selected] : []);
+                }
             }
 
             protected override void SingleClickedItem(Guid id)
@@ -4266,6 +4368,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 if (FindItem(id, rootItem) is not HierarchyTreeItem item) return;
                 if (item.GameObject is { } gameObject)
                 {
+                    if (owner.isLocked) owner._lockedSelectionId = gameObject.Id;
                     owner.Application.Select(gameObject);
                     owner.ShowItemMenu(gameObject);
                 }
@@ -4567,6 +4670,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         internal void RevealSelection(GameObject item)
         {
             ArgumentNullException.ThrowIfNull(item);
+            if (isLocked && _lockedSelectionId != item.Id) return;
             if (item.scene is { } scene) _expandedScenes.Add(scene.Id);
             if (item.isDontDestroyOnLoad) _expandedScenes.Add(DontDestroyOnLoadId);
             for (var parent = item.transform.parent; parent is not null; parent = parent.parent)
@@ -4578,8 +4682,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private void HandleKeyboard()
         {
             if (Event.current.type != EventType.KeyDown) return;
+            var selectedForWindow = isLocked && _lockedSelectionId is { } lockedId
+                ? app.FindGameObject(lockedId)
+                : app.Selected;
             if (Event.current.keyCode == KeyCode.F2 && !EditorGUIUtility.editingTextField &&
-                app.Selected is { } selected)
+                selectedForWindow is { } selected)
             {
                 BeginRename(selected);
                 Event.current.Use();
@@ -5610,6 +5717,35 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private Fix64 _previewDragStartY;
         private Fix64 _previewDragStartHeight;
         public ImGuiInspectorWindow() : this(null!) { }
+        internal override bool supportsLocking => true;
+        internal GameObject? DisplayedGameObject => ResolveTarget() as GameObject;
+        protected override void OnLockStateChanged()
+        {
+            if (!isLocked) RebuildEditor(force: true);
+            else if (_lastTarget is null && app is not null)
+                SynchronizeTarget(app.Selected is not null ? app.Selected : app.SelectedAsset);
+        }
+        internal override string? CaptureLockContext()
+        {
+            if (!isLocked) return null;
+            if (_lastTarget is null) return string.Empty;
+            var assetPath = AssetDatabase.GetAssetPath(_lastTarget);
+            return !string.IsNullOrWhiteSpace(assetPath)
+                ? $"asset:{assetPath}"
+                : $"object:{_lastTarget.Id:N}";
+        }
+        internal override void RestoreLockContext(string? context)
+        {
+            if (!isLocked || context is null) return;
+            BObject? target = null;
+            if (context.StartsWith("asset:", StringComparison.Ordinal))
+                target = AssetDatabase.LoadMainAssetAtPath(context["asset:".Length..]);
+            else if (context.StartsWith("object:", StringComparison.Ordinal) &&
+                     Guid.TryParse(context["object:".Length..], out var id))
+                target = app.FindBObject(id);
+            SynchronizeTarget(target);
+            Repaint();
+        }
         internal BObject? LockedTarget => isLocked ? _lastTarget : null;
         internal void RebuildEditor(bool force = false)
         {
@@ -5665,7 +5801,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private BObject? ResolveTarget()
         {
             var selected = app.Selected is not null ? (BObject)app.Selected : app.SelectedAsset;
-            return isLocked && _lastTarget is not null ? _lastTarget : selected;
+            return isLocked ? _lastTarget : selected;
         }
         private void SynchronizeTarget(BObject? target)
         {
@@ -6217,6 +6353,37 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private readonly Dictionary<string, ulong> _projectTreeIds = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<ulong, string> _projectTreePaths = [];
         public ImGuiProjectWindow() : this(null!) { }
+        internal override bool supportsLocking => true;
+        internal override string? CaptureLockContext() => isLocked ? _selectedPath ?? string.Empty : null;
+        internal override void RestoreLockContext(string? context)
+        {
+            if (!isLocked || context is null) return;
+            _pingedAssetPath = null;
+            if (context.Length == 0)
+            {
+                _selectedPath = null;
+                Repaint();
+                return;
+            }
+
+            var items = _cache ??= BuildItems();
+            var path = ProjectBrowserPath.Normalize(context);
+            ProjectBrowserItem? selected = null;
+            while (!string.IsNullOrWhiteSpace(path))
+            {
+                selected = items.FirstOrDefault(item => item.NormalizedPath.Equals(
+                    path, StringComparison.OrdinalIgnoreCase));
+                if (selected is not null) break;
+                path = ProjectBrowserPath.Parent(path) ?? string.Empty;
+            }
+            selected ??= items.FirstOrDefault(item => item.NormalizedPath.Equals(
+                "Assets", StringComparison.OrdinalIgnoreCase));
+            _selectedPath = selected?.NormalizedPath;
+            for (var parent = selected?.ParentPath; !string.IsNullOrWhiteSpace(parent);
+                 parent = ProjectBrowserPath.Parent(parent))
+                _expanded.Add(parent);
+            Repaint();
+        }
         internal void Invalidate()
         {
             _cache = null;
@@ -6232,6 +6399,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
         internal void Ping(string path)
         {
+            if (isLocked) return;
             path = ProjectBrowserPath.Normalize(path);
             _pingedAssetPath = path;
             _selectedPath = path;
@@ -7159,7 +7327,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var updating = current.type is EventType.MouseDrag or EventType.DragUpdated;
             var performing = current.type is EventType.MouseUp or EventType.DragPerform;
             if (current.type == EventType.MouseDown && current.button == 0 && rowRect.Contains(current.mousePosition) &&
-                CanEdit(item))
+                CanStartObjectDrag(item))
             {
                 _dragCandidatePath = item.VirtualPath;
                 _dragStart = current.mousePosition;
@@ -7171,13 +7339,15 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 _draggedPath = candidate;
                 DragAndDrop.PrepareStartDrag();
                 DragAndDrop.paths = [candidate];
-                DragAndDrop.objectReferences = AssetDatabase.LoadMainAssetAtPath(candidate) is { } asset
+                var candidateItem = (_cache ??= BuildItems()).FirstOrDefault(entry =>
+                    entry.NormalizedPath.Equals(candidate, StringComparison.OrdinalIgnoreCase));
+                DragAndDrop.objectReferences = candidateItem is not null && DragObject(candidateItem) is { } asset
                     ? [asset]
                     : [];
                 DragAndDrop.SetGenericData("BEngine.Project.AssetPath", candidate);
                 DragAndDrop.StartDrag(Path.GetFileName(candidate));
             }
-            if (updating && _draggedPath is { } dragged &&
+            if (updating && _draggedPath is { } dragged && CanMoveDraggedItem(dragged) &&
                 CanDrop(dragged, item) && rowRect.Contains(current.mousePosition))
             {
                 _dropTargetPath = item.VirtualPath;
@@ -7209,6 +7379,20 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         private static bool CanEdit(ProjectBrowserItem item) => !item.IsPackage && item.Asset is not null &&
             !item.VirtualPath.Equals("Assets", StringComparison.OrdinalIgnoreCase);
+
+        private static bool CanStartObjectDrag(ProjectBrowserItem item) =>
+            !item.NormalizedPath.Equals("Assets", StringComparison.OrdinalIgnoreCase) &&
+            !item.NormalizedPath.Equals("Packages", StringComparison.OrdinalIgnoreCase) &&
+            (item.Asset is not null || item.IsPackage &&
+                (File.Exists(item.SourcePath) || Directory.Exists(item.SourcePath)));
+
+        private static BObject? DragObject(ProjectBrowserItem item) => item.Asset is { } record
+            ? AssetDatabase.LoadMainAssetAtPath(record.AssetPath)
+            : item.IsPackage ? ProjectBrowserSelection.CreateReadOnlyAsset(item) : null;
+
+        private bool CanMoveDraggedItem(string source) =>
+            (_cache ??= BuildItems()).FirstOrDefault(item => item.NormalizedPath.Equals(
+                source, StringComparison.OrdinalIgnoreCase)) is { } item && CanEdit(item);
 
         private static bool CanDrop(string source, ProjectBrowserItem target) => !target.IsPackage &&
             target.IsDirectory && !target.VirtualPath.Equals(source, StringComparison.OrdinalIgnoreCase) &&
@@ -7380,7 +7564,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private bool _errorPause = ConsolePreferences.ErrorPause;
         private LogEntry? _selected;
         private int _selectedRepeatCount = 1;
-        private readonly ImGuiScrollRegion _listScroll = new();
+        private readonly TreeViewState<int> _treeState = new();
+        private ConsoleTreeView? _treeView;
         private readonly ImGuiScrollRegion _detailsScroll = new();
         private Fix64 _detailsHeight;
         private Fix64 _detailsDragStartY;
@@ -7533,8 +7718,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 separatorRect = new Rect(0, contentY + listHeight, GUIUtility.currentViewWidth, separatorHeight);
             }
 
-            using (GUILayout.Area(new Rect(0, contentY, GUIUtility.currentViewWidth, listHeight)))
-                DrawLogList();
+            DrawLogList(new Rect(0, contentY, GUIUtility.currentViewWidth, listHeight));
 
             if (_selected is not { } selected || detailsHeight <= 0) return;
             GUI.Box(new Rect(separatorRect.x, separatorRect.y + 2, separatorRect.width, 2),
@@ -7580,46 +7764,45 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             return currentDetailsHeight;
         }
 
-        private void DrawLogList()
+        private void DrawLogList(Rect rect)
         {
             RefreshLogCache();
-            _listScroll.Begin();
-            try
-            {
-                foreach (var view in _visibleLogs)
-                {
-                    var log = view.Entry;
-                    var rowRect = GUILayoutUtility.GetControlRect(EditorStyles.treeViewRow.fixedHeight,
-                        GUILayout.ExpandWidth(true));
-                    var isSelected = _selected is { } current &&
-                                     (_collapse ? SameLogGroup(current, log) : current.Equals(log));
-                    if (GUI.Button(rowRect, new GUIContent(ViewRowText(view), IconFor(log.Type),
-                                view.Count > 1 ? $"{view.Count:N0} identical {log.Type} logs" : log.Type.ToString()),
-                            TreeRowStyle(isSelected)))
-                    {
-                        _selected = log;
-                        _selectedRepeatCount = view.Count;
-                    }
+            _treeView ??= new ConsoleTreeView(this, _treeState);
+            _treeView.Configure(_visibleLogs);
+            _treeView.SynchronizeSelection(_selected, _collapse);
+            _treeView.OnGUI(rect);
+        }
 
-                    var evt = Event.current;
-                    if (!rowRect.Contains(evt.mousePosition)) continue;
-                    if (evt.type == EventType.ContextClick)
-                    {
-                        _selected = log;
-                        _selectedRepeatCount = view.Count;
-                        var menu = new GenericMenu();
-                        menu.AddItem(new GUIContent("Copy Message"), false,
-                            () => GUIUtility.systemCopyBuffer = log.Message);
-                        menu.AddItem(new GUIContent("Copy Full Log"), false,
-                            () => GUIUtility.systemCopyBuffer = log.ToDetailedString());
-                        menu.AddSeparator(string.Empty);
-                        menu.AddItem(new GUIContent("Clear"), false, Clear);
-                        menu.ShowAsContext();
-                        evt.Use();
-                    }
-                }
-            }
-            finally { _listScroll.End(); }
+        private static void DrawLogTreeRow(TreeView<int>.RowGUIArgs args)
+        {
+            if (args.item is not ConsoleTreeItem { View: var view }) return;
+            var tooltip = view.Count > 1
+                ? $"{view.Count:N0} identical {view.Entry.Type} logs"
+                : view.Entry.Type.ToString();
+            var labelRect = new Rect(args.rowRect.x + 6, args.rowRect.y,
+                Fix64.Max(1, args.rowRect.width - 12), args.rowRect.height);
+            GUI.Label(labelRect, new GUIContent(ViewRowText(view), IconFor(view.Entry.Type), tooltip),
+                EditorStyles.label);
+        }
+
+        private void SelectLog(ConsoleLogViewEntry view)
+        {
+            _selected = view.Entry;
+            _selectedRepeatCount = view.Count;
+        }
+
+        private void ShowLogContextMenu(ConsoleLogViewEntry view)
+        {
+            SelectLog(view);
+            var log = view.Entry;
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Copy Message"), false,
+                () => GUIUtility.systemCopyBuffer = log.Message);
+            menu.AddItem(new GUIContent("Copy Full Log"), false,
+                () => GUIUtility.systemCopyBuffer = log.ToDetailedString());
+            menu.AddSeparator(string.Empty);
+            menu.AddItem(new GUIContent("Clear"), false, Clear);
+            menu.ShowAsContext();
         }
 
         private void DrawDetails(LogEntry log)
@@ -7677,6 +7860,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             _selected = null;
             _selectedRepeatCount = 1;
+            _treeView?.SetSelection([]);
             _cachedStackTrace = null;
             _stackLines = [];
             _stackContentWidth = 0;
@@ -7846,6 +8030,62 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             StringComparison.OrdinalIgnoreCase) == true ||
             item.StackTrace?.Contains(_search, StringComparison.OrdinalIgnoreCase) == true) &&
             item.Type switch { LogType.Warning => _warning, LogType.Error => _error, _ => _info };
+
+        private sealed class ConsoleTreeView(ImGuiConsoleWindow owner, TreeViewState<int> state)
+            : TreeView<int>(state)
+        {
+            private IReadOnlyList<ConsoleLogViewEntry> _views = [];
+
+            internal void Configure(IReadOnlyList<ConsoleLogViewEntry> views)
+            {
+                if (ReferenceEquals(_views, views) && isInitialized) return;
+                _views = views;
+                Reload();
+            }
+
+            internal void SynchronizeSelection(LogEntry? selected, bool collapse)
+            {
+                if (selected is null)
+                {
+                    SetSelection([]);
+                    return;
+                }
+
+                var item = GetRows().OfType<ConsoleTreeItem>().FirstOrDefault(candidate =>
+                    collapse ? SameLogGroup(selected.Value, candidate.View.Entry) :
+                    selected.Value.Equals(candidate.View.Entry));
+                SetSelection(item is null ? [] : [item.id]);
+            }
+
+            protected override TreeViewItem<int> BuildRoot()
+            {
+                var root = new TreeViewItem<int>(0, -1, "Console");
+                for (var index = 0; index < _views.Count; index++)
+                    root.AddChild(new ConsoleTreeItem(index + 1, _views[index]));
+                return root;
+            }
+
+            protected override bool CanChangeExpandedState(TreeViewItem<int> item) => false;
+            protected override bool CanMultiSelect(TreeViewItem<int> item) => false;
+            protected override void RowGUI(RowGUIArgs args) => DrawLogTreeRow(args);
+
+            protected override void SelectionChanged(IList<int> selectedIds)
+            {
+                var id = selectedIds.LastOrDefault();
+                if (FindItem(id, rootItem) is ConsoleTreeItem item) owner.SelectLog(item.View);
+            }
+
+            protected override void ContextClickedItem(int id)
+            {
+                if (FindItem(id, rootItem) is ConsoleTreeItem item) owner.ShowLogContextMenu(item.View);
+            }
+        }
+
+        private sealed class ConsoleTreeItem(int id, ConsoleLogViewEntry view)
+            : TreeViewItem<int>(id, 0, ViewRowText(view))
+        {
+            internal ConsoleLogViewEntry View { get; } = view;
+        }
     }
 
     private sealed class ImGuiPackageManagerWindow(GpuEditorApplication app) : EditorWindow

@@ -25,6 +25,18 @@ internal static class HierarchyUnityStyleTests
         VerifyDragAndRenameRemainInteractive(harness, first);
     }
 
+    public static void RunObjectDrag(SceneFixture fixture)
+    {
+        using var harness = new EditorApplicationHarness(fixture);
+        var scene = harness.InitialScene;
+        harness.ExpandScene(scene);
+        var root = scene.Find("First Root") ??
+                   throw new InvalidOperationException("Hierarchy drag test root was not found.");
+        harness.ExpandGameObject(root);
+        harness.RenderHierarchy(new Event(EventType.Layout), WideWidth);
+        VerifyDragAndRenameRemainInteractive(harness, scene);
+    }
+
     private static void VerifyCompactToolbarAndSceneActions(EditorApplicationHarness harness)
     {
         var commands = harness.RenderHierarchy(new Event(EventType.Repaint), WideWidth);
@@ -209,6 +221,9 @@ internal static class HierarchyUnityStyleTests
         {
             mousePosition = childPoint + new Vector2(8, 0), button = 0
         }, WideWidth);
+        TestAssert.Require(DragAndDrop.objectReferences is [var draggedReference] &&
+                           ReferenceEquals(draggedReference, child) && DragAndDrop.paths.Length == 0,
+            "Dragging an ordinary Hierarchy row did not publish its GameObject ObjectField payload.");
         harness.RenderHierarchy(new Event(EventType.MouseDrag)
         {
             mousePosition = scenePoint, button = 0

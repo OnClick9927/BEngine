@@ -63,6 +63,7 @@ public sealed class AssemblyDefinitionAssetEditor : Editor
         _error = Validate();
         if (!string.IsNullOrWhiteSpace(_error)) return;
         var asset = (AssemblyDefinitionAsset)target;
+        Undo.RegisterAssetFileUndo(asset.assetPath, "Edit Assembly Definition");
         _document.Save(AssetDatabase.ResolveAssetPath(asset.assetPath));
         asset.definition = Clone(_document);
         asset.importError = string.Empty;

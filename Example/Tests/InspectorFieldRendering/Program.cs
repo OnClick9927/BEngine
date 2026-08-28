@@ -4,6 +4,7 @@ using System.Reflection;
 using BEngine;
 using BEngine.Editor;
 using BEngine.Editor.Rendering;
+using UnityEditorInternal;
 
 namespace BEngine.ExampleTests.InspectorFieldRendering;
 
@@ -493,6 +494,10 @@ internal static class Program
 
         VerifyNestedCollection(serialized, component, nameof(NestedInspectorComponent.items), isList: false);
         VerifyNestedCollection(serialized, component, nameof(NestedInspectorComponent.entries), isList: true);
+        VerifyNullNestedCollection(serialized, component,
+            nameof(NestedInspectorComponent.optionalItems), isList: false);
+        VerifyNullNestedCollection(serialized, component,
+            nameof(NestedInspectorComponent.optionalEntries), isList: true);
         VerifyNestedCycleAndDepth(serialized);
         VerifyThrowingGetterIsolation(serialized);
         Require(GUIUtility.hotControl == 0,
@@ -562,6 +567,29 @@ internal static class Program
                                                   command.Content == "Age");
         Require(ageLabel.Rect.X >= 29,
             $"Collection child indentation is not proportional to depth 2: x={ageLabel.Rect.X}.");
+    }
+
+    private static void VerifyNullNestedCollection(SerializedObject serialized,
+        NestedInspectorComponent component, string propertyName, bool isList)
+    {
+        var collection = serialized.FindProperty(propertyName)!;
+        Require(collection.isArray && collection.arraySize == 0,
+            $"Null declared collection '{propertyName}' was not recognized by SerializedProperty.");
+        collection.isExpanded = true;
+        var height = EditorGUI.GetPropertyHeight(collection, includeChildren: true);
+        var commands = Render(420, (int)Math.Ceiling((double)height) + 8,
+            () => EditorGUI.PropertyField(new Rect(0, 0, 420, height), collection, includeChildren: true));
+        var list = ReorderableList.GetReorderableListFromSerializedProperty(collection);
+        Require(list is not null && commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                                             command.Content == "+"),
+            $"Null declared collection '{propertyName}' did not use the default ReorderableList.");
+
+        ReorderableList.defaultBehaviours.DoAddButton(list!);
+        Require(serialized.ApplyModifiedPropertiesWithoutUndo(),
+            $"Null declared collection '{propertyName}' initialization was not applicable.");
+        var initializedCount = isList ? component.optionalEntries?.Count : component.optionalItems?.Length;
+        Require(initializedCount == 1,
+            $"Null declared collection '{propertyName}' was not initialized by the list add action.");
     }
 
     private static void VerifyNestedCycleAndDepth(SerializedObject serialized)
@@ -745,6 +773,47 @@ internal static class Program
             Require(ReferenceEquals(dragged, compatible),
                 "ObjectField did not accept a compatible dragged GameObject.");
 
+            BObject? draggedComponent = null;
+            DragAndDrop.objectReferences = [cameraObject];
+            Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => draggedComponent = EditorGUI.ObjectField(
+                    rect, "Camera", draggedComponent, typeof(Camera2D), true));
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Link,
+                "A Component ObjectField did not advertise a valid Hierarchy GameObject drop.");
+            Dispatch(new Event(EventType.DragPerform) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => draggedComponent = EditorGUI.ObjectField(
+                    rect, "Camera", draggedComponent, typeof(Camera2D), true));
+            Require(ReferenceEquals(draggedComponent, camera),
+                "A Component ObjectField did not resolve the matching component from a dragged GameObject.");
+
+            BObject? draggedOwner = null;
+            DragAndDrop.objectReferences = [camera];
+            Dispatch(new Event(EventType.DragPerform) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => draggedOwner = EditorGUI.ObjectField(
+                    rect, "Owner", draggedOwner, typeof(GameObject), true));
+            Require(ReferenceEquals(draggedOwner, cameraObject),
+                "A GameObject ObjectField did not resolve the owner of a dragged Component.");
+
+            BObject? forbiddenSceneObject = null;
+            DragAndDrop.objectReferences = [compatible];
+            Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => forbiddenSceneObject = EditorGUI.ObjectField(
+                    rect, "Asset Only", forbiddenSceneObject, typeof(GameObject), false));
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Rejected && forbiddenSceneObject is null,
+                "ObjectField accepted a Hierarchy GameObject while allowSceneObjects was false.");
+
+            var dragProbe = ScriptableObject.CreateInstance<InspectorProbe>();
+            using (var dragSerialized = new SerializedObject(dragProbe))
+            {
+                var dragProperty = dragSerialized.FindProperty(nameof(InspectorProbe.gameObjectReference))!;
+                DragAndDrop.objectReferences = [cameraObject];
+                Dispatch(new Event(EventType.DragPerform) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                    () => EditorGUI.ObjectField(rect, dragProperty, typeof(GameObject), true));
+                Require(ReferenceEquals(dragProbe.gameObjectReference, cameraObject) &&
+                        dragSerialized.hasModifiedProperties && dragSerialized.ApplyModifiedProperties(),
+                    "Dragging a Hierarchy object onto a SerializedProperty ObjectField did not commit the value.");
+            }
+
             DragAndDrop.objectReferences = [incompatible];
             Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
                 () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));
@@ -771,6 +840,7 @@ internal static class Program
         {
             Selection.activeObject = null;
             DragAndDrop.objectReferences = [];
+            DragAndDrop.paths = [];
             handler.SetValue(null, null);
         }
     }
