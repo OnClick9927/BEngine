@@ -166,6 +166,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
     }
     public void SetMaximized(bool maximized) =>
         _window.WindowState = maximized ? WindowState.Maximized : WindowState.Normal;
+    public void Minimize() => _window.WindowState = WindowState.Minimized;
 
     private Vector2D<int> ConstrainSize(int width, int height) => new(
         Math.Clamp(width, _minimumSize.X, _maximumSize.X),

@@ -4,6 +4,7 @@ using System.Reflection;
 using BEngine;
 using BEngine.Editor;
 using BEngine.Editor.Rendering;
+using UnityEditor.IMGUI.Controls;
 using UnityEditorInternal;
 
 namespace BEngine.ExampleTests.InspectorFieldRendering;
@@ -18,11 +19,19 @@ internal static class Program
         "GetVectorFieldHeight", BindingFlags.Static | BindingFlags.NonPublic)!;
     private static object? _capturedMenuItems;
     private static bool _capturedMenuAdvanced;
+    private static object? _capturedObjectPickerRequest;
 
-    private static int Main()
+    private static int Main(string[] args)
     {
         try
         {
+            if (args.Contains("--object-picker-only", StringComparer.OrdinalIgnoreCase))
+            {
+                VerifyTabbedObjectPicker();
+                Console.WriteLine("OBJECT_PICKER_TREE_OK|assets-scene-tabs,assets-root-hidden," +
+                                  "standard-foldout,search-tree,mouse-exit,token-isolation");
+                return 0;
+            }
             VerifyNarrowVectorAndPrecision();
             VerifyVector4ResponsiveLayout();
             VerifyNarrowSerializedComponentFields();
@@ -34,10 +43,13 @@ internal static class Program
             VerifyEnumDropdown();
             VerifyNestedObjectInspector();
             VerifyObjectFields();
+            VerifyObjectFieldIsolation();
+            VerifyTabbedObjectPicker();
             VerifyRangeSlider();
             Console.WriteLine(
                 "INSPECTOR_FIELD_RENDERING_OK|vector24-responsive,vector4dp,color-alpha,enum-dropdown," +
                 "advanced-popup,object-field,object-dragdrop,range-slider,nested-object-foldout," +
+                "object-picker-tabs,object-picker-token-isolation," +
                 "nested-indent,null,array-list,cycle-depth,foldout-isolation,getter-fault-isolation," +
                 "indented-vector-bounds,indented-vector-responsive,nested-centered-label," +
                 "nested-image-spacing");
@@ -416,9 +428,21 @@ internal static class Program
                 320, 40, () => EditorGUI.Popup(new Rect(0, 0, 320, 18), "Long", 0, longOptions));
             Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(210, 9), button = 0 },
                 320, 40, () => EditorGUI.Popup(new Rect(0, 0, 320, 18), "Long", 0, longOptions));
+            Require(!_capturedMenuAdvanced &&
+                    ((IEnumerable?)_capturedMenuItems)?.Cast<object>().Count() == longOptions.Length,
+                "A long EditorGUI.Popup implicitly changed from a system DropDown to an AdvancedDropdown.");
+
+            _capturedMenuItems = null;
+            _capturedMenuAdvanced = false;
+            Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(210, 9), button = 0 },
+                320, 40, () => EditorGUI.AdvancedPopup(
+                    new Rect(0, 0, 320, 18), "Advanced", 0, longOptions));
+            Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(210, 9), button = 0 },
+                320, 40, () => EditorGUI.AdvancedPopup(
+                    new Rect(0, 0, 320, 18), "Advanced", 0, longOptions));
             Require(_capturedMenuAdvanced &&
                     ((IEnumerable?)_capturedMenuItems)?.Cast<object>().Count() == longOptions.Length,
-                "A long EditorGUI.Popup did not automatically open as an AdvancedDropdown.");
+                "EditorGUI.AdvancedPopup did not explicitly open as an AdvancedDropdown.");
         }
         finally { handler.SetValue(null, null); }
     }
@@ -653,7 +677,8 @@ internal static class Program
         {
             Selection.activeObject = incompatible;
             OpenObjectMenu(rect, null, typeof(GameObject), allowSceneObjects: true);
-            Require(_capturedMenuAdvanced, "ObjectField did not use an AdvancedDropdown picker.");
+            Require(!_capturedMenuAdvanced,
+                "The headless ObjectField fallback still routed through AdvancedDropdown.");
             Require(CapturedMenuItems().Any(item => MenuPath(item).Equals("None", StringComparison.OrdinalIgnoreCase)),
                 "ObjectField picker does not provide a None entry.");
             Require(!CapturedMenuItems().Any(item => IsSelectionItem(item) && MenuEnabled(item)),
@@ -835,6 +860,42 @@ internal static class Program
                 () => asset = EditorGUI.ObjectField(rect, "Asset", asset, typeof(BAsset), false));
             Require(DragAndDrop.visualMode == DragAndDropVisualMode.Rejected && asset is null,
                 "An asset-only ObjectField accepted a scene Component.");
+
+            Selection.activeObject = incompatible;
+            Dispatch(new Event(EventType.MouseDown)
+                { mousePosition = new Vector2(210, 9), button = 0, clickCount = 1 }, 320, 40,
+                () => EditorGUI.ObjectField(rect, "Target", compatible, typeof(GameObject), true));
+            Dispatch(new Event(EventType.MouseUp)
+                { mousePosition = new Vector2(210, 9), button = 0, clickCount = 1 }, 320, 40,
+                () => EditorGUI.ObjectField(rect, "Target", compatible, typeof(GameObject), true));
+            Require(ReferenceEquals(Selection.activeObject, incompatible),
+                "A single ObjectField click selected the object instead of only pinging it.");
+
+            Dispatch(new Event(EventType.MouseDown)
+                { mousePosition = new Vector2(210, 9), button = 0, clickCount = 2 }, 320, 40,
+                () => EditorGUI.ObjectField(rect, "Target", compatible, typeof(GameObject), true));
+            Dispatch(new Event(EventType.MouseUp)
+                { mousePosition = new Vector2(210, 9), button = 0, clickCount = 2 }, 320, 40,
+                () => EditorGUI.ObjectField(rect, "Target", compatible, typeof(GameObject), true));
+            Require(ReferenceEquals(Selection.activeObject, compatible),
+                "A double ObjectField click did not select its BObject.");
+
+            Selection.activeObject = incompatible;
+            DragAndDrop.PrepareStartDrag();
+            Dispatch(new Event(EventType.MouseDown)
+                { mousePosition = new Vector2(210, 9), button = 0, clickCount = 1 }, 320, 40,
+                () => EditorGUI.ObjectField(rect, "Target", compatible, typeof(GameObject), true));
+            Dispatch(new Event(EventType.MouseDrag)
+                { mousePosition = new Vector2(222, 9), button = 0 }, 320, 40,
+                () => EditorGUI.ObjectField(rect, "Target", compatible, typeof(GameObject), true));
+            Require(DragAndDrop.objectReferences is [var draggedReference] &&
+                    ReferenceEquals(draggedReference, compatible),
+                "Dragging an ObjectField did not publish its BObject through DragAndDrop.");
+            Dispatch(new Event(EventType.MouseUp)
+                { mousePosition = new Vector2(222, 9), button = 0, clickCount = 1 }, 320, 40,
+                () => EditorGUI.ObjectField(rect, "Target", compatible, typeof(GameObject), true));
+            Require(ReferenceEquals(Selection.activeObject, incompatible),
+                "Completing an ObjectField drag also triggered its click Selection behavior.");
         }
         finally
         {
@@ -843,6 +904,290 @@ internal static class Program
             DragAndDrop.paths = [];
             handler.SetValue(null, null);
         }
+    }
+
+    private static void VerifyObjectFieldIsolation()
+    {
+        var dispatcher = typeof(EditorWindow).Assembly.GetType("BEngine.Editor.GenericMenuDispatcher", true)!;
+        var handler = dispatcher.GetProperty("Handler", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var invoke = handler.PropertyType.GetMethod("Invoke")!;
+        var parameterType = invoke.GetParameters()[0].ParameterType;
+        var parameter = Expression.Parameter(parameterType, "items");
+        var capture = typeof(Program).GetMethod(nameof(CaptureMenu), BindingFlags.Static | BindingFlags.NonPublic)!;
+        handler.SetValue(null, Expression.Lambda(handler.PropertyType,
+            Expression.Call(capture, Expression.Convert(parameter, typeof(object))), parameter).Compile());
+
+        using var scene = new Scene("Object Field Isolation");
+        var firstCandidate = scene.CreateGameObject("First Candidate");
+        var secondCandidate = scene.CreateGameObject("Second Candidate");
+        var firstRect = new Rect(0, 0, 320, 18);
+        var secondRect = new Rect(0, 22, 320, 18);
+
+        try
+        {
+            BObject? first = null;
+            BObject? second = null;
+            Selection.activeObject = secondCandidate;
+            _capturedMenuItems = null;
+            var reusedPointerEvent = new Event(EventType.MouseDown)
+                { mousePosition = new Vector2(310, 31), button = 0 };
+            Dispatch(reusedPointerEvent, 320, 64, DrawDifferentRects);
+            reusedPointerEvent.type = EventType.MouseUp;
+            reusedPointerEvent.rawType = EventType.MouseUp;
+            Dispatch(reusedPointerEvent, 320, 64, DrawDifferentRects);
+            Require(_capturedMenuItems is not null,
+                "Reusing one Event instance across IMGUI passes changed ObjectField interaction ids.");
+            InvokeMenuItem(CapturedMenuItems().Single(item => IsSelectionItem(item) && MenuEnabled(item)));
+            Dispatch(new Event(EventType.Repaint), 320, 64, DrawDifferentRects);
+            Require(first is null && ReferenceEquals(second, secondCandidate),
+                "A picker selection from the second ObjectField was consumed by the first field.");
+
+            first = null;
+            second = null;
+            Selection.activeObject = firstCandidate;
+            _capturedMenuItems = null;
+            Dispatch(new Event(EventType.MouseDown)
+                { mousePosition = new Vector2(310, 9), button = 0 }, 320, 40, DrawOverlappingRects);
+            Dispatch(new Event(EventType.MouseUp)
+                { mousePosition = new Vector2(310, 9), button = 0 }, 320, 40, DrawOverlappingRects);
+            InvokeMenuItem(CapturedMenuItems().Single(item => IsSelectionItem(item) && MenuEnabled(item)));
+            Dispatch(new Event(EventType.Repaint), 320, 40, DrawOverlappingRects);
+            Require(first is null && ReferenceEquals(second, firstCandidate),
+                "Two same-label ObjectFields at the same Rect shared their pending picker selection.");
+
+            first = null;
+            second = null;
+            DragAndDrop.objectReferences = [secondCandidate];
+            Dispatch(new Event(EventType.DragUpdated)
+                { mousePosition = new Vector2(210, 31) }, 320, 64, DrawDifferentRects);
+            Require(first is null && second is null && DragAndDrop.visualMode == DragAndDropVisualMode.Link,
+                "A compatible drag update leaked into a non-hovered ObjectField.");
+            Dispatch(new Event(EventType.DragPerform)
+                { mousePosition = new Vector2(210, 31) }, 320, 64, DrawDifferentRects);
+            Require(first is null && ReferenceEquals(second, secondCandidate),
+                "Dropping on the second ObjectField changed another field.");
+
+            first = firstCandidate;
+            second = secondCandidate;
+            Selection.activeObject = null;
+            ResetObjectPingForTests();
+            var pinged = new List<BObject>();
+            Action<BObject> onPing = target => pinged.Add(target);
+            var pingEvent = typeof(EditorGUI).Assembly.GetType("BEngine.Editor.EditorObjectPing", true)!
+                .GetEvent("pinged", BindingFlags.Static | BindingFlags.NonPublic)!;
+            pingEvent.GetAddMethod(nonPublic: true)!.Invoke(null, [onPing]);
+            try
+            {
+                Dispatch(new Event(EventType.MouseDown)
+                    { mousePosition = new Vector2(210, 31), button = 0, clickCount = 1 },
+                    320, 64, DrawDifferentRects);
+                Dispatch(new Event(EventType.MouseUp)
+                    { mousePosition = new Vector2(210, 31), button = 0, clickCount = 1 },
+                    320, 64, DrawDifferentRects);
+            }
+            finally
+            {
+                pingEvent.GetRemoveMethod(nonPublic: true)!.Invoke(null, [onPing]);
+            }
+            Require(pinged.Count == 1 && ReferenceEquals(pinged[0], secondCandidate),
+                "Clicking one ObjectField pinged another field's object.");
+
+            var pulseCommands = Render(320, 64, DrawDifferentRects);
+            var pulseEdges = pulseCommands.Where(command =>
+                command.Type == GpuCanvasCommandType.SolidRect &&
+                command.Color.R == byte.MaxValue && command.Color.G is >= 195 and <= 202 &&
+                command.Color.B is >= 18 and <= 24 && command.Color.A > 0).ToArray();
+            Require(pulseEdges.Length == 0,
+                "A single ObjectField click still drew the removed yellow field pulse.");
+
+            ResetObjectPingForTests();
+            DragAndDrop.PrepareStartDrag();
+            Dispatch(new Event(EventType.MouseDown)
+                { mousePosition = new Vector2(210, 31), button = 0, clickCount = 1 },
+                320, 64, DrawDifferentRects);
+            Dispatch(new Event(EventType.MouseDrag)
+                { mousePosition = new Vector2(222, 31), button = 0 }, 320, 64, DrawDifferentRects);
+            Require(DragAndDrop.objectReferences is [var dragged] && ReferenceEquals(dragged, secondCandidate),
+                "Dragging the second ObjectField published the first field's object.");
+            var dragCommands = Render(320, 64, DrawDifferentRects);
+            Require(!dragCommands.Any(command =>
+                    command.Type == GpuCanvasCommandType.SolidRect &&
+                    command.Color.R == byte.MaxValue && command.Color.G is >= 195 and <= 202 &&
+                    command.Color.B is >= 18 and <= 24 && command.Color.A > 0),
+                "Dragging an ObjectField drew the removed yellow field pulse.");
+
+            void DrawDifferentRects()
+            {
+                first = EditorGUI.ObjectField(firstRect, "Target", first, typeof(GameObject), true);
+                second = EditorGUI.ObjectField(secondRect, "Target", second, typeof(GameObject), true);
+            }
+
+            void DrawOverlappingRects()
+            {
+                using (new EditorGUI.DisabledScope(true))
+                    first = EditorGUI.ObjectField(firstRect, "Target", first, typeof(GameObject), true);
+                second = EditorGUI.ObjectField(firstRect, "Target", second, typeof(GameObject), true);
+            }
+        }
+        finally
+        {
+            Selection.activeObject = null;
+            DragAndDrop.PrepareStartDrag();
+            handler.SetValue(null, null);
+        }
+    }
+
+    private static void VerifyTabbedObjectPicker()
+    {
+        var assembly = typeof(EditorGUI).Assembly;
+        var dispatcher = assembly.GetType("BEngine.Editor.EditorObjectPickerPopupDispatcher", true)!;
+        var handler = dispatcher.GetProperty("Handler", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var invoke = handler.PropertyType.GetMethod("Invoke")!;
+        var parameterType = invoke.GetParameters()[0].ParameterType;
+        var parameter = Expression.Parameter(parameterType, "request");
+        var capture = typeof(Program).GetMethod(nameof(CaptureObjectPickerRequest),
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        handler.SetValue(null, Expression.Lambda(handler.PropertyType,
+            Expression.Call(capture, Expression.Convert(parameter, typeof(object))), parameter).Compile());
+
+        using var scene = new Scene("Tabbed Object Picker");
+        var firstCandidate = scene.CreateGameObject("First Field");
+        var secondCandidate = scene.CreateGameObject("Second Field");
+        var firstRect = new Rect(0, 0, 320, 18);
+        var secondRect = new Rect(0, 22, 320, 18);
+        BObject? first = null;
+        BObject? second = null;
+        try
+        {
+            _capturedObjectPickerRequest = null;
+            Dispatch(new Event(EventType.MouseDown)
+                { mousePosition = new Vector2(310, 31), button = 0 }, 320, 64, DrawFields);
+            Dispatch(new Event(EventType.MouseUp)
+                { mousePosition = new Vector2(310, 31), button = 0 }, 320, 64, DrawFields);
+            var request = _capturedObjectPickerRequest ??
+                          throw new InvalidOperationException("Select Object did not open the tabbed picker.");
+            Require((bool)(request.GetType().GetProperty("AllowSceneObjects")!.GetValue(request) ?? false),
+                "Object picker request lost allowSceneObjects.");
+            var select = request.GetType().GetProperty("Select")!.GetValue(request) as Action<BObject?>;
+            Require(select is not null, "Object picker request has no field-scoped selection callback.");
+            select!(secondCandidate);
+            Dispatch(new Event(EventType.Repaint), 320, 64, DrawFields);
+            Require(first is null && ReferenceEquals(second, secondCandidate),
+                "A tabbed picker result opened by the second ObjectField leaked into the first field.");
+
+            VerifyPickerTabs(assembly, firstCandidate, secondCandidate);
+        }
+        finally
+        {
+            handler.SetValue(null, null);
+            _capturedObjectPickerRequest = null;
+        }
+
+        void DrawFields()
+        {
+            first = EditorGUI.ObjectField(firstRect, "Target", first, typeof(GameObject), true);
+            second = EditorGUI.ObjectField(secondRect, "Target", second, typeof(GameObject), true);
+        }
+    }
+
+    private static void VerifyPickerTabs(Assembly assembly, BObject sceneObject, BObject projectObject)
+    {
+        var candidateType = assembly.GetType("BEngine.Editor.EditorObjectPickerCandidate", true)!;
+        var candidateConstructor = candidateType.GetConstructors(BindingFlags.Instance |
+            BindingFlags.Public | BindingFlags.NonPublic).Single(constructor =>
+            constructor.GetParameters().Length == 2);
+        var sceneCandidate = candidateConstructor.Invoke([sceneObject, "Demo Scene/Root/Scene Object"]);
+        var projectCandidate = candidateConstructor.Invoke([projectObject, "Assets/Prefabs/Project Object"]);
+        var sceneCandidates = Array.CreateInstance(candidateType, 1);
+        var projectCandidates = Array.CreateInstance(candidateType, 1);
+        sceneCandidates.SetValue(sceneCandidate, 0);
+        projectCandidates.SetValue(projectCandidate, 0);
+
+        var requestType = assembly.GetType("BEngine.Editor.EditorObjectPickerRequest", true)!;
+        var requestConstructor = requestType.GetConstructors(BindingFlags.Instance |
+            BindingFlags.Public | BindingFlags.NonPublic).Single(constructor =>
+            constructor.GetParameters().Length == 8);
+        Action<BObject?> select = _ => { };
+        var request = requestConstructor.Invoke([
+            new Rect(0, 0, 320, 18), null, typeof(BObject), true, sceneObject,
+            sceneCandidates, projectCandidates, select
+        ]);
+        var pickerType = assembly.GetType("BEngine.Editor.ImGuiObjectPicker", true)!;
+        var picker = Activator.CreateInstance(pickerType, nonPublic: true)!;
+        pickerType.GetMethod("Open", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(picker, [request, new Vector2(0, 20), null]);
+
+        var tabs = ((IEnumerable)pickerType.GetProperty("tabs", BindingFlags.Instance |
+            BindingFlags.NonPublic)!.GetValue(picker)!).Cast<string>().ToArray();
+        Require(tabs.SequenceEqual(["Assets", "Scene"]),
+            "Object picker does not expose separate Assets and Scene tabs.");
+        Require((string?)pickerType.GetProperty("activeTab", BindingFlags.Instance |
+                    BindingFlags.NonPublic)!.GetValue(picker) == "Assets",
+            "Object picker did not open on the Assets tab.");
+        var tree = pickerType.GetField("_assetsTree", BindingFlags.Instance |
+            BindingFlags.NonPublic)!.GetValue(picker)!;
+        var treeViewType = assembly.GetType("UnityEditor.IMGUI.Controls.TreeView", true)!;
+        Require(treeViewType.IsInstanceOfType(tree),
+            "Object picker content is not backed by UnityEditor.IMGUI.Controls.TreeView.");
+        Require(tree.GetType().GetMethod("RowGUI", BindingFlags.Instance | BindingFlags.NonPublic |
+                    BindingFlags.DeclaredOnly) is null,
+            "Object picker replaced the IMGUI TreeView's standard RowGUI/foldout rendering.");
+        Require(EditorBuiltinIcons.Resolve("FoldoutClosed") == EditorBuiltinIcons.Toolbar.FoldoutClosed &&
+                EditorBuiltinIcons.Resolve("FoldoutOpen") == EditorBuiltinIcons.Toolbar.FoldoutOpen,
+            "IMGUI TreeView foldouts resolve to missing window-icon paths.");
+        var visible = ((IEnumerable)pickerType.GetProperty("visiblePaths", BindingFlags.Instance |
+            BindingFlags.NonPublic)!.GetValue(picker)!).Cast<string>().ToArray();
+        Require(visible.Any(path => path.Equals("Prefabs", StringComparison.Ordinal)) &&
+                !visible.Any(path => path.Equals("Assets", StringComparison.OrdinalIgnoreCase) ||
+                                    path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)),
+            "Assets tab did not hide its virtual Assets root and expose direct children.");
+        var assetsTree = (TreeView)tree;
+        var prefabs = assetsTree.GetRows().Single(item =>
+            item.displayName.Equals("Prefabs", StringComparison.Ordinal));
+        Require(prefabs.depth == 0 && prefabs.hasChildren,
+            "Assets virtual-root removal produced an invalid TreeView depth or lost folder children.");
+        Require(assetsTree.SetExpanded(prefabs.id, true),
+            "The standard IMGUI TreeView foldout could not expand an Assets folder.");
+        visible = ((IEnumerable)pickerType.GetProperty("visiblePaths", BindingFlags.Instance |
+            BindingFlags.NonPublic)!.GetValue(picker)!).Cast<string>().ToArray();
+        Require(visible.Any(path => path.Equals("Prefabs/Project Object", StringComparison.Ordinal)),
+            "Expanding the standard IMGUI TreeView foldout did not reveal the asset row.");
+        assetsTree.SetExpanded(prefabs.id, false);
+
+        pickerType.GetField("_search", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(picker, "Project Object");
+        pickerType.GetMethod("Refilter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(picker, null);
+        visible = ((IEnumerable)pickerType.GetProperty("visiblePaths", BindingFlags.Instance |
+            BindingFlags.NonPublic)!.GetValue(picker)!).Cast<string>().ToArray();
+        Require(visible.Any(path => path.EndsWith("Project Object", StringComparison.Ordinal)),
+            "Assets TreeView search did not flatten and find a matching resource.");
+        pickerType.GetField("_search", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(picker, string.Empty);
+        pickerType.GetMethod("Refilter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(picker, null);
+
+        var tabType = pickerType.GetNestedType("PickerTab", BindingFlags.NonPublic)!;
+        var sceneTab = Enum.Parse(tabType, "Scene");
+        pickerType.GetMethod("SwitchTab", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(picker, [sceneTab]);
+        visible = ((IEnumerable)pickerType.GetProperty("visiblePaths", BindingFlags.Instance |
+            BindingFlags.NonPublic)!.GetValue(picker)!).Cast<string>().ToArray();
+        Require(visible.Any(path => path.Equals("Demo Scene", StringComparison.Ordinal)),
+            "Scene tab did not display its scene hierarchy.");
+        pickerType.GetField("_search", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(picker, "Scene Object");
+        pickerType.GetMethod("Refilter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(picker, null);
+        visible = ((IEnumerable)pickerType.GetProperty("visiblePaths", BindingFlags.Instance |
+            BindingFlags.NonPublic)!.GetValue(picker)!).Cast<string>().ToArray();
+        Require(visible.Any(path => path.EndsWith("Scene Object", StringComparison.Ordinal)),
+            "Scene TreeView search did not flatten and find a matching hierarchy item.");
+        var draw = pickerType.GetMethod("Draw", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Dispatch(new Event(EventType.MouseMove) { mousePosition = new Vector2(12, 28) }, 640, 480,
+            () => draw.Invoke(picker, null));
+        Dispatch(new Event(EventType.MouseMove) { mousePosition = new Vector2(630, 470) }, 640, 480,
+            () => draw.Invoke(picker, null));
+        Require(!(bool)(pickerType.GetProperty("isOpen", BindingFlags.Instance |
+                    BindingFlags.NonPublic)!.GetValue(picker) ?? true),
+            "Object picker stayed open after the pointer left its popup bounds.");
     }
 
     private static void OpenObjectMenu(Rect rect, BObject? value, Type type, bool allowSceneObjects)
@@ -920,6 +1265,14 @@ internal static class Program
         _capturedMenuAdvanced = (bool)(presentation.GetType().GetProperty(
             "IsAdvanced", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(presentation) ?? false);
     }
+
+    private static void ResetObjectPingForTests() => typeof(EditorGUI).Assembly
+        .GetType("BEngine.Editor.EditorObjectPing", true)!
+        .GetMethod("ResetForTests", BindingFlags.Static | BindingFlags.NonPublic)!
+        .Invoke(null, null);
+
+    private static void CaptureObjectPickerRequest(object request) =>
+        _capturedObjectPickerRequest = request;
 
     private static bool RectsOverlap(GpuCanvasRect left, GpuCanvasRect right) =>
         left.X < right.Right && left.Right > right.X && left.Y < right.Bottom && left.Bottom > right.Y;

@@ -27,12 +27,13 @@ internal static class SceneGizmoToolbarTests
             "The wide Scene toolbar did not expose its Gizmos toggle label inside the window.");
         TestAssert.Require(!commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
                                                     command.Content is "2D" or "No selection") &&
+                           commands.Count(command => command.Type == GpuCanvasCommandType.Image &&
+                                                     command.Content.EndsWith("View.png",
+                                                         StringComparison.Ordinal)) == 1 &&
                            !commands.Any(command => command.Type == GpuCanvasCommandType.Image &&
-                                                    (command.Content.EndsWith("View.png",
-                                                         StringComparison.Ordinal) ||
-                                                     command.Content.EndsWith("Rect.png",
-                                                         StringComparison.Ordinal))),
-            "The Scene toolbar still rendered its removed 2D/selection label or Q/T tool button.");
+                                                    command.Content.EndsWith("Rect.png",
+                                                        StringComparison.Ordinal)),
+            "The Scene toolbar did not render its distinct Q/View tool, or restored removed controls.");
         RequireGizmoIcon(commands, WideWidth);
     }
 
@@ -43,9 +44,47 @@ internal static class SceneGizmoToolbarTests
         harness.HandleGlobalKeyboard(q);
         var t = new Event(EventType.KeyDown) { keyCode = KeyCode.T };
         harness.HandleGlobalKeyboard(t);
-        TestAssert.Require(harness.CurrentTool == Tool.Move &&
-                           q.type == EventType.KeyDown && t.type == EventType.KeyDown,
-            "Q or T still selected and consumed a removed Scene tool shortcut.");
+        TestAssert.Require(harness.CurrentTool == Tool.View &&
+                           q.type == EventType.Used && t.type == EventType.KeyDown,
+            "Q did not select View/Pan, or removed T still selected a Scene tool.");
+
+        harness.SetCameraSize(5);
+        var beforePan = harness.CameraPosition;
+        harness.RenderScene(new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(320, 240),
+            button = 0
+        }, WideWidth);
+        TestAssert.Require(GUIUtility.hotControl != 0 && harness.SceneNavigationButton == 0,
+            "Q/View did not capture its left-button pan.");
+        var panDrag = new Event(EventType.MouseDrag)
+        {
+            mousePosition = new Vector2(340, 250),
+            delta = new Vector2(20, 10),
+            button = 0
+        };
+        harness.RenderScene(panDrag, WideWidth);
+        TestAssert.Require(panDrag.type == EventType.Used,
+            $"Q/View did not consume its captured drag (hot={GUIUtility.hotControl}, " +
+            $"navigationButton={harness.SceneNavigationButton}).");
+        harness.RenderScene(new Event(EventType.MouseUp)
+        {
+            mousePosition = new Vector2(340, 250),
+            button = 0
+        }, WideWidth);
+        TestAssert.Require(harness.CameraPosition != beforePan,
+            "Dragging with the Q/View tool did not pan the Scene camera.");
+
+        harness.RenderScene(new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(320, 240),
+            button = 0
+        }, WideWidth);
+        TestAssert.Require(GUIUtility.hotControl != 0 && harness.SceneNavigationButton == 0,
+            "Q/View did not capture its left-button pan before focus changed.");
+        harness.LoseSceneFocus();
+        TestAssert.Require(GUIUtility.hotControl == 0 && harness.SceneNavigationButton == -1,
+            "Losing Scene focus left Q/View pan input captured.");
 
         var rightClick = new Event(EventType.ContextClick)
         {

@@ -3,16 +3,22 @@ namespace BEngine.Editor;
 internal static class EditorObjectPicker
 {
     private const long PendingSelectionLifetimeMilliseconds = 60_000;
+    private static readonly Fix64 ObjectDragThreshold = (Fix64)6;
     private static readonly Dictionary<int, PendingSelection> PendingSelections = [];
+    private static readonly Dictionary<int, Vector2> ObjectDragOrigins = [];
 
     internal static object CaptureState() =>
-        new PickerState(new Dictionary<int, PendingSelection>(PendingSelections));
+        new PickerState(
+            new Dictionary<int, PendingSelection>(PendingSelections),
+            new Dictionary<int, Vector2>(ObjectDragOrigins));
 
     internal static void RestoreState(object state)
     {
         if (state is not PickerState snapshot) return;
         PendingSelections.Clear();
         foreach (var pair in snapshot.Selections) PendingSelections[pair.Key] = pair.Value;
+        ObjectDragOrigins.Clear();
+        foreach (var pair in snapshot.DragOrigins) ObjectDragOrigins[pair.Key] = pair.Value;
     }
 
     internal static bool TryConsume(
@@ -48,18 +54,35 @@ internal static class EditorObjectPicker
         bool allowSceneObjects)
     {
         ValidateObjectType(objectType);
+        var sceneCandidates = allowSceneObjects
+            ? SceneCandidates(objectType).ToArray()
+            : [];
+        var projectCandidates = ProjectCandidates(objectType).ToArray();
+        var selectedObject = SelectedObject(objectType, allowSceneObjects);
+        var request = new EditorObjectPickerRequest(
+            anchor,
+            current,
+            objectType,
+            allowSceneObjects,
+            selectedObject,
+            sceneCandidates,
+            projectCandidates,
+            value => Select(token, value));
+        if (EditorObjectPickerPopupDispatcher.Show(request)) return;
+
+        // Headless tools and API consumers have no popup host. Keep a native menu fallback so
+        // ObjectField remains independently testable without routing through AdvancedDropdown.
         var menu = new GenericMenu();
         menu.AddItem(new GUIContent("None"), current is null, () => Select(token, null));
 
-        var selected = SelectedObject(objectType, allowSceneObjects);
-        if (selected is null)
+        if (selectedObject is null)
         {
             menu.AddDisabledItem(new GUIContent("Use Selected"));
         }
         else
         {
-            menu.AddItem(new GUIContent($"Use Selected: {DisplayName(selected)}"),
-                SameObject(current, selected), () => Select(token, selected));
+            menu.AddItem(new GUIContent($"Use Selected: {DisplayName(selectedObject)}"),
+                SameObject(current, selectedObject), () => Select(token, selectedObject));
         }
 
         menu.AddSeparator(string.Empty);
@@ -68,13 +91,12 @@ internal static class EditorObjectPicker
             "None",
             "Use Selected"
         };
-        foreach (var candidate in ProjectCandidates(objectType))
-            AddCandidate(menu, usedPaths, token, current, candidate);
-        if (allowSceneObjects)
-            foreach (var candidate in SceneCandidates(objectType))
-                AddCandidate(menu, usedPaths, token, current, candidate);
+        foreach (var candidate in projectCandidates)
+            AddCandidate(menu, usedPaths, token, current, candidate, "Project");
+        foreach (var candidate in sceneCandidates)
+            AddCandidate(menu, usedPaths, token, current, candidate, "Scene");
 
-        menu.ShowAsAdvancedDropdown(anchor);
+        menu.DropDown(anchor);
     }
 
     internal static bool TryHandleDrag(
@@ -102,6 +124,53 @@ internal static class EditorObjectPicker
         DragAndDrop.AcceptDrag();
         value = candidate;
         return true;
+    }
+
+    internal static bool TryStartDrag(Rect position, int controlId, BObject? value)
+    {
+        var current = Event.current;
+        if (!GUI.enabled || value is null)
+        {
+            if (current.type is EventType.MouseUp or EventType.DragExited or EventType.MouseLeaveWindow)
+                ObjectDragOrigins.Remove(controlId);
+            return false;
+        }
+
+        var pointer = GUI.GUIToRootPoint(current.mousePosition);
+        var root = GUI.GUIToRootPoint(new Vector2(position.x, position.y));
+        var rootRect = new Rect(root.x, root.y, position.width, position.height);
+        switch (current.GetTypeForControl(controlId))
+        {
+            case EventType.MouseDown when current.button == 0 && rootRect.Contains(pointer):
+                ObjectDragOrigins.Clear();
+                ObjectDragOrigins[controlId] = pointer;
+                return false;
+            case EventType.MouseDrag when GUIUtility.hotControl == controlId &&
+                                          ObjectDragOrigins.TryGetValue(controlId, out var origin):
+                var delta = pointer - origin;
+                if (delta.sqrMagnitude < ObjectDragThreshold * ObjectDragThreshold) return false;
+
+                ObjectDragOrigins.Clear();
+                DragAndDrop.PrepareStartDrag();
+                DragAndDrop.activeControlID = controlId;
+                DragAndDrop.objectReferences = [value];
+                var assetPath = AssetDatabase.GetAssetPath(value);
+                DragAndDrop.paths = string.IsNullOrWhiteSpace(assetPath) ? [] : [assetPath];
+                DragAndDrop.SetGenericData("BEngine.ObjectField.Source", value);
+                DragAndDrop.StartDrag(string.IsNullOrWhiteSpace(value.name)
+                    ? ObjectNames.NicifyVariableName(value.GetType().Name)
+                    : value.name);
+                current.Use();
+                EditorApplication.QueuePlayerLoopUpdate();
+                return true;
+            case EventType.MouseUp:
+            case EventType.DragExited:
+            case EventType.MouseLeaveWindow:
+                ObjectDragOrigins.Remove(controlId);
+                return false;
+            default:
+                return false;
+        }
     }
 
     internal static BObject? ResolveDraggedObject(Type objectType, bool allowSceneObjects)
@@ -159,14 +228,15 @@ internal static class EditorObjectPicker
         HashSet<string> usedPaths,
         int token,
         BObject? current,
-        ObjectCandidate candidate)
+        EditorObjectPickerCandidate candidate,
+        string rootPath)
     {
-        var path = UniquePath(candidate.MenuPath, candidate.Value, usedPaths);
+        var path = UniquePath($"{rootPath}/{candidate.Path}", candidate.Value, usedPaths);
         menu.AddItem(new GUIContent(path), SameObject(current, candidate.Value),
             () => Select(token, candidate.Value));
     }
 
-    private static IEnumerable<ObjectCandidate> ProjectCandidates(Type objectType)
+    private static IEnumerable<EditorObjectPickerCandidate> ProjectCandidates(Type objectType)
     {
         var host = EditorBridge.Host;
         if (host is null) yield break;
@@ -185,11 +255,11 @@ internal static class EditorObjectPicker
             }
 
             if (asset is null || !objectType.IsInstanceOfType(asset)) continue;
-            yield return new ObjectCandidate(asset, $"Project/{NormalizeMenuText(record.AssetPath)}");
+            yield return new EditorObjectPickerCandidate(asset, NormalizeMenuText(record.AssetPath));
         }
     }
 
-    private static IEnumerable<ObjectCandidate> SceneCandidates(Type objectType)
+    private static IEnumerable<EditorObjectPickerCandidate> SceneCandidates(Type objectType)
     {
         var host = EditorBridge.Host;
         if (host is null) yield break;
@@ -205,16 +275,16 @@ internal static class EditorObjectPicker
             {
                 var hierarchy = HierarchyPath(gameObject);
                 if (objectType.IsInstanceOfType(gameObject))
-                    yield return new ObjectCandidate(gameObject,
-                        $"Scene/{NormalizeMenuText(sceneName)}/{NormalizeMenuText(hierarchy)} [GameObject]");
+                    yield return new EditorObjectPickerCandidate(gameObject,
+                        $"{NormalizeMenuText(sceneName)}/{NormalizeMenuText(hierarchy)} [GameObject]");
 
                 for (var index = 0; index < gameObject.components.Count; index++)
                 {
                     var component = gameObject.components[index];
                     if (!objectType.IsInstanceOfType(component)) continue;
                     var typeName = ObjectNames.NicifyVariableName(component.GetType().Name);
-                    yield return new ObjectCandidate(component,
-                        $"Scene/{NormalizeMenuText(sceneName)}/{NormalizeMenuText(hierarchy)}/{typeName} [{index}]");
+                    yield return new EditorObjectPickerCandidate(component,
+                        $"{NormalizeMenuText(sceneName)}/{NormalizeMenuText(hierarchy)}/{typeName} [{index}]");
                 }
             }
         }
@@ -392,7 +462,8 @@ internal static class EditorObjectPicker
                 nameof(objectType));
     }
 
-    private readonly record struct ObjectCandidate(BObject Value, string MenuPath);
     private readonly record struct PendingSelection(BObject? Value, long ExpiresAt);
-    private sealed record PickerState(IReadOnlyDictionary<int, PendingSelection> Selections);
+    private sealed record PickerState(
+        IReadOnlyDictionary<int, PendingSelection> Selections,
+        IReadOnlyDictionary<int, Vector2> DragOrigins);
 }

@@ -63,8 +63,11 @@ internal static class SceneGizmoDispatchTests
             var particleObject = scene.CreateGameObject("Particle Gizmo");
             particleObject.AddComponent<ParticleSystem2D>();
 
-            var wideCameraLines = ReadLines(Collect([scene], null, 1200, 400));
-            var tallCameraLines = ReadLines(Collect([scene], null, 400, 1200));
+            TestAssert.Require(LineCount(Collect([scene], null, 640, 360)) == 0,
+                "A Camera2D Gizmo was drawn without selecting its GameObject.");
+
+            var wideCameraLines = ReadLines(Collect([scene], cameraObject, 1200, 400));
+            var tallCameraLines = ReadLines(Collect([scene], cameraObject, 400, 1200));
             TestAssert.Require(wideCameraLines.SequenceEqual(tallCameraLines),
                 "The Camera2D Gizmo changed its world-space shape with the Scene viewport aspect ratio.");
             TestAssert.Require(wideCameraLines.All(line =>
@@ -73,18 +76,18 @@ internal static class SceneGizmoDispatchTests
                     line.LineWidth == 2),
                 "A built-in Camera2D Gizmo did not use the white, thicker default line style.");
             TestAssert.Require(wideCameraLines.Length == 4,
-                "A non-Camera2D built-in Gizmo was drawn without selecting its GameObject.");
+                "A selected Camera2D did not emit its four-line view boundary Gizmo.");
 
             var selectedSpriteLineCount = LineCount(Collect([scene], spriteObject, 640, 360));
-            TestAssert.Require(selectedSpriteLineCount == 8,
+            TestAssert.Require(selectedSpriteLineCount == 4,
                 $"The selected SpriteRenderer emitted {selectedSpriteLineCount} lines instead of its " +
-                "four-line Gizmo beside the Camera2D Gizmo.");
+                "four-line Gizmo.");
             var selectedParticleLineCount = LineCount(Collect([scene], particleObject, 640, 360));
-            TestAssert.Require(selectedParticleLineCount == 7,
+            TestAssert.Require(selectedParticleLineCount == 3,
                 $"The selected ParticleSystem2D emitted {selectedParticleLineCount} lines instead of its " +
-                "three-line direction Gizmo beside the Camera2D Gizmo.");
+                "three-line direction Gizmo.");
             TestAssert.Require(LineCount(Collect([scene], cameraObject, 640, 360)) == 4,
-                "Selecting Camera2D changed the number of lines in its always-visible Gizmo.");
+                "Selecting Camera2D did not draw its view boundary Gizmo.");
         }
         finally
         {

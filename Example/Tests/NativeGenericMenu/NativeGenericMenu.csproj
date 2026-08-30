@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>BEngine.ExampleTests.NativeGenericMenu</RootNamespace>
+    <AssemblyName>BEngine.ExampleTests.NativeGenericMenu</AssemblyName>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
+  </ItemGroup>
+</Project>

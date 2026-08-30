@@ -12,6 +12,7 @@ internal static class ScenePickingVisibilityTests
     internal static void Run(SceneFixture fixture)
     {
         var visibility = SceneVisibilityManager.instance;
+        var toolsWereHidden = Tools.hidden;
         visibility.ShowAll();
         visibility.EnableAllPicking();
         try
@@ -25,16 +26,19 @@ internal static class ScenePickingVisibilityTests
             child.transform.SetParent(top.transform, false);
             harness.ExpandScene(harness.InitialScene);
 
+            Tools.hidden = true;
             VerifyRenderOrderCycling(harness, top, bottom);
             VerifySceneSelectionRevealsHierarchy(harness, top);
             VerifyTiledMapPicking(harness, top, visibility);
             VerifyPickingAndVisibilityFilters(harness, top, bottom, visibility);
             VerifyHierarchyControls(harness, top, child, visibility);
+            Tools.hidden = false;
             VerifyHiddenHandleAndHandleCapture(harness, top, bottom, visibility);
             VerifyPlayMirror(harness, top, visibility);
         }
         finally
         {
+            Tools.hidden = toolsWereHidden;
             visibility.ShowAll();
             visibility.EnableAllPicking();
         }

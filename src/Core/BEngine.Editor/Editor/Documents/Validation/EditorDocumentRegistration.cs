@@ -128,15 +128,23 @@ internal static class EditorDocumentRegistration
         if (string.IsNullOrWhiteSpace(document.Name) || string.IsNullOrWhiteSpace(document.ActiveLayout))
             throw new InvalidDataException("Editor layout names cannot be empty.");
         var windows = document.Windows ?? throw new InvalidDataException("Editor layout windows are missing.");
-        if (windows.Any(window => string.IsNullOrWhiteSpace(window.Id) ||
+        var closedWindows = document.ClosedWindows ??
+                            throw new InvalidDataException("Closed editor layout windows are missing.");
+        if (windows.Concat(closedWindows).Any(window => string.IsNullOrWhiteSpace(window.Id) ||
                                   string.IsNullOrWhiteSpace(window.TypeName) ||
                                   !Enum.TryParse<EditorWindowState>(window.State, true, out _) ||
+                                  !Enum.TryParse<DockArea>(window.PreferredDockArea, true, out _) ||
                                   !float.IsFinite(window.X) || !float.IsFinite(window.Y) ||
                                   !float.IsFinite(window.Width) || !float.IsFinite(window.Height) ||
+                                  !float.IsFinite(window.DockX) || !float.IsFinite(window.DockY) ||
                                   window.Width < 1 || window.Height < 1))
             throw new InvalidDataException("Editor layout contains an invalid window record.");
         if (windows.Select(window => window.Id).Distinct(StringComparer.Ordinal).Count() != windows.Count)
             throw new InvalidDataException("Editor layout contains duplicate window IDs.");
+        if (closedWindows.Select(window => window.Id).Distinct(StringComparer.Ordinal).Count() !=
+            closedWindows.Count || windows.Select(window => window.Id).Intersect(
+                closedWindows.Select(window => window.Id), StringComparer.Ordinal).Any())
+            throw new InvalidDataException("Editor layout contains duplicate closed window IDs.");
         if (document.FocusedWindowId is not null &&
             !windows.Any(window => window.Id == document.FocusedWindowId))
             throw new InvalidDataException("The focused layout window has no window record.");

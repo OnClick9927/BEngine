@@ -326,7 +326,7 @@ gameObjects:
       color: 1,1,1,1
       flipX: false
       flipY: false
-      opacity: 1
+      opacity: 0.0934999999590218067169189453125
       orderInLayer: 15
       pivot: 0.5,0.5
       runInEditMode: false
@@ -549,24 +549,6 @@ gameObjects:
       size: 1.19999999995343387126922607421875,8.799999999813735485076904296875
       sortingLayer: 8
       useSpritePivot: true
-- id: 45ed0c79-9365-4621-b0f4-74e76c3119de
-  name: Inset Camera Layer
-  active: true
-  tag: Untagged
-  layer: 16
-  isStatic: false
-  transform:
-    id: 9ff55303-18a2-43d7-bdc7-95754d7c849a
-    type: BEngine.Transform
-    localPosition:
-      x: 0
-      y: 0
-    localRotation: 0
-    localScale:
-      x: 1
-      y: 1
-    fields: {}
-  components: []
 - id: 5bfbd8f2-b699-4b39-9500-2ccc4e28e8e4
   name: Inset Backdrop
   active: true
@@ -611,7 +593,7 @@ gameObjects:
     id: 33e8486a-fc8d-44d9-b43d-b571f6de6567
     type: BEngine.Transform
     localPosition:
-      x: 0
+      x: -0.147599999792873859405517578125
       y: 0
     localRotation: 0
     localScale:
@@ -643,6 +625,24 @@ gameObjects:
       phaseOffset: 0
       rotationSpeed: -18
       runInEditMode: false
+- id: 45ed0c79-9365-4621-b0f4-74e76c3119de
+  name: Inset Camera Layer
+  active: true
+  tag: Untagged
+  layer: 16
+  isStatic: false
+  transform:
+    id: 9ff55303-18a2-43d7-bdc7-95754d7c849a
+    type: BEngine.Transform
+    localPosition:
+      x: 0
+      y: 0
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components: []
 - id: 7918ce20-268b-4668-91e3-662cdaff9773
   name: Main Camera
   active: true

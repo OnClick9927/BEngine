@@ -12,4 +12,11 @@ public sealed class EditorWindowLayoutDocument
     public float Y { get; set; }
     public float Width { get; set; } = 480;
     public float Height { get; set; } = 320;
+    public string PreferredDockArea { get; set; } = nameof(DockArea.Center);
+    public string? PreviousPanelId { get; set; }
+    public string? NextPanelId { get; set; }
+    public int PanelIndex { get; set; }
+    public float DockX { get; set; }
+    public float DockY { get; set; }
+    public bool WasMaximized { get; set; }
 }

@@ -263,7 +263,7 @@ public static class EditorUtility
         }
     }
     public static void FocusProjectWindow() => EditorApplication.RepaintProjectWindow();
-    public static void PingObject(BObject target) => Selection.activeObject = target;
+    public static void PingObject(BObject target) => EditorObjectPing.Ping(target);
     public static void PingObject(int instanceId)
     {
         if (InstanceIDToObject(instanceId) is { } target) PingObject(target);

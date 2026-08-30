@@ -9,8 +9,11 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
     private readonly EditorWindowLayer _transientLayer = new();
     private readonly ImGuiPopupMenu _genericMenuPopup = new();
     private readonly ImGuiAdvancedDropdown _advancedDropdown = new();
+    private readonly ImGuiObjectPicker _objectPicker = new();
+    private Win32NativeMoveScope? _nativeMoveScope;
     private Rect? _genericMenuAnchor;
     private bool _disposed;
+    private Action<GenericMenu>? _populateAddNewTabMenu;
 
     internal NativeFloatingEditorWindow(EditorWindow window, EditorWindowState state, Rect screenBounds)
     {
@@ -41,6 +44,8 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
     internal event Action<NativeFloatingEditorWindow, Vector2>? DockRequested;
     internal event Action<NativeFloatingEditorWindow, bool>? FocusChanged;
     internal event Action<NativeFloatingEditorWindow, EditorWindow>? TransientClosed;
+    internal event Action<NativeFloatingEditorWindow, Vector2>? NativeMoveUpdated;
+    internal event Action<NativeFloatingEditorWindow, Vector2?>? NativeMoveCompleted;
 
     internal EditorWindow Window { get; }
     internal EditorWindowState State { get; }
@@ -56,6 +61,15 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
     internal IGraphicsDevice? GraphicsDevice => _nativeWindow.graphicsDevice;
     internal IReadOnlyList<EditorWindow> TransientWindows =>
         _transientLayer.Presentations.Select(item => item.Window).ToArray();
+    internal Action<GenericMenu>? PopulateAddNewTabMenu
+    {
+        get => _populateAddNewTabMenu;
+        set
+        {
+            _populateAddNewTabMenu = value;
+            _transientLayer.PopulateAddNewTabMenu = value;
+        }
+    }
     internal Action<IGraphicsDevice, int, int>? RenderBackground
     {
         set => _nativeWindow.renderBackground = value;
@@ -64,6 +78,9 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
     internal void Initialize()
     {
         _nativeWindow.Initialize();
+        _nativeMoveScope ??= Win32NativeMoveScope.TryCreate(_nativeWindow.nativeHandle,
+            point => NativeMoveUpdated?.Invoke(this, point),
+            point => NativeMoveCompleted?.Invoke(this, point));
         SynchronizeWindowPosition();
     }
 
@@ -129,6 +146,7 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
         _genericMenuPopup.Close();
         _genericMenuAnchor = null;
         _advancedDropdown.Close();
+        _objectPicker.Close();
         _transientLayer.DismissPopups();
         _transientLayer.CancelInteractions();
     }
@@ -142,13 +160,17 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
         _nativeWindow.closing -= OnNativeClosing;
         _nativeWindow.focusChanged -= OnNativeFocusChanged;
         _transientLayer.WindowClosed -= OnTransientWindowClosed;
+        _nativeMoveScope?.Dispose();
+        _nativeMoveScope = null;
         _nativeWindow.Dispose();
     }
 
     private void OnGUI()
     {
         var previousHandler = GenericMenuDispatcher.Handler;
+        var previousObjectPickerHandler = EditorObjectPickerPopupDispatcher.Handler;
         GenericMenuDispatcher.Handler = OpenDispatchedMenu;
+        EditorObjectPickerPopupDispatcher.Handler = OpenObjectPicker;
         try
         {
             DrawWindowAndTransients();
@@ -156,6 +178,7 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
         finally
         {
             GenericMenuDispatcher.Handler = previousHandler;
+            EditorObjectPickerPopupDispatcher.Handler = previousObjectPickerHandler;
         }
     }
 
@@ -178,37 +201,19 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
 
         var toolbarHeight = ToolbarHeight();
         var toolbar = new Rect(0, 0, GUIUtility.currentViewWidth, toolbarHeight);
-        GUI.Box(toolbar, GUIContent.none, EditorStyles.toolbar);
-        var dockButtonWidth = State == EditorWindowState.Normal ? Fix64.Max(54,
-            EditorStyles.toolbarButton.CalcSize(new GUIContent("Dock")).x + 12) : Fix64.Zero;
-        var lockButtonWidth = Window.supportsLocking
-            ? Fix64.Max(24, EditorStyles.toolbarIconButton.fixedWidth)
-            : Fix64.Zero;
-        var actionsWidth = dockButtonWidth + lockButtonWidth +
-                           (dockButtonWidth > 0 && lockButtonWidth > 0 ? 2 : 0);
+        GUI.PassiveBox(toolbar, GUIContent.none, EditorStyles.toolbar);
+        var menuButtonWidth = Fix64.Max(24, EditorStyles.toolbarIconButton.fixedWidth);
+        var actionsWidth = menuButtonWidth;
         var labelWidth = Fix64.Max(0, toolbar.width - actionsWidth - 8);
         GUI.Label(new Rect(6, 0, labelWidth, toolbar.height), Window.titleContent,
             EditorStyles.windowTitle);
         var actionX = toolbar.xMax - actionsWidth - 3;
-        if (Window.supportsLocking)
+        var menuRect = new Rect(actionX, 2, menuButtonWidth, Fix64.Max(18, toolbar.height - 4));
+        if (GUI.Button(menuRect,
+                new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More, string.Empty),
+                EditorStyles.toolbarIconButton))
         {
-            var lockRect = new Rect(actionX, 2, lockButtonWidth, Fix64.Max(18, toolbar.height - 4));
-            if (GUI.Button(lockRect, new GUIContent(string.Empty,
-                    Window.isLocked ? EditorBuiltinIcons.Toolbar.Lock : EditorBuiltinIcons.Toolbar.Unlock,
-                    string.Empty), EditorStyles.toolbarIconButton))
-                Window.isLocked = !Window.isLocked;
-            actionX = lockRect.xMax + 2;
-        }
-        if (State == EditorWindowState.Normal && GUI.Button(
-                new Rect(actionX, 2, dockButtonWidth, Fix64.Max(18, toolbar.height - 4)),
-                new GUIContent("Dock"), EditorStyles.toolbarButton))
-        {
-            var point = ImGuiNativeWindow.TryGetPointerScreenPosition(out var screenPoint)
-                ? screenPoint
-                : ScreenPosition;
-            DockRequested?.Invoke(this, point);
-            Event.current.Use();
-            return;
+            ShowWindowContextMenu(menuRect);
         }
 
         var content = new Rect(0, toolbarHeight, GUIUtility.currentViewWidth,
@@ -231,6 +236,7 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
 
     private void OpenDispatchedMenu(IReadOnlyList<GenericMenuItem> items)
     {
+        _objectPicker.Close();
         var presentation = GenericMenuDispatcher.CurrentPresentation;
         Rect? rootAnchor = null;
         Vector2 position;
@@ -256,6 +262,24 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
         else
         {
             _advancedDropdown.Close();
+            var screenPosition = _nativeWindow.GUIToScreen(position, GUIUtility.pixelsPerPoint);
+            Rect? screenAnchor = null;
+            if (rootAnchor is { } anchor)
+            {
+                var screenTopLeft = _nativeWindow.GUIToScreen(anchor.position, GUIUtility.pixelsPerPoint);
+                var screenBottomRight = _nativeWindow.GUIToScreen(
+                    new Vector2(anchor.xMax, anchor.yMax), GUIUtility.pixelsPerPoint);
+                screenAnchor = new Rect(screenTopLeft.x, screenTopLeft.y,
+                    Fix64.Max(0, screenBottomRight.x - screenTopLeft.x),
+                    Fix64.Max(0, screenBottomRight.y - screenTopLeft.y));
+            }
+            if (Win32GenericMenuPresenter.TryShow(
+                    _nativeWindow.nativeHandle, screenPosition, items, screenAnchor))
+            {
+                _genericMenuPopup.Close();
+                _genericMenuAnchor = null;
+                return;
+            }
             _genericMenuAnchor = rootAnchor;
             _genericMenuPopup.Open(items, position);
         }
@@ -263,8 +287,46 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
 
     private void DrawPopup()
     {
-        if (_advancedDropdown.isOpen) _advancedDropdown.Draw();
+        if (_objectPicker.isOpen) _objectPicker.Draw();
+        else if (_advancedDropdown.isOpen) _advancedDropdown.Draw();
         else if (!_genericMenuPopup.Draw(_genericMenuAnchor)) _genericMenuAnchor = null;
+    }
+
+    private void OpenObjectPicker(EditorObjectPickerRequest request)
+    {
+        var topLeft = GUI.GUIToRootPoint(request.Anchor.position);
+        var bottomRight = GUI.GUIToRootPoint(new Vector2(request.Anchor.xMax, request.Anchor.yMax));
+        var rootAnchor = new Rect(topLeft.x, topLeft.y,
+            Fix64.Max(0, bottomRight.x - topLeft.x), Fix64.Max(0, bottomRight.y - topLeft.y));
+        _genericMenuPopup.Close();
+        _genericMenuAnchor = null;
+        _advancedDropdown.Close();
+        _objectPicker.Open(request, new Vector2(rootAnchor.x, rootAnchor.yMax), rootAnchor);
+    }
+
+    private void ShowWindowContextMenu(Rect anchor)
+    {
+        var menu = new GenericMenu();
+        Window.PopulateContextMenu(menu);
+        if (menu.GetItemCount() > 0) menu.AddSeparator(string.Empty);
+        PopulateAddNewTabMenu?.Invoke(menu);
+        if (PopulateAddNewTabMenu is not null) menu.AddSeparator(string.Empty);
+        if (State == EditorWindowState.Normal)
+            menu.AddItem(new GUIContent("Dock"), false, () =>
+            {
+                var point = ImGuiNativeWindow.TryGetPointerScreenPosition(out var screenPoint)
+                    ? screenPoint
+                    : ScreenPosition;
+                DockRequested?.Invoke(this, point);
+            });
+        menu.AddItem(new GUIContent(_nativeWindow.isMaximized ? "Minimize" : "Maximize"),
+            _nativeWindow.isMaximized, () => _nativeWindow.SetMaximized(!_nativeWindow.isMaximized));
+        menu.AddItem(new GUIContent("Minimize to Taskbar"), false, _nativeWindow.Minimize);
+        if (Window.supportsLocking)
+            menu.AddItem(new GUIContent(Window.isLocked ? "Unlock" : "Lock"), Window.isLocked,
+                () => Window.isLocked = !Window.isLocked);
+        menu.AddItem(new GUIContent("Close Window"), false, Window.Close);
+        menu.DropDown(anchor);
     }
 
     private void SynchronizeWindowPosition() => Window.position = ScreenBounds;

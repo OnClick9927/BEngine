@@ -37,7 +37,8 @@ internal sealed class ImGuiPopupMenu
                             anchor is { } anchorRect && anchorRect.Contains(evt.mousePosition);
         if (eventType == EventType.KeyDown && evt.keyCode == KeyCode.Escape)
             Close();
-        else if (eventType is EventType.MouseMove or EventType.MouseLeaveWindow && !pointerInside)
+        else if (eventType == EventType.MouseLeaveWindow ||
+                 eventType == EventType.MouseMove && !pointerInside)
             Close();
         else if (eventType is EventType.MouseDown or EventType.ContextClick && !pointerInside)
             Close();

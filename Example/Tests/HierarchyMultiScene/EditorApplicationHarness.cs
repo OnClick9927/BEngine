@@ -18,7 +18,7 @@ internal sealed class EditorApplicationHarness : IDisposable
     private readonly Assembly _editorAssembly = typeof(EditorWindow).Assembly;
     private readonly Type _applicationType;
     private readonly object _nativeWindow;
-    private readonly object[] _windows;
+    private readonly List<object> _windows;
     private readonly BPackageManager _packages;
     private bool _disposed;
 
@@ -103,6 +103,7 @@ internal sealed class EditorApplicationHarness : IDisposable
         SetField("_inspector", InspectorWindow);
         SetField("_console", ConsoleWindow);
         SetField("_packageManager", PackageManagerWindow);
+        SetField("_tool", Tool.Move);
         SetField("_layoutStore", Create("BEngine.Editor.EditorLayoutStore", fixture.Workspace));
         SetField("_activeLayoutName", "Last Session");
         var instanceLogPath = Path.Combine(fixture.Workspace.LibraryPath, "Logs", "HierarchyMultiScene.log");
@@ -113,9 +114,16 @@ internal sealed class EditorApplicationHarness : IDisposable
         InitializeField("_editorPanels");
         InitializeField("_windowLayer");
         InitializeField("_builtInWindows");
+        InitializeField("_closedWindowPlacements");
         InitializeField("_runtimes");
         InitializeField("_scriptSourceCache");
         InitializeField("_nativeFloatingWindows");
+        InitializeField("_nativeTransientOwners");
+        InitializeField("_nativeDockTrackers");
+        InitializeField("_nativeFloatingCarries");
+        InitializeField("_pendingUndocks");
+        InitializeField("_pendingNativeDocks");
+        InitializeField("_pendingNativeCloses");
 
         AddBuiltIn(HierarchyWindow, "Left", true);
         AddBuiltIn(SceneWindow, "Center", true);
@@ -220,6 +228,110 @@ internal sealed class EditorApplicationHarness : IDisposable
 
     public void CloseWindow(object window) => RequireMethod("CloseEditorWindow").Invoke(Application, [window]);
 
+    public object OpenAdditionalBuiltIn(object prototype, string area)
+    {
+        var panels = (IDictionary)(GetField(Application, "_editorPanels") ??
+                                   throw new InvalidOperationException("The editor has no panel registry."));
+        var before = panels.Keys.Cast<object>().ToHashSet(ReferenceEqualityComparer.Instance);
+        var method = RequireMethod("OpenBuiltInInstance");
+        var areaType = method.GetParameters()[1].ParameterType;
+        method.Invoke(Application, [prototype, Enum.Parse(areaType, area)]);
+        var added = panels.Keys.Cast<object>().Where(window => !before.Contains(window)).ToArray();
+        if (added.Length != 1)
+            throw new InvalidOperationException($"Opening an additional built-in added {added.Length} windows.");
+        if (!_windows.Any(window => ReferenceEquals(window, added[0]))) _windows.Add(added[0]);
+        return added[0];
+    }
+
+    public bool SupportsMultipleBuiltIn(object window)
+    {
+        var method = _applicationType.GetMethod("SupportsMultipleBuiltIn",
+            BindingFlags.Static | BindingFlags.NonPublic) ??
+                     throw new MissingMethodException(_applicationType.FullName, "SupportsMultipleBuiltIn");
+        return (bool)(method.Invoke(null, [window]) ?? false);
+    }
+
+    public IReadOnlyList<(string Label, bool Checked)> WindowMenuItems()
+    {
+        var entries = (IEnumerable)(RequireMethod("MenuItems").Invoke(Application, ["Window"]) ??
+                                    throw new InvalidOperationException("Window menu could not be enumerated."));
+        return entries.Cast<object>().Select(entry =>
+        {
+            var type = entry.GetType();
+            var label = (string)(type.GetProperty("Label")?.GetValue(entry) ?? string.Empty);
+            var isChecked = (bool)(type.GetProperty("Checked")?.GetValue(entry) ?? false);
+            return (label, isChecked);
+        }).ToArray();
+    }
+
+    public IReadOnlyList<string> AddNewTabMenuPaths()
+    {
+        var menu = new GenericMenu();
+        RequireMethod("PopulateAddNewTabMenu").Invoke(Application, [menu]);
+        var items = (IEnumerable)(typeof(GenericMenu).GetProperty("Items",
+                                      BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(menu) ??
+                                  throw new MissingMemberException(typeof(GenericMenu).FullName, "Items"));
+        return items.Cast<object>().Select(item =>
+                (string)(item.GetType().GetProperty("Path")?.GetValue(item) ?? string.Empty))
+            .ToArray();
+    }
+
+    public string WindowId(object window) =>
+        (string)(typeof(EditorWindow).GetProperty("PersistentId",
+                         BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(window) ??
+                 throw new MissingMemberException(typeof(EditorWindow).FullName, "PersistentId"));
+
+    public bool IsWindowDocked(object window) =>
+        ((IDictionary)(GetField(Application, "_editorPanels") ??
+                       throw new InvalidOperationException("The editor has no panel registry."))).Contains(window);
+
+    public int DockIndex(object window)
+    {
+        var panels = (IDictionary)(GetField(Application, "_editorPanels") ??
+                                   throw new InvalidOperationException("The editor has no panel registry."));
+        var panel = panels[window] ?? throw new InvalidOperationException("The window is not docked.");
+        var group = panel.GetType().GetProperty("Group",
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(panel) ??
+                    throw new InvalidOperationException("The dock panel has no group.");
+        var groupPanels = (IList)(group.GetType().GetProperty("Panels",
+                                  BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                              ?.GetValue(group) ??
+                          throw new InvalidOperationException("The dock group has no panel list."));
+        return groupPanels.IndexOf(panel);
+    }
+
+    public bool ToggleMaximize(object window) => (bool)(DockWorkspace.GetType()
+        .GetMethod("ToggleMaximize", BindingFlags.Instance | BindingFlags.Public)!
+        .Invoke(DockWorkspace, [window]) ?? false);
+
+    public bool IsMaximized(object window) => (bool)(DockWorkspace.GetType()
+        .GetMethod("IsMaximized", BindingFlags.Instance | BindingFlags.Public)!
+        .Invoke(DockWorkspace, [window]) ?? false);
+
+    public EditorLayoutDocument CaptureLayout() =>
+        (EditorLayoutDocument)(RequireMethod("CaptureLayout").Invoke(Application, ["Test Capture"]) ??
+                               throw new InvalidOperationException("The editor did not capture a layout."));
+
+    public void ApplyLayout(EditorLayoutDocument document) =>
+        RequireMethod("ApplyLayout").Invoke(Application, [document]);
+
+    public bool LayoutSaved
+    {
+        get => (bool)(GetField(Application, "_layoutSaved") ?? false);
+        set => SetField("_layoutSaved", value);
+    }
+
+    public void PrimeProjectCache(object window)
+    {
+        var field = RequireField(window.GetType(), "_cache");
+        field.SetValue(window, Array.CreateInstance(field.FieldType.GetElementType()!, 0));
+    }
+
+    public bool IsProjectCacheInvalidated(object window) =>
+        RequireField(window.GetType(), "_cache").GetValue(window) is null;
+
+    public void InvalidateProjectWindows() => RequireMethod("InvalidateProjectWindows").Invoke(Application, null);
+
     public void SetCameraPosition(System.Numerics.Vector2 value) => SetField("_editorCameraPosition", value);
     public void SetCameraSize(float value) => SetField("_editorCameraSize", value);
 
@@ -259,12 +371,26 @@ internal sealed class EditorApplicationHarness : IDisposable
 
     public BObject? InspectorTarget => GetField(InspectorWindow, "_lastTarget") as BObject;
 
+    public BObject? InspectorTargetFor(object inspector) => GetField(inspector, "_lastTarget") as BObject;
+
     public void LockInspector(BObject target)
     {
         ArgumentNullException.ThrowIfNull(target);
         ((EditorWindow)InspectorWindow).isLocked = true;
         RequireField(InspectorWindow.GetType(), "_lastTarget").SetValue(InspectorWindow, target);
     }
+
+    public void LockInspector(object inspector, BObject target)
+    {
+        ArgumentNullException.ThrowIfNull(inspector);
+        ArgumentNullException.ThrowIfNull(target);
+        ((EditorWindow)inspector).isLocked = true;
+        RequireField(inspector.GetType(), "_lastTarget").SetValue(inspector, target);
+    }
+
+    public bool IsWindowLocked(object window) => ((EditorWindow)window).isLocked;
+
+    public void SetWindowLocked(object window, bool value) => ((EditorWindow)window).isLocked = value;
 
     public IDisposable AttachRuntimeSceneCallbacks()
     {
@@ -316,6 +442,19 @@ internal sealed class EditorApplicationHarness : IDisposable
 
     public IReadOnlyList<GpuCanvasCommand> RenderScene(Event evt, int width = 640, int height = 480)
         => RenderWindow(SceneWindow, evt, width, height);
+
+    public void LoseSceneFocus() => SceneWindow.GetType()
+        .GetMethod("OnLostFocus", BindingFlags.Instance | BindingFlags.NonPublic)!
+        .Invoke(SceneWindow, null);
+
+    public int SceneNavigationButton =>
+        (int)(GetField(SceneWindow, "_navigationButton") ?? -1);
+
+    public IReadOnlyList<GpuCanvasCommand> RenderInspector(
+        object inspector,
+        Event evt,
+        int width = 520,
+        int height = 640) => RenderWindow(inspector, evt, width, height);
 
     private static IReadOnlyList<GpuCanvasCommand> RenderWindow(
         object window,

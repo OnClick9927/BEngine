@@ -86,8 +86,6 @@
     <Compile Include="Core\Components\Base\Transform.cs" />
     <Compile Include="Core\GameObject.cs" />
     <Compile Include="Core\Assets\Scene.cs" />
-    <Compile Include="Core\Serialization\ISerializationCallbackReceiver.cs" />
-    <Compile Include="Core\Serialization\SerializationCallbackUtility.cs" />
     <Compile Include="Core\Application.cs" />
     <Compile Include="Core\Screen.cs" />
     <Compile Include="Core\Misc\SystemInfo.cs" />
@@ -145,7 +143,6 @@
     <Compile Include="Rendering\Scene\WindowIcon.cs" />
     <Compile Include="Core\Resources.cs" />
     <Compile Include="Core\Assets\TextAsset.cs" />
-    <Compile Include="Core\Serialization\Yaml\YamlUtility.cs" />
     <Compile Include="Core\Misc\PlayerPrefs.cs" />
     <Compile Include="Rendering\Settings\QualitySettings.cs" />
     <Compile Include="Core\Math\Random.cs" />

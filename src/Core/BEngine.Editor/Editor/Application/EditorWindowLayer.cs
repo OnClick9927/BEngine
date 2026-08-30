@@ -12,6 +12,9 @@ internal sealed class EditorWindowLayer
 
     public event Action<EditorWindow>? WindowClosed;
     public event Action<EditorWindow, Vector2>? DockRequested;
+    public event Action<EditorWindow, Vector2?>? DockDragUpdated;
+    public event Action<EditorWindow, Vector2>? DockDragCompleted;
+    internal Action<GenericMenu>? PopulateAddNewTabMenu { get; set; }
 
     public IReadOnlyList<FloatingEditorWindow> Presentations => _presentations;
     public IReadOnlyList<FloatingEditorWindow> Windows => _presentations;
@@ -206,36 +209,27 @@ internal sealed class EditorWindowLayer
             if (menu.Contains(pointer)) ShowWindowMenu(presentation, pointer);
             return true;
         }
-        if (presentation.DockPressed)
-        {
-            if (type is not EventType.MouseUp) return ConsumeHandledInput();
-            presentation.DockPressed = false;
-            var dock = DockRect(presentation);
-            ConsumeEvent();
-            if (dock.Contains(pointer)) DockRequested?.Invoke(window, pointer);
-            return true;
-        }
-        if (presentation.ClosePressed)
-        {
-            if (type is not EventType.MouseUp) return ConsumeHandledInput();
-            presentation.ClosePressed = false;
-            var close = CloseRect(presentation);
-            ConsumeEvent();
-            if (close.Contains(pointer)) RequestClose(presentation);
-            return true;
-        }
         if (presentation.IsDragging || presentation.IsResizing)
         {
             if (type is EventType.MouseDrag or EventType.MouseMove)
             {
                 ApplyInteraction(presentation, canvas, pointer);
+                if (presentation.IsDragging && presentation.State == EditorWindowState.Normal)
+                {
+                    if (!presentation.IsDockDragging &&
+                        (pointer - presentation.InteractionStartPointer).sqrMagnitude > 16)
+                        presentation.IsDockDragging = true;
+                    if (presentation.IsDockDragging) DockDragUpdated?.Invoke(window, pointer);
+                }
                 ConsumeEvent();
                 return true;
             }
             if (type == EventType.MouseUp)
             {
+                var completesDockDrag = presentation.IsDockDragging;
                 ApplyInteraction(presentation, canvas, pointer);
                 CancelInteraction(presentation);
+                if (completesDockDrag) DockDragCompleted?.Invoke(window, pointer);
                 ConsumeEvent();
                 return true;
             }
@@ -255,18 +249,6 @@ internal sealed class EditorWindowLayer
         if (MenuRect(presentation).Contains(pointer))
         {
             presentation.MenuPressed = true;
-            ConsumeEvent();
-            return true;
-        }
-        if (DockRect(presentation).Contains(pointer))
-        {
-            presentation.DockPressed = true;
-            ConsumeEvent();
-            return true;
-        }
-        if (CloseRect(presentation).Contains(pointer))
-        {
-            presentation.ClosePressed = true;
             ConsumeEvent();
             return true;
         }
@@ -349,19 +331,13 @@ internal sealed class EditorWindowLayer
             if (presentation.State != EditorWindowState.Pop)
             {
                 var title = TitleRect(presentation);
-                GUI.Box(title, GUIContent.none, EditorStyles.windowTitle);
-                var dock = DockRect(presentation);
+                GUI.PassiveBox(title, GUIContent.none, EditorStyles.windowTitle);
                 var menu = MenuRect(presentation);
-                var close = CloseRect(presentation);
                 var titleRight = menu.x - 3;
                 GUI.Label(new Rect(title.x + 5, title.y, Fix64.Max(0, titleRight - title.x - 5),
                     title.height), presentation.Window.titleContent, EditorStyles.windowTitle);
                 GUI.Box(menu, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More, string.Empty),
                     EditorStyles.toolbarIconButton);
-                if (dock.width > 0)
-                    GUI.Box(dock, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Container, string.Empty),
-                        EditorStyles.toolbarIconButton);
-                GUI.Box(close, new GUIContent("x"), EditorStyles.toolbarIconButton);
                 DrawResizeCursors(bounds);
             }
         }
@@ -418,7 +394,7 @@ internal sealed class EditorWindowLayer
             Fix64.Max(1, bounds.height - BorderWidth * 2 - titleHeight));
     }
 
-    private static Rect CloseRect(FloatingEditorWindow presentation)
+    private static Rect MenuRect(FloatingEditorWindow presentation)
     {
         if (presentation.State == EditorWindowState.Pop) return default;
         var title = TitleRect(presentation);
@@ -426,29 +402,20 @@ internal sealed class EditorWindowLayer
         return new Rect(title.xMax - size, title.y, size, title.height);
     }
 
-    private static Rect DockRect(FloatingEditorWindow presentation)
-    {
-        if (presentation.State != EditorWindowState.Normal) return default;
-        var close = CloseRect(presentation);
-        return new Rect(close.x - close.width, close.y, close.width, close.height);
-    }
-
-    private static Rect MenuRect(FloatingEditorWindow presentation)
-    {
-        if (presentation.State == EditorWindowState.Pop) return default;
-        var action = DockRect(presentation);
-        if (action.width <= 0) action = CloseRect(presentation);
-        return new Rect(action.x - action.width, action.y, action.width, action.height);
-    }
-
     private void ShowWindowMenu(FloatingEditorWindow presentation, Vector2 pointer)
     {
         var menu = new GenericMenu();
         presentation.Window.PopulateContextMenu(menu);
         if (menu.GetItemCount() > 0) menu.AddSeparator(string.Empty);
+        PopulateAddNewTabMenu?.Invoke(menu);
+        if (PopulateAddNewTabMenu is not null) menu.AddSeparator(string.Empty);
         if (presentation.State == EditorWindowState.Normal)
             menu.AddItem(new GUIContent("Dock"), false,
                 () => DockRequested?.Invoke(presentation.Window, pointer));
+        if (presentation.Window.supportsLocking)
+            menu.AddItem(new GUIContent(presentation.Window.isLocked ? "Unlock" : "Lock"),
+                presentation.Window.isLocked,
+                () => presentation.Window.isLocked = !presentation.Window.isLocked);
         menu.AddItem(new GUIContent("Close"), false, () => RequestClose(presentation));
         menu.ShowAsContext();
     }
@@ -459,6 +426,7 @@ internal sealed class EditorWindowLayer
     {
         presentation.InteractionStartPointer = pointer;
         presentation.InteractionStartBounds = presentation.Bounds;
+        presentation.IsDockDragging = false;
     }
 
     private static void ApplyInteraction(FloatingEditorWindow presentation, Rect canvas, Vector2 pointer)
@@ -521,14 +489,15 @@ internal sealed class EditorWindowLayer
         return result;
     }
 
-    private static void CancelInteraction(FloatingEditorWindow presentation)
+    private void CancelInteraction(FloatingEditorWindow presentation)
     {
+        var cancelledDockDrag = presentation.IsDockDragging;
         presentation.IsDragging = false;
+        presentation.IsDockDragging = false;
         presentation.IsResizing = false;
-        presentation.DockPressed = false;
         presentation.MenuPressed = false;
-        presentation.ClosePressed = false;
         presentation.ResizeEdges = 0;
+        if (cancelledDockDrag) DockDragUpdated?.Invoke(presentation.Window, null);
     }
 
     private void ConstrainPresentations(Rect canvas)
@@ -591,7 +560,7 @@ internal sealed class EditorWindowLayer
         for (var index = _presentations.Count - 1; index >= 0; index--)
         {
             var presentation = _presentations[index];
-            if (presentation.IsDragging || presentation.IsResizing || presentation.ClosePressed)
+            if (presentation.IsDragging || presentation.IsResizing || presentation.MenuPressed)
                 return presentation;
         }
         return null;

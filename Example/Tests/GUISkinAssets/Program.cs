@@ -20,7 +20,7 @@ internal static class Program
         miniTextField numberField popup objectField objectFieldButton objectFieldThumb objectFieldMiniThumb
         colorField layerMaskField toggle toggleMixed foldout titlebarFoldout foldoutPreDrop foldoutHeader
         foldoutHeaderIcon optionsButtonStyle toggleGroup textFieldDropDown textFieldDropDownText overrideMargin
-        toolbar contentToolbar toolbarButton toolbarButtonLeft toolbarButtonRight toolbarPopup toolbarPopupLeft
+        toolbar contentToolbar toolbarToggle toolbarButton toolbarButtonLeft toolbarButtonRight toolbarPopup toolbarPopupLeft
         toolbarPopupRight toolbarDropDownLeft toolbarDropDown toolbarDropDownRight toolbarDropDownToggle
         toolbarDropDownToggleButton toolbarDropDownToggleRight toolbarCreateAddNewDropDown toolbarTextField
         toolbarLabel inspectorDefaultMargins inspectorHorizontalDefaultMargins inspectorFullWidthMargins
@@ -51,7 +51,7 @@ internal static class Program
             VerifyAssetRoundTrip(root);
             VerifyInvalidAssetFallback(root);
             VerifyBuiltInReadOnly(root);
-            Console.WriteLine("GUI_SKIN_ASSETS_OK|editor-assembly,basset,142-slots,public-editorstyles,texture-state,style-only-theme,custom-styles," +
+            Console.WriteLine("GUI_SKIN_ASSETS_OK|editor-assembly,basset,143-slots,toolbar-toggle,public-editorstyles,texture-state,style-only-theme,custom-styles," +
                               "deep-clone,versioned-yaml,typed-loader,create-menu,icon,builtin-readonly," +
                               "builtin-foldout,stable-custom-foldout");
             return 0;
@@ -88,13 +88,15 @@ internal static class Program
     private static void VerifyCompleteNamedStyles()
     {
         var skin = new GUISkin();
-        Require(skin.styles.Count == 142, $"Expected 142 built-in GUI styles, found {skin.styles.Count}.");
+        Require(skin.styles.Count == 143, $"Expected 143 built-in GUI styles, found {skin.styles.Count}.");
         Require(skin.centeredBoldLabel.alignment == TextAnchor.MiddleCenter &&
                 skin.centeredMiniLabel.alignment == TextAnchor.MiddleCenter,
             "Centered editor label styles are not owned by GUISkin.");
         Require(skin.toggle.normal.backgroundColor.Equals(skin.textField.normal.backgroundColor) &&
                 skin.toggle.normal.borderColor.Equals(skin.textField.normal.borderColor) &&
                 skin.button.normal.backgroundImage is Texture &&
+                skin.toolbarToggle.normal.backgroundImage is Texture &&
+                !skin.toolbarToggle.onNormal.backgroundColor.Equals(skin.toolbarToggle.normal.backgroundColor) &&
                 !skin.treeViewRowSelected.normal.backgroundColor.Equals(skin.treeViewRow.normal.backgroundColor),
             "A newly created GUISkin is not initialized as a complete usable theme.");
         foreach (var name in EditorStyleSlots)

@@ -182,12 +182,12 @@ internal static class Program
             "A locked Inspector displayed the newly selected TextAsset.");
 
         inspector.IsLocked = false;
-        var textCommands = inspector.Repaint(WideWidth, WideHeight);
         var textEditor = inspector.CurrentEditor;
         TestAssert.Require(!ReferenceEquals(textureEditor, textEditor) &&
                            !InspectorHarness.IsEnabled(textureEditor) &&
                            ReferenceEquals(textEditor.target, text),
-            "Selection did not dispose and replace the texture Editor with the TextAsset Editor.");
+            "Unlocking did not immediately dispose the frozen Editor and rebuild from Selection.");
+        var textCommands = inspector.Repaint(WideWidth, WideHeight);
         TestAssert.Require(textCommands.Any(command => command.Type == GpuCanvasCommandType.Text &&
                                                        command.Content.Contains("TEXT_SELECTION_SENTINEL",
                                                            StringComparison.Ordinal)),

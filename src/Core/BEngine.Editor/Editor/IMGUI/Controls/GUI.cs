@@ -67,6 +67,7 @@ public static class GUI
         _endUndoGroupAfterKeyboardEvent = rawType is EventType.KeyUp or EventType.ExecuteCommand;
         Event.current = inputEvent;
         GUIUtility.BeginEvent();
+        EditorGUI.BeginEvent();
         _textStates ??= [];
         _coordinateScopes ??= [];
         _coordinateScopes.Clear();
@@ -82,6 +83,7 @@ public static class GUI
     internal static void EndFrame()
     {
         UpdateAndDrawTooltip();
+        DragAndDrop.ApplyCursor();
         if (_context is not null) _focusedControlName = _context.FocusedName;
         GUILayout.EndFrame();
         _context = null;
@@ -107,6 +109,9 @@ public static class GUI
     public static void Box(Rect position, GUIContent content, GUIStyle? style = null) =>
         DrawContent(position, content, style ?? skin.box, true, false);
 
+    internal static void PassiveBox(Rect position, GUIContent content, GUIStyle style) =>
+        DrawContent(position, content, style, true, false, ignoreHover: true);
+
     public static bool Button(Rect position, string text) => Button(position, new GUIContent(text), null);
     public static bool Button(Rect position, string text, GUIStyle? style) =>
         Button(position, new GUIContent(text), style);
@@ -116,7 +121,17 @@ public static class GUI
     internal static bool Button(Rect position, GUIContent content, GUIStyle? style, FocusType focusType)
     {
         var id = GUIUtility.GetControlID(content.text.GetHashCode(StringComparison.Ordinal), focusType, position);
-        var pressed = DoButton(id, position, focusType == FocusType.Keyboard);
+        return Button(id, position, content, style, focusType == FocusType.Keyboard);
+    }
+
+    internal static bool Button(
+        int id,
+        Rect position,
+        GUIContent content,
+        GUIStyle? style,
+        bool takesKeyboardFocus = true)
+    {
+        var pressed = DoButton(id, position, takesKeyboardFocus);
         DrawContent(position, content, style ?? skin.button, true, GUIUtility.hotControl == id,
             GUIUtility.keyboardControl == id);
         return pressed;
@@ -278,6 +293,7 @@ public static class GUI
             _context.Commands.Count,
             _coordinateScopes?.Reverse().ToArray() ?? [],
             GUIUtility.CaptureContainerScopes(),
+            GUIUtility.CaptureControlCount(),
             Event.current.mousePosition,
             Event.current.type,
             GUIUtility.currentViewWidth,
@@ -565,11 +581,13 @@ public static class GUI
     }
 
     private static void DrawContent(Rect rect, GUIContent content, GUIStyle style, bool background, bool active,
-        bool focused = false, bool on = false, Fix64 leadingTextOffset = default)
+        bool focused = false, bool on = false, Fix64 leadingTextOffset = default,
+        bool ignoreHover = false)
     {
         if (_context is null || Event.current.type != EventType.Repaint) return;
         var absolute = _context?.Translate(rect) ?? rect;
-        var hovered = absolute.Contains(PointerPosition) && PointerInsideClip(PointerPosition);
+        var hovered = !ignoreHover && absolute.Contains(PointerPosition) &&
+                      PointerInsideClip(PointerPosition);
         var state = ResolveStyleState(style, on, active, focused, hovered);
         if (background && (state.backgroundColor.a > 0 || state.backgroundImage is not null))
             DrawStyleBackground(rect, state, style.borderWidth);
@@ -1006,6 +1024,7 @@ public static class GUI
         int commandCount,
         CoordinateScopeState[] coordinateStates,
         int[] containerScopes,
+        int controlCount,
         Vector2 mousePosition,
         EventType eventType,
         Fix64 viewWidth,
@@ -1031,6 +1050,7 @@ public static class GUI
         internal void Restore(bool succeeded)
         {
             if (context is null || !ReferenceEquals(_context, context)) return;
+            var consumedControlCount = GUIUtility.CaptureControlCount();
             GUILayout.RestoreState(layoutState);
             context.RestoreStructuralState(contextState!);
             if (editorGuiState is not null)
@@ -1042,7 +1062,8 @@ public static class GUI
             Event.current.mousePosition = mousePosition;
             GUIUtility.currentViewWidth = viewWidth;
             GUIUtility.currentViewHeight = viewHeight;
-            GUIUtility.RestoreContainerScopes(containerScopes);
+            GUIUtility.RestoreContainerScopes(containerScopes,
+                succeeded ? consumedControlCount : controlCount);
             enabled = wasEnabled;
             depth = guiDepth;
             color = guiColor;

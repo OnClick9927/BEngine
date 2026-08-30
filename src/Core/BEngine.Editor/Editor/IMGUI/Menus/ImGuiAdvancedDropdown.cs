@@ -117,6 +117,15 @@ internal sealed class ImGuiAdvancedDropdown
         if (eventType == EventType.KeyDown && HandleKeyboard(evt, rowHeight, listRect.height))
             return isOpen;
 
+        if (eventType == EventType.MouseLeaveWindow ||
+            eventType == EventType.MouseMove &&
+            !menuRect.Contains(rootPointer) && !(_anchor?.Contains(rootPointer) ?? false))
+        {
+            evt.Use();
+            Close();
+            return false;
+        }
+
         if (eventType is EventType.MouseDown or EventType.ContextClick &&
             !menuRect.Contains(rootPointer) && !(_anchor?.Contains(rootPointer) ?? false))
         {

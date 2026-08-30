@@ -28,7 +28,9 @@ public static class EditorBuiltinIcons
         ["RectTool"] = Toolbar.Rect,
         ["PlayButton"] = Toolbar.Play,
         ["PauseButton"] = Toolbar.Pause,
-        ["StepButton"] = Toolbar.Step
+        ["StepButton"] = Toolbar.Step,
+        ["FoldoutClosed"] = Toolbar.FoldoutClosed,
+        ["FoldoutOpen"] = Toolbar.FoldoutOpen
     };
 
     public static string Resolve(string name)

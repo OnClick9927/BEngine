@@ -1,9 +1,11 @@
 namespace BEngine.Editor;
 
+/// <summary>
+/// Editor menu model. Context and dropdown presentations are projected onto the host operating
+/// system's native menu API; explicit advanced dropdowns retain the searchable editor UI.
+/// </summary>
 public sealed class GenericMenu
 {
-    private const int AdvancedDropDownThreshold = 12;
-
     public delegate void MenuFunction();
     public delegate void MenuFunction2(object? userData);
 
@@ -39,9 +41,7 @@ public sealed class GenericMenu
     public void ShowAsContext() => GenericMenuDispatcher.Show(_items);
 
     public void DropDown(Rect position) => GenericMenuDispatcher.Show(_items,
-        GetItemCount() >= AdvancedDropDownThreshold
-            ? GenericMenuPresentation.AdvancedDropDown(position)
-            : GenericMenuPresentation.DropDown(position));
+        GenericMenuPresentation.DropDown(position));
 
     public void ShowAsAdvancedDropdown() => GenericMenuDispatcher.Show(_items,
         GenericMenuPresentation.AdvancedDropDown());

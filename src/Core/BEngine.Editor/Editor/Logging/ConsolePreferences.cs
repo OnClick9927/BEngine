@@ -33,4 +33,10 @@ internal static class ConsolePreferences
         get => EditorPrefs.GetBool(Prefix + nameof(ClearOnRecompile));
         set => EditorPrefs.SetBool(Prefix + nameof(ClearOnRecompile), value);
     }
+
+    internal static int LogEntryLines
+    {
+        get => Math.Clamp(EditorPrefs.GetInt(Prefix + nameof(LogEntryLines), 2), 1, 5);
+        set => EditorPrefs.SetInt(Prefix + nameof(LogEntryLines), Math.Clamp(value, 1, 5));
+    }
 }

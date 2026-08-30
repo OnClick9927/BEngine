@@ -1,5 +1,3 @@
-using BEngine.Serialization;
-
 namespace BEngine;
 
 [EditorIcon("Icons/Assets/AssetMaterial.png")]

@@ -41,4 +41,5 @@ public sealed class EditorLayoutDocument : Document
     public string? FocusedWindowId { get; set; }
     public EditorDockNodeDocument? DockRoot { get; set; }
     public List<EditorWindowLayoutDocument> Windows { get; set; } = [];
+    public List<EditorWindowLayoutDocument> ClosedWindows { get; set; } = [];
 }

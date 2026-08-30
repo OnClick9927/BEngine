@@ -1,5 +1,3 @@
-using BEngine.Serialization;
-
 namespace BEngine;
 
 [CreateAssetMenu(fileName = "New Texture Atlas", menuName = "2D/Texture Atlas", order = 250)]

@@ -12,8 +12,11 @@ internal static class Program
         {
             VerifyWindowStates();
             EditorWindowLayerRegressionTests.Run();
+            DockHostTransferTests.Run();
             VerifyDragOutAndDockBack();
+            VerifyInProcessFloatDockPreview();
             VerifyNativeCrossMonitorDockTracking();
+            Win32NativeMoveScopeTests.Run();
             VerifyNativeGeometryRecovery();
             VerifyNativeWindowFrameScheduling();
             VerifyDockHostHoverIsolation();
@@ -21,7 +24,7 @@ internal static class Program
             VerifyWindowLockChrome();
             VerifyNarrowTitleStability();
             Console.WriteLine(
-                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,native-float,cross-monitor,dpi-coordinates,cross-dpi-caption,resize-not-dock,offscreen-recovery,negative-monitor,inactive-render-throttle,repaint-wakeup,restore-wakeup,focus-wakeup,dock-host-hover-isolation,in-process-transients,z-order,input-gating,popup-dismiss,drag-out-immediate,splitter-not-float,dock-back,dock-float-lock-roundtrip,title-context-menu,window-lock,narrow-title-stability,narrow-title-ellipsis");
+                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,native-float,native-move-loop,cross-monitor,dpi-coordinates,cross-dpi-caption,resize-not-dock,offscreen-recovery,negative-monitor,inactive-render-throttle,repaint-wakeup,restore-wakeup,focus-wakeup,dock-host-hover-isolation,host-transfer-input,in-process-transients,in-process-dock-preview,in-process-drag-dock,z-order,input-gating,popup-dismiss,drag-out-immediate,splitter-not-float,dock-back,dock-float-lock-roundtrip,three-dot-first-click,three-dot-window-actions,lock-menu-only,title-context-menu,window-lock,narrow-title-stability,narrow-title-ellipsis");
             return 0;
         }
         catch (Exception exception)
@@ -121,6 +124,87 @@ internal static class Program
             "Releasing a dragged tab over an in-workspace splitter incorrectly requested Float.");
         anchor.CloseInternal();
         dragged.CloseInternal();
+    }
+
+    private static void VerifyInProcessFloatDockPreview()
+    {
+        var anchor = new ProbeWindow("In-process dock anchor");
+        var floating = new ProbeWindow("In-process float")
+        {
+            position = new Rect(80, 70, 320, 220)
+        };
+        anchor.OpenInternal();
+        floating.OpenInternal();
+        var dock = new ImGuiDockWorkspace();
+        var anchorPanel = dock.Add("In-process dock anchor", anchor, DockArea.Center, true);
+        var layer = new EditorWindowLayer();
+        layer.Show(floating, EditorWindowState.Normal);
+        RenderDock(dock, new Event(EventType.Layout));
+        var target = anchorPanel.Group?.Bounds.center ??
+                     throw new InvalidOperationException("The in-process dock target has no bounds.");
+        Require(dock.CanDockAt(target),
+            "The in-process Float regression did not resolve a dock target.");
+
+        layer.DockDragUpdated += (_, point) => dock.SetExternalDragPoint(
+            point is { } candidate && dock.CanDockAt(candidate) ? candidate : null);
+        layer.DockDragCompleted += (window, point) =>
+        {
+            dock.SetExternalDragPoint(null);
+            if (!dock.CanDockAt(point) || !layer.Remove(window)) return;
+            dock.DockExternal(window.PersistentId, window, point);
+        };
+
+        try
+        {
+            var titlePoint = new Vector2(floating.position.x + 50, floating.position.y + 12);
+            RenderLayer(layer, new Event(EventType.MouseDown)
+            {
+                mousePosition = titlePoint,
+                button = 0
+            });
+            RenderLayer(layer, new Event(EventType.MouseDrag)
+            {
+                mousePosition = target,
+                button = 0
+            });
+
+            var commands = new List<GpuCanvasCommand>();
+            var accent = EditorStyles.selectionRect.normal.backgroundColor;
+            var previewColor = GpuCanvasColor.FromColor(new Color(accent.r, accent.g, accent.b,
+                Fix64.FromDecimal(0.22m)));
+            var area = new Rect(0, 0, 1000, 700);
+            GUI.BeginFrame(new Event(EventType.Repaint) { mousePosition = target },
+                (int)area.width, (int)area.height, commands);
+            var commandsBeforeOverlay = 0;
+            try
+            {
+                dock.HostIsInteractive = false;
+                dock.OnGUIWithoutExternalDockHint(area);
+                layer.Draw(area, inputPass: false);
+                commandsBeforeOverlay = commands.Count;
+                dock.DrawExternalDockHintOverlay();
+            }
+            finally { GUI.EndFrame(); }
+            Require(layer.Contains(floating) &&
+                    !commands.Take(commandsBeforeOverlay).Any(command =>
+                        command.Type == GpuCanvasCommandType.SolidRect && command.Color == previewColor) &&
+                    commands.Skip(commandsBeforeOverlay).Any(command =>
+                        command.Type == GpuCanvasCommandType.SolidRect && command.Color == previewColor),
+                "The in-process Float dock preview was not composed above the floating window layer.");
+
+            RenderLayer(layer, new Event(EventType.MouseUp)
+            {
+                mousePosition = target,
+                button = 0
+            });
+            Require(!layer.Contains(floating) && dock.IsSelected(floating),
+                "Releasing an in-process Float over a dock target did not dock it.");
+        }
+        finally
+        {
+            anchor.CloseInternal();
+            floating.CloseInternal();
+        }
     }
 
     private static void VerifyNativeCrossMonitorDockTracking()
@@ -310,6 +394,8 @@ internal static class Program
         first.OpenInternal();
         second.OpenInternal();
         var dock = new ImGuiDockWorkspace();
+        dock.PopulateAddNewTabMenu = menu =>
+            menu.AddItem(new GUIContent("Add new tab/General/Inspector"), false, () => { });
         dock.Add("Context A", first, DockArea.Center, false);
         dock.Add("Context B", second, DockArea.Center, true);
 
@@ -322,20 +408,22 @@ internal static class Program
             command.Content.EndsWith("More.png", StringComparison.Ordinal));
         var titlePoint = Center(firstTitle.Rect);
         var morePoint = Center(moreButton.Rect);
-        var maximizePoint = Center(commands.Single(command =>
-            command.Type == GpuCanvasCommandType.Text && command.Content == "[]").Rect);
-        var closePoint = Center(commands.Single(command =>
-            command.Type == GpuCanvasCommandType.Text && command.Content == "x").Rect);
-
-        foreach (var point in new[] { morePoint, maximizePoint, closePoint })
-        {
-            RenderDock(dock, new Event(EventType.Repaint) { mousePosition = point });
-            Require(TooltipCandidate() is null,
-                "A docked window options, maximize, or close button still registered a tooltip.");
-        }
+        Require(!commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
+                                         command.Content is "[]" or "x"),
+            "Docked window chrome still renders separate maximize or close controls.");
+        RenderDock(dock, new Event(EventType.Repaint) { mousePosition = morePoint });
+        Require(TooltipCandidate() is null,
+            "The docked window options button still registered a tooltip.");
 
         IReadOnlyList<GenericMenuItem>? captured = null;
-        GenericMenuDispatcher.Handler = items => captured = items.ToArray();
+        GenericMenuPresentationKind? capturedKind = null;
+        var menuOpenCount = 0;
+        GenericMenuDispatcher.Handler = items =>
+        {
+            captured = items.ToArray();
+            capturedKind = GenericMenuDispatcher.CurrentPresentation.Kind;
+            menuOpenCount++;
+        };
         try
         {
             var contextClick = new Event(EventType.ContextClick)
@@ -350,20 +438,52 @@ internal static class Program
                 "Right-clicking a non-selected EditorWindow title did not select and focus its window.");
             var titleMenu = captured?.ToArray() ??
                             throw new InvalidOperationException("EditorWindow title right-click did not open a menu.");
+            Require(capturedKind == GenericMenuPresentationKind.Context,
+                "EditorWindow title right-click did not use context-menu presentation.");
             Require(titleMenu.Any(item => item.Path == "Probe/Context A"),
                 "EditorWindow title right-click opened the menu for the wrong window.");
             Require(titleMenu.Any(item => item.Path == "Float") &&
-                    titleMenu.Any(item => item.Path == "Lock") &&
+                    titleMenu.Any(item => item.Path == "Maximize") &&
+                    titleMenu.Any(item => item.Path == "Add new tab/General/Inspector") &&
                     titleMenu.Any(item => item.Path == "Close Tab"),
-                "EditorWindow title menu is missing Float, Lock, or Close Tab.");
+                "EditorWindow title menu is missing Add new tab, Float, Maximize, or Close Tab.");
+            Require(titleMenu.All(item => item.Path is not "Lock" and not "Unlock"),
+                "A window that does not support locking exposed a lock menu item.");
 
+            second.FocusInternal();
             captured = null;
-            RenderDock(dock, new Event(EventType.MouseDown) { mousePosition = morePoint, button = 0 });
+            capturedKind = null;
+            var opensBeforeOptions = menuOpenCount;
+            RenderDock(dock, new Event(EventType.MouseDown) { mousePosition = morePoint, button = 0 },
+                hostIsInteractive: false);
+            Require(captured is not null && capturedKind == GenericMenuPresentationKind.DropDown &&
+                    first.hasFocus && menuOpenCount == opensBeforeOptions + 1,
+                "An activation click on the dock three-dot button did not immediately open its anchored menu.");
             RenderDock(dock, new Event(EventType.MouseUp) { mousePosition = morePoint, button = 0 });
+            Require(menuOpenCount == opensBeforeOptions + 1,
+                "The pointer-up following an immediate dock menu open dispatched the menu twice.");
             var optionsMenu = captured?.ToArray() ??
                               throw new InvalidOperationException("Three-dot window options did not open a menu.");
             Require(MenuSignature(titleMenu) == MenuSignature(optionsMenu),
                 "Title right-click and three-dot options produced different EditorWindow menus.");
+
+            titleMenu.Single(item => item.Path == "Maximize").Action!.Invoke();
+            captured = null;
+            commands.Clear();
+            RenderDock(dock, new Event(EventType.Repaint), commands);
+            var maximizedTitlePoint = Center(commands.Single(command =>
+                command.Type == GpuCanvasCommandType.Text && command.Content == "Context A").Rect);
+            RenderDock(dock, new Event(EventType.ContextClick)
+            {
+                mousePosition = maximizedTitlePoint,
+                button = 1
+            });
+            var maximizedMenu = captured?.ToArray() ??
+                                throw new InvalidOperationException("Maximized window menu did not open.");
+            Require(maximizedMenu.Any(item => item.Path == "Minimize") &&
+                    maximizedMenu.All(item => item.Path != "Restore"),
+                "A maximized window still labels its size action Restore instead of Minimize.");
+            maximizedMenu.Single(item => item.Path == "Minimize").Action!.Invoke();
         }
         finally
         {
@@ -387,21 +507,43 @@ internal static class Program
         dock.Add("LockProbe", window, DockArea.Center, true);
         try
         {
+            Require(dock.Panels.Count == 1,
+                "The single-window lock regression did not exercise a one-tab dock group.");
             var commands = new List<GpuCanvasCommand>();
             RenderDock(dock, new Event(EventType.Repaint), commands);
-            var unlocked = commands.Single(command => command.Type == GpuCanvasCommandType.Image &&
-                command.Content.EndsWith("Unlock.png", StringComparison.Ordinal));
-            var point = Center(unlocked.Rect);
+            Require(commands.All(command => command.Type != GpuCanvasCommandType.Image ||
+                                            !command.Content.EndsWith("Lock.png", StringComparison.Ordinal) &&
+                                            !command.Content.EndsWith("Unlock.png", StringComparison.Ordinal)),
+                "A lock toggle is still rendered in the dock title bar.");
+            var more = commands.Single(command => command.Type == GpuCanvasCommandType.Image &&
+                command.Content.EndsWith("More.png", StringComparison.Ordinal));
+            var point = Center(more.Rect);
+            IReadOnlyList<GenericMenuItem>? captured = null;
+            GenericMenuDispatcher.Handler = items => captured = items.ToArray();
             RenderDock(dock, new Event(EventType.MouseDown) { mousePosition = point, button = 0 });
             RenderDock(dock, new Event(EventType.MouseUp) { mousePosition = point, button = 0 });
+            var lockItem = (captured ?? throw new InvalidOperationException(
+                "The dock three-dot menu did not open.")).Single(item => item.Path == "Lock");
+            Require(!lockItem.On, "An unlocked window displayed Lock as checked.");
+            lockItem.Action!.Invoke();
             Require(window.isLocked && window.LockChanges == 1,
-                "The dock title lock button did not change the EditorWindow lock state.");
+                "The dock three-dot Lock command did not change the EditorWindow lock state.");
 
             commands.Clear();
             RenderDock(dock, new Event(EventType.Repaint), commands);
-            Require(commands.Any(command => command.Type == GpuCanvasCommandType.Image &&
-                                            command.Content.EndsWith("Lock.png", StringComparison.Ordinal)),
-                "The dock title did not render the locked state icon.");
+            Require(commands.All(command => command.Type != GpuCanvasCommandType.Image ||
+                                            !command.Content.EndsWith("Lock.png", StringComparison.Ordinal) &&
+                                            !command.Content.EndsWith("Unlock.png", StringComparison.Ordinal)),
+                "The locked state added a lock toggle back to the dock title bar.");
+            captured = null;
+            RenderDock(dock, new Event(EventType.MouseDown) { mousePosition = point, button = 0 });
+            RenderDock(dock, new Event(EventType.MouseUp) { mousePosition = point, button = 0 });
+            var unlock = (captured ?? throw new InvalidOperationException(
+                "The locked dock three-dot menu did not open.")).Single(item => item.Path == "Unlock");
+            Require(unlock.On, "A locked window displayed Unlock as unchecked.");
+            unlock.Action!.Invoke();
+            Require(!window.isLocked && window.LockChanges == 2,
+                "The dock three-dot Unlock command did not change the EditorWindow lock state.");
 
             var nested = typeof(GpuEditorApplication).GetNestedTypes(BindingFlags.NonPublic)
                 .Where(type => type.Name is "ImGuiHierarchyWindow" or "ImGuiProjectWindow" or
@@ -412,9 +554,13 @@ internal static class Program
                 var property = typeof(EditorWindow).GetProperty("supportsLocking",
                     BindingFlags.Instance | BindingFlags.NonPublic)!;
                 return (bool)property.GetValue(instance)!;
-            }), "Hierarchy, Project, and Inspector do not all expose title lock controls.");
+            }), "A built-in Inspector, Project, or Hierarchy window does not expose menu locking.");
         }
-        finally { window.CloseInternal(); }
+        finally
+        {
+            GenericMenuDispatcher.Handler = null;
+            window.CloseInternal();
+        }
     }
 
     private static void VerifyNarrowTitleStability(bool multipleTabs)
@@ -506,6 +652,14 @@ internal static class Program
         GUI.BeginFrame(evt, (int)area.width, (int)area.height, commands ?? []);
         dock.HostIsInteractive = hostIsInteractive;
         try { dock.OnGUI(area); }
+        finally { GUI.EndFrame(); }
+    }
+
+    private static void RenderLayer(EditorWindowLayer layer, Event evt)
+    {
+        var bounds = new Rect(0, 0, 1000, 700);
+        GUI.BeginFrame(evt, (int)bounds.width, (int)bounds.height, []);
+        try { layer.Draw(bounds, inputPass: true); }
         finally { GUI.EndFrame(); }
     }
 

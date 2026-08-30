@@ -16,8 +16,7 @@ internal sealed class FloatingEditorWindow
     internal Vector2 InteractionStartPointer { get; set; }
     internal int ResizeEdges { get; set; }
     internal bool IsDragging { get; set; }
+    internal bool IsDockDragging { get; set; }
     internal bool IsResizing { get; set; }
-    internal bool DockPressed { get; set; }
     internal bool MenuPressed { get; set; }
-    internal bool ClosePressed { get; set; }
 }

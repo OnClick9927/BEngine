@@ -4,7 +4,7 @@ namespace BEngine.Editor;
 
 internal static class CoreBuiltInGizmoDrawers
 {
-    [DrawGizmo(GizmoType.Selected | GizmoType.NonSelected)]
+    [DrawGizmo(GizmoType.Selected)]
     private static void DrawCamera(Camera2D camera, GizmoType state)
     {
         Gizmos.color = Color.white;

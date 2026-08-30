@@ -36,6 +36,7 @@ public sealed partial class GUISkin
     public GUIStyle textFieldDropDownText { get; set; } = Style("textFieldDropDownText");
     public GUIStyle overrideMargin { get; set; } = Style("overrideMargin");
     public GUIStyle contentToolbar { get; set; } = Style("contentToolbar");
+    public GUIStyle toolbarToggle { get; set; } = Style("toolbarToggle");
     public GUIStyle toolbarButtonLeft { get; set; } = Style("toolbarButtonLeft");
     public GUIStyle toolbarButtonRight { get; set; } = Style("toolbarButtonRight");
     public GUIStyle toolbarPopup { get; set; } = Style("toolbarPopup");
@@ -128,6 +129,7 @@ public sealed partial class GUISkin
         yield return ("textFieldDropDownText", textFieldDropDownText);
         yield return ("overrideMargin", overrideMargin);
         yield return ("contentToolbar", contentToolbar);
+        yield return ("toolbarToggle", toolbarToggle);
         yield return ("toolbarButtonLeft", toolbarButtonLeft);
         yield return ("toolbarButtonRight", toolbarButtonRight);
         yield return ("toolbarPopup", toolbarPopup);

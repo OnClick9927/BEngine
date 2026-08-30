@@ -31,11 +31,12 @@ public static class GUIUtility
     internal static void BeginContainer(int id) { IdScopes.Push(id); _controlCount = 0; }
     internal static void EndContainer() { if (IdScopes.Count > 0) IdScopes.Pop(); }
     internal static int[] CaptureContainerScopes() => IdScopes.Reverse().ToArray();
-    internal static void RestoreContainerScopes(IReadOnlyList<int> scopes)
+    internal static int CaptureControlCount() => _controlCount;
+    internal static void RestoreContainerScopes(IReadOnlyList<int> scopes, int controlCount)
     {
         IdScopes.Clear();
         foreach (var scope in scopes) IdScopes.Push(scope);
-        _controlCount = 0;
+        _controlCount = Math.Max(0, controlCount);
     }
     internal static void BeginEvent()
     {

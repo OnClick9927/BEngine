@@ -18,6 +18,7 @@ public static class EditorGUI
     private static readonly Stack<bool> EnabledStack = new();
     private static readonly Stack<bool> ChangedStack = new();
     private static readonly Dictionary<int, int> PendingPopupSelections = [];
+    [ThreadStatic] private static Dictionary<ObjectFieldStructuralIdentity, int>? ObjectFieldOccurrences;
     private static readonly ConditionalWeakTable<SerializedObject, Dictionary<string, ReorderableList>>
         DefaultReorderableLists = new();
     public static int indentLevel { get; set; }
@@ -56,6 +57,8 @@ public static class EditorGUI
         fieldWidth = snapshot.FieldWidth;
         showMixedValue = snapshot.ShowMixedValue;
     }
+
+    internal static void BeginEvent() => ObjectFieldOccurrences?.Clear();
 
     public static void BeginDisabledGroup(bool disabled)
     {
@@ -414,11 +417,13 @@ public static class EditorGUI
         style ??= EditorStyles.popup;
         EditorObjectPicker.ValidateValue(value, objectType);
         var field = usePrefix ? PrefixLabel(position, label) : position;
-        var id = GUIUtility.GetControlID("ObjectField".GetHashCode(StringComparison.Ordinal),
+        // Consume a regular IMGUI id so ObjectField keeps its place in keyboard-control ordering, then use
+        // a field-specific interaction id for state that must survive into the next event. A focused-window
+        // identity is not sufficient: non-focused Inspector instances are drawn too, and would otherwise
+        // share picker and drag state.
+        _ = GUIUtility.GetControlID("ObjectField".GetHashCode(StringComparison.Ordinal),
             FocusType.Keyboard, field);
-        var owner = EditorWindow.focusedWindow;
-        var ownerIdentity = owner is null ? 0 : RuntimeHelpers.GetHashCode(owner);
-        var token = HashCode.Combine(ControlToken(id, label.text), objectType, ownerIdentity, stableIdentity);
+        var token = ObjectFieldInteractionId(field, label, objectType, stableIdentity);
         committed = false;
 
         if (EditorObjectPicker.TryConsume(token, objectType, allowSceneObjects, out var picked))
@@ -444,9 +449,17 @@ public static class EditorGUI
         var objectRect = new Rect(field.x, field.y, Fix64.Max(0, field.width - pickerWidth), field.height);
         var pickerRect = new Rect(objectRect.xMax, field.y, pickerWidth, field.height);
         var content = EditorObjectPicker.Content(value, objectType, mixed && !committed);
-        if (objectRect.width > 0 && GUI.Button(objectRect, content, style))
+        var startedDrag = objectRect.width > 0 && EditorObjectPicker.TryStartDrag(objectRect, token, value);
+        if (objectRect.width > 0 && GUI.Button(token, objectRect, content, style) && !startedDrag)
         {
-            if (value is not null) Selection.activeObject = value;
+            if (value is not null)
+            {
+                if (Event.current.clickCount >= 2) Selection.activeObject = value;
+                else
+                {
+                    EditorGUIUtility.PingObject(value);
+                }
+            }
             else EditorObjectPicker.Open(token, field, value, objectType, allowSceneObjects);
         }
         if (pickerWidth > 0 && GUI.Button(pickerRect,
@@ -1142,6 +1155,38 @@ public static class EditorGUI
     }
 
     private static int ControlToken(int id, string label) => HashCode.Combine(id, label);
+
+    private static int ObjectFieldInteractionId(
+        Rect field,
+        GUIContent label,
+        Type objectType,
+        int stableIdentity)
+    {
+        var owner = EditorWindow.currentDrawingWindow;
+        var ownerIdentity = owner is null ? 0 : RuntimeHelpers.GetHashCode(owner);
+        var root = GUI.GUIToRootPoint(new Vector2(field.x, field.y));
+        var structuralIdentity = stableIdentity != 0
+            ? new ObjectFieldStructuralIdentity(ownerIdentity, stableIdentity, default, default,
+                default, default, string.Empty, objectType)
+            : new ObjectFieldStructuralIdentity(ownerIdentity, 0, root.x, root.y,
+                field.width, field.height, label.text ?? string.Empty, objectType);
+        var occurrences = ObjectFieldOccurrences ??= [];
+        var occurrence = occurrences.GetValueOrDefault(structuralIdentity);
+        occurrences[structuralIdentity] = occurrence + 1;
+
+        var token = HashCode.Combine(0x4F424A46, structuralIdentity, occurrence);
+        return token == 0 ? int.MinValue : token;
+    }
+
+    private readonly record struct ObjectFieldStructuralIdentity(
+        int OwnerIdentity,
+        int StableIdentity,
+        Fix64 X,
+        Fix64 Y,
+        Fix64 Width,
+        Fix64 Height,
+        string Label,
+        Type ObjectType);
 
     private static bool AllowSceneObjects(SerializedProperty property)
     {

@@ -50,7 +50,16 @@ internal static class Program
         Require(source is not null && Path.GetFileName(source).Equals("ShowcaseMotion.cs", StringComparison.OrdinalIgnoreCase),
             "Project script source could not be resolved for Project-window location.");
 
-        Console.WriteLine("SCRIPT_FIELD_INTERACTION_OK|readonly,single-locate,double-open,no-caret,rendered,source-resolved");
+        var builtInSource = ProjectScriptSourceLocator.Find(workspace,
+            typeof(SpriteRenderer).AssemblyQualifiedName!);
+        var expectedBuiltInSource = Path.GetFullPath(Path.Combine(workspace.RootPath, "..", "src", "Core",
+            "BEngine", "Core", "Components", "SpriteRenderer.cs"));
+        Require(builtInSource is not null &&
+                Path.GetFullPath(builtInSource).Equals(expectedBuiltInSource, StringComparison.OrdinalIgnoreCase),
+            "Built-in Core component source could not be resolved from the engine repository layout.");
+
+        Console.WriteLine("SCRIPT_FIELD_INTERACTION_OK|readonly,single-locate,double-open,no-caret,rendered," +
+                          "project-source-resolved,builtin-source-resolved");
         return 0;
     }
 

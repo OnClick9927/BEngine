@@ -22,7 +22,7 @@ internal static class Program
         {
             VerifyGpuDockPreview();
             Console.WriteLine(
-                "DOCK_PREVIEW_OK|gpu-imgui,four-areas,five-drop-targets,accent-overlay,split-region,empty-collapse");
+                "DOCK_PREVIEW_OK|gpu-imgui,four-areas,five-drop-targets,accent-overlay,preview-change-signal,split-region,empty-collapse");
             return 0;
         }
         catch (Exception exception)
@@ -85,14 +85,18 @@ internal static class Program
                 $"The {name} point produced the wrong preview rectangle.");
         }
 
-        setExternalDragPoint.Invoke(workspace, [cases[0].Item2]);
+        Require((bool)setExternalDragPoint.Invoke(workspace, [cases[0].Item2])!,
+            "Setting a new external dock point did not signal that the host needs repainting.");
+        Require(!(bool)setExternalDragPoint.Invoke(workspace, [cases[0].Item2])!,
+            "Setting an unchanged external dock point requested a redundant host repaint.");
         var commands = new List<GpuCanvasCommand>();
         Render(workspaceType, workspace, new Event(EventType.Repaint), commands);
         Require(commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                         SameRect(command.Rect, cases[0].Item3) &&
                                         command.Color.A is > 0 and < 255),
             "External docking did not emit its translucent GPU accent preview.");
-        setExternalDragPoint.Invoke(workspace, [null]);
+        Require((bool)setExternalDragPoint.Invoke(workspace, [null])!,
+            "Clearing the external dock point did not signal that the preview needs repainting.");
 
         var beforeSplit = (EditorDockNodeDocument)captureLayout.Invoke(workspace, null)!;
         var splitPanel = dockExternal.Invoke(workspace,

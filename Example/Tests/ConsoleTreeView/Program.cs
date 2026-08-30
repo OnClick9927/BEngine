@@ -31,13 +31,15 @@ internal static class Program
     private static int Main()
     {
         var collapse = ReadPreference("Collapse");
+        var logEntryLines = ReadIntPreference("LogEntryLines");
         try
         {
             EditorAppearance.Apply(new EditorPreferencesDocument());
             RequireMethod(StoreType, "Initialize", HiddenStatic).Invoke(null, null);
             SetPreference("Collapse", false);
+            SetIntPreference("LogEntryLines", 2);
             StoreClear.Invoke(null, null);
-            var first = Entry(LogType.Info, "CONSOLE_TREE_FIRST");
+            var first = Entry(LogType.Info, "CONSOLE_TREE_FIRST\nCONSOLE_TREE_CONTINUATION");
             var second = Entry(LogType.Warning, "CONSOLE_TREE_SECOND");
             StoreAdd.Invoke(null, [first]);
             StoreAdd.Invoke(null, [second]);
@@ -57,6 +59,25 @@ internal static class Program
                 command.Content.Contains(first.Message, StringComparison.Ordinal));
             Require(firstLabel.Type == GpuCanvasCommandType.Text,
                 "Console TreeView did not render its first log row.");
+            Require(firstLabel.Content.Contains('\n'),
+                "The default two-line Console row flattened a multi-line log message.");
+
+            VerifyLogEntryLineOptions(console);
+            var setLines = RequireMethod(ConsoleType, "SetLogEntryLines", HiddenInstance);
+            var rowHeight = RequireMethod(ConsoleType, "LogRowHeight", HiddenInstance);
+            var twoLineHeight = (float)(rowHeight.Invoke(console, null) ?? 0f);
+            setLines.Invoke(console, [1]);
+            var oneLineHeight = (float)(rowHeight.Invoke(console, null) ?? 0f);
+            commands = Render(console, new Event(EventType.Repaint), 900, 320);
+            var flattened = commands.First(command => command.Type == GpuCanvasCommandType.Text &&
+                command.Content.Contains("CONSOLE_TREE_FIRST", StringComparison.Ordinal));
+            Require(!flattened.Content.Contains('\n') && oneLineHeight < twoLineHeight,
+                "Setting Console rows to one line did not flatten text and reduce row height.");
+            setLines.Invoke(console, [5]);
+            var fiveLineHeight = (float)(rowHeight.Invoke(console, null) ?? 0f);
+            Require(fiveLineHeight > twoLineHeight && ReadIntPreference("LogEntryLines") == 5,
+                "Setting Console rows to five lines did not persist the larger row height.");
+            setLines.Invoke(console, [2]);
 
             var tree = ConsoleType.GetField("_treeView", HiddenInstance)?.GetValue(console) ??
                        throw new InvalidOperationException("Console did not create its TreeView.");
@@ -93,7 +114,7 @@ internal static class Program
             Require(count == 2, "Collapsed Console TreeView row lost its repeat count.");
 
             Console.WriteLine(
-                "CONSOLE_TREEVIEW_OK|imgui-controls,rows,selection,keyboard,filter,collapse,details-binding");
+                "CONSOLE_TREEVIEW_OK|imgui-controls,rows,multiline-default,lines-1-5,selection,keyboard,filter,collapse,details-binding");
             return 0;
         }
         catch (Exception exception)
@@ -105,8 +126,44 @@ internal static class Program
         {
             StoreClear.Invoke(null, null);
             SetPreference("Collapse", collapse);
+            SetIntPreference("LogEntryLines", logEntryLines);
         }
     }
+
+    private static void VerifyLogEntryLineOptions(object console)
+    {
+        var dispatcher = EditorAssembly.GetType("BEngine.Editor.GenericMenuDispatcher", throwOnError: true)!;
+        var handler = dispatcher.GetProperty("Handler", HiddenStatic) ??
+                      throw new MissingMemberException(dispatcher.FullName, "Handler");
+        var previous = handler.GetValue(null);
+        _presentedMenu = null;
+        handler.SetValue(null, new Action<object>(CapturePresentedMenu));
+        try
+        {
+            RequireMethod(ConsoleType, "ShowClearOptionsMenu", HiddenInstance).Invoke(console, null);
+            var lineItems = (_presentedMenu ?? []).Select(item => new
+                {
+                    Path = (string)(item.GetType().GetProperty("Path")?.GetValue(item) ?? string.Empty),
+                    On = (bool)(item.GetType().GetProperty("On")?.GetValue(item) ?? false)
+                })
+                .Where(item => item.Path.StartsWith("Log Entry Lines/", StringComparison.Ordinal)).ToArray();
+            Require(lineItems.Length == 5 &&
+                    lineItems.Select(item => item.Path).SequenceEqual(Enumerable.Range(1, 5)
+                        .Select(line => $"Log Entry Lines/{line}")) &&
+                    lineItems.Single(item => item.Path == "Log Entry Lines/2").On,
+                "Console clear options do not expose the 1-5 line selector with two lines selected by default.");
+        }
+        finally
+        {
+            handler.SetValue(null, previous);
+            _presentedMenu = null;
+        }
+    }
+
+    private static object[]? _presentedMenu;
+
+    private static void CapturePresentedMenu(object items) =>
+        _presentedMenu = ((IEnumerable)items).Cast<object>().ToArray();
 
     private static bool InheritsTreeView(Type type)
     {
@@ -139,6 +196,13 @@ internal static class Program
         (bool)(PreferencesType.GetProperty(name, HiddenStatic)?.GetValue(null) ?? false);
 
     private static void SetPreference(string name, bool value) =>
+        (PreferencesType.GetProperty(name, HiddenStatic) ??
+         throw new MissingMemberException(PreferencesType.FullName, name)).SetValue(null, value);
+
+    private static int ReadIntPreference(string name) =>
+        (int)(PreferencesType.GetProperty(name, HiddenStatic)?.GetValue(null) ?? 0);
+
+    private static void SetIntPreference(string name, int value) =>
         (PreferencesType.GetProperty(name, HiddenStatic) ??
          throw new MissingMemberException(PreferencesType.FullName, name)).SetValue(null, value);
 

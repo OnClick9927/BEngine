@@ -20,14 +20,16 @@ internal static class Program
             VerifyScaledTextCaretAndHitTesting();
             VerifyAlignedTextEditingAtScale();
             VerifyNumericEditingBuffers();
+            VerifyFieldFocusIsolation();
             VerifyNativeMouseMoveClassification();
             VerifyWindowCoordinatesAndScrolling();
             VerifyEditorWindowRoutingAndDockTabs();
+            EditorObjectPingTests.Run();
             VerifyProjectTreeVisualLayout();
             VerifyIconToolbarLanguage();
             VerifyPrefabWorkflow();
             VerifyAssemblyBoundary();
-            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,scaled-caret,aligned-text-editing,cjk-hit-testing,double-click,numeric-edit-buffer,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
+            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,scaled-caret,aligned-text-editing,cjk-hit-testing,double-click,numeric-edit-buffer,field-focus-isolation,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,object-ping,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
             return 0;
         }
         catch (Exception exception)
@@ -411,6 +413,57 @@ internal static class Program
         DrawInteger(new Event(EventType.KeyDown) { character = '7' });
         Require(integerValue == -7,
             $"IntField discarded its intermediate sign buffer and produced {integerValue}.");
+        GUI.FocusControl(string.Empty);
+    }
+
+    private static void VerifyFieldFocusIsolation()
+    {
+        var first = new Rect(8, 8, 180, 22);
+        var second = new Rect(8, 36, 180, 22);
+        var style = new GUIStyle(EditorStyles.textField) { borderWidth = 0 };
+        style.normal.backgroundColor = new Color(Fix64.FromDecimal(.08m),
+            Fix64.FromDecimal(.09m), Fix64.FromDecimal(.1m), 1);
+        style.focused.backgroundColor = new Color(Fix64.FromDecimal(.08m),
+            Fix64.FromDecimal(.36m), Fix64.FromDecimal(.72m), 1);
+
+        void DrawFields()
+        {
+            Require(EditorFeatureGuard.Invoke("Focus isolation first",
+                    () => _ = GUI.TextField(first, "First", style: style)),
+                "The first isolated field failed to draw.");
+            Require(EditorFeatureGuard.Invoke("Focus isolation second",
+                    () => _ = GUI.TextField(second, "Second", style: style)),
+                "The second isolated field failed to draw.");
+        }
+
+        GUI.FocusControl(string.Empty);
+        GUI.BeginFrame(new Event(EventType.MouseDown)
+        {
+            mousePosition = new Vector2(40, 46),
+            button = 0,
+            clickCount = 1
+        }, 240, 80, []);
+        try { DrawFields(); }
+        finally { GUI.EndFrame(); }
+
+        var commands = new List<GpuCanvasCommand>();
+        GUI.BeginFrame(new Event(EventType.Repaint)
+        {
+            mousePosition = new Vector2(220, 70)
+        }, 240, 80, commands);
+        try { DrawFields(); }
+        finally { GUI.EndFrame(); }
+
+        var focusedColor = GpuCanvasColor.FromColor(style.focused.backgroundColor);
+        var normalColor = GpuCanvasColor.FromColor(style.normal.backgroundColor);
+        var fieldSurfaces = commands.Where(command =>
+            command.Type == GpuCanvasCommandType.SolidRect &&
+            (command.Color == focusedColor || command.Color == normalColor)).ToArray();
+        Require(fieldSurfaces.Count(command => command.Color == focusedColor) == 1 &&
+                fieldSurfaces.Single(command => command.Color == focusedColor).Rect.Y >= 36 &&
+                fieldSurfaces.Count(command => command.Color == normalColor) == 1 &&
+                fieldSurfaces.Single(command => command.Color == normalColor).Rect.Y < 30,
+            "Keyboard focus styling leaked from the clicked field to another isolated field.");
         GUI.FocusControl(string.Empty);
     }
 

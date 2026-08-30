@@ -13,6 +13,7 @@ internal static class EditorWindowLayerRegressionTests
         VerifyTopmostInputAndModalBlocking();
         VerifyPopupOutsideClick();
         VerifyDockRequestOnlyForNormalWindow();
+        VerifySingleFloatingInspectorLockMenu();
         VerifyWindowControlsHaveNoTooltips();
     }
 
@@ -152,13 +153,29 @@ internal static class EditorWindowLayerRegressionTests
         var normal = CreateWindow("Dock Normal", new Rect(100, 100, 320, 220));
         var auxiliary = CreateWindow("Dock Aux", new Rect(460, 100, 320, 220));
         EditorWindow? docked = null;
+        var previewUpdates = new List<(EditorWindow Window, Vector2? Point)>();
+        (EditorWindow Window, Vector2 Point)? completedDrag = null;
         layer.DockRequested += (window, _) => docked = window;
+        layer.DockDragUpdated += (window, point) => previewUpdates.Add((window, point));
+        layer.DockDragCompleted += (window, point) => completedDrag = (window, point);
         try
         {
             layer.Show(normal, EditorWindowState.Normal);
-            DragTitle(layer, new Vector2(150, 112), new Vector2(190, 145));
+            var normalTitle = new Vector2(150, 112);
+            Render(layer, new Event(EventType.MouseDown) { mousePosition = normalTitle, button = 0 });
+            Render(layer, new Event(EventType.MouseUp) { mousePosition = normalTitle, button = 0 });
+            Require(previewUpdates.Count == 0 && completedDrag is null,
+                "Clicking a Normal Float title incorrectly entered the dock-preview lifecycle.");
+            var normalDragEnd = new Vector2(190, 145);
+            DragTitle(layer, normalTitle, normalDragEnd);
             Require(docked is null && normal.position.x > 100 && normal.position.y > 100,
                 "Dragging a Normal in-process EditorWindow did not move it independently.");
+            Require(previewUpdates.Any(update => ReferenceEquals(update.Window, normal) &&
+                                                 update.Point == normalDragEnd) &&
+                    previewUpdates[^1].Point is null &&
+                    completedDrag is { } completed && ReferenceEquals(completed.Window, normal) &&
+                    completed.Point == normalDragEnd,
+                "Dragging a Normal in-process EditorWindow did not publish preview and completion points.");
             Render(layer, new Event(EventType.MouseDown)
             {
                 mousePosition = new Vector2(normal.position.x + 50, normal.position.y + 12),
@@ -170,9 +187,11 @@ internal static class EditorWindowLayerRegressionTests
 
             docked = null;
             layer.Show(auxiliary, EditorWindowState.Aux);
+            var previewCount = previewUpdates.Count;
+            completedDrag = null;
             DragTitle(layer, new Vector2(510, 112), new Vector2(550, 145));
-            Require(docked is null,
-                "Dragging an auxiliary EditorWindow incorrectly requested docking into the workspace.");
+            Require(docked is null && previewUpdates.Count == previewCount && completedDrag is null,
+                "Dragging an auxiliary EditorWindow incorrectly entered the dock-preview lifecycle.");
         }
         finally
         {
@@ -188,23 +207,72 @@ internal static class EditorWindowLayerRegressionTests
         {
             var presentation = layer.Show(window, EditorWindowState.Normal);
             Render(layer, new Event(EventType.Layout), inputPass: false);
-            foreach (var methodName in new[] { "MenuRect", "DockRect", "CloseRect" })
+            var menuMethod = typeof(EditorWindowLayer).GetMethod("MenuRect",
+                BindingFlags.Static | BindingFlags.NonPublic) ??
+                             throw new MissingMethodException(typeof(EditorWindowLayer).FullName, "MenuRect");
+            var rect = (Rect)(menuMethod.Invoke(null, [presentation]) ?? default(Rect));
+            Render(layer, new Event(EventType.Repaint)
             {
-                var method = typeof(EditorWindowLayer).GetMethod(methodName,
-                    BindingFlags.Static | BindingFlags.NonPublic) ??
-                             throw new MissingMethodException(typeof(EditorWindowLayer).FullName, methodName);
-                var rect = (Rect)(method.Invoke(null, [presentation]) ?? default(Rect));
-                Render(layer, new Event(EventType.Repaint)
-                {
-                    mousePosition = new Vector2(rect.center.x, rect.center.y)
-                }, inputPass: false);
-                Require(TooltipCandidate() is null,
-                    $"A floating window {methodName} control still registered a tooltip.");
-            }
+                mousePosition = new Vector2(rect.center.x, rect.center.y)
+            }, inputPass: false);
+            Require(TooltipCandidate() is null,
+                "The floating window options control still registered a tooltip.");
+            Require(typeof(EditorWindowLayer).GetMethod("DockRect",
+                        BindingFlags.Static | BindingFlags.NonPublic) is null &&
+                    typeof(EditorWindowLayer).GetMethod("CloseRect",
+                        BindingFlags.Static | BindingFlags.NonPublic) is null,
+                "Floating window chrome still exposes separate dock or close controls.");
         }
         finally
         {
             Close(window);
+        }
+    }
+
+    private static void VerifySingleFloatingInspectorLockMenu()
+    {
+        var layer = new EditorWindowLayer();
+        var window = new LockingInspectorProbeWindow
+        {
+            position = new Rect(100, 100, 320, 220)
+        };
+        window.OpenInternal();
+        try
+        {
+            var presentation = layer.Show(window, EditorWindowState.Normal);
+            Require(typeof(EditorWindowLayer).GetMethod("LockRect",
+                        BindingFlags.Static | BindingFlags.NonPublic) is null,
+                "A floating Inspector still reserves a title lock toggle.");
+            var menuMethod = typeof(EditorWindowLayer).GetMethod("MenuRect",
+                BindingFlags.Static | BindingFlags.NonPublic) ??
+                             throw new MissingMethodException(typeof(EditorWindowLayer).FullName, "MenuRect");
+            var menuRect = (Rect)(menuMethod.Invoke(null, [presentation]) ?? default(Rect));
+            var point = menuRect.center;
+            IReadOnlyList<GenericMenuItem>? captured = null;
+            GenericMenuDispatcher.Handler = items => captured = items.ToArray();
+            Render(layer, new Event(EventType.MouseDown) { mousePosition = point, button = 0 });
+            Render(layer, new Event(EventType.MouseUp) { mousePosition = point, button = 0 });
+            var lockItem = (captured ?? throw new InvalidOperationException(
+                "The floating Inspector three-dot menu did not open.")).Single(item => item.Path == "Lock");
+            lockItem.Action!.Invoke();
+            Require(window.isLocked && window.LockChanges == 1,
+                "The Lock menu item of a sole floating Inspector did not change its lock state.");
+
+            captured = null;
+            Render(layer, new Event(EventType.MouseDown) { mousePosition = point, button = 0 });
+            Render(layer, new Event(EventType.MouseUp) { mousePosition = point, button = 0 });
+            var unlock = (captured ?? throw new InvalidOperationException(
+                "The locked floating Inspector three-dot menu did not open.")).Single(item =>
+                    item.Path == "Unlock");
+            Require(unlock.On, "The floating Inspector Unlock menu item was not checked.");
+            unlock.Action!.Invoke();
+            Require(!window.isLocked && window.LockChanges == 2,
+                "The Unlock menu item of a sole floating Inspector could not unlock again.");
+        }
+        finally
+        {
+            GenericMenuDispatcher.Handler = null;
+            window.CloseInternal();
         }
     }
 
@@ -259,5 +327,15 @@ internal static class EditorWindowLayerRegressionTests
             if (Event.current.type == EventType.KeyDown) KeyDownCount++;
             GUI.Label(new Rect(8, 8, 180, 20), title);
         }
+    }
+
+    private sealed class LockingInspectorProbeWindow : EditorWindow
+    {
+        internal int LockChanges { get; private set; }
+        internal override bool supportsLocking => true;
+
+        internal LockingInspectorProbeWindow() => titleContent = new GUIContent("Inspector");
+
+        protected override void OnLockStateChanged() => LockChanges++;
     }
 }

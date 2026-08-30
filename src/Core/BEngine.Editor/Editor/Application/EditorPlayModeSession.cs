@@ -122,7 +122,7 @@ internal sealed class EditorPlayModeSession
         GameObject? selected,
         BObject? selectedAsset,
         string? selectedAssetPath,
-        BObject? lockedInspectorTarget,
+        IReadOnlyList<BObject> lockedInspectorTargets,
         bool dirty,
         bool mainSceneDirty,
         BObject[] selectionObjects,
@@ -136,6 +136,7 @@ internal sealed class EditorPlayModeSession
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(openScenes);
         ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(lockedInspectorTargets);
         ArgumentNullException.ThrowIfNull(selectionObjects);
         var editEntries = openScenes.ToArray();
         var runtimeByEditScene = new Dictionary<Scene, Scene>();
@@ -152,7 +153,7 @@ internal sealed class EditorPlayModeSession
                     runtimeByEditScene.Add(editScene, CloneScene(editScene, services));
                 runtimeByEditObject = CopyInMemoryState(
                     runtimeByEditScene,
-                    [selectedAsset, selectionContext, lockedInspectorTarget, .. selectionObjects]);
+                    [selectedAsset, selectionContext, .. lockedInspectorTargets, .. selectionObjects]);
             }
             var runtimeEntries = editEntries.Select(entry =>
                 new EditorOpenScene(

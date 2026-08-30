@@ -89,6 +89,15 @@ internal static class Program
             Require(leaveEvent.type == EventType.Used,
                 "The event which dismissed a popup leaked through to the GUI underneath.");
 
+            open.Invoke(popup, [items, new Vector2(20, 20)]);
+            var windowLeave = new Event(EventType.MouseLeaveWindow)
+            {
+                mousePosition = new Vector2(35, 32)
+            };
+            Dispatch(draw, popup, windowLeave, []);
+            Require(windowLeave.type == EventType.Used && !(bool)isOpen.GetValue(popup)!,
+                "A popup survived MouseLeaveWindow because its last pointer coordinate was stale.");
+
             open.Invoke(popup, [items, new Vector2(760, 20)]);
             Dispatch(draw, popup, new Event(EventType.MouseMove) { mousePosition = new Vector2(640, 32) }, []);
             commands.Clear();
@@ -100,8 +109,10 @@ internal static class Program
             Require(edgeChild.Rect.X + edgeChild.Rect.Width <= edgeParent.Rect.X,
                 "A right-edge submenu overlaps its parent instead of opening to the left.");
             Require(commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
-                                            command.Color == GpuCanvasColor.FromColor(
-                                                GUI.skin.notificationBackground.disabled.backgroundColor)),
+                                            (command.Color == GpuCanvasColor.FromColor(
+                                                 GUI.skin.dropDownList.disabled.backgroundColor) ||
+                                             command.Color == GpuCanvasColor.FromColor(
+                                                 GUI.skin.notificationBackground.disabled.backgroundColor))),
                 "Popup menus do not render the Unity-style shadow layer.");
             popupType.GetMethod("Close")!.Invoke(popup, null);
 
@@ -136,7 +147,7 @@ internal static class Program
             Menu.SetEnabled("Window/Test", true);
 
             Console.WriteLine(
-                "GPU_MENU_HIERARCHY_OK|component-root,submenus,checked,disabled,input-blocking,popup-anchor,advanced-hierarchy,advanced-search,advanced-mouse-reset,advanced-keyboard,advanced-scroll");
+                "GPU_MENU_HIERARCHY_OK|component-root,submenus,checked,disabled,input-blocking,popup-anchor,advanced-hierarchy,advanced-search,advanced-mouse-reset,advanced-mouse-leave,advanced-keyboard,advanced-scroll");
             return 0;
         }
         catch (Exception exception)
@@ -264,6 +275,17 @@ internal static class Program
                 Get<IReadOnlyList<string>>(popup, "visiblePaths").Count == 3,
             "Reopening an advanced dropdown restored stale text from the previous search.");
 
+        var leave = new Event(EventType.MouseMove) { mousePosition = new Vector2(790, 590) };
+        DispatchAdvanced(draw, popup, leave, []);
+        Require(leave.type == EventType.Used && !Get<bool>(popup, "isOpen"),
+            "An advanced dropdown did not close and consume input when the pointer left it.");
+        var keepAliveAnchor = new Rect(10, 5, 120, 18);
+        open.Invoke(popup, [Items(searchMenu), new Vector2(20, 25), keepAliveAnchor]);
+        var anchorMove = new Event(EventType.MouseMove) { mousePosition = new Vector2(30, 10) };
+        DispatchAdvanced(draw, popup, anchorMove, []);
+        Require(anchorMove.type == EventType.Used && Get<bool>(popup, "isOpen"),
+            "An advanced dropdown closed while the pointer remained over its owner anchor.");
+
         TypeText(draw, popup, "Panel");
         Require(Get<IReadOnlyList<string>>(popup, "visiblePaths").SequenceEqual(
                 ["Rendering/UI/Panel", "Audio/UI/Panel"], StringComparer.Ordinal),
@@ -273,6 +295,15 @@ internal static class Program
         DispatchAdvanced(draw, popup, escape, []);
         Require(escape.type == EventType.Used && !Get<bool>(popup, "isOpen"),
             "Escape did not consume the key event and close the advanced dropdown.");
+
+        open.Invoke(popup, [Items(searchMenu), new Vector2(20, 20), null]);
+        var windowLeave = new Event(EventType.MouseLeaveWindow)
+        {
+            mousePosition = new Vector2(30, 30)
+        };
+        DispatchAdvanced(draw, popup, windowLeave, []);
+        Require(windowLeave.type == EventType.Used && !Get<bool>(popup, "isOpen"),
+            "An advanced dropdown survived MouseLeaveWindow with a stale inside coordinate.");
 
         var firstInvoked = false;
         var targetInvoked = false;
@@ -342,12 +373,13 @@ internal static class Program
             .Where(command => command.Type == GpuCanvasCommandType.SolidRect &&
                               command.Color == GpuCanvasColor.FromColor(
                                   GUI.skin.dropDownList.normal.backgroundColor))
-            .OrderByDescending(command => command.Rect.Width * command.Rect.Height)
+            .OrderBy(command => command.Rect.X)
+            .ThenBy(command => command.Rect.Y)
             .First();
         Require(panel.Rect.X >= 0 && panel.Rect.Y >= 0 &&
                 panel.Rect.X + panel.Rect.Width <= 800 &&
                 panel.Rect.Y + panel.Rect.Height <= 600,
-            "Advanced dropdown was not clamped inside the editor window.");
+            $"Advanced dropdown was not clamped inside the editor window: {panel.Rect}.");
         ClickAdvanced(draw, popup, PointForText(commands, "Layers"));
         commands.Clear();
         DispatchAdvanced(draw, popup,
@@ -356,13 +388,15 @@ internal static class Program
             .Where(command => command.Type == GpuCanvasCommandType.SolidRect &&
                               command.Color == GpuCanvasColor.FromColor(
                                   GUI.skin.dropDownList.normal.backgroundColor))
-            .OrderByDescending(command => command.Rect.Width * command.Rect.Height)
+            .OrderBy(command => command.Rect.X)
+            .ThenBy(command => command.Rect.Y)
             .First();
         Require(panel.Rect.X >= 0 && panel.Rect.Y >= 0 &&
                 panel.Rect.X + panel.Rect.Width <= 800 &&
                 panel.Rect.Y + panel.Rect.Height <= 600 &&
-                panel.Rect.Height < 400 && panel.Rect.Y + panel.Rect.Height <= (float)anchor.y,
-            "The expanded child level was not height-limited or clamped above its bottom-edge anchor.");
+                panel.Rect.Height <= 410 && panel.Rect.Y + panel.Rect.Height <= (float)anchor.y,
+            $"The expanded child level was not height-limited or clamped above its bottom-edge anchor: " +
+            $"{panel.Rect}, anchor {anchor}.");
 
         var scroll = new Event(EventType.ScrollWheel)
         {

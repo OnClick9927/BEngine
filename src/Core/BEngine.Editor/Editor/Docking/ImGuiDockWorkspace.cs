@@ -30,6 +30,7 @@ internal sealed class ImGuiDockWorkspace
     public bool HostIsInteractive { get; set; } = true;
     public IReadOnlyList<ImGuiDockPanel> Panels => _panels;
     public event Action<ImGuiDockPanel, Vector2>? UndockRequested;
+    internal Action<GenericMenu>? PopulateAddNewTabMenu { get; set; }
 
     public ImGuiDockWorkspace()
     {
@@ -100,7 +101,52 @@ internal sealed class ImGuiDockWorkspace
         return panel;
     }
 
-    public void SetExternalDragPoint(Vector2? point) => _externalDragPoint = point;
+    public ImGuiDockPanel RestoreClosed(
+        string id,
+        EditorWindow window,
+        DockArea preferredArea,
+        string? previousPanelId,
+        string? nextPanelId,
+        int panelIndex,
+        Vector2 dockPoint)
+    {
+        var previous = string.IsNullOrWhiteSpace(previousPanelId)
+            ? null
+            : _panels.FirstOrDefault(panel => panel.Id == previousPanelId && panel.Group is not null);
+        var next = string.IsNullOrWhiteSpace(nextPanelId)
+            ? null
+            : _panels.FirstOrDefault(panel => panel.Id == nextPanelId && panel.Group is not null);
+        var anchor = next ?? previous;
+        if (anchor?.Group is { } group)
+        {
+            var panel = new ImGuiDockPanel(id, window, preferredArea) { Group = group };
+            var index = next is not null
+                ? group.Panels.IndexOf(next)
+                : group.Panels.IndexOf(previous!) + 1;
+            group.Panels.Insert(Math.Clamp(index, 0, group.Panels.Count), panel);
+            _panels.Add(panel);
+            group.SelectedId = id;
+            return panel;
+        }
+
+        if (_workspaceBounds.Contains(dockPoint) && TryGetDrop(dockPoint, out _, out _, out _))
+            return DockExternal(id, window, dockPoint);
+
+        var fallback = Add(id, window, preferredArea, true);
+        if (fallback.Group is { } fallbackGroup)
+        {
+            fallbackGroup.Panels.Remove(fallback);
+            fallbackGroup.Panels.Insert(Math.Clamp(panelIndex, 0, fallbackGroup.Panels.Count), fallback);
+        }
+        return fallback;
+    }
+
+    public bool SetExternalDragPoint(Vector2? point)
+    {
+        if (_externalDragPoint == point) return false;
+        _externalDragPoint = point;
+        return true;
+    }
 
     internal void CancelInteractions()
     {
@@ -174,7 +220,12 @@ internal sealed class ImGuiDockWorkspace
         _panels.FirstOrDefault(panel => ReferenceEquals(panel.Window, window)) is { Group: { } group } panel &&
         panel.Visible && group.SelectedId == panel.Id;
 
-    public void OnGUI(Rect rect)
+    public void OnGUI(Rect rect) => DrawWorkspace(rect, drawExternalDockHint: true);
+
+    internal void OnGUIWithoutExternalDockHint(Rect rect) =>
+        DrawWorkspace(rect, drawExternalDockHint: false);
+
+    private void DrawWorkspace(Rect rect, bool drawExternalDockHint)
     {
         _workspaceBounds = rect;
         _hoveredWindow = null;
@@ -182,12 +233,14 @@ internal sealed class ImGuiDockWorkspace
         else if (_maximizedGroup is not null) DrawNode(_maximizedGroup, rect);
         else DrawNode(_root, rect);
         DrawDockHint();
-        DrawExternalDockHint();
+        if (drawExternalDockHint) DrawExternalDockHint();
         if (HostIsInteractive)
             EditorWindow.SetMouseOverWindow(_hoveredWindow);
         else if (_panels.Any(panel => ReferenceEquals(panel.Window, EditorWindow.mouseOverWindow)))
             EditorWindow.SetMouseOverWindow(null);
     }
+
+    internal void DrawExternalDockHintOverlay() => DrawExternalDockHint();
 
     private void DrawNode(DockNode node, Rect rect)
     {
@@ -260,15 +313,13 @@ internal sealed class ImGuiDockWorkspace
         var titleBarHeight = Fix64.Max(EditorStyles.windowTitle.fixedHeight + 2,
             Fix64.Max(EditorStyles.dockTab.fixedHeight + 2, EditorStyles.toolbarIconButton.fixedHeight + 2));
         var titleBar = new Rect(rect.x, rect.y, rect.width, titleBarHeight);
-        GUI.Box(titleBar, GUIContent.none, EditorStyles.windowTitle);
+        GUI.PassiveBox(titleBar, GUIContent.none, EditorStyles.windowTitle);
 
         var actionHeight = Fix64.Min(titleBarHeight - 2,
             Fix64.Max(18, EditorStyles.toolbarIconButton.fixedHeight));
         var actionY = rect.y + (titleBarHeight - actionHeight) / 2;
         var actionWidth = Fix64.Max(24, EditorStyles.toolbarIconButton.fixedWidth);
-        var showLock = selected.Window.supportsLocking;
-        var actionCount = showLock ? 4 : 3;
-        var actionsWidth = actionWidth * actionCount + (actionCount - 1) * 2;
+        var actionsWidth = actionWidth;
         var tabAreaWidth = Fix64.Max(40, rect.width - actionsWidth - 4);
         var tabHeight = Fix64.Min(titleBarHeight - 2, Fix64.Max(18, EditorStyles.dockTab.fixedHeight));
         var tabY = rect.y + titleBarHeight - tabHeight;
@@ -361,28 +412,18 @@ internal sealed class ImGuiDockWorkspace
         GUI.EndClip();
 
         var actionX = rect.xMax - actionsWidth;
-        if (showLock)
-        {
-            var lockRect = new Rect(actionX, actionY, actionWidth, actionHeight);
-            if (EditorToolbar.Button(lockRect, new GUIContent(string.Empty,
-                    selected.Window.isLocked ? EditorBuiltinIcons.Toolbar.Lock :
-                        EditorBuiltinIcons.Toolbar.Unlock, string.Empty)))
-                selected.Window.isLocked = !selected.Window.isLocked;
-            actionX = lockRect.xMax + 2;
-        }
         var menuRect = new Rect(actionX, actionY, actionWidth, actionHeight);
-        if (EditorToolbar.Button(menuRect,
-                new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More, string.Empty)))
-            ShowWindowContextMenu(selected, new Vector2(menuRect.x, menuRect.yMax));
-        var maximizeRect = new Rect(menuRect.xMax + 2, actionY, actionWidth, actionHeight);
-        if (EditorToolbar.Button(maximizeRect, new GUIContent(
-                ReferenceEquals(_maximizedGroup, group) ? "-" : "[]")))
-            _maximizedGroup = ReferenceEquals(_maximizedGroup, group) ? null : group;
-        var closeRect = new Rect(maximizeRect.xMax + 2, actionY, actionWidth, actionHeight);
-        if (EditorToolbar.Button(closeRect, new GUIContent("x")))
+        // Opening on pointer-down keeps an activation click from being lost when the native host
+        // focus handoff clears hotControl before the matching pointer-up arrives.
+        var openMenuOnPointerDown = Event.current.type == EventType.MouseDown &&
+                                    Event.current.button == 0 && menuRect.Contains(pointer);
+        var openMenuFromButton = EditorToolbar.Button(menuRect,
+            new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More, string.Empty));
+        if (openMenuOnPointerDown || openMenuFromButton)
         {
-            selected.Window.Close();
-            return;
+            GUIUtility.hotControl = 0;
+            selected.Window.FocusInternal();
+            ShowWindowContextMenu(selected, new Vector2(menuRect.x, menuRect.yMax), menuRect);
         }
 
         var content = new Rect(rect.x + 2, rect.y + titleBarHeight, Fix64.Max(1, rect.width - 4),
@@ -469,18 +510,25 @@ internal sealed class ImGuiDockWorkspace
         return string.Concat(text.AsSpan(0, prefixEnd), suffix);
     }
 
-    private void ShowWindowContextMenu(ImGuiDockPanel panel, Vector2 undockPosition)
+    private void ShowWindowContextMenu(ImGuiDockPanel panel, Vector2 undockPosition, Rect? menuAnchor = null)
     {
         var menu = new GenericMenu();
         panel.Window.PopulateContextMenu(menu);
         if (menu.GetItemCount() > 0) menu.AddSeparator(string.Empty);
+        PopulateAddNewTabMenu?.Invoke(menu);
+        if (PopulateAddNewTabMenu is not null) menu.AddSeparator(string.Empty);
         menu.AddItem(new GUIContent("Float"), false,
             () => EditorCallbackDispatcher.Invoke(UndockRequested, panel, undockPosition,
                 nameof(UndockRequested)));
-        menu.AddItem(new GUIContent(panel.Window.isLocked ? "Unlock" : "Lock"),
-            panel.Window.isLocked, () => panel.Window.isLocked = !panel.Window.isLocked);
+        var maximized = ReferenceEquals(_maximizedGroup, panel.Group);
+        menu.AddItem(new GUIContent(maximized ? "Minimize" : "Maximize"), maximized,
+            () => ToggleMaximize(panel.Window));
+        if (panel.Window.supportsLocking)
+            menu.AddItem(new GUIContent(panel.Window.isLocked ? "Unlock" : "Lock"),
+                panel.Window.isLocked, () => panel.Window.isLocked = !panel.Window.isLocked);
         menu.AddItem(new GUIContent("Close Tab"), false, panel.Window.Close);
-        menu.ShowAsContext();
+        if (menuAnchor is { } anchor) menu.DropDown(anchor);
+        else menu.ShowAsContext();
     }
 
     private static bool ShouldDispatch(EditorWindow window, Rect content, Vector2 pointer)
@@ -629,6 +677,14 @@ internal sealed class ImGuiDockWorkspace
 
     internal bool CanDockAt(Vector2 point) => _workspaceBounds.Contains(point) &&
                                                TryGetDrop(point, out _, out _, out _);
+
+    internal bool TryGetExternalDockPreview(Vector2 point, out Rect preview)
+    {
+        if (_workspaceBounds.Contains(point) && TryGetDrop(point, out _, out _, out preview))
+            return true;
+        preview = default;
+        return false;
+    }
 
     private static EditorDockNodeDocument? CaptureNode(DockNode? node)
     {

@@ -15,7 +15,7 @@ internal static class Program
             VerifyProjectPackagesSplitterLayout();
             VerifyLayoutRoundTrip(root);
             Console.WriteLine(
-                "EDITOR_LAYOUT_PERSISTENCE_OK|yaml-v2,named,last-session,dock-tree,selection,lock-context,project-packages-splitter,project-packages-height");
+                "EDITOR_LAYOUT_PERSISTENCE_OK|yaml-v2,named,last-session,dock-tree,closed-window-placement,selection,lock-context,project-packages-splitter,project-packages-height");
             return 0;
         }
         catch (Exception exception)
@@ -101,6 +101,28 @@ internal static class Program
             [
                 WindowRecord(hierarchy),
                 WindowRecord(scene)
+            ],
+            ClosedWindows =
+            [
+                new EditorWindowLayoutDocument
+                {
+                    Id = "Scene:closed-secondary",
+                    TypeName = scene.GetType().AssemblyQualifiedName!,
+                    State = nameof(EditorWindowState.Normal),
+                    Docked = true,
+                    Locked = true,
+                    LockContext = "object:closed-secondary",
+                    X = 220,
+                    Y = 140,
+                    Width = 640,
+                    Height = 360,
+                    PreferredDockArea = nameof(DockArea.Center),
+                    PreviousPanelId = "Scene",
+                    PanelIndex = 1,
+                    DockX = 720,
+                    DockY = 360,
+                    WasMaximized = true
+                }
             ]
         };
 
@@ -109,8 +131,18 @@ internal static class Program
         Require(savedName == "Editing" && store.Names.SequenceEqual(["Editing"]),
             "Named layout was not listed after saving.");
         var loaded = store.Load("Editing");
-        Require(loaded.Version == 2 && loaded.DockRoot is not null && loaded.Windows.Count == 2,
+        Require(loaded.Version == 2 && loaded.DockRoot is not null && loaded.Windows.Count == 2 &&
+                loaded.ClosedWindows.Count == 1,
             "The v2 layout YAML did not preserve its window and dock records.");
+        var closedScene = loaded.ClosedWindows.Single();
+        Require(closedScene.Id == "Scene:closed-secondary" && closedScene.Docked &&
+                closedScene.Locked && closedScene.LockContext == "object:closed-secondary" &&
+                closedScene.X == 220 && closedScene.Y == 140 &&
+                closedScene.Width == 640 && closedScene.Height == 360 &&
+                closedScene.PreferredDockArea == nameof(DockArea.Center) &&
+                closedScene.PreviousPanelId == "Scene" && closedScene.PanelIndex == 1 &&
+                closedScene.DockX == 720 && closedScene.DockY == 360 && closedScene.WasMaximized,
+            "The layout YAML did not preserve a closed window's bounds, Dock placement, lock, and maximize state.");
         var loadedHierarchy = loaded.Windows.Single(window => window.Id == "Hierarchy");
         Require(loadedHierarchy.Locked && loadedHierarchy.LockContext == hierarchy.LockContext,
             "The layout YAML did not preserve a locked EditorWindow context.");

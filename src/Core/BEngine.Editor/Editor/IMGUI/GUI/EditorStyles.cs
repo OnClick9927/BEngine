@@ -39,6 +39,7 @@ public static class EditorStyles
     public static GUIStyle helpBox => GUI.skin.helpBox;
     public static GUIStyle toolbar => GUI.skin.toolbar;
     public static GUIStyle contentToolbar => GUI.skin.contentToolbar;
+    public static GUIStyle toolbarToggle => GUI.skin.toolbarToggle;
     public static GUIStyle toolbarButton => GUI.skin.toolbarButton;
     public static GUIStyle toolbarButtonLeft => GUI.skin.toolbarButtonLeft;
     public static GUIStyle toolbarButtonRight => GUI.skin.toolbarButtonRight;
@@ -155,6 +156,7 @@ public static class EditorStyles
             GUITextMetrics.MeasureLineHeight(fontSize, GUIUtility.fontFamily));
         toolbar.fixedHeight = lineHeight + 4;
         toolbarButton.fixedHeight = lineHeight + 2;
+        toolbarToggle.fixedHeight = lineHeight + 2;
         toolbarIconButton.fixedHeight = lineHeight + 2;
         toolbarIconButtonSelected.fixedHeight = lineHeight + 2;
         toolbarSearchField.fixedHeight = lineHeight;
@@ -175,6 +177,7 @@ public static class EditorStyles
         hierarchyAction.fixedHeight = lineHeight;
         statusBar.fixedHeight = lineHeight;
         toolbarButton.alignment = TextAnchor.MiddleCenter;
+        toolbarToggle.alignment = TextAnchor.MiddleCenter;
         toolbarIconButton.alignment = TextAnchor.MiddleCenter;
         toolbarIconButtonSelected.alignment = TextAnchor.MiddleCenter;
         miniButton.alignment = TextAnchor.MiddleCenter;
@@ -231,6 +234,12 @@ public static class EditorStyles
 
         ApplySurface(toolbarButton, palette.Toolbar, palette.Hover, palette.ButtonPressed,
             palette.Hover, palette.Border, palette.FocusBorder, palette.Text, palette.DisabledText, false);
+        ApplySurface(toolbarToggle, palette.Toolbar, palette.Hover, palette.ButtonPressed,
+            palette.Hover, palette.Border, palette.FocusBorder, palette.Text, palette.DisabledText, false);
+        SetState(toolbarToggle.onNormal, palette.Selection, palette.Text, palette.Border);
+        SetState(toolbarToggle.onHover, palette.Active, palette.Text, palette.Border);
+        SetState(toolbarToggle.onActive, palette.ButtonPressed, palette.Text, palette.FocusBorder);
+        SetState(toolbarToggle.onFocused, palette.Selection, palette.Text, palette.FocusBorder);
         ApplySurface(toolbarIconButton, palette.Toolbar, palette.Hover, palette.ButtonPressed,
             palette.Hover, palette.Border, palette.FocusBorder, palette.Text, palette.DisabledText, false);
         ApplySurface(toolbarIconButtonSelected, palette.Selection, palette.Active, palette.ButtonPressed,
@@ -240,6 +249,7 @@ public static class EditorStyles
         ApplySurface(dropDownButton, palette.Button, palette.ButtonHover, palette.ButtonPressed,
             palette.ButtonPressed, palette.Border, palette.FocusBorder, palette.Text, palette.DisabledText);
         SetBackgroundImage(toolbarButton, GUIStyleBackground.SegmentedButton);
+        SetBackgroundImage(toolbarToggle, GUIStyleBackground.SegmentedButton);
         SetBackgroundImage(toolbarIconButton, GUIStyleBackground.SegmentedButton);
         SetBackgroundImage(toolbarIconButtonSelected, GUIStyleBackground.SegmentedButton);
         SetBackgroundImage(miniButton, GUIStyleBackground.SegmentedButton);
