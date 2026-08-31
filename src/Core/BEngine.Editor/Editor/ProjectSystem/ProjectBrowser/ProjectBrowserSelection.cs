@@ -7,7 +7,7 @@ internal static class ProjectBrowserSelection
         ArgumentNullException.ThrowIfNull(item);
         return new DefaultAsset
         {
-            name = item.EffectiveDisplayName,
+            name = ProjectBrowserPath.DisplayName(item.DisplayName, item.NormalizedPath, item.SourcePath),
             assetPath = item.NormalizedPath,
             sourcePath = item.SourcePath,
             assetType = item.AssetType,

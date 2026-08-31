@@ -208,7 +208,13 @@ internal static class HierarchyUnityStyleTests
     {
         var child = scene.Find("First Child") ??
                     throw new InvalidOperationException("Hierarchy drag test child was not found.");
+        var selectionAnchor = scene.Find("First Root") ??
+                              throw new InvalidOperationException("Hierarchy selection anchor was not found.");
         var commands = harness.RenderHierarchy(new Event(EventType.Repaint), WideWidth);
+        Click(harness, Text(commands, "First Root").Rect);
+        TestAssert.Require(ReferenceEquals(harness.SelectedGameObject, selectionAnchor),
+            "Hierarchy drag precondition could not select the source row's sibling.");
+        commands = harness.RenderHierarchy(new Event(EventType.Repaint), WideWidth);
         var childRow = Text(commands, "First Child");
         var sceneRow = Text(commands, "First Scene");
         var childPoint = Center(childRow.Rect);
@@ -217,6 +223,8 @@ internal static class HierarchyUnityStyleTests
         {
             mousePosition = childPoint, button = 0, clickCount = 1
         }, WideWidth);
+        TestAssert.Require(ReferenceEquals(harness.SelectedGameObject, selectionAnchor),
+            "Hierarchy changed Selection on MouseDown before the click completed.");
         harness.RenderHierarchy(new Event(EventType.MouseDrag)
         {
             mousePosition = childPoint + new Vector2(8, 0), button = 0
@@ -224,6 +232,12 @@ internal static class HierarchyUnityStyleTests
         TestAssert.Require(DragAndDrop.objectReferences is [var draggedReference] &&
                            ReferenceEquals(draggedReference, child) && DragAndDrop.paths.Length == 0,
             "Dragging an ordinary Hierarchy row did not publish its GameObject ObjectField payload.");
+        TestAssert.Require(ReferenceEquals(harness.SelectedGameObject, selectionAnchor),
+            "Starting a Hierarchy ObjectField drag changed Selection and would invalidate an unlocked Inspector.");
+        var requestedCursor = typeof(GUI).GetProperty("requestedMouseCursor",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null);
+        TestAssert.Require(Equals(requestedCursor, MouseCursor.MoveArrow),
+            "Dragging a Hierarchy BObject did not request a distinct drag mouse cursor.");
         harness.RenderHierarchy(new Event(EventType.MouseDrag)
         {
             mousePosition = scenePoint, button = 0
@@ -234,8 +248,7 @@ internal static class HierarchyUnityStyleTests
                            ReferenceEquals(harness.SelectedGameObject, child),
             "Hierarchy drag-and-drop no longer reparents a child to its Scene root.");
 
-        var root = scene.Find("First Root") ??
-                   throw new InvalidOperationException("Hierarchy rename test root was not found.");
+        var root = selectionAnchor;
         commands = harness.RenderHierarchy(new Event(EventType.Repaint), WideWidth);
         Click(harness, Text(commands, "First Root").Rect);
         var beginRename = new Event(EventType.KeyDown) { keyCode = KeyCode.F2 };

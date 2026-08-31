@@ -4462,7 +4462,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private string ResolveAssetPath(string path) => Path.IsPathRooted(path) ? Path.GetFullPath(path) :
         _workspace.ResolveInside(path.Replace('\\', '/'));
     private static EditorAssetRecord ToRecord(AssetRecord record) =>
-        new(record.Guid, record.AssetPath, record.SourcePath, record.AssetType, record.IsDirectory);
+        new(record.Guid, record.AssetPath, record.SourcePath, record.AssetType, record.IsDirectory,
+            record.ParentGuid, record.LocalIdentifier);
 
     private readonly record struct MenuEntry(string Label, bool Enabled, Action? Action, bool Checked = false);
 

@@ -68,7 +68,7 @@ Sorting Layer 的值是连续自然编号 `1..63`，不是位值。工程默认�
 | `Scene` | `*.scene.yaml` | 保存 GameObject、Transform 和 Component 数据 |
 | `PrefabAsset` | `*.prefab.yaml` | 可实例化并 Apply/Revert 的对象层级 |
 | `Sprite` | `.png` + `.meta`: `textureType`, `spritePivotX/Y` | 将 PNG 的 Texture Type 设为 Sprite；同一图片可赋给 SpriteRenderer 或加入 Atlas |
-| `TextureAtlas` | `*.atlas.yaml`: `MaxSize`, `Padding`, `Extrude`, `SpriteReferences` | 在 `Window > 2D > Texture Atlas` 构建 |
+| `TextureAtlas` | `*.atlas.yaml`: `MaxSize`, `Padding`, `Extrude`, `SpriteReferences` | `SpriteReferences` 保存 Sprite GUID；在 `Window > 2D > Texture Atlas` 构建 |
 | `Material` | `*.material.yaml`: `shader`, `color`, `renderQueue` | 可保存 Color、Fix64、Vector4 和 Int 属性 |
 | `GUISkin` | `*.guiskin.yaml`: 全部 `EditorStyles` 样式槽, `customStyles` | 编辑器主题资产；继承 `BAsset`，仅存在于 `BEngine.Editor` 程序集 |
 | `Texture` | `.png` | Inspector Import Settings 写入相邻 `.meta`；当前运行时解码器仅支持 PNG |
@@ -90,6 +90,7 @@ Inspector 中修改 Texture 导入参数后必须点击 `Apply`；`Revert` 会�
 | `SceneManager.LoadScene` | Single 或 Additive 加载场景 |
 | `StartCoroutine`, `Invoke`, `CancelInvoke` | MonoBehaviour 定时与协程 |
 | `BAsset.Load<T>(path)` | 按 Assets/Packages 稳定路径加载资源 |
+| `BAsset.LoadSubAsset<T>(path, localIdentifier)` | 用主资源路径和局部 ID 加载 SubAsset |
 | `Object.Instantiate`, `Object.Destroy` | 复制与销毁运行时对象 |
 
 ```csharp
@@ -127,6 +128,11 @@ public sealed class PlayerMover : MonoBehaviour
 | `EditorGUI.ObjectField` | 为 BObject/BAsset 字段提供选择、拖放和类型校验 |
 | `Undo.RecordObject`, `EditorUtility.SetDirty` | 正确记录编辑态修改 |
 | `AssetDatabase.LoadAssetAtPath<T>()` | 通过工程路径加载编辑器资源 |
+| `AssetDatabase.LoadAllAssetsAtPath` | 返回主资源及其导入表示、内嵌和文件型 SubAsset |
+| `AssetDatabase.LoadAllAssetRepresentationsAtPath` | 只返回指定主资源的 SubAsset 表示 |
+| `AssetDatabase.AddObjectToAsset` / `RemoveObjectFromAsset` | 向主资源添加或移除内嵌 SubAsset |
+| `AssetDatabase.IsMainAsset` / `IsSubAsset` | 判断对象在资源文件中的身份 |
+| `AssetDatabase.TryGetGUIDAndLocalFileIdentifier` | 取得主资源 GUID 与对象 localIdentifier |
 | `Selection.activeObject` | 同步 Project、Hierarchy、Scene 和 Inspector 选择 |
 | `ScenePickingProviderRegistry.Register` | 让外部 Renderer 参与 Scene 点击选取 |
 | `GUI.skin` | 获取或设置当前 `GUISkin`；控件从中解析对应的默认 `GUIStyle` |
@@ -136,7 +142,17 @@ public sealed class PlayerMover : MonoBehaviour
 
 Project 窗口的菜单可以在 One Column 与 Two Column 间切换。左侧目录始终分为 Assets 和 Packages 两个独立滚动区域；把鼠标移到两者之间的横线后上下拖动，可以直接调整下方 Packages 区域的高度。分隔高度会随编辑器布局保存，并在窗口缩小时限制在两个区域都可操作的范围内。
 
-Two Column 模式右侧按网格显示当前文件夹的直接子项。文件与文件夹名称都以缩略图中心为轴水平居中；长名称保持在单元范围内裁剪并显示省略号，悬停仍可通过 Tooltip 查看完整名称。
+Two Column 模式右侧按网格显示当前文件夹的直接子项。文件与文件夹名称都以缩略图中心为轴水平居中；长名称保持在单元范围内裁剪并显示省略号，悬停仍可通过 Tooltip 查看完整名称。Project 中的文件标签隐藏最后一段后缀，例如 `Spark.png` 显示为 `Spark`，`Showcase.atlas.yaml` 显示为 `Showcase.atlas`；磁盘文件名和资源路径不变。
+
+Project 与 Hierarchy 的 TreeView 只有在鼠标于同一行按下并抬起时才提交 Selection；按下后移出该行或进入拖拽不会改变 Selection。因此可以直接把 Project/Hierarchy 的 BObject 拖到未锁定 Inspector 的 ObjectField，Inspector 不会在拖拽起点切换目标。拖拽开始后光标会切换为拖拽样式，ObjectField 仅在类型和 `allowSceneObjects` 规则通过时接受赋值。
+
+文本输入框按操作系统键盘重复节奏处理长按 `Backspace`、`Delete`、左/右方向键、`Home` 和 `End`。首次按键立即执行，越过系统重复延迟后连续执行，按键抬起或输入框失焦时立即停止；因此删除、移动光标不需要反复单击按键。
+
+### SubAsset 身份与生命周期
+
+SubAsset 不拥有独立的顶层资源身份，而由“主资源 GUID + 非零 `localIdentifier`”唯一标识；主资源自身的 `localIdentifier` 为 `0`。序列化 BAsset 子资源引用时使用 `guid:<主资源 GUID>#subasset=<localIdentifier>`，资源移动或重命名后引用仍然稳定。`AssetDatabase.TryGetGUIDAndLocalFileIdentifier` 返回同一组身份，`LoadAllAssetsAtPath` 返回主资源和所有表示，`LoadAllAssetRepresentationsAtPath` 只返回其 SubAsset。
+
+使用 `AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)` 创建内嵌 SubAsset，完成字段修改后按常规调用 `EditorUtility.SetDirty`/保存；使用 `RemoveObjectFromAsset` 将其移出主资源。不能让 SubAsset 再拥有子资源，也不能手动移除由 Importer 管理的 Sprite 等导入表示。Project 默认只显示主资源；隐藏的 SubAsset 通过 ObjectField、Inspector 或上述枚举 API 访问。
 
 ### 自定义编辑器主题
 
@@ -170,7 +186,7 @@ GUILayout.Button("Build", accent);
 1. 从 `File > New Scene` 创建场景，并立刻保存到 `Assets/Scenes`。
 2. 使用 `GameObject > Camera 2D` 创建相机；在 Inspector 设置 size、priority、clearMode、cullingMask 和 viewportRect。
 3. 在 Project 选中 PNG，在 Inspector 将 `Texture Type` 设为 `Sprite`，按需调整 Pivot/PPU，然后点击 `Apply`；使用 `GameObject > 2D Object > Sprite` 创建对象并把这张图片赋给 SpriteRenderer。
-4. 需要 Atlas 时，从 `Assets > Create > 2D > Texture Atlas` 创建 Atlas，在 `Window > 2D > Texture Atlas` 添加选中的 Sprite 模式图片并 Build。同一图片仍直接用于 SpriteRenderer，无需创建第二份资源。
+4. 需要 Atlas 时，从 `Assets > Create > 2D > Texture Atlas` 创建 Atlas，在 Atlas Inspector 或 `Window > 2D > Texture Atlas` 通过 Sprite ObjectField 添加图片并 Build。清单保存 Sprite GUID；生成的 PNG 以 Atlas GUID 和保留 localIdentifier 注册为隐藏 SubAsset，不作为 Project 中的独立资源显示。同一图片仍直接用于 SpriteRenderer，无需创建第二份资源。
 5. 在 `Edit > Project Settings > Tags and Layers` 管理 Tag 与全部 Sorting Layer。Layer 使用连续自然编号 `1..63`；五个内建层可重命名和排序但不可删除，自定义层可增删、重命名和排序。
 6. 用 W/E/R 切换移动、旋转、缩放 Handle；Scene 点击对象会同步 Hierarchy 选择。
 7. 进入 Play 验证运行时行为。Play 期间不要尝试保存 Scene 或组件变更；停止后原数据会恢复。

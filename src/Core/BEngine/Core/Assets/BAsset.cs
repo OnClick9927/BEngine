@@ -10,10 +10,28 @@ public abstract class BAsset : BObject
     [YamlIgnore, HideInInspector]
     public string guid { get; internal set; } = string.Empty;
 
+    [YamlIgnore, HideInInspector]
+    internal Guid? parentAssetGuid { get; private set; }
+
+    [YamlIgnore, HideInInspector]
+    internal long localIdentifier { get; private set; }
+
     public static TAsset? Load<TAsset>(string path) where TAsset : BAsset =>
         Load(path, typeof(TAsset)) as TAsset;
 
     public static BAsset? Load(string path, Type assetType) => BAssetReferenceLoader.Load(path, assetType);
+
+    public static TAsset? LoadSubAsset<TAsset>(string path, long localIdentifier) where TAsset : BAsset =>
+        BAssetReferenceLoader.LoadSubAsset(path, localIdentifier, typeof(TAsset)) as TAsset;
+
+    public static BAsset? LoadSubAsset(string path, long localIdentifier, Type assetType) =>
+        BAssetReferenceLoader.LoadSubAsset(path, localIdentifier, assetType);
+
+    public static TAsset? LoadByGuid<TAsset>(string guid) where TAsset : BAsset =>
+        BAssetReferenceLoader.LoadByGuid(guid, typeof(TAsset)) as TAsset;
+
+    public static BAsset? LoadByGuid(string guid, Type assetType) =>
+        BAssetReferenceLoader.LoadByGuid(guid, assetType);
 
     public static void Invalidate(string path) => BAssetReferenceLoader.Invalidate(path);
 
@@ -25,9 +43,27 @@ public abstract class BAsset : BObject
         if (normalized.Length > 0 && Path.IsPathRooted(normalized))
             normalized = AssetReferencePath.ToReference(normalized);
         assetPath = normalized.Replace('\\', '/');
+        parentAssetGuid = null;
+        localIdentifier = 0;
         if (id is not { } value) return;
         Id = value;
         guid = value.ToString("N");
+    }
+
+    internal void BindSubAssetReference(
+        string projectPath,
+        Guid parentGuid,
+        long localId,
+        Guid? objectId = null)
+    {
+        var normalized = projectPath?.Trim() ?? string.Empty;
+        if (normalized.Length > 0 && Path.IsPathRooted(normalized))
+            normalized = AssetReferencePath.ToReference(normalized);
+        assetPath = normalized.Replace('\\', '/');
+        parentAssetGuid = parentGuid;
+        localIdentifier = localId;
+        if (objectId is { } value) Id = value;
+        guid = parentGuid.ToString("N");
     }
 }
 

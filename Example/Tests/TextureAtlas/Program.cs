@@ -41,6 +41,7 @@ internal static class Program
             ValidateSpriteBatch(atlas, repository);
             ValidatePackageAtlasOwnership(testRoot);
             ValidateRemovedSpriteReferenceStopsAtlasOwnership(assets);
+            ValidateMovedSpriteRetainsAtlasOwnership(assets);
             ValidateLegacyAtlasAndRendererMigration(assets);
             ValidateDefaultExampleMigration(repository);
             ValidateTilePaletteImport(atlas);
@@ -48,8 +49,9 @@ internal static class Program
             Console.WriteLine("TEXTURE_ATLAS_OK|png-codec,power-of-two,maxrects,padding,extrude," +
                               "deterministic,source-overwrite-guard,uv,sprite-reference-reverse-lookup," +
                               "sprite-particle-batch,package-atlas-lazy-index,removed-reference," +
+                              "moved-source-guid," +
                               "legacy-atlas,legacy-renderer-migration,solid-sprite," +
-                              "default-example-v2,tile-palette-import,texture-imported-sprite," +
+                              "default-example-v3,tile-palette-import,texture-imported-sprite," +
                               "texture-runtime-sampling,png-only-import");
             return 0;
         }
@@ -139,12 +141,8 @@ internal static class Program
             directAtlas = BEngine.TextureAtlas.Load(directAtlasPath);
             Require(directResult.SpriteCount == 1 && directResult.TextureAssetPath == "Assets/Direct.png" &&
                     directAtlas.Sprites is
-                    [
-                        {
-                            Name: "imported", Source: "Assets/imported.png",
-                            PivotX: 0.25f, PivotY: 0.75f
-                        }
-                    ],
+                    [{ Name: "imported", PivotX: 0.25f, PivotY: 0.75f } region] &&
+                    region.Source.Equals(imported!.guid, StringComparison.OrdinalIgnoreCase),
                 "TextureAtlasBuilder did not pack a direct PNG Sprite reference with its importer pivot.");
             Require(directAtlas.LoadReferencedSprites() is [{ Texture: "Assets/imported.png" }],
                 "A TextureAtlas did not load its direct image reference through Sprite import settings.");
@@ -413,7 +411,9 @@ internal static class Program
     {
         var manifest = Path.Combine(assets, "Combined.atlas.yaml");
         var atlas = BEngine.TextureAtlas.Load(manifest);
-        Require(atlas.SpriteReferences.Remove("Assets/red.sprite.yaml"),
+        var redGuid = Document.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(
+            Path.Combine(assets, "red.sprite.yaml.meta")).Guid;
+        Require(atlas.SpriteReferences.Remove(redGuid),
             "The removal test could not find its Sprite reference.");
         atlas.Save(manifest);
 
@@ -424,6 +424,22 @@ internal static class Program
                 retained.Texture == "Assets/Combined.png" &&
                 removed.BatchIdentity != retained.BatchIdentity,
             "A stale built Atlas region still claimed a Sprite removed from SpriteReferences.");
+    }
+
+    private static void ValidateMovedSpriteRetainsAtlasOwnership(string assets)
+    {
+        var source = Path.Combine(assets, "blue.sprite.yaml");
+        var destination = Path.Combine(assets, "blue-moved.sprite.yaml");
+        File.Move(source, destination);
+        File.Move(source + ".meta", destination + ".meta");
+        BAsset.ClearLoadedAssets();
+        TextureAtlasResolver.Clear();
+
+        var moved = Sprite.Load("Assets/blue-moved.sprite.yaml");
+        var packed = TextureAtlasResolver.Resolve(moved);
+        Require(packed.Texture == "Assets/Combined.png" &&
+                packed.BatchIdentity.EndsWith("Assets/Combined.atlas.yaml", StringComparison.OrdinalIgnoreCase),
+            "Moving a Sprite source broke its GUID-based TextureAtlas ownership before a rebuild.");
     }
 
     private static void ValidateLegacyAtlasAndRendererMigration(string assets)
@@ -484,18 +500,21 @@ internal static class Program
     {
         var art = Path.Combine(repository, "Example", "Assets", "Art");
         var atlas = BEngine.TextureAtlas.Load(Path.Combine(art, "Showcase.atlas.yaml"));
-        Require(atlas.Version == 2 && atlas.Sources.Count == 0 && atlas.SpriteReferences.Count == 5 &&
-                atlas.SpriteReferences.All(reference =>
-                    reference.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) &&
-                atlas.SpriteReferences.All(reference => File.Exists(Path.Combine(
-                    repository, "Example", reference.Replace('/', Path.DirectorySeparatorChar)))) &&
+        var sourceGuids = Directory.EnumerateFiles(Path.Combine(art, "Sources"), "*.png.meta")
+            .Select(path => Document.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(path).Guid)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var atlasMeta = Document.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(
+            Path.Combine(art, "Showcase.atlas.yaml.meta"));
+        var textureMeta = Document.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(
+            Path.Combine(art, "Showcase.png.meta"));
+        Require(atlas.Version == 3 && atlas.Sources.Count == 0 && atlas.SpriteReferences.Count == 5 &&
+                atlas.SpriteReferences.All(reference => Guid.TryParse(reference, out _)) &&
+                atlas.SpriteReferences.All(sourceGuids.Contains) &&
                 atlas.Sprites.Count == 5 && atlas.Sprites.All(region =>
-                    region.Source.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) &&
-                atlas.SpriteReferences.All(reference =>
-                    File.ReadAllText(Path.Combine(repository, "Example",
-                            (reference + ".meta").Replace('/', Path.DirectorySeparatorChar)))
-                        .Contains("textureType: Sprite", StringComparison.Ordinal)),
-            "The default Showcase Atlas was not migrated to textures imported as Sprite.");
+                    Guid.TryParse(region.Source, out _)) &&
+                textureMeta.ParentGuid.Equals(atlasMeta.Guid, StringComparison.OrdinalIgnoreCase) &&
+                textureMeta.LocalIdentifier == 2800000,
+            "The default Showcase Atlas was not migrated to GUID Sprite references and a PNG sub-asset.");
 
         var scene = Document.Load<SceneDocument>(
             Path.Combine(repository, "Example", "Assets", "Scenes", "Main.scene.yaml"));

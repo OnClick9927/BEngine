@@ -15,6 +15,49 @@ $playerProject = Join-Path $PSScriptRoot 'Core\BEngine.Player\BEngine.Player.csp
 $coreResources = Join-Path $PSScriptRoot 'Core\Resources'
 $coreEditor = Join-Path $PSScriptRoot 'Core\Editor'
 
+function Remove-DirectoryWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [int]$Attempts = 8,
+        [int]$DelayMilliseconds = 250
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -eq $Attempts) { throw }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
+
+function Move-DirectoryWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Source,
+        [Parameter(Mandatory = $true)]
+        [string]$Destination,
+        [int]$Attempts = 20,
+        [int]$DelayMilliseconds = 500
+    )
+
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            [System.IO.Directory]::Move($Source, $Destination)
+            return
+        }
+        catch {
+            if ($attempt -eq $Attempts) { throw }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
+
 foreach ($path in @($engineOutput, $stageOutput, $backupOutput)) {
     $parent = Split-Path -Parent $path
     if ([System.IO.Path]::GetFullPath($parent) -ne [System.IO.Path]::GetFullPath($outputRoot)) {
@@ -39,10 +82,15 @@ if ($runningEditor.Count -gt 0) {
 }
 
 if (Test-Path -LiteralPath $stageOutput) {
-    Remove-Item -LiteralPath $stageOutput -Recurse -Force
+    Remove-DirectoryWithRetry -Path $stageOutput
 }
 if (Test-Path -LiteralPath $backupOutput) {
-    throw "A previous engine export backup still exists: $backupOutput"
+    if (-not (Test-Path -LiteralPath $engineOutput)) {
+        Move-DirectoryWithRetry -Source $backupOutput -Destination $engineOutput
+    }
+    else {
+        Remove-DirectoryWithRetry -Path $backupOutput
+    }
 }
 
 New-Item -ItemType Directory -Path $stageOutput | Out-Null
@@ -95,23 +143,22 @@ foreach ($hostName in @('BEngine.Launcher', 'BEngine.Editor', 'BEngine.Player'))
 }
 
 if (Test-Path -LiteralPath $engineOutput) {
-    [System.IO.Directory]::Move($engineOutput, $backupOutput)
+    Move-DirectoryWithRetry -Source $engineOutput -Destination $backupOutput
 }
 try {
-    Copy-Item -LiteralPath $stageOutput -Destination $engineOutput -Recurse
-    if (Test-Path -LiteralPath $backupOutput) {
-        Remove-Item -LiteralPath $backupOutput -Recurse -Force
-    }
-    Remove-Item -LiteralPath $stageOutput -Recurse -Force
+    Move-DirectoryWithRetry -Source $stageOutput -Destination $engineOutput
 }
 catch {
     if (Test-Path -LiteralPath $engineOutput) {
-        Remove-Item -LiteralPath $engineOutput -Recurse -Force
+        Remove-DirectoryWithRetry -Path $engineOutput
     }
     if (Test-Path -LiteralPath $backupOutput) {
-        [System.IO.Directory]::Move($backupOutput, $engineOutput)
+        Move-DirectoryWithRetry -Source $backupOutput -Destination $engineOutput
     }
     throw
+}
+if (Test-Path -LiteralPath $backupOutput) {
+    Remove-DirectoryWithRetry -Path $backupOutput
 }
 
 Write-Output "BENGINE_EXPORT_OK|$Configuration|$engineOutput"

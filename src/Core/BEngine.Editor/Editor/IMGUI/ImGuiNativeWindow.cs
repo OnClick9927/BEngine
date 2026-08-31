@@ -22,6 +22,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
     private readonly GraphicsBackend _requestedBackend;
     private readonly bool _vsync;
     private readonly NativeWindowFrameScheduler _frameScheduler = new();
+    private readonly NativeKeyboardRepeat _keyboardRepeat = NativeKeyboardRepeat.CreateSystemDefault();
     private readonly ConcurrentQueue<BEvent> _events = new();
     private readonly List<GpuCanvasCommand> _commands = [];
     private IInputContext? _input;
@@ -100,6 +101,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
         _window.FocusChanged += focused =>
         {
             _isFocused = focused;
+            if (!focused) _keyboardRepeat.Clear();
             Enqueue(new BEvent(focused ? EventType.MouseEnterWindow : EventType.MouseLeaveWindow)
             {
                 mousePosition = _mousePosition
@@ -325,8 +327,18 @@ internal sealed class ImGuiNativeWindow : IDisposable
             : new GraphicsAPI(ContextAPI.OpenGL, ContextProfile.Core,
                 ContextFlags.ForwardCompatible, new APIVersion(3, 3));
 
-    private void OnUpdate(double delta) =>
+    private void OnUpdate(double delta)
+    {
+        if (GUI.isEditingTextField &&
+            _keyboardRepeat.TryGetRepeat(Stopwatch.GetTimestamp(), out var repeatedKey))
+            Enqueue(new BEvent(EventType.KeyDown)
+            {
+                keyCode = repeatedKey,
+                modifiers = _modifiers,
+                mousePosition = _mousePosition
+            });
         EditorCallbackDispatcher.Invoke(updating, delta, nameof(updating));
+    }
 
     private void OnRender(double deltaSeconds)
     {
@@ -471,16 +483,20 @@ internal sealed class ImGuiNativeWindow : IDisposable
         modifiers = _modifiers, pointerType = PointerType.Mouse
     });
 
-    private void OnKeyDown(IKeyboard keyboard, Key key, int _) 
+    private void OnKeyDown(IKeyboard keyboard, Key key, int _)
     {
         UpdateModifiers(keyboard);
-        Enqueue(new BEvent(EventType.KeyDown) { keyCode = MapKey(key), modifiers = _modifiers,
+        var keyCode = MapKey(key);
+        _keyboardRepeat.KeyDown(keyCode, Stopwatch.GetTimestamp());
+        Enqueue(new BEvent(EventType.KeyDown) { keyCode = keyCode, modifiers = _modifiers,
             mousePosition = _mousePosition });
     }
     private void OnKeyUp(IKeyboard keyboard, Key key, int _)
     {
         UpdateModifiers(keyboard);
-        Enqueue(new BEvent(EventType.KeyUp) { keyCode = MapKey(key), modifiers = _modifiers,
+        var keyCode = MapKey(key);
+        _keyboardRepeat.KeyUp(keyCode);
+        Enqueue(new BEvent(EventType.KeyUp) { keyCode = keyCode, modifiers = _modifiers,
             mousePosition = _mousePosition });
     }
     private void OnKeyChar(IKeyboard keyboard, char character)

@@ -113,7 +113,10 @@ public static class ComponentFieldSerializer
         if (type == typeof(string)) text = (string)value;
         else if (typeof(BEngine.BAsset).IsAssignableFrom(type))
         {
-            text = ((BEngine.BAsset)value).assetPath;
+            var asset = (BEngine.BAsset)value;
+            text = asset.parentAssetGuid.HasValue && asset.localIdentifier > 0
+                ? $"guid:{asset.parentAssetGuid.Value:N}#subasset={asset.localIdentifier.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                : asset.assetPath;
             if (string.IsNullOrWhiteSpace(text)) return false;
         }
         else if (type == typeof(bool)) text = ((bool)value) ? "true" : "false";

@@ -13,10 +13,15 @@ internal static class Program
                                                          BindingFlags.NonPublic;
     private static IReadOnlyList<string> _capturedMenuPaths = [];
 
-    private static int Main()
+    private static int Main(string[] args)
     {
         try
         {
+            if (args.Contains("--basset-only", StringComparer.Ordinal))
+            {
+                BAssetTypeSystemTests.Run();
+                return 0;
+            }
             var editorAssembly = typeof(EditorWindow).Assembly;
             var (applicationType, projectWindowType, itemType) = DiscoverProjectTypes(editorAssembly);
 

@@ -103,7 +103,7 @@
             <tr><td>Scene</td><td><code>*.scene.yaml</code></td><td>保存 GameObject、Transform、Component；支持 Single/Additive</td></tr>
             <tr><td>PrefabAsset</td><td><code>*.prefab.yaml</code></td><td>实例化后可 Apply、Revert、Unpack</td></tr>
             <tr><td>Sprite</td><td><code>PNG + .meta</code></td><td>在 PNG Inspector 将 Texture Type 设为 Sprite 后 Apply；同一图片可赋给 SpriteRenderer 或加入 Atlas</td></tr>
-            <tr><td>TextureAtlas</td><td><code>MaxSize/Padding/Extrude/SpriteReferences</code></td><td>在 Texture Atlas 窗口 Build</td></tr>
+            <tr><td>TextureAtlas</td><td><code>MaxSize/Padding/Extrude/SpriteReferences</code></td><td>SpriteReferences 保存 Sprite GUID；在 Texture Atlas 窗口 Build</td></tr>
             <tr><td>Material</td><td><code>shader/color/renderQueue</code></td><td>保存 `.material.yaml` 和材质属性</td></tr>
             <tr><td>GUISkin</td><td><code>*.guiskin.yaml</code></td><td>继承 BAsset；保存全部 EditorStyles 样式槽和 customStyles</td></tr>
             <tr><td>TextureImporter</td><td><code>compressionFormat/filterMode/wrapMode</code></td><td>写入源图旁 `.meta`</td></tr>
@@ -126,6 +126,7 @@
             <tr><td><code>Transform.Translate/Rotate/SetParent</code></td><td>2D 变换与层级</td></tr>
             <tr><td><code>StartCoroutine/Invoke</code></td><td>协程与延迟调用</td></tr>
             <tr><td><code>BAsset.Load&lt;T&gt;</code></td><td>按 Assets/Packages 路径加载资源</td></tr>
+            <tr><td><code>BAsset.LoadSubAsset&lt;T&gt;(path, localIdentifier)</code></td><td>用主资源路径与局部 ID 加载 SubAsset</td></tr>
             <tr><td><code>SceneManager.LoadScene</code></td><td>Single 或 Additive 场景加载</td></tr>
           </tbody>
         </table></div>
@@ -160,6 +161,10 @@ public sealed class PlayerMover : MonoBehaviour
             <tr><td><code>EditorGUI.ObjectField</code></td><td>BObject/BAsset 的选择、搜索和拖放</td></tr>
             <tr><td><code>Undo.RecordObject + SetDirty</code></td><td>记录编辑态变更并请求保存</td></tr>
             <tr><td><code>AssetDatabase</code></td><td>加载、创建、导入、刷新与保存资源</td></tr>
+            <tr><td><code>LoadAllAssetsAtPath / LoadAllAssetRepresentationsAtPath</code></td><td>枚举主资源与 SubAsset，或只枚举 SubAsset 表示</td></tr>
+            <tr><td><code>AddObjectToAsset / RemoveObjectFromAsset</code></td><td>向主资源添加或移除内嵌 SubAsset</td></tr>
+            <tr><td><code>IsMainAsset / IsSubAsset</code></td><td>判断对象是主资源还是 SubAsset</td></tr>
+            <tr><td><code>TryGetGUIDAndLocalFileIdentifier</code></td><td>取得主资源 GUID 与对象 localIdentifier</td></tr>
             <tr><td><code>ScenePickingProviderRegistry.Register</code></td><td>外部 Renderer 参与 Scene 点选</td></tr>
             <tr><td><code>GUI.skin</code></td><td>当前 GUISkin；控件从对应命名槽解析默认 GUIStyle</td></tr>
             <tr><td><code>EditorAppearance.SetSkin</code></td><td>应用全局 Skin，更新主题状态并重绘所有编辑器窗口</td></tr>
@@ -170,7 +175,12 @@ public sealed class PlayerMover : MonoBehaviour
       <section id="project-window">
         <h2>Project 窗口布局</h2>
         <p>Project 窗口可在 One Column 与 Two Column 间切换。左侧目录分为 Assets 和 Packages 两个独立滚动区域；拖动两者之间的横向分隔线可调整下方 Packages 区域高度。该高度随编辑器布局保存，窗口缩小时会自动限制，确保上下区域都可继续操作。</p>
-        <p>Two Column 模式右侧以网格显示当前文件夹的直接子项。文件与文件夹名称均相对缩略图水平居中；长名称限制在单元内并以省略号显示，完整名称保留在 Tooltip 中。</p>
+        <p>Two Column 模式右侧以网格显示当前文件夹的直接子项。文件与文件夹名称均相对缩略图水平居中；长名称限制在单元内并以省略号显示，完整名称保留在 Tooltip 中。文件标签隐藏最后一段后缀：<code>Spark.png</code> 显示为 <code>Spark</code>，<code>Showcase.atlas.yaml</code> 显示为 <code>Showcase.atlas</code>；磁盘文件名和资源路径不变。</p>
+        <p>Project 与 Hierarchy 只有在鼠标于同一 TreeView 行按下并抬起时才提交 Selection。按下后移出该行或开始拖拽会取消该次点击，因此可把 BObject 直接拖到未锁定 Inspector 的 ObjectField，而不会先切换 Inspector 目标。拖拽期间使用拖拽光标；ObjectField 仍执行目标类型与 <code>allowSceneObjects</code> 校验。</p>
+        <p>文本输入框按系统键盘节奏重复处理长按 <code>Backspace</code>、<code>Delete</code>、左右方向键、<code>Home</code> 和 <code>End</code>。首次按下立即执行，系统延迟后连续执行；按键抬起或输入框失焦时停止。</p>
+        <h3>SubAsset</h3>
+        <p>SubAsset 由“主资源 GUID + 非零 <code>localIdentifier</code>”唯一标识，主资源的 localIdentifier 为 0。BAsset 子资源引用序列化为 <code>guid:&lt;主资源 GUID&gt;#subasset=&lt;localIdentifier&gt;</code>，因此主资源移动或重命名不会破坏引用。<code>TryGetGUIDAndLocalFileIdentifier</code> 返回该身份；<code>LoadAllAssetsAtPath</code> 返回主资源和全部表示，<code>LoadAllAssetRepresentationsAtPath</code> 只返回 SubAsset。</p>
+        <p>用 <code>AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)</code> 创建内嵌 SubAsset，用 <code>RemoveObjectFromAsset</code> 移除。SubAsset 不能再拥有子资源，由 Importer 管理的 Sprite 等表示不能手动移除。Project 默认隐藏 SubAsset，可通过 ObjectField、Inspector 和枚举 API 访问。</p>
       </section>
 
       <section id="themes">
@@ -205,7 +215,7 @@ GUILayout.Button("Build", accent);</code></pre>
           <li>File &gt; New Scene 后立即保存到 <code>Assets/Scenes</code>。</li>
           <li>GameObject &gt; Camera 2D 创建相机，设置 size、priority、clearMode、cullingMask、viewportRect。</li>
           <li>在 Project 选中 PNG，在 Inspector 将 Texture Type 设为 Sprite，按需调整 Pivot/PPU 后点击 Apply；再创建 Sprite 对象，把同一图片赋给 SpriteRenderer。当前运行时图片解码器仅支持 PNG。</li>
-          <li>需要 Atlas 时创建 Texture Atlas，在 Window &gt; 2D &gt; Texture Atlas 添加这些 Sprite 模式图片并 Build，无需复制图片或新建 Sprite 描述符。</li>
+          <li>需要 Atlas 时创建 Texture Atlas，在 Atlas Inspector 或 Window &gt; 2D &gt; Texture Atlas 通过 Sprite ObjectField 添加图片并 Build。清单保存 Sprite GUID；生成 PNG 以 Atlas GUID 和保留 localIdentifier 注册为隐藏 SubAsset，不在 Project 中单独显示。</li>
           <li>Edit &gt; Project Settings &gt; Tags and Layers 配置 Tag 与 Layer。Layer 使用连续自然编号 1..63；五个内建层可重命名和排序但不可删除，自定义层可增删、重命名和排序。</li>
           <li>在 Scene 使用 W/E/R Handle 编辑位置、旋转和缩放，使用眼睛/锁控制可见与可选。</li>
           <li>进入 Play 验证；Game View 选择逻辑分辨率并展开 Status 检查 Camera、Batch、Draw Call。</li>

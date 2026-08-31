@@ -24,10 +24,11 @@ internal static class Program
             VerifyTwoColumnProjectPresentation();
             VerifyTwoColumnGridLabelsStayCenteredAtScale();
             VerifyFolderFirstNameOrdering();
+            VerifyProjectFileExtensionsHidden();
             VerifyFolderTreeAndBreadcrumbNavigation();
             VerifyGuiContentTooltipPipeline();
             Console.WriteLine(
-                "PROJECT_BROWSER_PRESENTATION_OK|one-column,two-column,packages-splitter-drag,folder-first-name-order,folder-tree,folder-occupancy-icons,direct-children,zoom,tile-labels,centered-grid-labels,scaled-grid-labels,long-label-clipping,breadcrumb,tooltip-delay,tooltip-bounds,blank-tooltip");
+                "PROJECT_BROWSER_PRESENTATION_OK|one-column,two-column,packages-splitter-drag,folder-first-name-order,extensionless-file-labels,folder-tree,folder-occupancy-icons,direct-children,zoom,tile-labels,centered-grid-labels,scaled-grid-labels,long-label-clipping,breadcrumb,tooltip-delay,tooltip-bounds,blank-tooltip");
             return 0;
         }
         catch (Exception exception)
@@ -121,17 +122,17 @@ internal static class Program
 
         var commands = RenderProject(projectType, project, 1040, 620);
         var scenes = FindText(commands, "Scenes", takeLast: false);
-        var mainScene = FindText(commands, "Main.scene.yaml", takeLast: true);
-        var lighting = FindText(commands, "Lighting.material.yaml", takeLast: true);
+        var mainScene = FindText(commands, "Main.scene", takeLast: true);
+        var lighting = FindText(commands, "Lighting.material", takeLast: true);
         Require(mainScene.Rect.X >= scenes.Rect.X + 160 && lighting.Rect.X >= scenes.Rect.X + 160,
             $"TwoColumn mode did not separate the folder tree from the selected folder contents: " +
             $"Scenes={scenes.Rect.X}, Main={mainScene.Rect.X}, Lighting={lighting.Rect.X}.");
         Require(!commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
-                                         command.Content == "Player.cs" &&
+                                         command.Content == "Player" &&
                                          command.Rect.X >= mainScene.Rect.X - 8),
             "The right Project pane contains an asset outside the selected folder.");
         Require(!commands.Any(command => command.Type == GpuCanvasCommandType.Text &&
-                                         command.Content == "Deep.scene.yaml"),
+                                         command.Content == "Deep.scene"),
             "The right Project pane contains a descendant deeper than one level.");
 
         var divider = commands.Where(command => command.Type == GpuCanvasCommandType.SolidRect &&
@@ -157,14 +158,14 @@ internal static class Program
 
         var gridMinimumX = scenes.Rect.X + 160;
         VerifyGridTilesHaveLabels(commands, gridMinimumX, 96,
-            "Main.scene.yaml", "Lighting.material.yaml", "SubScenes");
+            "Main.scene", "Lighting.material", "SubScenes");
         foreach (var zoom in new[] { 32, 128 })
         {
             Require(SetAssetScale(projectType, project, zoom), $"Could not set Project zoom to {zoom}.");
             var zoomed = RenderProject(projectType, project, 1040, 620);
             var zoomedScenes = FindText(zoomed, "Scenes", takeLast: false);
             VerifyGridTilesHaveLabels(zoomed, zoomedScenes.Rect.X + 160, zoom,
-                "Main.scene.yaml", "Lighting.material.yaml", "SubScenes");
+                "Main.scene", "Lighting.material", "SubScenes");
         }
     }
 
@@ -190,7 +191,7 @@ internal static class Program
                     (int)Math.Ceiling(620 * (double)scaleValue));
                 var physicalThumbnailSize = thumbnailSize * (float)scaleValue;
 
-                foreach (var name in new[] { "SubScenes", "Unnamed.asset" })
+                foreach (var name in new[] { "SubScenes", "Unnamed" })
                 {
                     var label = FindText(commands, name, takeLast: true);
                     var preview = FindGridPreview(commands, label, physicalThumbnailSize);
@@ -203,7 +204,7 @@ internal static class Program
                         $"preview={CenterX(preview.Rect):0.###}.");
                 }
 
-                var longLabel = FindText(commands, "Lighting.material.yaml", takeLast: true);
+                var longLabel = FindText(commands, "Lighting.material", takeLast: true);
                 var longPreview = FindGridPreview(commands, longLabel, physicalThumbnailSize);
                 Require(Math.Abs(CenterX(longLabel.Rect) - CenterX(longPreview.Rect)) <= .15f,
                     $"Long TwoColumn grid label lost its center axis at EditorScale {scaleValue:0.0}.");
@@ -289,7 +290,7 @@ internal static class Program
                                          command.Rect.X > dividerX),
             "Clicking the Assets breadcrumb did not navigate the right pane to Assets direct children.");
         Require(!navigated.Any(command => command.Type == GpuCanvasCommandType.Text &&
-                                          command.Content == "Main.scene.yaml"),
+                                          command.Content == "Main.scene"),
             "Assets breadcrumb navigation retained content from the previous Scenes folder.");
     }
 
@@ -308,11 +309,32 @@ internal static class Program
         var expected = new[]
         {
             "AlphaFolder", "SubScenes", "ZetaFolder",
-            "Lighting.material.yaml", "Main.scene.yaml", "Unnamed.asset"
+            "Lighting.material", "Main.scene", "Unnamed"
         };
         Require(ordered.SequenceEqual(expected, StringComparer.Ordinal),
             $"Project entries are not folders-first with independent name ordering: {string.Join(", ", ordered)}");
     }
+
+    private static void VerifyProjectFileExtensionsHidden()
+    {
+        var (_, itemType, _) = CreateProjectWindow();
+        var png = CreateItem(itemType, "Assets/Art/Icon.png", "Icon.png", "Texture", false);
+        var atlas = CreateItem(itemType, "Assets/Art/Icons.atlas.yaml", "Icons.atlas.yaml",
+            "TextureAtlas", false);
+        var dottedFolder = CreateItem(itemType, "Assets/Art/UI.Icons", "UI.Icons", "Folder", true);
+        var display = itemType.GetProperty("EffectiveDisplayName", InstanceMembers) ??
+                      throw new MissingMemberException(itemType.FullName, "EffectiveDisplayName");
+        Require((string?)display.GetValue(png) == "Icon" &&
+                (string?)display.GetValue(atlas) == "Icons.atlas" &&
+                (string?)display.GetValue(dottedFolder) == "UI.Icons",
+            "Project file labels did not hide exactly the final extension or changed a folder name.");
+    }
+
+    private static object CreateItem(
+        Type itemType, string path, string name, string assetType, bool directory) =>
+        Activator.CreateInstance(itemType, InstanceMembers, null,
+            [path, name, "C:/Project/" + path, assetType, directory, false, null, null, null], null) ??
+        throw new InvalidOperationException($"Could not construct Project item '{path}'.");
 
     private static void VerifyGuiContentTooltipPipeline()
     {

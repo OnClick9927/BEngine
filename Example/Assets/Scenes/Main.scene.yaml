@@ -1,5 +1,5 @@
 format: BEngine.Scene
-version: 1
+version: 2
 id: 9f582d08-46bf-4e80-a2d0-6e72a6c890ed
 name: BEngine 2D Showcase
 gameObjects:
@@ -7,7 +7,7 @@ gameObjects:
   name: Environment
   active: true
   tag: Untagged
-  layer: 32768
+  layer: 16
   isStatic: false
   transform:
     id: df6ff8d6-e5d6-4f2b-9a34-2276e2423b07
@@ -25,7 +25,7 @@ gameObjects:
   name: Night Backdrop
   active: true
   tag: Untagged
-  layer: 2
+  layer: 1
   isStatic: false
   parent: 4941f385-7592-4621-b160-c7c6c1379df8
   transform:
@@ -52,13 +52,13 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 18,10
-      sortingLayer: 2
+      sortingLayer: 1
       useSpritePivot: true
 - id: 4d2c371e-bd0a-4533-96f4-7458f005e2c9
   name: Lower Field
   active: true
   tag: Untagged
-  layer: 2
+  layer: 1
   isStatic: false
   parent: 4941f385-7592-4621-b160-c7c6c1379df8
   transform:
@@ -85,13 +85,13 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 18,3.69999999995343387126922607421875
-      sortingLayer: 2
+      sortingLayer: 1
       useSpritePivot: true
 - id: 67b0097a-dc1f-43ce-93ed-16589c37c2ee
   name: Left Accent
   active: true
   tag: Untagged
-  layer: 2
+  layer: 1
   isStatic: false
   parent: 4941f385-7592-4621-b160-c7c6c1379df8
   transform:
@@ -118,13 +118,13 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 2.799999999813735485076904296875,8
-      sortingLayer: 2
+      sortingLayer: 1
       useSpritePivot: true
 - id: 9302f7f6-f261-442a-9bc8-f00b0169b5fe
   name: Right Accent
   active: true
   tag: Untagged
-  layer: 2
+  layer: 1
   isStatic: false
   parent: 4941f385-7592-4621-b160-c7c6c1379df8
   transform:
@@ -151,13 +151,13 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 2.799999999813735485076904296875,8
-      sortingLayer: 2
+      sortingLayer: 1
       useSpritePivot: true
 - id: 8f55da12-d071-40a0-8645-28c5942a72f9
   name: Showcase
   active: true
   tag: Untagged
-  layer: 4
+  layer: 2
   isStatic: false
   transform:
     id: cc838a6b-40a0-4cda-bb6b-9c35cb1e70ac
@@ -175,7 +175,7 @@ gameObjects:
   name: BEngine Logo
   active: true
   tag: Untagged
-  layer: 4
+  layer: 2
   isStatic: false
   parent: 8f55da12-d071-40a0-8645-28c5942a72f9
   transform:
@@ -202,7 +202,7 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 3.25,3.25
-      sortingLayer: 4
+      sortingLayer: 2
       sprite: Assets/Art/Sources/BEngine.png
       useSpritePivot: true
   - id: d10e21c5-e811-44ef-90fe-9c7b170ea38d
@@ -218,7 +218,7 @@ gameObjects:
   name: Animation Feature
   active: true
   tag: Untagged
-  layer: 4
+  layer: 2
   isStatic: false
   parent: 8f55da12-d071-40a0-8645-28c5942a72f9
   transform:
@@ -245,7 +245,7 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 1.049999999813735485076904296875,1.049999999813735485076904296875
-      sortingLayer: 4
+      sortingLayer: 2
       sprite: Assets/Art/Sources/Animation.png
       useSpritePivot: true
   - id: d160dec8-0146-477a-a64e-998b6a01effb
@@ -261,7 +261,7 @@ gameObjects:
   name: Physics2D Feature
   active: true
   tag: Untagged
-  layer: 4
+  layer: 2
   isStatic: false
   parent: 8f55da12-d071-40a0-8645-28c5942a72f9
   transform:
@@ -288,7 +288,7 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 1.19999999995343387126922607421875,1.19999999995343387126922607421875
-      sortingLayer: 4
+      sortingLayer: 2
       sprite: Assets/Art/Sources/Physics2D.png
       useSpritePivot: true
   - id: 867de2eb-8ac6-4430-bae2-062800861933
@@ -304,7 +304,7 @@ gameObjects:
   name: Navigation2D Feature
   active: true
   tag: Untagged
-  layer: 4
+  layer: 2
   isStatic: false
   parent: 8f55da12-d071-40a0-8645-28c5942a72f9
   transform:
@@ -331,7 +331,7 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 0.94999999995343387126922607421875,0.94999999995343387126922607421875
-      sortingLayer: 4
+      sortingLayer: 2
       sprite: Assets/Art/Sources/Navigation2D.png
       useSpritePivot: true
   - id: 8236caa2-b6a5-4658-bec0-2c888f037ee2
@@ -347,7 +347,7 @@ gameObjects:
   name: Playable Navigation Icon
   active: true
   tag: Player
-  layer: 4
+  layer: 2
   isStatic: false
   parent: 8f55da12-d071-40a0-8645-28c5942a72f9
   transform:
@@ -374,7 +374,7 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 1.25,1.25
-      sortingLayer: 4
+      sortingLayer: 2
       sprite: Assets/Art/Sources/Navigation2D.png
       useSpritePivot: true
   - id: 24168131-df7d-4eb4-b80d-75e499f7b0ee
@@ -387,7 +387,7 @@ gameObjects:
   name: Foreground Effects
   active: true
   tag: Untagged
-  layer: 8
+  layer: 3
   isStatic: false
   transform:
     id: 1afaa619-cdc1-43ac-a616-9e3314fc8561
@@ -405,7 +405,7 @@ gameObjects:
   name: Teal Sparks
   active: true
   tag: Untagged
-  layer: 8
+  layer: 3
   isStatic: false
   parent: 98c3037f-c4b4-48a5-95d0-39f1488a954c
   transform:
@@ -433,7 +433,7 @@ gameObjects:
       orderInLayer: 20
       playOnAwake: true
       runInEditMode: false
-      sortingLayer: 8
+      sortingLayer: 3
       sprite: Spark
       startAngularVelocity: 70
       startColor: 0.25,0.91999999992549419403076171875,0.799999999813735485076904296875,0.8199999998323619365692138671875
@@ -446,7 +446,7 @@ gameObjects:
   name: Gold Sparks
   active: true
   tag: Untagged
-  layer: 8
+  layer: 3
   isStatic: false
   parent: 98c3037f-c4b4-48a5-95d0-39f1488a954c
   transform:
@@ -474,7 +474,7 @@ gameObjects:
       orderInLayer: 20
       playOnAwake: true
       runInEditMode: false
-      sortingLayer: 8
+      sortingLayer: 3
       sprite: Spark
       startAngularVelocity: 70
       startColor: 1,0.67999999993480741977691650390625,0.19999999995343387126922607421875,0.799999999813735485076904296875
@@ -487,7 +487,7 @@ gameObjects:
   name: Foreground Glass Left
   active: true
   tag: Untagged
-  layer: 8
+  layer: 3
   isStatic: false
   parent: 98c3037f-c4b4-48a5-95d0-39f1488a954c
   transform:
@@ -514,13 +514,13 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 1.19999999995343387126922607421875,8.799999999813735485076904296875
-      sortingLayer: 8
+      sortingLayer: 3
       useSpritePivot: true
 - id: cdf33a6a-4d5c-40cf-99db-df232a00d342
   name: Foreground Glass Right
   active: true
   tag: Untagged
-  layer: 8
+  layer: 3
   isStatic: false
   parent: 98c3037f-c4b4-48a5-95d0-39f1488a954c
   transform:
@@ -547,13 +547,13 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 1.19999999995343387126922607421875,8.799999999813735485076904296875
-      sortingLayer: 8
+      sortingLayer: 3
       useSpritePivot: true
 - id: 5bfbd8f2-b699-4b39-9500-2ccc4e28e8e4
   name: Inset Backdrop
   active: true
   tag: Untagged
-  layer: 16
+  layer: 4
   isStatic: false
   parent: 45ed0c79-9365-4621-b0f4-74e76c3119de
   transform:
@@ -580,13 +580,13 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 6.5,5
-      sortingLayer: 16
+      sortingLayer: 4
       useSpritePivot: true
 - id: a985c0e8-8cd1-40e8-a7a5-ffcbbf408daa
   name: Inset Brand
   active: true
   tag: Untagged
-  layer: 16
+  layer: 4
   isStatic: false
   parent: 45ed0c79-9365-4621-b0f4-74e76c3119de
   transform:
@@ -613,7 +613,7 @@ gameObjects:
       pivot: 0.5,0.5
       runInEditMode: false
       size: 2.19999999995343387126922607421875,2.19999999995343387126922607421875
-      sortingLayer: 16
+      sortingLayer: 4
       sprite: Assets/Art/Sources/BEngine.png
       useSpritePivot: true
   - id: 6ace5840-2b1b-4d3f-a1f4-d6d3bb3f9790
@@ -629,7 +629,7 @@ gameObjects:
   name: Inset Camera Layer
   active: true
   tag: Untagged
-  layer: 16
+  layer: 4
   isStatic: false
   transform:
     id: 9ff55303-18a2-43d7-bdc7-95754d7c849a
@@ -647,7 +647,7 @@ gameObjects:
   name: Main Camera
   active: true
   tag: MainCamera
-  layer: 2
+  layer: 1
   isStatic: false
   transform:
     id: 5e447385-3341-4e8d-a409-4ded6a02669f
@@ -667,7 +667,7 @@ gameObjects:
     fields:
       backgroundColor: 0.03499999991618096828460693359375,0.0469999997876584529876708984375,0.06599999987520277500152587890625,1
       clearMode: Color
-      cullingMask: 14
+      cullingMask: 7
       isMain: true
       priority: 0
       size: 5
@@ -676,7 +676,7 @@ gameObjects:
   name: Inset Camera
   active: true
   tag: Untagged
-  layer: 2
+  layer: 1
   isStatic: false
   transform:
     id: 49dff6d5-d044-4dd2-8cec-016f34416b57
@@ -696,7 +696,7 @@ gameObjects:
     fields:
       backgroundColor: 0.0249999999068677425384521484375,0.03499999991618096828460693359375,0.049999999813735485076904296875,1
       clearMode: Color
-      cullingMask: 16
+      cullingMask: 8
       isMain: false
       priority: 20
       size: 3

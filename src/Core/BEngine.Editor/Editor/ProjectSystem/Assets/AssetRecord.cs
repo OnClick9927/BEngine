@@ -11,4 +11,9 @@ public sealed record AssetRecord(
     string ArtifactPath,
     string AssetType,
     string SourceHash,
-    bool IsDirectory);
+    bool IsDirectory,
+    Guid? ParentGuid = null,
+    long LocalIdentifier = 0)
+{
+    public bool IsSubAsset => ParentGuid.HasValue;
+}

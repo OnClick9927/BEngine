@@ -26,8 +26,10 @@ internal static class ProjectBrowserTreeBuilder
         };
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Assets" };
         var assetItems = new List<ProjectBrowserItem>(assets.Count);
+        var mainAssetGuids = assets.Where(asset => !asset.IsSubAsset).Select(asset => asset.Guid).ToHashSet();
         foreach (var asset in assets)
         {
+            if (asset.ParentGuid is { } parentGuid && mainAssetGuids.Contains(parentGuid)) continue;
             var virtualPath = ProjectBrowserPath.Normalize(asset.AssetPath);
             if (virtualPath.Length == 0 || !seen.Add(virtualPath)) continue;
             var displayName = ProjectBrowserPath.DisplayName(Path.GetFileName(virtualPath), virtualPath,

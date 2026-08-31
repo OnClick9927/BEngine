@@ -23,6 +23,7 @@ internal static class Program
             VerifyNumericEditingBuffers();
             VerifyFieldFocusIsolation();
             VerifySystemClipboardPasteIsolation();
+            VerifyEditingKeyRepeat();
             VerifyNativeMouseMoveClassification();
             VerifyWindowCoordinatesAndScrolling();
             VerifyEditorWindowRoutingAndDockTabs();
@@ -31,7 +32,7 @@ internal static class Program
             VerifyIconToolbarLanguage();
             VerifyPrefabWorkflow();
             VerifyAssemblyBoundary();
-            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,scaled-caret,aligned-text-editing,cjk-hit-testing,double-click,numeric-edit-buffer,field-focus-isolation,system-clipboard-paste,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,object-ping,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
+            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,scaled-caret,aligned-text-editing,cjk-hit-testing,double-click,numeric-edit-buffer,field-focus-isolation,system-clipboard-paste,editing-key-repeat,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,object-ping,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
             return 0;
         }
         catch (Exception exception)
@@ -517,6 +518,86 @@ internal static class Program
             GUIUtility.keyboardControl = 0;
             GUI.FocusControl(string.Empty);
         }
+    }
+
+    private static void VerifyEditingKeyRepeat()
+    {
+        var field = new Rect(8, 8, 220, 22);
+        var value = "abcdef";
+
+        void Draw(Event evt)
+        {
+            GUI.BeginFrame(evt, 260, 50, []);
+            try { value = GUI.TextField(field, value); }
+            finally { GUI.EndFrame(); }
+        }
+
+        void FocusAt(Fix64 x)
+        {
+            GUI.FocusControl(string.Empty);
+            Draw(new Event(EventType.MouseDown)
+            {
+                mousePosition = new Vector2(x, 18),
+                button = 0,
+                clickCount = 1
+            });
+        }
+
+        FocusAt(220);
+        var repeat = new NativeKeyboardRepeat(delayTicks: 300, intervalTicks: 50);
+        repeat.KeyDown(KeyCode.Backspace, timestamp: 0);
+        Draw(new Event(EventType.KeyDown) { keyCode = KeyCode.Backspace });
+        Require(value == "abcde", "The initial Backspace did not delete exactly one character.");
+        Require(!repeat.TryGetRepeat(timestamp: 299, out _),
+            "Backspace repeated before the configured initial delay.");
+        Require(repeat.TryGetRepeat(timestamp: 300, out var repeatedBackspace) &&
+                repeatedBackspace == KeyCode.Backspace,
+            "Held Backspace did not produce its first repeat event.");
+        Draw(new Event(EventType.KeyDown) { keyCode = repeatedBackspace });
+        Require(!repeat.TryGetRepeat(timestamp: 349, out _) &&
+                repeat.TryGetRepeat(timestamp: 350, out repeatedBackspace),
+            "Held Backspace did not honor the configured repeat interval.");
+        Draw(new Event(EventType.KeyDown) { keyCode = repeatedBackspace });
+        Require(value == "abc", $"Held Backspace produced '{value}' instead of deleting repeatedly.");
+        repeat.KeyUp(KeyCode.Backspace);
+        Require(!repeat.TryGetRepeat(timestamp: 1_000, out _),
+            "Backspace continued repeating after KeyUp.");
+
+        value = "wxyz";
+        FocusAt(12);
+        repeat.KeyDown(KeyCode.Delete, timestamp: 1_000);
+        Draw(new Event(EventType.KeyDown) { keyCode = KeyCode.Delete });
+        Require(repeat.TryGetRepeat(timestamp: 1_300, out var repeatedDelete) &&
+                repeatedDelete == KeyCode.Delete,
+            "Held Delete did not produce a repeat event.");
+        Draw(new Event(EventType.KeyDown) { keyCode = repeatedDelete });
+        Require(value == "yz", $"Held Delete produced '{value}' instead of deleting repeatedly.");
+        repeat.KeyUp(KeyCode.Delete);
+
+        value = "abcd";
+        FocusAt(12);
+        repeat.KeyDown(KeyCode.RightArrow, timestamp: 2_000);
+        Draw(new Event(EventType.KeyDown) { keyCode = KeyCode.RightArrow });
+        Require(repeat.TryGetRepeat(timestamp: 2_300, out var repeatedArrow),
+            "Held RightArrow did not produce a repeat event.");
+        Draw(new Event(EventType.KeyDown) { keyCode = repeatedArrow });
+        Require(repeat.TryGetRepeat(timestamp: 2_350, out repeatedArrow),
+            "Held RightArrow stopped after its first repeat event.");
+        Draw(new Event(EventType.KeyDown) { keyCode = repeatedArrow });
+        Draw(new Event(EventType.KeyDown) { character = 'X' });
+        Require(value == "abcXd", $"Repeated RightArrow navigation placed the caret incorrectly: '{value}'.");
+        repeat.Clear();
+
+        repeat.KeyDown(KeyCode.LeftArrow, timestamp: 3_000);
+        repeat.KeyDown(KeyCode.LeftArrow, timestamp: 3_100);
+        Require(!repeat.TryGetRepeat(timestamp: 4_000, out _),
+            "Synthetic repeat was not suppressed after native repeat KeyDown was observed.");
+        repeat.KeyUp(KeyCode.LeftArrow);
+        Require(NativeKeyboardRepeat.IsRepeatable(KeyCode.Home) &&
+                !NativeKeyboardRepeat.IsRepeatable(KeyCode.PageDown) &&
+                !NativeKeyboardRepeat.IsRepeatable(KeyCode.A),
+            "Editing-key repeat eligibility included keys the text editor does not handle.");
+        GUI.FocusControl(string.Empty);
     }
 
     private static void VerifyWindowCoordinatesAndScrolling()

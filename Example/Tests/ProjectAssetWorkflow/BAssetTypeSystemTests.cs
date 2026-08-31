@@ -4,6 +4,7 @@ using BEngine.Animation;
 using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.ProjectSystem;
+using BEngine.Rendering;
 using BEngine.Serialization;
 using System.Reflection;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
@@ -48,13 +49,19 @@ internal static class BAssetTypeSystemTests
             VerifyDynamicTypeRegistration();
             VerifyTextureImporterRoundTrip(workspace);
             VerifyManagedAssetPersistence();
+            VerifySubAssetPersistence(workspace, projectAssets);
+            VerifyTextureAtlasGuidReferencesAndGeneratedSubAsset(workspace, projectAssets, host);
             VerifyBAssetReferenceRoundTrip();
             VerifyPackageReference(workspace);
             VerifyInheritedAndUnloadableIcons(root);
 
             Console.WriteLine("BASSET_TYPE_SYSTEM_OK|typed-files,png-only-texture-import," +
                               "texture-meta-roundtrip,importer-revert," +
-                              "managed-save-reload,basset-reference-roundtrip,package-reference," +
+                              "managed-save-reload,subasset-guid-localid,file-subasset-reference," +
+                              "atlas-guid-sources,atlas-png-subasset," +
+                              "subasset-cache-invalidation,subasset-identity-collision,atlas-move-rollback," +
+                              "subasset-delete-guard," +
+                              "basset-reference-roundtrip,package-reference," +
                               "no-loader-registry,editor-icon-inheritance,registry-unload");
             return 0;
         }
@@ -425,6 +432,196 @@ internal static class BAssetTypeSystemTests
             "BAsset Revert reused the modified cached instance instead of reloading the file.");
     }
 
+    private static void VerifySubAssetPersistence(ProjectWorkspace workspace, ProjectAssetDatabase projectAssets)
+    {
+        var ownerPath = "Assets/SubOwner.material.yaml";
+        AssetDatabase.CreateAsset(new Material(Shader.Find("BEngine/Sprite")) { name = "Sub Owner" }, ownerPath);
+        var owner = AssetDatabase.LoadAssetAtPath<Material>(ownerPath)!;
+        var child = ScriptableObject.CreateInstance<ProbeAsset>();
+        child.name = "Embedded Probe";
+        child.value = 17;
+        AssetDatabase.AddObjectToAsset(child, owner);
+        Require(AssetDatabase.IsMainAsset(owner) && AssetDatabase.IsSubAsset(child) &&
+                !AssetDatabase.IsMainAsset(child) && AssetDatabase.Contains(child),
+            "AddObjectToAsset did not establish main/sub-asset identity.");
+        Require(AssetDatabase.TryGetGUIDAndLocalFileIdentifier(child, out var guid, out var localId) &&
+                guid == AssetDatabase.AssetPathToGUID(ownerPath) && localId > 0 &&
+                AssetDatabase.GetAssetPath(child) == ownerPath,
+            "A sub-asset did not expose its owner's GUID, stable local identifier, and main asset path.");
+
+        var loaded = AssetDatabase.LoadAllAssetsAtPath(ownerPath).OfType<ProbeAsset>().Single();
+        Require(loaded.value == 17 && AssetDatabase.IsSubAsset(loaded),
+            "LoadAllAssetsAtPath did not restore an embedded sub-asset.");
+        loaded.value = 29;
+        EditorUtility.SetDirty(loaded);
+        Require(AssetDatabase.SaveAsset(loaded) &&
+                AssetDatabase.LoadAllAssetsAtPath(ownerPath).OfType<ProbeAsset>().Single().value == 29,
+            "Saving an embedded sub-asset did not persist its serialized state.");
+
+        var referenceOwner = new AssetReferenceProbe { data =
+            AssetDatabase.LoadAllAssetsAtPath(ownerPath).OfType<ProbeAsset>().Single() };
+        var serializedReference = ComponentFieldSerializer.Serialize(referenceOwner);
+        Require(serializedReference[nameof(AssetReferenceProbe.data)].StartsWith("guid:",
+                    StringComparison.OrdinalIgnoreCase) &&
+                serializedReference[nameof(AssetReferenceProbe.data)].Contains("#subasset=", StringComparison.Ordinal),
+            "ComponentFieldSerializer did not persist a stable GUID + localId sub-asset reference.");
+        const string movedOwnerPath = "Assets/SubOwnerMoved.material.yaml";
+        Require(AssetDatabase.MoveAsset(ownerPath, movedOwnerPath).Length == 0,
+            "Moving a main asset that owns embedded sub-assets failed.");
+        var restoredReference = new AssetReferenceProbe();
+        ComponentFieldSerializer.Deserialize(restoredReference, serializedReference);
+        Require(restoredReference.data is { value: 29 } &&
+                AssetDatabase.GetAssetPath(restoredReference.data) == movedOwnerPath,
+            "A GUID + localId sub-asset reference did not survive moving its main asset.");
+
+        AssetDatabase.RemoveObjectFromAsset(restoredReference.data!);
+        Require(!AssetDatabase.IsSubAsset(restoredReference.data!) &&
+                !AssetDatabase.LoadAllAssetsAtPath(movedOwnerPath).OfType<ProbeAsset>().Any(),
+            "RemoveObjectFromAsset left an embedded sub-asset in its owner metadata.");
+        var replacement = ScriptableObject.CreateInstance<ProbeAsset>();
+        replacement.name = "Replacement Probe";
+        AssetDatabase.AddObjectToAsset(replacement, movedOwnerPath);
+        Require(AssetDatabase.TryGetGUIDAndLocalFileIdentifier(replacement, out _, out var replacementLocalId) &&
+                replacementLocalId > localId,
+            "Deleting a sub-asset allowed its local identifier to be reused by another object.");
+        AssetDatabase.RemoveObjectFromAsset(replacement);
+    }
+
+    private static void VerifyTextureAtlasGuidReferencesAndGeneratedSubAsset(
+        ProjectWorkspace workspace,
+        ProjectAssetDatabase projectAssets,
+        TestEditorHost host)
+    {
+        const string atlasPath = "Assets/Test.atlas.yaml";
+        const string outputPath = "Assets/Test.png";
+        var sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Spark.png") ??
+                     throw new InvalidOperationException("The Sprite-mode texture fixture did not load.");
+        Require(AssetDatabase.TryGetGUIDAndLocalFileIdentifier(sprite, out var spriteGuid, out var spriteLocalId) &&
+                spriteLocalId == 21300000,
+            "An imported Sprite did not expose a GUID/local identifier sub-asset identity.");
+        var spriteOwner = new AssetReferenceProbe();
+        ComponentFieldSerializer.Deserialize(spriteOwner, ComponentFieldSerializer.Serialize(
+            new AssetReferenceProbe { sprite = sprite }));
+        Require(spriteOwner.sprite is { Texture: "Assets/Spark.png" },
+            "An imported Sprite sub-asset did not round-trip through ComponentFieldSerializer.");
+        Require(BAsset.LoadSubAsset<Sprite>($"guid:{spriteGuid}", spriteLocalId + 1) is null,
+            "An unknown imported-representation local identifier resolved to the main file's Sprite.");
+        var atlas = AssetDatabase.LoadAssetAtPath<TextureAtlas>(atlasPath)!;
+        atlas.SpriteReferences = [spriteGuid];
+        atlas.Version = 3;
+        var result = TextureAtlasBuilder.Build(atlas, Path.Combine(workspace.AssetsPath, "Test.atlas.yaml"));
+        Require(result.TextureAssetPath == outputPath && File.Exists(Path.Combine(workspace.AssetsPath, "Test.png")),
+            "TextureAtlasBuilder did not generate its PNG output.");
+
+        var reloaded = AssetDatabase.LoadAssetAtPath<TextureAtlas>(atlasPath)!;
+        Require(reloaded.Version == 3 && reloaded.SpriteReferences.SequenceEqual([spriteGuid]) &&
+                reloaded.LoadReferencedSprites() is [{ Texture: "Assets/Spark.png" }],
+            "TextureAtlas did not persist and resolve Sprite GUID references.");
+        var yaml = File.ReadAllText(Path.Combine(workspace.AssetsPath, "Test.atlas.yaml"));
+        Require(yaml.Contains(spriteGuid, StringComparison.OrdinalIgnoreCase) &&
+                !yaml.Contains("spriteReferences:\n- Assets/Spark.png", StringComparison.OrdinalIgnoreCase),
+            "TextureAtlas YAML still persisted Sprite source paths instead of GUIDs.");
+
+        var outputRecord = projectAssets.GetRecord(outputPath);
+        var atlasRecord = projectAssets.GetRecord(atlasPath);
+        Require(outputRecord is { IsSubAsset: true, LocalIdentifier: 2800000 } &&
+                outputRecord.ParentGuid == atlasRecord?.Guid,
+            "The generated atlas PNG was not registered as a file-backed TextureAtlas sub-asset.");
+
+        var atlasFullPath = Path.Combine(workspace.AssetsPath, "Test.atlas.yaml");
+        var outputFullPath = Path.Combine(workspace.AssetsPath, "Test.png");
+        var atlasGuid = atlasRecord!.Guid.ToString("N");
+        var firstCachedTexture = BAsset.LoadSubAsset<BEngine.Texture>($"guid:{atlasGuid}", 2800000)!;
+        File.WriteAllBytes(outputFullPath, PngImageCodec.EncodeRgba(2, 1,
+            [255, 0, 0, 255, 0, 255, 0, 255]));
+        BAsset.Invalidate(atlasFullPath);
+        var parentInvalidatedTexture = BAsset.LoadSubAsset<BEngine.Texture>($"guid:{atlasGuid}", 2800000);
+        Require(parentInvalidatedTexture is { width: 2, height: 1 } &&
+                !ReferenceEquals(parentInvalidatedTexture, firstCachedTexture),
+            "Invalidating a main asset left its file-backed sub-asset cache stale.");
+
+        File.WriteAllBytes(outputFullPath, PngImageCodec.EncodeRgba(3, 1,
+            [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255]));
+        BAsset.Invalidate(outputFullPath);
+        var childInvalidatedTexture = BAsset.LoadSubAsset<BEngine.Texture>($"guid:{atlasGuid}", 2800000);
+        Require(childInvalidatedTexture is { width: 3, height: 1 } &&
+                !ReferenceEquals(childInvalidatedTexture, parentInvalidatedTexture),
+            "Invalidating a file-backed sub-asset left its owner-based lookup cache stale.");
+        TextureAtlasBuilder.Build(reloaded, atlasFullPath);
+
+        var duplicateFullPath = Path.Combine(workspace.AssetsPath, "DuplicateAtlasTexture.png");
+        File.Copy(outputFullPath, duplicateFullPath);
+        var duplicateRejected = false;
+        try { AssetDatabase.RegisterFileSubAsset(duplicateFullPath, atlasFullPath, 2800000); }
+        catch (InvalidOperationException) { duplicateRejected = true; }
+        Require(duplicateRejected && !File.Exists(duplicateFullPath + ".meta"),
+            "RegisterFileSubAsset allowed two files to claim the same parent GUID/local identifier.");
+
+        const string movedAtlasPath = "Assets/TestMoved.atlas.yaml";
+        const string movedOutputPath = "Assets/TestMoved.png";
+        host.MoveAssetFailure = (oldAssetPath, newAssetPath) =>
+            oldAssetPath.Equals(outputPath, StringComparison.OrdinalIgnoreCase) &&
+            newAssetPath.Equals(movedOutputPath, StringComparison.OrdinalIgnoreCase)
+                ? "Injected generated Texture move failure."
+                : null;
+        var failedMove = AssetDatabase.MoveAsset(atlasPath, movedAtlasPath);
+        host.MoveAssetFailure = null;
+        Require(failedMove.Length > 0 && File.Exists(atlasFullPath) && File.Exists(outputFullPath) &&
+                !File.Exists(Path.Combine(workspace.AssetsPath, "TestMoved.atlas.yaml")) &&
+                !File.Exists(Path.Combine(workspace.AssetsPath, "TestMoved.png")),
+            "A failed generated Texture move did not roll the TextureAtlas main asset back.");
+
+        Require(AssetDatabase.MoveAsset(atlasPath, movedAtlasPath).Length == 0 &&
+                AssetDatabase.LoadAssetAtPath<TextureAtlas>(movedAtlasPath) is { Texture: movedOutputPath },
+            "A successful TextureAtlas move did not update its generated Texture reference.");
+        Require(AssetDatabase.MoveAsset(movedAtlasPath, atlasPath).Length == 0 &&
+                AssetDatabase.LoadAssetAtPath<TextureAtlas>(atlasPath) is { Texture: outputPath },
+            "Moving a TextureAtlas back to its original path did not restore its generated Texture reference.");
+
+        host.DeleteAssetFailure = assetPath => assetPath.Equals(outputPath, StringComparison.OrdinalIgnoreCase);
+        var deleteRejected = !AssetDatabase.DeleteAsset(atlasPath);
+        host.DeleteAssetFailure = null;
+        Require(deleteRejected && File.Exists(atlasFullPath) && File.Exists(outputFullPath),
+            "DeleteAsset ignored a file-backed sub-asset deletion failure and deleted its main asset.");
+
+        var representations = AssetDatabase.LoadAllAssetRepresentationsAtPath(atlasPath);
+        var generatedTexture = representations.OfType<BEngine.Texture>().Single();
+        Require(AssetDatabase.GetAssetPath(generatedTexture) == atlasPath &&
+                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(generatedTexture,
+                    out var generatedGuid, out var generatedLocalId) &&
+                generatedGuid == atlasRecord!.Guid.ToString("N") && generatedLocalId == 2800000,
+            "LoadAllAssetsAtPath did not expose the generated PNG with its Atlas GUID/local identifier.");
+        var serializedTextureReference = ComponentFieldSerializer.Serialize(
+            new AssetReferenceProbe { abstractAsset = generatedTexture });
+        Require(serializedTextureReference[nameof(AssetReferenceProbe.abstractAsset)] ==
+                $"guid:{atlasGuid}#subasset=2800000",
+            "A file-backed sub-asset was not serialized using its main GUID and local identifier.");
+        Require(AssetDatabase.MoveAsset(atlasPath, movedAtlasPath).Length == 0,
+            "Moving an Atlas before restoring its serialized Texture sub-asset failed.");
+        var restoredTextureReference = new AssetReferenceProbe();
+        ComponentFieldSerializer.Deserialize(restoredTextureReference, serializedTextureReference);
+        Require(restoredTextureReference.abstractAsset is BEngine.Texture { width: > 0, height: > 0 } &&
+                AssetDatabase.GetAssetPath(restoredTextureReference.abstractAsset) == movedAtlasPath,
+            "A file-backed GUID + localId reference did not survive moving its main asset.");
+        Require(AssetDatabase.MoveAsset(movedAtlasPath, atlasPath).Length == 0,
+            "Moving the Atlas back after restoring its Texture sub-asset failed.");
+
+        BAsset.ClearLoadedAssets();
+        var directTexture = BAsset.Load<BEngine.Texture>(outputPath);
+        Require(directTexture is not null && directTexture.assetPath == outputPath &&
+                directTexture.guid == outputRecord!.Guid.ToString("N"),
+            "Loading a file-backed sub-asset by its physical path reused its owner-bound cache identity.");
+
+        using var packages = new BPackageManager(workspace, catalog: null, loadAssemblies: false);
+        var visibleItems = ProjectBrowserTreeBuilder.Build(workspace.AssetsPath, projectAssets.assets.ToArray(), packages);
+        Require(visibleItems.All(item => !item.VirtualPath.Equals(outputPath,
+                    StringComparison.OrdinalIgnoreCase)),
+            "ProjectBrowserTreeBuilder displayed the generated atlas PNG as a main asset.");
+        using var editor = InspectorEditor.CreateEditor(reloaded);
+        Require(editor is TextureAtlasEditor,
+            "TextureAtlas did not resolve the Sprite ObjectField-based custom Inspector.");
+    }
+
     private static void VerifyBAssetReferenceRoundTrip()
     {
         var material = AssetDatabase.LoadAssetAtPath<Material>("Assets/Test.material.yaml")!;
@@ -537,8 +734,7 @@ internal static class BAssetTypeSystemTests
 
     private static void WriteFixtures(ProjectWorkspace workspace)
     {
-        var png = Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+AvzZVwAAAABJRU5ErkJggg==");
+        var png = PngImageCodec.EncodeRgba(1, 1, [255, 255, 255, 255]);
         File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "Spark.png"), png);
         File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "Plain.png"), png);
         File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "Unsupported.jpg"), png);
@@ -597,4 +793,5 @@ internal sealed class AssetReferenceProbe : MonoBehaviour
     public ProbeAsset? data { get; set; }
     public BAsset? abstractAsset { get; set; }
     public ScriptableObject? scriptableAsset { get; set; }
+    public Sprite? sprite { get; set; }
 }

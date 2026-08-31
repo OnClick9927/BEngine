@@ -129,7 +129,9 @@ internal static class TextureAtlasResolver
                     sprite.packedRegion = region.Name;
                     return sprite;
                 }
-                var imported = BAsset.Load<Sprite>(region.Source);
+                var imported = Guid.TryParse(region.Source, out _)
+                    ? BAsset.LoadByGuid<Sprite>(region.Source)
+                    : BAsset.Load<Sprite>(region.Source);
                 if (imported is not null)
                     return Sprite.FromTexture(imported.Texture, region.pivot,
                         $"{atlasReference}#{region.Name}", atlasReference, region.Name);
@@ -170,9 +172,11 @@ internal static class TextureAtlasResolver
             {
                 try
                 {
-                    var loadReference = ReferenceForLoad(reference, path);
-                    if (BAsset.Load<Sprite>(loadReference) is not null)
-                        activeReferences.Add(ReferenceKey(reference, path));
+                    var imported = Guid.TryParse(reference, out _)
+                        ? BAsset.LoadByGuid<Sprite>(reference)
+                        : BAsset.Load<Sprite>(ReferenceForLoad(reference, path));
+                    if (imported is not null && !string.IsNullOrWhiteSpace(imported.assetPath))
+                        activeReferences.Add(AssetReferencePath.Key(imported.assetPath));
                 }
                 catch (Exception exception) when (IsAssetReadException(exception)) { }
             }
@@ -181,7 +185,8 @@ internal static class TextureAtlasResolver
                 if (string.IsNullOrWhiteSpace(region.Source)) continue;
                 try
                 {
-                    var key = ReferenceKey(region.Source, path);
+                    var key = SourceReferenceKey(region.Source, path);
+                    if (key.Length == 0) continue;
                     if (!activeReferences.Contains(key)) continue;
                     ReverseIndex.TryAdd(key, new PackedSprite(atlasReference, atlas, region));
                 }
@@ -234,6 +239,15 @@ internal static class TextureAtlasResolver
             return AssetReferencePath.Key(reference);
         return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(atlasPath)!,
             reference.Replace('/', Path.DirectorySeparatorChar))).Replace('\\', '/');
+    }
+
+    private static string SourceReferenceKey(string reference, string atlasPath)
+    {
+        if (!Guid.TryParse(reference, out _)) return ReferenceKey(reference, atlasPath);
+        var sprite = BAsset.LoadByGuid<Sprite>(reference);
+        return sprite is null || string.IsNullOrWhiteSpace(sprite.assetPath)
+            ? string.Empty
+            : AssetReferencePath.Key(sprite.assetPath);
     }
 
     private static string ReferenceForLoad(string reference, string atlasPath) =>

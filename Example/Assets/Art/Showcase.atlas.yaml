@@ -1,5 +1,5 @@
 format: BEngine.TextureAtlas
-version: 2
+version: 3
 texture: Assets/Art/Showcase.png
 width: 512
 height: 512
@@ -7,15 +7,14 @@ maxSize: 1024
 padding: 4
 extrude: 2
 spriteReferences:
-- Assets/Art/Sources/BEngine.png
-- Assets/Art/Sources/Animation.png
-- Assets/Art/Sources/Physics2D.png
-- Assets/Art/Sources/Navigation2D.png
-- Assets/Art/Sources/Spark.png
+- ff11351b2c3044aa8c77107eb2f6b942
+- d3b57829c75d4c96a4f77fc4c1354df3
+- fdc19827d60047d8b0f65705212e92e1
+- f0ebeda551aa44e491ba3274b564e4ce
 sources: []
 sprites:
 - name: Animation
-  source: Assets/Art/Sources/Animation.png
+  source: d3b57829c75d4c96a4f77fc4c1354df3
   x: 268
   y: 4
   width: 32
@@ -23,7 +22,7 @@ sprites:
   pivotX: 0.5
   pivotY: 0.5
 - name: Brand
-  source: Assets/Art/Sources/BEngine.png
+  source: ff11351b2c3044aa8c77107eb2f6b942
   x: 4
   y: 4
   width: 256
@@ -31,7 +30,7 @@ sprites:
   pivotX: 0.5
   pivotY: 0.5
 - name: Navigation2D
-  source: Assets/Art/Sources/Navigation2D.png
+  source: f0ebeda551aa44e491ba3274b564e4ce
   x: 308
   y: 4
   width: 32
@@ -39,7 +38,7 @@ sprites:
   pivotX: 0.5
   pivotY: 0.5
 - name: Physics2D
-  source: Assets/Art/Sources/Physics2D.png
+  source: fdc19827d60047d8b0f65705212e92e1
   x: 348
   y: 4
   width: 32
@@ -47,13 +46,13 @@ sprites:
   pivotX: 0.5
   pivotY: 0.5
 - name: Spark
-  source: Assets/Art/Sources/Spark.png
+  source: 5044d20e0fac480eb742e30b8a9db3aa
   x: 388
   y: 4
   width: 32
   height: 32
   pivotX: 0.5
   pivotY: 0.5
-id: 25c80967-c7fc-4b4e-9bdb-3685326ae1d3
-name: ''
+id: 998f96ca-ba77-4fb1-b07e-7a43e149f376
+name: Showcase
 hideFlags: None

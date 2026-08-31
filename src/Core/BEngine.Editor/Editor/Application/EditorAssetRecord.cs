@@ -6,4 +6,9 @@ internal readonly record struct EditorAssetRecord(
     string AssetPath,
     string SourcePath,
     string AssetType,
-    bool IsDirectory);
+    bool IsDirectory,
+    Guid? ParentGuid,
+    long LocalIdentifier)
+{
+    internal bool IsSubAsset => ParentGuid.HasValue;
+}

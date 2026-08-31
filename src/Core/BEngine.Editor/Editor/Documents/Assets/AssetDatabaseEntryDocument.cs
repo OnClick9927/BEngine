@@ -11,4 +11,6 @@ public sealed class AssetDatabaseEntryDocument : Document
     public string AssetType { get; set; } = string.Empty;
     public string SourceHash { get; set; } = string.Empty;
     public string ArtifactPath { get; set; } = string.Empty;
+    public string ParentGuid { get; set; } = string.Empty;
+    public long LocalIdentifier { get; set; }
 }

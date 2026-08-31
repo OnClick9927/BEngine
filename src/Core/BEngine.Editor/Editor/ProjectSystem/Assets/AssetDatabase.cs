@@ -202,8 +202,9 @@ public sealed class AssetDatabase
             meta.Save(metaPath);
         }
 
+        var parentGuid = Guid.TryParse(meta.ParentGuid, out var parsedParent) ? parsedParent : (Guid?)null;
         return new AssetRecord(guid, assetPath, sourcePath, metaPath, artifactPath,
-            meta.AssetType, hash, isDirectory);
+            meta.AssetType, hash, isDirectory, parentGuid, Math.Max(0, meta.LocalIdentifier));
     }
 
     private static AssetMetaDocument LoadOrCreateMeta(string metaPath, string sourcePath, bool isDirectory)
@@ -304,7 +305,9 @@ public sealed class AssetDatabase
                     AssetPath = record.AssetPath,
                     AssetType = record.AssetType,
                     SourceHash = record.SourceHash,
-                    ArtifactPath = Path.GetRelativePath(_workspace.LibraryPath, record.ArtifactPath).Replace('\\', '/')
+                    ArtifactPath = Path.GetRelativePath(_workspace.LibraryPath, record.ArtifactPath).Replace('\\', '/'),
+                    ParentGuid = record.ParentGuid?.ToString("N") ?? string.Empty,
+                    LocalIdentifier = record.LocalIdentifier
                 }).ToList()
         }.Save(_workspace.AssetDatabasePath);
     }

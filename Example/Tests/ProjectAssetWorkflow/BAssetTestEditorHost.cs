@@ -13,6 +13,9 @@ internal sealed class TestEditorHost : IEditorHost, IDisposable
     private readonly Scene _scene = new("Host Scene");
     private readonly string _previousDataPath;
 
+    internal Func<string, bool>? DeleteAssetFailure { get; set; }
+    internal Func<string, string, string?>? MoveAssetFailure { get; set; }
+
     internal TestEditorHost(ProjectWorkspace workspace, ProjectAssetDatabase assets)
     {
         _workspace = workspace;
@@ -77,8 +80,34 @@ internal sealed class TestEditorHost : IEditorHost, IDisposable
     }
     public void RequestScriptCompilation() { }
     public string CreateAssetFolder(string parentFolder, string newFolderName) => string.Empty;
-    public bool DeleteAsset(string assetPath) => false;
-    public string MoveAsset(string oldPath, string newPath) => "Not supported";
+    public bool DeleteAsset(string assetPath)
+    {
+        if (DeleteAssetFailure?.Invoke(assetPath) == true) return false;
+        var sourcePath = Path.Combine(_workspace.RootPath,
+            assetPath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(sourcePath)) return false;
+        File.Delete(sourcePath);
+        if (File.Exists(sourcePath + ".meta")) File.Delete(sourcePath + ".meta");
+        _assets.Refresh();
+        return true;
+    }
+
+    public string MoveAsset(string oldPath, string newPath)
+    {
+        if (MoveAssetFailure?.Invoke(oldPath, newPath) is { Length: > 0 } injectedFailure)
+            return injectedFailure;
+        var sourcePath = Path.Combine(_workspace.RootPath,
+            oldPath.Replace('/', Path.DirectorySeparatorChar));
+        var destinationPath = Path.Combine(_workspace.RootPath,
+            newPath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(sourcePath)) return "Source asset does not exist.";
+        if (File.Exists(destinationPath)) return "Destination asset already exists.";
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        File.Move(sourcePath, destinationPath);
+        if (File.Exists(sourcePath + ".meta")) File.Move(sourcePath + ".meta", destinationPath + ".meta");
+        _assets.Refresh();
+        return string.Empty;
+    }
     public bool OpenPrefabStage(string assetPath) => false;
     public bool SavePrefabStage() => false;
     public void ClosePrefabStage() { }
@@ -91,5 +120,6 @@ internal sealed class TestEditorHost : IEditorHost, IDisposable
     }
 
     private static EditorAssetRecord ToRecord(AssetRecord record) => new(
-        record.Guid, record.AssetPath, record.SourcePath, record.AssetType, record.IsDirectory);
+        record.Guid, record.AssetPath, record.SourcePath, record.AssetType, record.IsDirectory,
+        record.ParentGuid, record.LocalIdentifier);
 }

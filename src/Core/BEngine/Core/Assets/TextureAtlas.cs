@@ -4,13 +4,14 @@ namespace BEngine;
 public sealed class TextureAtlas : BAsset
 {
     public string Format { get; set; } = "BEngine.TextureAtlas";
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
     public string Texture { get; set; } = string.Empty;
     public int Width { get; set; }
     public int Height { get; set; }
     public int MaxSize { get; set; } = 2048;
     public int Padding { get; set; } = 2;
     public int Extrude { get; set; } = 1;
+    [HideInInspector]
     public List<string> SpriteReferences { get; set; } = [];
     // Kept so version 1 atlases continue to load and can be rebuilt without rewriting source assets.
     public List<TextureAtlasSource> Sources { get; set; } = [];
@@ -20,13 +21,33 @@ public sealed class TextureAtlas : BAsset
     {
         if (string.IsNullOrWhiteSpace(nameOrSource)) return null;
         var value = nameOrSource.Replace('\\', '/').Trim();
-        return Sprites.FirstOrDefault(sprite => sprite.Name.Equals(value, StringComparison.Ordinal)) ??
-               Sprites.FirstOrDefault(sprite => sprite.Source.Equals(value, StringComparison.OrdinalIgnoreCase));
+        var direct = Sprites.FirstOrDefault(sprite => sprite.Name.Equals(value, StringComparison.Ordinal)) ??
+                     Sprites.FirstOrDefault(sprite =>
+                         sprite.Source.Equals(value, StringComparison.OrdinalIgnoreCase));
+        if (direct is not null || Guid.TryParse(value, out _)) return direct;
+
+        try
+        {
+            var guid = BAsset.Load<Sprite>(value)?.guid;
+            return string.IsNullOrWhiteSpace(guid)
+                ? null
+                : Sprites.FirstOrDefault(sprite =>
+                    sprite.Source.Equals(guid, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                                          InvalidDataException or ArgumentException or FormatException or
+                                          OverflowException or YamlDotNet.Core.YamlException)
+        {
+            return null;
+        }
     }
 
     public IReadOnlyList<Sprite> LoadReferencedSprites() => SpriteReferences
-        .Select(reference => BAsset.Load<Sprite>(reference) ?? throw new InvalidDataException(
-            $"Texture atlas Sprite reference '{reference}' is not a legacy Sprite asset or a texture imported as Sprite."))
+        .Select(reference => Guid.TryParse(reference, out _)
+            ? BAsset.LoadByGuid<Sprite>(reference)
+            : BAsset.Load<Sprite>(reference))
+        .Select((sprite, index) => sprite ?? throw new InvalidDataException(
+            $"Texture atlas Sprite reference '{SpriteReferences[index]}' could not be loaded."))
         .ToArray();
 
     public bool TryGetUv(string nameOrSource, out Rect uv)
@@ -43,7 +64,7 @@ public sealed class TextureAtlas : BAsset
 
     public void Validate()
     {
-        if (!Format.Equals("BEngine.TextureAtlas", StringComparison.Ordinal) || Version is < 1 or > 2)
+        if (!Format.Equals("BEngine.TextureAtlas", StringComparison.Ordinal) || Version is < 1 or > 3)
             throw new InvalidDataException($"Unsupported texture atlas format/version '{Format}' v{Version}.");
         MaxSize = Math.Clamp(MaxSize, 32, 16384);
         Padding = Math.Clamp(Padding, 0, 64);
@@ -58,6 +79,8 @@ public sealed class TextureAtlas : BAsset
                 throw new InvalidDataException("Texture atlas Sprite references cannot be empty.");
             SpriteReferences[index] = reference;
         }
+        if (Version >= 3 && SpriteReferences.Any(reference => !Guid.TryParse(reference, out _)))
+            throw new InvalidDataException("Texture atlas version 3 Sprite references must be GUIDs.");
         RejectDuplicates(SpriteReferences, "Sprite reference", StringComparer.OrdinalIgnoreCase);
         foreach (var source in Sources) source.Validate();
         RejectDuplicates(Sources.Select(source => source.Name), "source name");
@@ -83,6 +106,10 @@ public sealed class TextureAtlas : BAsset
 
     public void Save(string path)
     {
+        // Legacy authoring code may still seed an atlas with paths. The editor builder upgrades
+        // those references to GUIDs before producing a version 3 atlas.
+        if (Version >= 3 && SpriteReferences.Any(reference => !Guid.TryParse(reference, out _)))
+            Version = 2;
         Validate();
         YamlUtility.Save(this, TextureAtlasPath.Resolve(path));
     }

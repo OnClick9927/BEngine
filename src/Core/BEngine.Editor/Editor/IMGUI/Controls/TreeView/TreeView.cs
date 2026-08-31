@@ -146,6 +146,12 @@ public abstract class TreeView<TIdentifier>
     private TreeViewItem<TIdentifier>? _renamingItem;
     private string _renameOriginal = string.Empty;
     private string _renameValue = string.Empty;
+    private TreeViewItem<TIdentifier>? _pressedItem;
+    private bool _pressedKeepMultiSelection;
+    private bool _pressedShift;
+    private bool _pressedAction;
+    private int _pressedClickCount;
+    private bool _emptyAreaPressed;
     private TreeViewItem<TIdentifier>? _dragCandidate;
     private Vector2 _dragStart;
     private bool _dragStarted;
@@ -428,11 +434,16 @@ public abstract class TreeView<TIdentifier>
     {
         ArgumentNullException.ThrowIfNull(item);
         var evt = Event.current;
-        var action = evt.control || evt.command;
+        SelectionClick(item, keepMultiSelection, evt.shift, evt.control || evt.command);
+    }
+
+    private void SelectionClick(TreeViewItem<TIdentifier> item, bool keepMultiSelection,
+        bool shift, bool action)
+    {
         List<TIdentifier> selection;
         if (_getNewSelectionOverride is not null)
             selection = _getNewSelectionOverride(item, keepMultiSelection, action);
-        else if (evt.shift && state.hasLastClickedID)
+        else if (shift && state.hasLastClickedID)
             selection = SelectRange(state.lastClickedID, item.id);
         else if ((keepMultiSelection || action) && CanMultiSelect(item))
         {
@@ -854,11 +865,33 @@ public abstract class TreeView<TIdentifier>
         if (evt.type == EventType.MouseDown && evt.button == 0)
         {
             SetFocus();
-            SelectionClick(item, evt.control || evt.command);
+            _pressedItem = item;
+            _pressedKeepMultiSelection = evt.control || evt.command;
+            _pressedShift = evt.shift;
+            _pressedAction = evt.control || evt.command;
+            _pressedClickCount = evt.clickCount;
+            _emptyAreaPressed = false;
             _dragCandidate = item;
             _dragStart = evt.mousePosition;
-            if (evt.clickCount >= 2) DoubleClickedItem(item.id);
-            else SingleClickedItem(item.id);
+            _dragStarted = false;
+            evt.Use();
+        }
+        else if (evt.type == EventType.MouseUp && evt.button == 0 && _pressedItem is not null)
+        {
+            var pressedItem = _pressedItem;
+            var completeClick = pressedItem.id.Equals(item.id) && !_dragStarted &&
+                                !DragAndDrop.isDragging;
+            var clickCount = _pressedClickCount;
+            var keepMultiSelection = _pressedKeepMultiSelection;
+            var shift = _pressedShift;
+            var action = _pressedAction;
+            ClearPointerPress();
+            if (completeClick)
+            {
+                SelectionClick(item, keepMultiSelection, shift, action);
+                if (clickCount >= 2) DoubleClickedItem(item.id);
+                else SingleClickedItem(item.id);
+            }
             evt.Use();
         }
         else if (evt.type == EventType.ContextClick)
@@ -871,6 +904,11 @@ public abstract class TreeView<TIdentifier>
         {
             var delta = evt.mousePosition - _dragStart;
             if (Fix64.Abs(delta.x) + Fix64.Abs(delta.y) < 4) return;
+            if (DragAndDrop.isDragging)
+            {
+                _pressedItem = null;
+                return;
+            }
             var dragged = IsSelected(_dragCandidate.id) ? GetSelection() : [_dragCandidate.id];
             var args = new CanStartDragArgs { draggedItem = _dragCandidate, draggedItemIDs = dragged };
             if (!CanStartDrag(args)) return;
@@ -878,6 +916,7 @@ public abstract class TreeView<TIdentifier>
             SetupDragAndDrop(new SetupDragAndDropArgs { draggedItemIDs = dragged });
             DragAndDrop.StartDrag(_dragCandidate.displayName);
             _dragStarted = true;
+            _pressedItem = null;
             evt.Use();
         }
     }
@@ -1000,8 +1039,38 @@ public abstract class TreeView<TIdentifier>
         else if (evt.type == EventType.MouseDown && evt.button == 0 &&
                  _bodyRect.Contains(evt.mousePosition) && deselectOnUnhandledMouseDown)
         {
-            SetSelection([], TreeViewSelectionOptions.FireSelectionChanged);
+            _emptyAreaPressed = true;
+            _pressedItem = null;
+            _dragCandidate = null;
+            _dragStarted = false;
+            evt.Use();
         }
+        else if (evt.type == EventType.MouseUp && evt.button == 0 &&
+                 (_emptyAreaPressed || _pressedItem is not null))
+        {
+            var clearSelection = _emptyAreaPressed && _hoveredItem is null &&
+                                 _bodyRect.Contains(evt.mousePosition);
+            ClearPointerPress();
+            if (clearSelection)
+                SetSelection([], TreeViewSelectionOptions.FireSelectionChanged);
+            evt.Use();
+        }
+        else if (evt.type is EventType.MouseLeaveWindow or EventType.DragExited)
+        {
+            ClearPointerPress();
+        }
+    }
+
+    private void ClearPointerPress()
+    {
+        _pressedItem = null;
+        _pressedKeepMultiSelection = false;
+        _pressedShift = false;
+        _pressedAction = false;
+        _pressedClickCount = 0;
+        _emptyAreaPressed = false;
+        _dragCandidate = null;
+        _dragStarted = false;
     }
 
     private void FinishRename(bool accepted)

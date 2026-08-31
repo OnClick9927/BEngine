@@ -21,7 +21,9 @@ description: "Develop and use BEngine core runtime, editor host, launcher, playe
 ## Work with Project assets
 
 - Switch the Project window between One Column and Two Column from its window menu. Its left tree has independently scrolling Assets and Packages panes; drag their horizontal separator to resize the lower Packages pane. The saved editor layout persists this height and clamps both panes to usable bounds after a resize.
-- In Two Column mode, keep each file/folder label horizontally centered on its thumbnail. Long labels must remain clipped with an end ellipsis inside the tile while the full name stays available from the tooltip; preserve this at every supported Editor Scale.
+- In Two Column mode, keep each file/folder label horizontally centered on its thumbnail. Long labels must remain clipped with an end ellipsis inside the tile while the full name stays available from the tooltip; preserve this at every supported Editor Scale. Project labels omit only the final suffix: `Spark.png` renders as `Spark`, while `Showcase.atlas.yaml` renders as `Showcase.atlas`; never rename the physical file or asset path for display.
+- Project and Hierarchy commit Selection only after MouseDown and MouseUp occur on the same TreeView row. Moving off the row or starting a drag cancels that click and preserves Selection, so a Project/Hierarchy BObject can be assigned to an unlocked Inspector ObjectField. Keep the drag cursor active during the gesture and apply ObjectField type and `allowSceneObjects` validation at the drop target.
+- Text editors use the native keyboard repeat delay and rate for held `Backspace`, `Delete`, Left, Right, `Home`, and `End`. Apply the first key immediately, stop on KeyUp or focus loss, and do not synthesize a second repeat stream when the native backend already emits repeats.
 - The Project context menu and top `Assets` menu use the same `MenuItem` registry, including entries contributed by project scripts and packages. `/` creates an AdvancedDropdown subtree.
 - Create built-in content with `Assets/Create/Folder`, `C# Script`, `Scripting/ScriptableObject Script`, `Assembly Definition`, `Scene`, `Prefab`, `Shader`, `Text/Text File`, `Text/Markdown File`, `Data/JSON File`, and `Data/YAML File`.
 - Create authored render assets with `Assets/Create/Rendering/Material` and `Assets/Create/2D/Texture Atlas`. To author a Sprite, select a PNG in Project, set Inspector `Texture Type` to `Sprite`, adjust Pivot/PPU if needed, then click `Apply`; do not use or document an `Assets/Create/2D/Sprite` workflow. The current runtime image decoder supports PNG only.
@@ -30,6 +32,13 @@ description: "Develop and use BEngine core runtime, editor host, launcher, playe
 - Use `Assets/Import Package...` and `Export Package...` for `.bpackage` archives. Use `Assets/Build Asset Bundles...` after configuring `Project Settings/Asset Bundles`.
 - Select a texture, font, shader, script, scene, prefab, material, sprite, atlas, or other `BAsset` to inspect its type-specific preview. Drag the Preview splitter to resize it and use the foldout to collapse it.
 - Texture import settings are `compressionFormat`, `filterMode`, `wrapMode`, `generateMipMaps`, `maxTextureSize`, and `pixelsPerUnit`; font settings are `defaultSize`, `includeKerning`, and `characterSet`; shader settings are `strictCompilation` and `optimizationLevel`. Apply or Revert in the FileAsset Inspector explicitly.
+
+## Create and identify SubAssets
+
+- A SubAsset has no independent top-level identity. Identify it by its main asset GUID plus a non-zero `localIdentifier`; main assets use local ID 0. Serialized BAsset references use `guid:<main-guid>#subasset=<localIdentifier>`, so moving or renaming the main asset preserves the reference.
+- Use `AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)` for an embedded SubAsset and `AssetDatabase.RemoveObjectFromAsset(objectToRemove)` to detach it. A SubAsset cannot own another SubAsset, and imported representations such as a Sprite owned by its TextureImporter cannot be removed manually.
+- Use `AssetDatabase.LoadAllAssetsAtPath(path)` for the main asset plus all imported, embedded, and file-backed representations. Use `LoadAllAssetRepresentationsAtPath(path)` for the representations only, `IsMainAsset`/`IsSubAsset` to classify an object, and `TryGetGUIDAndLocalFileIdentifier` to retrieve its stable identity. Runtime code can use `BAsset.LoadSubAsset<T>(mainPath, localIdentifier)`.
+- Keep SubAssets hidden as independent Project rows. Expose them through typed ObjectFields, Inspector UI, or the enumeration APIs; use `EditorUtility.SetDirty` and the normal save path after editing embedded object data.
 
 ## Author and apply editor GUI skins
 
@@ -78,7 +87,8 @@ GUILayout.Button("Build", packageStyle);
 
 - A Sprite is the import mode of its PNG, backed by that image's `.meta` (`textureType=Sprite`, Pivot, PPU, Filter Mode, and Wrap Mode); it is not a separately authored asset. Legacy `*.sprite.yaml` files remain read-compatible only and must not be created for new content.
 - Open `Window/2D/Texture Atlas`. New/Save/Reload control the manifest; set Max Size, Padding, and Extrude; select Sprite-mode image assets in Project and choose `Add Selected`; then Build.
-- The builder requires at least one valid Sprite-mode PNG input (or a legacy read-compatible source), unique references/names, deterministic power-of-two packing, and `Extrude <= Padding`. The window previews the generated Atlas.
+- The Atlas Inspector and Texture Atlas window draw each source as a typed Sprite ObjectField. Version 3 manifests persist each `SpriteReferences` entry as the Sprite GUID, not its path; path entries remain read-compatible for older manifests and are migrated when edited or built.
+- The builder requires at least one valid Sprite-mode PNG input (or a legacy read-compatible source), unique references/names, deterministic power-of-two packing, and `Extrude <= Padding`. The generated PNG is a file-backed, hidden SubAsset identified by the Atlas GUID and a reserved localIdentifier; the window previews it without exposing a second top-level Project asset.
 - Assign only a `Sprite` to `SpriteRenderer.sprite`. `TextureAtlasResolver` finds any Atlas that references it and supplies UV, pivot, and batch identity; an unpacked Sprite uses its own texture. Batching requires adjacent sorted submissions with the same Material, Shader, and Atlas/texture identity.
 
 ## Preserve runtime architecture
@@ -86,7 +96,7 @@ GUILayout.Button("Build", packageStyle);
 - Put portable runtime APIs in `src/Core/BEngine`; keep them independent of `BEngine.Editor` and optional packages. Put editor-only APIs and GPU IMGUI in `src/Core/BEngine.Editor`.
 - Keep project selection/history in `BEngine.Launcher`, and exported-app startup/package loading in `BEngine.Player`. Load runtime files from `Resources` and editor files from `Editor`; Core intentionally has no `package.yaml`.
 - Derive engine objects from `BObject`; use `GameObject`, `Component`, `Behaviour`, `MonoBehaviour`, and `ScriptableObject` according to lifecycle needs. Use `Fix64`, `Vector2`, and scalar angles for runtime simulation.
-- Serialize through `YamlUtility`, `Document`, and registered converters/validators. Persist asset references as stable `Assets/...` or `Packages/...` paths and preserve concrete `$type` sidecars for base-typed asset fields.
+- Serialize through `YamlUtility`, `Document`, and registered converters/validators. Persist main-asset references as stable `Assets/...` or `Packages/...` paths; persist SubAsset references as the main GUID plus localIdentifier, and preserve concrete `$type` sidecars for base-typed asset fields.
 - Keep layer values as contiguous natural indices from `1` through `63`, not powers of two. Preserve the stable identities of the five default built-in layers: they may be renamed and reordered but not deleted; custom layers may be added, deleted, renamed, and reordered. Resolve the built-in UI layer by identity rather than a fixed number. Keep masks as a separate bit representation and create them through `SortingLayer.ToMask`, `LayerMask.MaskForLayer`, or `LayerMask.GetMask`. Rendering sorts by layer, order, hierarchy, transparency, then stable submission order.
 
 ## Extend the editor accurately

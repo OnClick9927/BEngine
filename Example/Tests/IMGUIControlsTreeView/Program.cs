@@ -19,6 +19,7 @@ internal static class Program
             VerifyPublicSurface();
             VerifyGenericTreeModel();
             VerifySelectionExpansionAndSearch();
+            VerifyPointerSelectionAndDragSemantics();
             VerifyRowsAndCustomHeights();
             VerifyRenameAndDragHooks();
             VerifyIntCompatibilityWrappers();
@@ -26,6 +27,7 @@ internal static class Program
             VerifySearchAndAdvancedDropdown();
             Console.WriteLine("IMGUI_CONTROLS_TREEVIEW_OK|public-surface,guid-generic,int-wrapper," +
                               "parents-depths,reload,rows,search,expand,selection-callback,selection-options," +
+                              "deferred-click-selection,drag-preserves-selection,drag-cursor," +
                               "row-gui,gpu-render,custom-height,rename,drag-drop,multicolumn,sorting,visibility," +
                               "search-field,advanced-dropdown");
             return 0;
@@ -158,6 +160,79 @@ internal static class Program
             "An unfocused selected TreeView row lost its inactive selection background.");
     }
 
+    private static void VerifyPointerSelectionAndDragSemantics()
+    {
+        var tree = new GuidTree(new TreeViewState<Guid>());
+        tree.Reload();
+        tree.ExpandAll();
+        tree.SetSelection([GuidTree.AlphaId]);
+        var beta = tree.RowCenter(GuidTree.BetaId);
+        var gamma = tree.RowCenter(GuidTree.GammaId);
+        var draw = () => tree.OnGUI(new Rect(0, 0, 360, 220));
+
+        Dispatch(new Event(EventType.MouseDown)
+        {
+            mousePosition = beta,
+            button = 0,
+            clickCount = 1
+        }, draw, 360, 220);
+        Require(tree.GetSelection().SequenceEqual([GuidTree.AlphaId]) && tree.SelectionChanges == 0,
+            "TreeView changed Selection on MouseDown before a click completed.");
+        Dispatch(new Event(EventType.MouseUp)
+        {
+            mousePosition = gamma,
+            button = 0,
+            clickCount = 1
+        }, draw, 360, 220);
+        Require(tree.GetSelection().SequenceEqual([GuidTree.AlphaId]) && tree.SelectionChanges == 0,
+            "TreeView selected a row after MouseUp occurred over a different row.");
+
+        Dispatch(new Event(EventType.MouseDown)
+        {
+            mousePosition = beta,
+            button = 0,
+            clickCount = 1
+        }, draw, 360, 220);
+        Dispatch(new Event(EventType.MouseUp)
+        {
+            mousePosition = beta,
+            button = 0,
+            clickCount = 1
+        }, draw, 360, 220);
+        Require(tree.GetSelection().SequenceEqual([GuidTree.BetaId]) && tree.SelectionChanges == 1 &&
+                tree.SingleClicks == 1,
+            "TreeView did not select and invoke SingleClickedItem after a complete same-row click.");
+
+        tree.SetSelection([GuidTree.AlphaId]);
+        DragAndDrop.PrepareStartDrag();
+        Dispatch(new Event(EventType.MouseDown)
+        {
+            mousePosition = beta,
+            button = 0,
+            clickCount = 1
+        }, draw, 360, 220);
+        Dispatch(new Event(EventType.MouseDrag)
+        {
+            mousePosition = beta + new Vector2(8, 0),
+            button = 0
+        }, draw, 360, 220);
+        Require(tree.GetSelection().SequenceEqual([GuidTree.AlphaId]) &&
+                tree.SetupDraggedIds.SequenceEqual([GuidTree.BetaId]) &&
+                DragAndDrop.title == "Beta",
+            "Starting an unselected TreeView row drag changed Selection or published the wrong row.");
+        var requestedCursor = typeof(GUI).GetProperty("requestedMouseCursor",
+            BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null);
+        Require(Equals(requestedCursor, MouseCursor.MoveArrow),
+            "An active TreeView drag did not request a distinct drag mouse cursor.");
+        Dispatch(new Event(EventType.MouseUp)
+        {
+            mousePosition = beta + new Vector2(8, 0),
+            button = 0
+        }, draw, 360, 220);
+        Require(tree.GetSelection().SequenceEqual([GuidTree.AlphaId]),
+            "Completing a TreeView drag also committed the source row click.");
+    }
+
     private static void VerifyRenameAndDragHooks()
     {
         var tree = new GuidTree(new TreeViewState<Guid>());
@@ -282,6 +357,13 @@ internal static class Program
         return commands;
     }
 
+    private static void Dispatch(Event evt, Action draw, int width, int height)
+    {
+        BeginFrame.Invoke(null, [evt, width, height, new List<GpuCanvasCommand>()]);
+        try { draw(); }
+        finally { EndFrame.Invoke(null, null); }
+    }
+
     private static bool HasSolidRect(IEnumerable<GpuCanvasCommand> commands, Color color) =>
         commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                 command.Color == GpuCanvasColor.FromColor(color));
@@ -320,6 +402,7 @@ internal static class Program
         public int BeforeRowsCount { get; private set; }
         public int AfterRowsCount { get; private set; }
         public int CanRenameCalls { get; private set; }
+        public int SingleClicks { get; private set; }
         public string LastSearch { get; private set; } = string.Empty;
         public IList<Guid> LastSelection { get; private set; } = [];
         public List<(Guid Id, int Height)> DrawnRows { get; } = [];
@@ -352,6 +435,8 @@ internal static class Program
             SelectionChanges++;
             LastSelection = selectedIds.ToArray();
         }
+
+        protected override void SingleClickedItem(Guid id) => SingleClicks++;
 
         protected override void ExpandedStateChanged() => ExpandedChanges++;
 
@@ -425,6 +510,14 @@ internal static class Program
             insertAtIndex = insertAtIndex,
             performDrop = performDrop
         });
+
+        public Vector2 RowCenter(Guid id)
+        {
+            var row = GetRows().ToList().FindIndex(item => item.id == id);
+            if (row < 0) throw new InvalidOperationException($"Tree row {id} is not visible.");
+            var rect = GetRowRect(row);
+            return new Vector2(100, rect.y + rect.height / 2 + 1);
+        }
     }
 
     private sealed class IntTree(TreeViewState state) : TreeView(state)

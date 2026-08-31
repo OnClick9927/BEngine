@@ -3,13 +3,13 @@ version: 2
 name: Last Session
 activeLayout: Last Session
 windowX: 479
-windowY: 96
+windowY: 121
 windowWidth: 1753
-windowHeight: 999
+windowHeight: 974
 windowMaximized: false
-hierarchyWidth: 140
+hierarchyWidth: 139.99997
 inspectorWidth: 603
-bottomHeight: 915
+bottomHeight: 890
 projectFoldersWidth: 180.0637
 projectPackagesHeight: 269
 projectThumbnailSize: 32
@@ -31,6 +31,7 @@ sceneCameraBackgroundR: 0.055
 sceneCameraBackgroundG: 0.062
 sceneCameraBackgroundB: 0.071
 sceneCameraDrawGrid: true
+focusedWindowId: Game
 dockRoot:
   type: Split
   sideBySide: true
@@ -82,7 +83,7 @@ dockRoot:
   second:
     type: Split
     sideBySide: true
-    ratio: 0.22712934
+    ratio: 0.2271293
     panels: []
     first:
       type: Group
@@ -108,7 +109,7 @@ windows:
   x: 2
   y: 58
   width: 263.58633
-  height: 915
+  height: 890
   preferredDockArea: Center
   panelIndex: 0
   dockX: 0
@@ -122,7 +123,7 @@ windows:
   x: 270.58633
   y: 58
   width: 844.4137
-  height: 165.85521
+  height: 160.71043
   preferredDockArea: Center
   panelIndex: 0
   dockX: 0
@@ -134,9 +135,9 @@ windows:
   docked: true
   locked: false
   x: 270.58633
-  y: 252.85521
+  y: 247.71043
   width: 844.4137
-  height: 370.14478
+  height: 359.56418
   preferredDockArea: Center
   panelIndex: 0
   dockX: 0
@@ -148,9 +149,9 @@ windows:
   docked: true
   locked: false
   x: 270.58633
-  y: 652
+  y: 636.2746
   width: 844.4137
-  height: 321
+  height: 311.7254
   preferredDockArea: Center
   panelIndex: 0
   dockX: 0
@@ -163,8 +164,8 @@ windows:
   locked: false
   x: 1120
   y: 58
-  width: 140
-  height: 915
+  width: 139.99997
+  height: 890
   preferredDockArea: Center
   panelIndex: 0
   dockX: 0
@@ -178,7 +179,7 @@ windows:
   x: 1265
   y: 58
   width: 486
-  height: 915
+  height: 890
   preferredDockArea: Center
   panelIndex: 0
   dockX: 0
@@ -251,7 +252,7 @@ closedWindows:
   locked: false
   x: 1319
   y: 58
-  width: 213.49998
+  width: 213.5
   height: 915
   preferredDockArea: Center
   panelIndex: 0
