@@ -25,11 +25,30 @@ internal static class MultiWindowLifecycleTests
             TestAssert.Require(windowMenu.Count > 0 && windowMenu.All(item => !item.Checked),
                 "The top-level Window menu still renders checked entries.");
             var addNewTabPaths = harness.AddNewTabMenuPaths();
-            TestAssert.Require(addNewTabPaths.Contains("Add new tab/General/Inspector") &&
-                               addNewTabPaths.Contains("Add new tab/Editor Status") &&
-                               addNewTabPaths.All(path =>
-                                   !path.StartsWith("Add new tab/Panels/", StringComparison.OrdinalIgnoreCase)),
-                "Add new tab did not include built-in and registered extension windows, or included Window commands.");
+            var expectedTabPaths = new[]
+            {
+                "Add new tab/General/Game",
+                "Add new tab/General/Hierarchy",
+                "Add new tab/General/Inspector",
+                "Add new tab/General/Project",
+                "Add new tab/General/Scene",
+                "Add new tab/Tests/Opt-in Window"
+            };
+            TestAssert.Require(addNewTabPaths.Order(StringComparer.OrdinalIgnoreCase)
+                                   .SequenceEqual(expectedTabPaths.Order(StringComparer.OrdinalIgnoreCase)) &&
+                               !addNewTabPaths.Contains("Add new tab/Editor Status") &&
+                               !addNewTabPaths.Any(path => path.Contains("Unmarked", StringComparison.Ordinal)),
+                "Add new tab did not restrict discovery to the five defaults and explicitly opted-in windows.");
+
+            var sourceBounds = ((EditorWindow)harness.InspectorWindow).position;
+            var extensionTab = harness.OpenAddNewTab(harness.InspectorWindow,
+                "Add new tab/Tests/Opt-in Window");
+            additional.Add(extensionTab);
+            TestAssert.Require(extensionTab is AddNewTabOptInWindow &&
+                               harness.SharesDockGroup(harness.InspectorWindow, extensionTab) &&
+                               ((EditorWindow)extensionTab).docked &&
+                               ((EditorWindow)extensionTab).position.Equals(sourceBounds),
+                "An opted-in external EditorWindow was not added to the source Dock group at the source size.");
 
             foreach (var specification in specifications)
             {
@@ -139,6 +158,14 @@ internal static class MultiWindowLifecycleTests
             harness.CloseWindow(restored);
             var persistedLayout = harness.CaptureLayout();
             harness.ApplyLayout(persistedLayout);
+            var freshSceneTab = harness.OpenAddNewTab(harness.InspectorWindow,
+                "Add new tab/General/Scene");
+            additional.Add(freshSceneTab);
+            TestAssert.Require(!ReferenceEquals(freshSceneTab, scene) &&
+                               harness.SharesDockGroup(harness.InspectorWindow, freshSceneTab) &&
+                               harness.IsWindowDocked(freshSceneTab) &&
+                               !harness.IsMaximized(freshSceneTab),
+                "Add new tab restored an old closed/Float placement instead of creating a fresh source-group tab.");
             var restoredAfterLayoutLoad = harness.OpenAdditionalBuiltIn(harness.SceneWindow, "Center");
             additional.Add(restoredAfterLayoutLoad);
             TestAssert.Require(!ReferenceEquals(restoredAfterLayoutLoad, scene) &&
@@ -161,3 +188,8 @@ internal sealed class MultiWindowInspectorProbe : ScriptableObject
 {
     public int Value { get; set; }
 }
+
+[EditorWindowTab("Tests/Opt-in Window")]
+internal sealed class AddNewTabOptInWindow : EditorWindow;
+
+internal sealed class AddNewTabUnmarkedWindow : EditorWindow;

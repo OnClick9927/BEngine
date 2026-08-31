@@ -33,6 +33,9 @@ internal sealed class InspectorHarness : IDisposable
             "BEngine.Editor.GpuEditorApplication", throwOnError: true)!;
         _application = RuntimeHelpers.GetUninitializedObject(_applicationType);
         InitializeField("_scriptSourceCache");
+        InitializeField("_editorPanels");
+        InitializeField("_windowLayer");
+        InitializeField("_nativeFloatingWindows");
         SetField("_workspace", workspace);
         SetField("_scene", _fallbackScene);
         SetField("_selected", target);
@@ -124,7 +127,7 @@ internal sealed class InspectorHarness : IDisposable
     {
         var field = _applicationType.GetField(name, Members) ??
                     throw new MissingFieldException(_applicationType.FullName, name);
-        var value = Activator.CreateInstance(field.FieldType) ??
+        var value = Activator.CreateInstance(field.FieldType, nonPublic: true) ??
                     throw new InvalidOperationException($"Could not initialize test field {name}.");
         field.SetValue(_application, value);
     }

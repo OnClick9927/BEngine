@@ -435,7 +435,7 @@ public static class EditorGUI
                 GUI.changed = true;
             }
         }
-        if (EditorObjectPicker.TryHandleDrag(field, objectType, allowSceneObjects, out var dragged))
+        if (EditorObjectPicker.TryHandleDrag(field, token, objectType, allowSceneObjects, out var dragged))
         {
             if (mixed || !EditorObjectPicker.SameObject(value, dragged))
             {

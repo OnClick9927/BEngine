@@ -32,8 +32,8 @@ internal static class RenderOrderingTests
         TestAssert.Require(batches.Count == 5 && batches[0].Submissions.Count == 3,
             "Batching did not merge only adjacent Material/Shader/Atlas-compatible submissions.");
         TestAssert.Throws<ArgumentOutOfRangeException>(
-            () => new RenderSortKey2D(3, 0, 0, RenderTransparency.Opaque, 0),
-            "RenderSortKey2D accepted a non-power-of-two layer.");
+            () => new RenderSortKey2D(64, 0, 0, RenderTransparency.Opaque, 0),
+            "RenderSortKey2D accepted an out-of-range layer index.");
 
         var scene = new Scene("Renderer layer boundaries");
         var sprite = scene.CreateGameObject("Sprite").AddComponent<SpriteRenderer>();

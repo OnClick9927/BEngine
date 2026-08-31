@@ -21,10 +21,11 @@ internal static class Program
             VerifyNativeWindowFrameScheduling();
             VerifyDockHostHoverIsolation();
             VerifyTitleContextMenu();
+            VerifyAddNewTabSourceGroup();
             VerifyWindowLockChrome();
             VerifyNarrowTitleStability();
             Console.WriteLine(
-                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,native-float,native-move-loop,cross-monitor,dpi-coordinates,cross-dpi-caption,resize-not-dock,offscreen-recovery,negative-monitor,inactive-render-throttle,repaint-wakeup,restore-wakeup,focus-wakeup,dock-host-hover-isolation,host-transfer-input,in-process-transients,in-process-dock-preview,in-process-drag-dock,z-order,input-gating,popup-dismiss,drag-out-immediate,splitter-not-float,dock-back,dock-float-lock-roundtrip,three-dot-first-click,three-dot-window-actions,lock-menu-only,title-context-menu,window-lock,narrow-title-stability,narrow-title-ellipsis");
+                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,native-float,native-move-loop,cross-monitor,dpi-coordinates,cross-dpi-caption,resize-not-dock,offscreen-recovery,negative-monitor,inactive-render-throttle,repaint-wakeup,restore-wakeup,focus-wakeup,dock-host-hover-isolation,host-transfer-input,in-process-transients,in-process-dock-preview,in-process-drag-dock,z-order,input-gating,popup-dismiss,drag-out-immediate,splitter-not-float,dock-back,dock-float-lock-roundtrip,three-dot-first-click,three-dot-window-actions,add-tab-source-group,lock-menu-only,title-context-menu,window-lock,narrow-title-stability,narrow-title-ellipsis");
             return 0;
         }
         catch (Exception exception)
@@ -394,8 +395,12 @@ internal static class Program
         first.OpenInternal();
         second.OpenInternal();
         var dock = new ImGuiDockWorkspace();
-        dock.PopulateAddNewTabMenu = menu =>
+        EditorWindow? addNewTabSource = null;
+        dock.PopulateAddNewTabMenu = (menu, source) =>
+        {
+            addNewTabSource = source;
             menu.AddItem(new GUIContent("Add new tab/General/Inspector"), false, () => { });
+        };
         dock.Add("Context A", first, DockArea.Center, false);
         dock.Add("Context B", second, DockArea.Center, true);
 
@@ -442,6 +447,8 @@ internal static class Program
                 "EditorWindow title right-click did not use context-menu presentation.");
             Require(titleMenu.Any(item => item.Path == "Probe/Context A"),
                 "EditorWindow title right-click opened the menu for the wrong window.");
+            Require(ReferenceEquals(addNewTabSource, first),
+                "EditorWindow title menu did not identify the window that requested Add new tab.");
             Require(titleMenu.Any(item => item.Path == "Float") &&
                     titleMenu.Any(item => item.Path == "Maximize") &&
                     titleMenu.Any(item => item.Path == "Add new tab/General/Inspector") &&
@@ -459,6 +466,8 @@ internal static class Program
             Require(captured is not null && capturedKind == GenericMenuPresentationKind.DropDown &&
                     first.hasFocus && menuOpenCount == opensBeforeOptions + 1,
                 "An activation click on the dock three-dot button did not immediately open its anchored menu.");
+            Require(ReferenceEquals(addNewTabSource, first),
+                "Dock three-dot Add new tab did not preserve its source window.");
             RenderDock(dock, new Event(EventType.MouseUp) { mousePosition = morePoint, button = 0 });
             Require(menuOpenCount == opensBeforeOptions + 1,
                 "The pointer-up following an immediate dock menu open dispatched the menu twice.");
@@ -491,6 +500,37 @@ internal static class Program
             first.CloseInternal();
             second.CloseInternal();
         }
+    }
+
+    private static void VerifyAddNewTabSourceGroup()
+    {
+        var source = new ProbeWindow("Source Tab");
+        var sibling = new ProbeWindow("Sibling Tab");
+        var added = new ProbeWindow("Added Tab")
+        {
+            position = new Rect(-500, -400, 123, 87)
+        };
+        source.OpenInternal();
+        sibling.OpenInternal();
+        added.OpenInternal();
+        var dock = new ImGuiDockWorkspace();
+        var sourcePanel = dock.Add("Source", source, DockArea.Right, true);
+        dock.Add("Sibling", sibling, DockArea.Right, false);
+        RenderDock(dock, new Event(EventType.Repaint));
+        var sourceBounds = source.position;
+
+        var addedPanel = dock.AddTab("Added", added, source, DockArea.Center);
+        Require(ReferenceEquals(sourcePanel.Group, addedPanel.Group),
+            "Add new tab did not insert the new window into its source Dock group.");
+        Require(sourcePanel.Group!.Panels.IndexOf(addedPanel) ==
+                sourcePanel.Group.Panels.IndexOf(sourcePanel) + 1,
+            "Add new tab did not insert immediately after its source tab.");
+        Require(dock.IsSelected(added) && added.position.Equals(sourceBounds),
+            "Add new tab did not select the new tab or copy the source Dock size.");
+
+        source.CloseInternal();
+        sibling.CloseInternal();
+        added.CloseInternal();
     }
 
     private static void VerifyNarrowTitleStability()

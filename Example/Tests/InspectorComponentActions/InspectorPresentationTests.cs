@@ -7,7 +7,7 @@ internal static class InspectorPresentationTests
 {
     internal static void Run(InspectorWorkspaceFixture fixture)
     {
-        var target = new GameObject("Presentation Target") { tag = "Player", layer = 8 };
+        var target = new GameObject("Presentation Target") { tag = "Player", layer = 3 };
         target.AddComponent<InspectorActionProbe>();
         using var inspector = new InspectorHarness(target, fixture.Workspace);
         GenericMenuCapture.Install();
@@ -18,7 +18,7 @@ internal static class InspectorPresentationTests
         TestAssert.Text(commands, "Tag");
         TestAssert.Text(commands, "Player");
         TestAssert.Text(commands, "Layer");
-        TestAssert.Text(commands, "2^3  Gameplay");
+        TestAssert.Text(commands, "3  Gameplay");
         TestAssert.Text(commands, "Transform");
         TestAssert.Text(commands, "Position");
         TestAssert.Text(commands, "Rotation");

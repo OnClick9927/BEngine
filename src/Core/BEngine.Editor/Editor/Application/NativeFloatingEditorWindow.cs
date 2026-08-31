@@ -13,7 +13,7 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
     private Win32NativeMoveScope? _nativeMoveScope;
     private Rect? _genericMenuAnchor;
     private bool _disposed;
-    private Action<GenericMenu>? _populateAddNewTabMenu;
+    private Action<GenericMenu, EditorWindow>? _populateAddNewTabMenu;
 
     internal NativeFloatingEditorWindow(EditorWindow window, EditorWindowState state, Rect screenBounds)
     {
@@ -61,7 +61,7 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
     internal IGraphicsDevice? GraphicsDevice => _nativeWindow.graphicsDevice;
     internal IReadOnlyList<EditorWindow> TransientWindows =>
         _transientLayer.Presentations.Select(item => item.Window).ToArray();
-    internal Action<GenericMenu>? PopulateAddNewTabMenu
+    internal Action<GenericMenu, EditorWindow>? PopulateAddNewTabMenu
     {
         get => _populateAddNewTabMenu;
         set
@@ -309,7 +309,7 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
         var menu = new GenericMenu();
         Window.PopulateContextMenu(menu);
         if (menu.GetItemCount() > 0) menu.AddSeparator(string.Empty);
-        PopulateAddNewTabMenu?.Invoke(menu);
+        PopulateAddNewTabMenu?.Invoke(menu, Window);
         if (PopulateAddNewTabMenu is not null) menu.AddSeparator(string.Empty);
         if (State == EditorWindowState.Normal)
             menu.AddItem(new GUIContent("Dock"), false, () =>

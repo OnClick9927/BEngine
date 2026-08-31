@@ -5,7 +5,7 @@ public sealed class ProjectSettingsDocument : Document
     private List<string> _tags = TagManager.CreateDefaultTags().ToList();
 
     public string Format { get; set; } = "BEngine.ProjectSettings";
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
     public string Locale { get; set; } = "zh-CN";
     public string CompanyName { get; set; } = "DefaultCompany";
     public string ProductName { get; set; } = "BEngine Game";
@@ -25,6 +25,9 @@ public sealed class ProjectSettingsDocument : Document
         SortingLayerRegistry.CreateDefaults().Select(item => new SortingLayerDocument
         {
             Value = item.Value,
-            Name = item.Name
+            Name = item.Name,
+            BuiltIn = item.IsBuiltIn,
+            IsUi = item.IsUi,
+            BuiltInId = item.BuiltInId
         }).ToList();
 }

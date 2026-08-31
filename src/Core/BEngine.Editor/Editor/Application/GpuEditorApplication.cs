@@ -641,10 +641,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 root.Equals("Window", StringComparison.OrdinalIgnoreCase) ? false : node.Checked);
     }
 
-    private void PopulateAddNewTabMenu(GenericMenu menu)
+    private void PopulateAddNewTabMenu(GenericMenu menu, EditorWindow sourceWindow)
     {
         ArgumentNullException.ThrowIfNull(menu);
-        foreach (var item in WindowTabMenuItems()
+        ArgumentNullException.ThrowIfNull(sourceWindow);
+        foreach (var item in WindowTabMenuItems(sourceWindow)
                      .DistinctBy(item => item.Label, StringComparer.OrdinalIgnoreCase))
         {
             var content = new GUIContent($"Add new tab/{item.Label}");
@@ -655,28 +656,35 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
     }
 
-    private IEnumerable<MenuEntry> WindowTabMenuItems()
+    private IEnumerable<MenuEntry> WindowTabMenuItems(EditorWindow sourceWindow)
     {
-        foreach (var builtIn in _builtInWindows.OrderBy(item => BuiltInWindowMenuPath(item.Window),
-                     StringComparer.OrdinalIgnoreCase))
+        foreach (var descriptor in EditorWindowMetadataRegistry.GetTabDescriptors())
         {
-            var captured = builtIn;
-            yield return new MenuEntry(BuiltInWindowMenuPath(captured.Window), true, () =>
-            {
-                if (SupportsMultipleBuiltIn(captured.Window))
-                    OpenBuiltInInstance(captured.Window, captured.Area);
-                else
-                    ShowBuiltIn(captured.Window, captured.Area);
-            });
+            var captured = descriptor;
+            yield return new MenuEntry(captured.MenuPath, true,
+                () => OpenNewTab(captured.WindowType, sourceWindow));
         }
+    }
 
-        foreach (var item in FlattenMenu(_menuItems.GetRoot("Window")))
-        {
-            if (item.Label.Equals("Panels", StringComparison.OrdinalIgnoreCase) ||
-                item.Label.StartsWith("Panels/", StringComparison.OrdinalIgnoreCase))
-                continue;
-            yield return item with { Checked = false };
-        }
+    private void OpenNewTab(Type windowType, EditorWindow sourceWindow)
+    {
+        ArgumentNullException.ThrowIfNull(windowType);
+        ArgumentNullException.ThrowIfNull(sourceWindow);
+        var window = CreateBuiltInWindow(windowType);
+        var builtIn = _builtInWindows.FirstOrDefault(item => item.Window.GetType() == windowType);
+        var baseId = builtIn.Window is not null
+            ? ConfigureBuiltInWindow(window)
+            : $"EditorWindow:{windowType.Assembly.GetName().Name}:{windowType.FullName}";
+        window.PersistentId = $"{baseId}:{Guid.NewGuid():N}";
+        window.position = sourceWindow.position;
+        window.windowState = EditorWindowState.Normal;
+        window.docked = true;
+        window.OpenInternal();
+        _editorPanels[window] = _dock.AddTab(window.PersistentId, window, sourceWindow,
+            builtIn.Window is null ? DockArea.Center : builtIn.Area);
+        window.FocusInternal();
+        _mainWindow.Focus();
+        _layoutSaved = false;
     }
 
     private static string MenuDisplayLabel(string root, string label)
@@ -4507,6 +4515,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private static GUIStyle TreeRowStyle(bool selected) =>
         selected ? EditorStyles.treeViewRowSelected : EditorStyles.treeViewRow;
 
+    [EditorWindowTab("General/Hierarchy")]
     private sealed class ImGuiHierarchyWindow(GpuEditorApplication app) : EditorWindow
     {
         private GpuEditorApplication Application => app;
@@ -5367,6 +5376,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
     }
 
+    [EditorWindowTab("General/Scene")]
     private sealed class ImGuiSceneWindow(GpuEditorApplication app) : EditorWindow
     {
         private const float AxisHandleLength = 72;
@@ -6016,6 +6026,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         MenuOnly
     }
 
+    [EditorWindowTab("General/Game")]
     private sealed class ImGuiGameWindow(GpuEditorApplication app) : EditorWindow
     {
         private const int StatusButtonWidth = 68;
@@ -6241,6 +6252,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
     }
 
+    [EditorWindowTab("General/Inspector")]
     private sealed class ImGuiInspectorWindow(GpuEditorApplication app) : EditorWindow
     {
         private BObject? _lastTarget;
@@ -6738,7 +6750,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (layerIndex < 0)
             {
                 layers = [.. layers, (LayerMask.LayerToName(gameObject.layer), gameObject.layer)];
-                layerLabels = [.. layerLabels, $"2^{SortingLayer.IndexOf(gameObject.layer)}"];
+                layerLabels = [.. layerLabels, $"{SortingLayer.IndexOf(gameObject.layer)}"];
                 layerIndex = layers.Length - 1;
             }
             tagLabels = [.. tagLabels, "Add Tag..."];
@@ -6805,7 +6817,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 .ToArray();
             if (_layerOptions.Length == 0) _layerOptions = [("World", SortingLayer.Default)];
             _layerLabels = _layerOptions.Select(static item =>
-                $"2^{SortingLayer.IndexOf(item.Value)}  {item.Name}").ToArray();
+                $"{SortingLayer.IndexOf(item.Value)}  {item.Name}").ToArray();
             _layerVersion = LayerMask.version;
         }
 
@@ -6882,6 +6894,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
     }
 
+    [EditorWindowTab("General/Project")]
     private sealed class ImGuiProjectWindow(GpuEditorApplication app) : EditorWindow
     {
         private GpuEditorApplication Application => app;

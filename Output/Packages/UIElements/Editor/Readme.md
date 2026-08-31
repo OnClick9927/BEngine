@@ -1,8 +1,8 @@
 # BEngine UIElements
 
 UIElements 是 BEngine 的可选保留模式 UI 包，提供 UIDocument、VisualElement 树、UXML、USS、
-UI Builder、HTML Converter、运行时输入与数据控件。UI 使用 2^59 至 2^63 的五个专用层，
-永远显示在世界层之上，并可按 Layer/Order 与 UI 层 Particle 穿插。
+UI Builder、HTML Converter、运行时输入与数据控件。UI 使用具有稳定内建身份的 UI Sorting Layer，
+并可按 Layer/Order 与同层 Particle 穿插。该 Layer 的自然编号会随工程排序变化，不能写死数字。
 
 ## 快速开始
 
@@ -32,7 +32,8 @@ material、atlas 决定渲染与合批；interactable 决定指针派发；scale
 ScaleWithScreenSize；referenceWidth/referenceHeight 定义参考分辨率。OnEnable 自动 Reload。
 
 UI 合批与世界一致：Material、Shader、Atlas 决定是否兼容；正确的 Layer、Order、Hierarchy 和
-透明顺序优先。UI Document 和 VisualElement 只能使用五个 UI 层。
+透明顺序优先。UI Document 和 VisualElement 使用由稳定内建身份定位的 UI Layer；即使它被重命名
+或调整排序，运行时也会解析到其当前的自然编号。
 
 ## 控件
 

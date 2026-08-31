@@ -27,12 +27,14 @@ public readonly struct LayerMask : IEquatable<LayerMask>
         SortingLayer.IsValid(layer) ? SortingLayerRegistry.NameOf(layer) : string.Empty;
 
     public static LayerMask GetMask(params string[] layerNames) => new(layerNames.Aggregate(0UL,
-        static (mask, name) => mask | NameToLayer(name)));
+        static (mask, name) => mask | MaskForLayer(NameToLayer(name))));
+
+    public static ulong MaskForLayer(ulong layer) => layer == 0 ? 0 : SortingLayer.ToMask(layer);
 
     public bool Contains(ulong layer)
     {
         SortingLayer.Validate(layer);
-        return (value & layer) != 0;
+        return (value & SortingLayer.ToMask(layer)) != 0;
     }
 
     public bool Equals(LayerMask other) => value == other.value;

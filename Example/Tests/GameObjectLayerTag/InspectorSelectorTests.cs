@@ -18,7 +18,7 @@ internal static class InspectorSelectorTests
         inspector.Render(new Event(EventType.Layout));
         var commands = inspector.Render(new Event(EventType.Repaint));
         var tagValue = Text(commands, "Player");
-        var layerValue = Text(commands, "2^8  Gameplay");
+        var layerValue = Text(commands, "6  Gameplay");
         Text(commands, "Tag");
         Text(commands, "Layer");
 
@@ -37,18 +37,18 @@ internal static class InspectorSelectorTests
             "Selecting an Inspector Tag dropdown item did not update GameObject.tag.");
 
         commands = inspector.Render(new Event(EventType.Repaint));
-        layerValue = Text(commands, "2^8  Gameplay");
+        layerValue = Text(commands, "6  Gameplay");
         GenericMenuCapture.Reset();
         inspector.Click(Center(layerValue.Rect));
         TestAssert.Require(GenericMenuCapture.IsAdvanced,
             "The GameObject Layer field did not open as an AdvancedDropdown.");
         var layerItems = GenericMenuCapture.Items;
-        TestAssert.Require(layerItems.Any(item => item.Path == "2^1  Default" && item.Enabled) &&
-                           layerItems.Any(item => item.Path == "2^8  Gameplay" && item.On) &&
-                           layerItems.Any(item => item.Path == "2^9  Enemies" && item.Enabled) &&
+        TestAssert.Require(layerItems.Any(item => item.Path == "1  Default" && item.Enabled) &&
+                           layerItems.Any(item => item.Path == "6  Gameplay" && item.On) &&
+                           layerItems.Any(item => item.Path == "7  Enemies" && item.Enabled) &&
                            layerItems.Any(item => item.Path == "Edit Layers..." && item.Enabled),
             "The GameObject Layer field is missing configured Layers or its Edit Layers management entry.");
-        GenericMenuCapture.Invoke("2^1  Default");
+        GenericMenuCapture.Invoke("1  Default");
         inspector.Render(new Event(EventType.Repaint));
         TestAssert.Require(gameObject.layer == LayerMask.NameToLayer("Default"),
             "Selecting an Inspector Layer dropdown item did not update GameObject.layer.");

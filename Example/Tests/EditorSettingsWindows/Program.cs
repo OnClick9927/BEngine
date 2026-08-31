@@ -295,12 +295,25 @@ internal static class Program
             draft.AddTag("Collectible");
             draft.RenameTag(1, "Hero");
             draft.RemoveTag(2);
-            draft.SetLayerName(8, "Actors");
+            var protectedLayerCount = draft.SortingLayers.Count;
+            draft.RemoveLayer(SortingLayer.IndexOf(SortingLayer.Default));
+            Require(draft.SortingLayers.Count == protectedLayerCount,
+                "A mandatory built-in Layer could be removed.");
+            draft.AddLayer("Actors");
+            draft.AddLayer("Effects");
+            draft.MoveLayer(1, 1);
+            draft.MoveLayer(7, -1);
+            draft.RemoveLayer(6);
             Require(draft.IsDirty && draft.Error.Length == 0 &&
                     draft.Tags.SequenceEqual(["Untagged", "Hero", "Collectible"]) &&
+                    draft.SortingLayers.Count == SortingLayer.BuiltInLayerCount + 1 &&
+                    draft.SortingLayers[1].BuiltIn && draft.SortingLayers[1].BuiltInId == "Default" &&
+                    draft.SortingLayers[5].Name == "Actors" && draft.SortingLayers[5].Value == 6 &&
                     draft.TagReplacements.TryGetValue("Player", out var renamed) && renamed == "Hero" &&
                     draft.TagReplacements.TryGetValue("Enemy", out var deleted) && deleted == "Untagged",
-                "Tag add, rename, delete, or replacement tracking produced an invalid draft.");
+                $"Tag/Layer draft invalid: dirty={draft.IsDirty}, error='{draft.Error}', " +
+                $"tags={string.Join(',', draft.Tags)}, layers=" +
+                $"{string.Join(';', draft.SortingLayers.Select(layer => $"{layer.Value}:{layer.Name}:{layer.BuiltInId}"))}.");
 
             var emptyTag = NewDraft();
             emptyTag.AddTag("   ");
@@ -322,14 +335,17 @@ internal static class Program
                 "A case-insensitive duplicate Layer name was accepted.");
 
             VerifyDocumentTagRewrites();
+            VerifyDocumentLayerRewrites();
             ProjectTagLayerSettingsApplier.Apply(draft);
             var persisted = Document.Load<ProjectSettingsDocument>(EditorProjectSettings.settingsPath);
             Require(persisted.Tags.SequenceEqual(["Untagged", "Hero", "Collectible"]) &&
                     TagManager.tags.SequenceEqual(persisted.Tags),
                 "Applying the Tags draft did not update ProjectSettings.yaml and TagManager together.");
-            Require(persisted.SortingLayers.Single(layer => layer.Value == SortingLayer.FromIndex(8)).Name ==
-                    "Actors" && LayerMask.LayerToName(SortingLayer.FromIndex(8)) == "Actors",
+            Require(persisted.SortingLayers.Single(layer => layer.Value == SortingLayer.FromIndex(6)).Name ==
+                    "Actors" && LayerMask.LayerToName(SortingLayer.FromIndex(6)) == "Actors",
                 "Applying the Layers draft did not preserve its value or refresh SortingLayerRegistry.");
+            Require(SortingLayer.Default == 2 && persisted.SortingLayers.Count(static layer => layer.BuiltIn) == 5,
+                "Reordering a built-in Layer lost its stable identity or dynamic default index.");
         }
         finally
         {
@@ -382,11 +398,50 @@ internal static class Program
             "Prefab tag references were not rewritten for rename and delete mappings.");
     }
 
+    private static void VerifyDocumentLayerRewrites()
+    {
+        var scene = new SceneDocument
+        {
+            GameObjects =
+            [
+                new GameObjectDocument
+                {
+                    Name = "Layered",
+                    Layer = 7,
+                    Components =
+                    [
+                        new ComponentDocument
+                        {
+                            Type = typeof(Camera2D).FullName!,
+                            Fields = new Dictionary<string, string>
+                            {
+                                ["sortingLayer"] = "7",
+                                ["cullingMask"] = SortingLayer.ToMask(7).ToString(),
+                                ["layer"] = "7"
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+        var changed = ProjectTagLayerSettingsApplier.RewriteDocumentLayers(scene,
+            new Dictionary<ulong, ulong> { [6] = 7, [7] = 6 });
+        var component = scene.GameObjects[0].Components[0];
+        Require(changed == 3 && scene.GameObjects[0].Layer == 6 &&
+                component.Fields["sortingLayer"] == "6" &&
+                component.Fields["cullingMask"] == SortingLayer.ToMask(6).ToString() &&
+                component.Fields["layer"] == "7",
+            "Scene Layer references and masks were not rewritten when Layers were reordered.");
+    }
+
     private static List<SortingLayerDocument> CloneLayers(IEnumerable<SortingLayerDocument> layers) =>
         layers.Select(static layer => new SortingLayerDocument
         {
             Value = layer.Value,
-            Name = layer.Name
+            Name = layer.Name,
+            BuiltIn = layer.BuiltIn,
+            IsUi = layer.IsUi,
+            BuiltInId = layer.BuiltInId
         }).ToList();
 }
 

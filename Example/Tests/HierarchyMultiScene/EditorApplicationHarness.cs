@@ -264,16 +264,39 @@ internal sealed class EditorApplicationHarness : IDisposable
         }).ToArray();
     }
 
-    public IReadOnlyList<string> AddNewTabMenuPaths()
+    public IReadOnlyList<string> AddNewTabMenuPaths(object? sourceWindow = null)
     {
         var menu = new GenericMenu();
-        RequireMethod("PopulateAddNewTabMenu").Invoke(Application, [menu]);
+        RequireMethod("PopulateAddNewTabMenu").Invoke(Application, [menu, sourceWindow ?? InspectorWindow]);
         var items = (IEnumerable)(typeof(GenericMenu).GetProperty("Items",
                                       BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(menu) ??
                                   throw new MissingMemberException(typeof(GenericMenu).FullName, "Items"));
         return items.Cast<object>().Select(item =>
                 (string)(item.GetType().GetProperty("Path")?.GetValue(item) ?? string.Empty))
             .ToArray();
+    }
+
+    public object OpenAddNewTab(object sourceWindow, string menuPath)
+    {
+        var panels = (IDictionary)(GetField(Application, "_editorPanels") ??
+                                   throw new InvalidOperationException("The editor has no panel registry."));
+        var before = panels.Keys.Cast<object>().ToHashSet(ReferenceEqualityComparer.Instance);
+        var menu = new GenericMenu();
+        RequireMethod("PopulateAddNewTabMenu").Invoke(Application, [menu, sourceWindow]);
+        var items = (IEnumerable)(typeof(GenericMenu).GetProperty("Items",
+                                      BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(menu) ??
+                                  throw new MissingMemberException(typeof(GenericMenu).FullName, "Items"));
+        var item = items.Cast<object>().Single(value =>
+            string.Equals((string?)value.GetType().GetProperty("Path")?.GetValue(value), menuPath,
+                StringComparison.Ordinal));
+        var action = item.GetType().GetProperty("Action")?.GetValue(item) as Action ??
+                     throw new InvalidOperationException($"Add new tab item '{menuPath}' has no action.");
+        action();
+        var added = panels.Keys.Cast<object>().Where(window => !before.Contains(window)).ToArray();
+        if (added.Length != 1)
+            throw new InvalidOperationException($"Add new tab created {added.Length} windows.");
+        if (!_windows.Any(window => ReferenceEquals(window, added[0]))) _windows.Add(added[0]);
+        return added[0];
     }
 
     public string WindowId(object window) =>
@@ -298,6 +321,18 @@ internal sealed class EditorApplicationHarness : IDisposable
                               ?.GetValue(group) ??
                           throw new InvalidOperationException("The dock group has no panel list."));
         return groupPanels.IndexOf(panel);
+    }
+
+    public bool SharesDockGroup(object first, object second)
+    {
+        var panels = (IDictionary)(GetField(Application, "_editorPanels") ??
+                                   throw new InvalidOperationException("The editor has no panel registry."));
+        var firstPanel = panels[first] ?? throw new InvalidOperationException("The first window is not docked.");
+        var secondPanel = panels[second] ?? throw new InvalidOperationException("The second window is not docked.");
+        var groupProperty = firstPanel.GetType().GetProperty("Group",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ??
+                            throw new MissingMemberException(firstPanel.GetType().FullName, "Group");
+        return ReferenceEquals(groupProperty.GetValue(firstPanel), groupProperty.GetValue(secondPanel));
     }
 
     public bool ToggleMaximize(object window) => (bool)(DockWorkspace.GetType()

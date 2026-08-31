@@ -93,13 +93,13 @@ internal static class CameraRenderingTests
             var leftCamera = scene.CreateGameObject("Left Camera").AddComponent<Camera2D>();
             leftCamera.priority = 10;
             leftCamera.clearMode = CameraClearMode.Color;
-            leftCamera.cullingMask = SortingLayer.Default;
+            leftCamera.cullingMask = SortingLayer.ToMask(SortingLayer.Default);
             leftCamera.viewportRect = new Rect(0, 0, Fix64.Half, 1);
 
             var rightCamera = scene.CreateGameObject("Right Camera").AddComponent<Camera2D>();
             rightCamera.priority = 20;
             rightCamera.clearMode = CameraClearMode.DepthOnly;
-            rightCamera.cullingMask = secondWorldLayer;
+            rightCamera.cullingMask = SortingLayer.ToMask(secondWorldLayer);
             rightCamera.viewportRect = new Rect(Fix64.Half, 0, Fix64.Half, 1);
 
             scene.CreateGameObject("Visible left").AddComponent<SpriteRenderer>();

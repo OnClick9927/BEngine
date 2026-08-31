@@ -24,9 +24,10 @@ internal static class CoreDocumentRegistration
 
     internal static void ValidateScene(SceneDocument document)
     {
+        LayerDocumentMigration.Normalize(document);
         if (document.Format != "BEngine.Scene")
             throw new InvalidDataException($"Unsupported document format '{document.Format}'.");
-        if (document.Version != 1)
+        if (document.Version != 2)
             throw new InvalidDataException($"Unsupported BEngine scene version {document.Version}.");
         ValidateGameObjects(document.GameObjects, "Scene");
     }
@@ -34,7 +35,7 @@ internal static class CoreDocumentRegistration
     internal static void ValidateProjectSettings(ProjectSettingsDocument document)
     {
         ProjectSettingsMigration.Normalize(document);
-        if (document.Format != "BEngine.ProjectSettings" || document.Version is < 1 or > 2)
+        if (document.Format != "BEngine.ProjectSettings" || document.Version is < 1 or > 3)
             throw new InvalidDataException(
                 $"Unsupported project settings '{document.Format}' v{document.Version}.");
         if (string.IsNullOrWhiteSpace(document.CompanyName) || string.IsNullOrWhiteSpace(document.ProductName))
@@ -46,13 +47,30 @@ internal static class CoreDocumentRegistration
         if (document.Tags.Select(static tag => tag.Trim()).Distinct(StringComparer.Ordinal).Count() !=
             document.Tags.Count)
             throw new InvalidDataException("Project tags must be unique.");
-        if (document.SortingLayers is null || document.SortingLayers.Count != SortingLayer.MaximumIndex)
-            throw new InvalidDataException("Project settings must define all 63 sorting layers.");
-        foreach (var layer in document.SortingLayers) SortingLayer.Validate(layer.Value);
-        if (document.SortingLayers.Select(item => item.Value).Distinct().Count() != SortingLayer.MaximumIndex)
-            throw new InvalidDataException("Project sorting layer values must be unique.");
-        if (document.SortingLayers.Select(item => item.Name.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase).Count() != SortingLayer.MaximumIndex)
+        if (document.SortingLayers is null ||
+            document.SortingLayers.Count is < SortingLayer.BuiltInLayerCount or > SortingLayer.MaximumIndex)
+            throw new InvalidDataException("Project settings must define between 5 and 63 layers.");
+        for (var index = 0; index < document.SortingLayers.Count; index++)
+        {
+            var layer = document.SortingLayers[index];
+            SortingLayer.Validate(layer.Value);
+            if (layer.Value != (ulong)(index + SortingLayer.MinimumIndex))
+                throw new InvalidDataException("Project layer values must be contiguous one-based indices.");
+        }
+        var expectedBuiltIns = SortingLayerRegistry.CreateDefaults()
+            .Select(static layer => layer.BuiltInId).Order(StringComparer.Ordinal).ToArray();
+        var actualBuiltIns = document.SortingLayers.Where(static layer => layer.BuiltIn)
+            .Select(static layer => layer.BuiltInId).Order(StringComparer.Ordinal).ToArray();
+        if (!actualBuiltIns.SequenceEqual(expectedBuiltIns, StringComparer.Ordinal) ||
+            document.SortingLayers.Any(static layer => !layer.BuiltIn &&
+                !string.IsNullOrEmpty(layer.BuiltInId)))
+            throw new InvalidDataException("The five built-in Layer identities cannot be removed or duplicated.");
+        if (document.SortingLayers.Select(item => item.Value).Distinct().Count() !=
+            document.SortingLayers.Count)
+            throw new InvalidDataException("Project layer values must be unique.");
+        if (document.SortingLayers.Any(static item => string.IsNullOrWhiteSpace(item.Name)) ||
+            document.SortingLayers.Select(item => item.Name.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase).Count() != document.SortingLayers.Count)
             throw new InvalidDataException("Project sorting layer names must be non-empty and unique.");
         if (document.ScriptingDefineSymbols is null ||
             document.ScriptingDefineSymbols.Any(static symbol => !IsValidSymbol(symbol)) ||
@@ -87,9 +105,10 @@ internal static class CoreDocumentRegistration
 
     internal static void ValidatePrefab(PrefabDocument document)
     {
+        LayerDocumentMigration.Normalize(document);
         if (document.Format != "BEngine.Prefab")
             throw new InvalidDataException($"Unsupported document format '{document.Format}'.");
-        if (document.Version != 1)
+        if (document.Version != 2)
             throw new InvalidDataException($"Unsupported BEngine prefab version {document.Version}.");
         if (document.GameObjects.Count == 0 || document.GameObjects.All(item => item.Id != document.Root))
             throw new InvalidDataException("Prefab document has no valid root GameObject.");

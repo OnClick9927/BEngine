@@ -145,7 +145,8 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
             return;
         var distance = Vector2.Distance(previous, body.position);
         if (distance <= Fix64.Epsilon || !RaycastInWorld(previous, body.linearVelocity.normalized, out var hit,
-                distance, ~body.gameObject.layer, QueryTriggerInteraction.Ignore))
+                distance, SortingLayer.AllMask & ~SortingLayer.ToMask(body.gameObject.layer),
+                QueryTriggerInteraction.Ignore))
             return;
         body.position = hit.point - body.linearVelocity.normalized * Fix64.Parse("0.001");
         body.linearVelocity = Vector2.zero;
@@ -328,7 +329,7 @@ public sealed class PhysicsWorld2D : ISceneRuntimeSystem
         [.. scene.QueryComponents<Collider2D>().ToArray().Where(IsActive).OrderBy(item => item.Id)];
 
     private static bool LayerMatches(Collider2D collider, ulong mask) =>
-        (mask & collider.gameObject.layer) != 0;
+        (mask & SortingLayer.ToMask(collider.gameObject.layer)) != 0;
 
     private bool TriggerMatches(Collider2D collider, QueryTriggerInteraction value) => value switch
     {

@@ -20,7 +20,7 @@ internal static class Program
             SceneSerializationTests.Run();
             InspectorSelectorTests.Run();
             Console.WriteLine(
-                "GAMEOBJECT_LAYER_TAG_OK|defaults,power-of-two-layers,ui-boundary,sprite-particle-boundary,render-order,batching,camera-stack,camera-mask,camera-culling,camera-viewport,legacy-camera-depth,scene-handle-center,tag-compare,hierarchy-active,scene-yaml,inspector-popups,tag-layer-settings-links");
+                "GAMEOBJECT_LAYER_TAG_OK|defaults,natural-index-layers,ui-metadata,sprite-particle-boundary,render-order,batching,camera-stack,camera-mask,camera-culling,camera-viewport,legacy-camera-depth,scene-handle-center,tag-compare,hierarchy-active,scene-yaml,inspector-popups,tag-layer-settings-links");
             return 0;
         }
         catch (Exception exception)

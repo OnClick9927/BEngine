@@ -30,7 +30,7 @@ internal sealed class ImGuiDockWorkspace
     public bool HostIsInteractive { get; set; } = true;
     public IReadOnlyList<ImGuiDockPanel> Panels => _panels;
     public event Action<ImGuiDockPanel, Vector2>? UndockRequested;
-    internal Action<GenericMenu>? PopulateAddNewTabMenu { get; set; }
+    internal Action<GenericMenu, EditorWindow>? PopulateAddNewTabMenu { get; set; }
 
     public ImGuiDockWorkspace()
     {
@@ -58,6 +58,28 @@ internal sealed class ImGuiDockWorkspace
         group.Panels.Add(panel);
         _panels.Add(panel);
         if (select || group.SelectedId is null) group.SelectedId = id;
+        return panel;
+    }
+
+    public ImGuiDockPanel AddTab(
+        string id,
+        EditorWindow window,
+        EditorWindow sourceWindow,
+        DockArea fallbackArea = DockArea.Center)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        ArgumentNullException.ThrowIfNull(sourceWindow);
+        var source = _panels.FirstOrDefault(panel =>
+            ReferenceEquals(panel.Window, sourceWindow) && panel.Group is not null);
+        if (source?.Group is not { } group) return Add(id, window, fallbackArea, true);
+
+        var panel = new ImGuiDockPanel(id, window, source.PreferredArea) { Group = group };
+        var sourceIndex = group.Panels.IndexOf(source);
+        group.Panels.Insert(Math.Clamp(sourceIndex + 1, 0, group.Panels.Count), panel);
+        _panels.Add(panel);
+        group.SelectedId = id;
+        window.position = sourceWindow.position;
+        window.FocusInternal();
         return panel;
     }
 
@@ -515,7 +537,7 @@ internal sealed class ImGuiDockWorkspace
         var menu = new GenericMenu();
         panel.Window.PopulateContextMenu(menu);
         if (menu.GetItemCount() > 0) menu.AddSeparator(string.Empty);
-        PopulateAddNewTabMenu?.Invoke(menu);
+        PopulateAddNewTabMenu?.Invoke(menu, panel.Window);
         if (PopulateAddNewTabMenu is not null) menu.AddSeparator(string.Empty);
         menu.AddItem(new GUIContent("Float"), false,
             () => EditorCallbackDispatcher.Invoke(UndockRequested, panel, undockPosition,

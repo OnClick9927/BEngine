@@ -3,7 +3,7 @@ namespace BEngine.Documents;
 public sealed class PrefabDocument : Document
 {
     public string Format { get; set; } = "BEngine.Prefab";
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "New Prefab";
     public Guid Root { get; set; }

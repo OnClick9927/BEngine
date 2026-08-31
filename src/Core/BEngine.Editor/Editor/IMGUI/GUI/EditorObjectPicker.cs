@@ -101,19 +101,25 @@ internal static class EditorObjectPicker
 
     internal static bool TryHandleDrag(
         Rect position,
+        int controlId,
         Type objectType,
         bool allowSceneObjects,
         out BObject? value)
     {
         value = null;
-        if (!GUI.enabled || Event.current.type is not (EventType.DragUpdated or EventType.DragPerform))
+        if (Event.current.type is not (EventType.DragUpdated or EventType.DragPerform))
             return false;
 
         var rootPosition = GUI.GUIToRootPoint(new Vector2(position.x, position.y));
         var rootRect = new Rect(rootPosition.x, rootPosition.y, position.width, position.height);
-        if (!rootRect.Contains(GUI.GUIToRootPoint(Event.current.mousePosition))) return false;
+        if (!rootRect.Contains(GUI.GUIToRootPoint(Event.current.mousePosition)))
+        {
+            if (DragAndDrop.activeControlID == controlId) DragAndDrop.activeControlID = 0;
+            return false;
+        }
 
-        var candidate = ResolveDraggedObject(objectType, allowSceneObjects);
+        DragAndDrop.activeControlID = controlId;
+        var candidate = GUI.enabled ? ResolveDraggedObject(objectType, allowSceneObjects) : null;
         DragAndDrop.visualMode = candidate is null
             ? DragAndDropVisualMode.Rejected
             : DragAndDropVisualMode.Link;
@@ -324,7 +330,9 @@ internal static class EditorObjectPicker
         if (candidate is null || !objectType.IsInstanceOfType(candidate)) return null;
         if (candidate is GameObject or Component)
             return allowSceneObjects && IsLoadedSceneObject(candidate) ? candidate : null;
-        return allowSceneObjects || AssetDatabase.Contains(candidate) ? candidate : null;
+        // allowSceneObjects only expands assignment to loaded hierarchy objects. It must not make
+        // transient BAssets or ScriptableObjects serializable through an ObjectField.
+        return AssetDatabase.Contains(candidate) ? candidate : null;
     }
 
     private static GameObject? ComponentOwner(Component component)

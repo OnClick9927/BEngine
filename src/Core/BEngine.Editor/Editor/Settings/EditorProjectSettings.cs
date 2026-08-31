@@ -51,7 +51,7 @@ public static class EditorProjectSettings
 
     private static void Validate(ProjectSettingsDocument value)
     {
-        if (value.Format != "BEngine.ProjectSettings" || value.Version != 2)
+        if (value.Format != "BEngine.ProjectSettings" || value.Version != 3)
             throw new InvalidDataException($"Unsupported project settings '{value.Format}' v{value.Version}.");
         if (string.IsNullOrWhiteSpace(value.CompanyName) || string.IsNullOrWhiteSpace(value.ProductName))
             throw new InvalidDataException("Company and product names cannot be empty.");

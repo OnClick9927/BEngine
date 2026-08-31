@@ -14,7 +14,7 @@ internal sealed class EditorWindowLayer
     public event Action<EditorWindow, Vector2>? DockRequested;
     public event Action<EditorWindow, Vector2?>? DockDragUpdated;
     public event Action<EditorWindow, Vector2>? DockDragCompleted;
-    internal Action<GenericMenu>? PopulateAddNewTabMenu { get; set; }
+    internal Action<GenericMenu, EditorWindow>? PopulateAddNewTabMenu { get; set; }
 
     public IReadOnlyList<FloatingEditorWindow> Presentations => _presentations;
     public IReadOnlyList<FloatingEditorWindow> Windows => _presentations;
@@ -407,7 +407,7 @@ internal sealed class EditorWindowLayer
         var menu = new GenericMenu();
         presentation.Window.PopulateContextMenu(menu);
         if (menu.GetItemCount() > 0) menu.AddSeparator(string.Empty);
-        PopulateAddNewTabMenu?.Invoke(menu);
+        PopulateAddNewTabMenu?.Invoke(menu, presentation.Window);
         if (PopulateAddNewTabMenu is not null) menu.AddSeparator(string.Empty);
         if (presentation.State == EditorWindowState.Normal)
             menu.AddItem(new GUIContent("Dock"), false,

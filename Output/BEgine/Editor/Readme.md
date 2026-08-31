@@ -49,7 +49,7 @@ Core 使用 `Microsoft.Extensions.DependencyInjection` 管理宿主与 Scene sco
 | `Camera2D` | `size` | 正交相机半高，最小值为 0.001 |
 | `Camera2D` | `backgroundColor`, `clearMode` | Color、DepthOnly 或 Nothing 清屏策略 |
 | `Camera2D` | `priority`, `isMain` | 多相机按 priority 从小到大稳定渲染 |
-| `Camera2D` | `cullingMask` | 63 个 Sorting Layer 的位掩码 |
+| `Camera2D` | `cullingMask` | 独立的 63 位 Layer 掩码；使用 `SortingLayer.ToMask`、`LayerMask.MaskForLayer` 或 `LayerMask.GetMask` 创建 |
 | `Camera2D` | `viewportRect` | 左下角原点、0 到 1 的归一化视口 |
 | `Renderer2D` | `sortingLayer`, `orderInLayer`, `opacity` | 所有 2D Renderer 共用的排序与透明度字段 |
 | `SpriteRenderer` | `sprite`, `size`, `pivot`, `useSpritePivot` | Sprite 资源、尺寸与轴心 |
@@ -59,7 +59,7 @@ Core 使用 `Microsoft.Extensions.DependencyInjection` 管理宿主与 Scene sco
 | `ParticleSystem2D` | `startColor`, `startRotation`, `startAngularVelocity` | 新生粒子的颜色和旋转 |
 | `ParticleSystem2D` | `maxParticles`, `sprite`, `atlas`, `material` | 容量、视觉资源与合批键 |
 
-世界 Renderer 只能使用 `2^1` 到 `2^58`；最高五层 `2^59` 到 `2^63` 保留给 UI。最终顺序由 Layer、Order in Layer、Hierarchy、透明度和提交顺序共同决定，Material、Shader、Atlas 决定相邻提交能否合批。
+Sorting Layer 的值是连续自然编号 `1..63`，不是位值。工程默认提供五个具有稳定内建身份的 Layer；它们可以重命名和调整顺序，但不能删除。自定义 Layer 可以增加、删除、重命名和排序，排序变化后编号仍保持连续。Camera 与 Physics 使用的 Layer Mask 是另一种位掩码表示：不要直接按位组合 Layer 编号，应使用 `SortingLayer.ToMask(layer)`、`LayerMask.MaskForLayer(layer)` 或按名称调用 `LayerMask.GetMask(...)`。内建 UI Layer 通过稳定身份定位，其当前编号可随排序变化。最终渲染顺序由 Layer、Order in Layer、Hierarchy、透明度和提交顺序共同决定，Material、Shader、Atlas 决定相邻提交能否合批。
 
 ## 资源字段表与导入参数
 
@@ -171,7 +171,7 @@ GUILayout.Button("Build", accent);
 2. 使用 `GameObject > Camera 2D` 创建相机；在 Inspector 设置 size、priority、clearMode、cullingMask 和 viewportRect。
 3. 在 Project 选中 PNG，在 Inspector 将 `Texture Type` 设为 `Sprite`，按需调整 Pivot/PPU，然后点击 `Apply`；使用 `GameObject > 2D Object > Sprite` 创建对象并把这张图片赋给 SpriteRenderer。
 4. 需要 Atlas 时，从 `Assets > Create > 2D > Texture Atlas` 创建 Atlas，在 `Window > 2D > Texture Atlas` 添加选中的 Sprite 模式图片并 Build。同一图片仍直接用于 SpriteRenderer，无需创建第二份资源。
-5. 在 `Edit > Project Settings > Tags and Layers` 管理 Tag 与全部 Sorting Layer。
+5. 在 `Edit > Project Settings > Tags and Layers` 管理 Tag 与全部 Sorting Layer。Layer 使用连续自然编号 `1..63`；五个内建层可重命名和排序但不可删除，自定义层可增删、重命名和排序。
 6. 用 W/E/R 切换移动、旋转、缩放 Handle；Scene 点击对象会同步 Hierarchy 选择。
 7. 进入 Play 验证运行时行为。Play 期间不要尝试保存 Scene 或组件变更；停止后原数据会恢复。
 8. 检查 Game View 的分辨率和 Status 统计，再通过 `File > Save Scene` 保存编辑态修改。

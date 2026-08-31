@@ -6,10 +6,23 @@ public static class GUIUtility
 {
     private static int _controlCount;
     private static readonly Stack<int> IdScopes = new();
+    private static string _systemCopyBufferFallback = string.Empty;
     public static int hotControl { get; set; }
     public static int keyboardControl { get; set; }
     public static bool textFieldInput { get; internal set; }
-    public static string systemCopyBuffer { get; set; } = string.Empty;
+    public static string systemCopyBuffer
+    {
+        get
+        {
+            if (SystemClipboard.TryGetText(out var text)) _systemCopyBufferFallback = text;
+            return _systemCopyBufferFallback;
+        }
+        set
+        {
+            _systemCopyBufferFallback = value ?? string.Empty;
+            SystemClipboard.TrySetText(_systemCopyBufferFallback);
+        }
+    }
     public static Fix64 pixelsPerPoint { get; set; } = Fix64.One;
     [ThreadStatic] internal static Fix64 devicePixelsPerPoint;
     public static string fontFamily { get; set; } = "BEngine Built-in";

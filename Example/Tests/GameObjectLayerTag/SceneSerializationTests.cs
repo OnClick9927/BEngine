@@ -14,7 +14,7 @@ internal static class SceneSerializationTests
             root.layer = LayerMask.NameToLayer("Gameplay");
             root.isStatic = true;
             var sprite = root.AddComponent<SpriteRenderer>();
-            sprite.sortingLayer = SortingLayer.FromIndex(8);
+            sprite.sortingLayer = LayerMask.NameToLayer("Gameplay");
             sprite.orderInLayer = 12;
             var child = source.CreateGameObject("Inactive Child");
             child.tag = "EditorOnly";
@@ -69,12 +69,12 @@ internal static class SceneSerializationTests
             };
             var restoredSettings = Document.FromYaml<ProjectSettingsDocument>(projectSettings.ToYaml());
             TestAssert.Require(restoredSettings.Tags.SequenceEqual(TagManager.tags) &&
-                               restoredSettings.SortingLayers.Count == 63 &&
-                               restoredSettings.SortingLayers.Any(item => item.Value == SortingLayer.FromIndex(8) &&
+                               restoredSettings.SortingLayers.Count == LayerMask.layers.Count &&
+                               restoredSettings.SortingLayers.Any(item => item.Value == SortingLayer.FromIndex(6) &&
                                                                           item.Name == "Gameplay") &&
                                restoredSettings.SortingLayers.Any(item => item.Value == SortingLayer.Ui &&
                                                                           item.Name == "UI"),
-                "Project settings YAML did not preserve configured Tags and all 63 sorting layers.");
+                "Project settings YAML did not preserve configured Tags and natural sorting layers.");
         }
         finally
         {

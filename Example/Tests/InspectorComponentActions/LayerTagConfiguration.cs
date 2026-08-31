@@ -9,9 +9,11 @@ internal sealed class LayerTagConfiguration : IDisposable
     {
         TagManager.Configure(["Untagged", "Player", "Enemy"]);
         SortingLayerRegistry.Configure([
-            new(SortingLayer.Default, "Default"),
-            new(SortingLayer.FromIndex(3), "Gameplay"),
-            new(SortingLayer.FromIndex(4), "Enemies")
+            new(SortingLayer.Default, "Default", true),
+            new(SortingLayer.TransparentFx, "TransparentFX", true),
+            new(SortingLayer.FromIndex(3), "Gameplay", true),
+            new(SortingLayer.FromIndex(4), "Enemies", true),
+            new(SortingLayer.Ui, "UI", true, true)
         ]);
     }
 

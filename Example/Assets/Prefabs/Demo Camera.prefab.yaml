@@ -1,5 +1,5 @@
 format: BEngine.Prefab
-version: 1
+version: 2
 id: 597d8a91-16cb-4266-b3a1-e81a215afbe0
 name: Camera 2D
 root: ea690f1a-23e7-478c-9039-20fbcaeb54cb
@@ -8,7 +8,7 @@ gameObjects:
   name: Camera 2D
   active: true
   tag: MainCamera
-  layer: 2
+  layer: 1
   isStatic: false
   transform:
     id: 471bf032-43aa-4d94-878b-108d6ee74874
@@ -28,7 +28,7 @@ gameObjects:
     fields:
       backgroundColor: 0.03499999991618096828460693359375,0.0469999997876584529876708984375,0.06599999987520277500152587890625,1
       clearMode: Color
-      cullingMask: 14
+      cullingMask: 7
       isMain: true
       priority: 0
       size: 5

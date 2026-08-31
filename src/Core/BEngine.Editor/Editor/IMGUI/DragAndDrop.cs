@@ -201,14 +201,23 @@ public static class DragAndDrop
     internal static void BeginEvent(Event inputEvent)
     {
         if (!isDragging) return;
-        _accepted = false;
-        visualMode = DragAndDropVisualMode.None;
+        if (inputEvent.type == EventType.MouseDown)
+        {
+            Cancel();
+            return;
+        }
         if (inputEvent.type is EventType.MouseDrag or EventType.MouseMove)
+        {
+            _accepted = false;
+            activeControlID = 0;
+            visualMode = DragAndDropVisualMode.None;
             inputEvent.type = EventType.DragUpdated;
+        }
         else if (inputEvent.type == EventType.MouseUp)
+        {
+            _accepted = false;
             inputEvent.type = EventType.DragPerform;
-        else if (inputEvent.type == EventType.MouseLeaveWindow)
-            inputEvent.type = EventType.DragExited;
+        }
         else if (inputEvent.type == EventType.KeyDown && inputEvent.keyCode == KeyCode.Escape)
             Cancel();
     }
@@ -229,9 +238,13 @@ public static class DragAndDrop
 
     internal static void EndEvent(Event inputEvent)
     {
-        if (!isDragging) return;
-        if (inputEvent.rawType is EventType.MouseUp or EventType.MouseLeaveWindow ||
-            inputEvent.type is EventType.DragPerform or EventType.DragExited || _accepted)
+        if (!isDragging && !_accepted && inputEvent.type != EventType.DragPerform &&
+            inputEvent.rawType is not (EventType.MouseUp or EventType.DragPerform or EventType.DragExited)) return;
+        // Losing focus is expected while crossing between main and native floating editor windows.
+        // Keep the global payload alive until the button is released, accepted, cancelled, or a new
+        // click starts. This mirrors Unity's editor-wide DragAndDrop session.
+        if (inputEvent.rawType is EventType.MouseUp or EventType.DragPerform or EventType.DragExited ||
+            inputEvent.type == EventType.DragPerform || _accepted)
         {
             Clear();
             GUIUtility.hotControl = 0;

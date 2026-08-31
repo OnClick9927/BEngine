@@ -11,6 +11,7 @@ internal static class Program
 {
     private static string _text = "abcdef";
 
+    [STAThread]
     private static int Main()
     {
         try
@@ -21,6 +22,7 @@ internal static class Program
             VerifyAlignedTextEditingAtScale();
             VerifyNumericEditingBuffers();
             VerifyFieldFocusIsolation();
+            VerifySystemClipboardPasteIsolation();
             VerifyNativeMouseMoveClassification();
             VerifyWindowCoordinatesAndScrolling();
             VerifyEditorWindowRoutingAndDockTabs();
@@ -29,7 +31,7 @@ internal static class Program
             VerifyIconToolbarLanguage();
             VerifyPrefabWorkflow();
             VerifyAssemblyBoundary();
-            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,scaled-caret,aligned-text-editing,cjk-hit-testing,double-click,numeric-edit-buffer,field-focus-isolation,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,object-ping,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
+            Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,scaled-caret,aligned-text-editing,cjk-hit-testing,double-click,numeric-edit-buffer,field-focus-isolation,system-clipboard-paste,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,object-ping,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
             return 0;
         }
         catch (Exception exception)
@@ -465,6 +467,56 @@ internal static class Program
                 fieldSurfaces.Single(command => command.Color == normalColor).Rect.Y < 30,
             "Keyboard focus styling leaked from the clicked field to another isolated field.");
         GUI.FocusControl(string.Empty);
+    }
+
+    private static void VerifySystemClipboardPasteIsolation()
+    {
+        const string externalText = "External Project Search";
+        var firstValue = "Project:";
+        var secondValue = "Hierarchy:";
+        var first = new Rect(8, 8, 220, 22);
+        var second = new Rect(8, 38, 220, 22);
+        var previousClipboard = System.Windows.Forms.Clipboard.GetDataObject();
+
+        void Draw(Event evt)
+        {
+            GUI.BeginFrame(evt, 260, 80, []);
+            try
+            {
+                firstValue = GUI.TextField(first, firstValue, style: GUI.skin.toolbarSearchField);
+                secondValue = GUI.TextField(second, secondValue);
+            }
+            finally { GUI.EndFrame(); }
+        }
+
+        try
+        {
+            GUIUtility.systemCopyBuffer = "stale in-process value";
+            System.Windows.Forms.Clipboard.SetText(externalText,
+                System.Windows.Forms.TextDataFormat.UnicodeText);
+            Draw(new Event(EventType.MouseDown)
+            {
+                mousePosition = new Vector2(205, 18), button = 0, clickCount = 1
+            });
+            Draw(new Event(EventType.KeyDown)
+            {
+                keyCode = KeyCode.V, modifiers = EventModifiers.Control
+            });
+
+            Require(firstValue == $"Project:{externalText}",
+                $"Ctrl+V read '{firstValue}' instead of the external system clipboard text.");
+            Require(secondValue == "Hierarchy:",
+                "Ctrl+V changed an IMGUI TextField that did not own keyboard focus.");
+            Require(GUIUtility.systemCopyBuffer == externalText,
+                "GUIUtility.systemCopyBuffer did not reflect the Windows system clipboard.");
+        }
+        finally
+        {
+            if (previousClipboard is null) System.Windows.Forms.Clipboard.Clear();
+            else System.Windows.Forms.Clipboard.SetDataObject(previousClipboard, true, 5, 5);
+            GUIUtility.keyboardControl = 0;
+            GUI.FocusControl(string.Empty);
+        }
     }
 
     private static void VerifyWindowCoordinatesAndScrolling()

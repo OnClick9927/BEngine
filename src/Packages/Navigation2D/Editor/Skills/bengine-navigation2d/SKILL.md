@@ -15,7 +15,7 @@ description: Develop or use BEngine's deterministic 2D navigation package. Use f
 ## Add and configure navigation components
 
 - Navigation2D has no asset creation menu, Project asset/preview, `GameObject/...` or `Tools/...` command, or dedicated navigation window. Author it on GameObjects through Inspector `Add Component` or the top `Component` AdvancedDropdown.
-- Add `Navigation 2D/Navigation Surface 2D`. Configure `agentTypeId`, collection mode, local center/size, power-of-two physics `layerMask`, geometry source, grid `cellSize`, clearance `agentRadius`, and `buildOnStart`.
+- Add `Navigation 2D/Navigation Surface 2D`. Configure `agentTypeId`, collection mode, local center/size, an independent physics `layerMask`, geometry source, grid `cellSize`, clearance `agentRadius`, and `buildOnStart`. Layer values are natural indices `1..63`; create the mask with `SortingLayer.ToMask`, `LayerMask.MaskForLayer`, or `LayerMask.GetMask` rather than bitwise-combining layer indices.
 - Open the Surface component header context menu and choose `Bake` to build its in-memory occupancy grid or `Clear` to remove it. These are inherited `[ContextMenu]` commands and participate in Undo/dirty handling. `hasData` reports whether the current runtime/editor object holds a grid.
 - Add `Navigation 2D/Navigation Agent 2D`. Configure radius, speed, acceleration, angular speed, stopping distance, automatic flags, position/rotation updates, area mask, agent type, avoidance mode, velocity, destination, and stopped state. Runtime status includes desired velocity, path pending/status, remaining distance, and has-path.
 - Add `Navigation 2D/Navigation Obstacle 2D`; choose Box or Circle and configure center, size/radius, carving, and stationary-carve flag.

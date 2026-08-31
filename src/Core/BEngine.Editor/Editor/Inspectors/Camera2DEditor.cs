@@ -53,11 +53,12 @@ public sealed class Camera2DEditor : Editor
         foreach (var layer in SortingLayerRegistry.layers)
         {
             var value = layer.Value;
-            var group = layer.Index >= SortingLayer.UiBaseIndex ? "UI" : "World";
+            var bit = SortingLayer.ToMask(value);
+            var group = layer.IsUi ? "UI" : "World";
             var layerName = layer.Name.Replace('/', '-');
-            var label = $"{group}/2^{layer.Index} {layerName}";
-            menu.AddItem(new GUIContent(label), (camera.cullingMask & value) != 0,
-                () => SetMask(camera, camera.cullingMask ^ value));
+            var label = $"{group}/{layer.Index} {layerName}";
+            menu.AddItem(new GUIContent(label), (camera.cullingMask & bit) != 0,
+                () => SetMask(camera, camera.cullingMask ^ bit));
         }
         menu.ShowAsAdvancedDropdown();
     }
@@ -76,8 +77,10 @@ public sealed class Camera2DEditor : Editor
         if (mask == 0) return "Nothing";
         if ((mask & (mask - 1)) == 0)
         {
-            var index = SortingLayer.IndexOf(mask);
-            return $"2^{index} {SortingLayerRegistry.NameOf(mask)}";
+            var index = System.Numerics.BitOperations.TrailingZeroCount(mask) +
+                        SortingLayer.MinimumIndex;
+            var layer = SortingLayer.FromIndex(index);
+            return $"{index} {SortingLayerRegistry.NameOf(layer)}";
         }
         return $"{System.Numerics.BitOperations.PopCount(mask)} Layers";
     }

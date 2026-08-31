@@ -19,7 +19,8 @@ internal static class Program
             VerifyDelayedDragAndCursor();
             VerifyDropHandlerChains();
             Console.WriteLine("DRAG_AND_DROP_API_OK|data-copy,generic-data,active-control,delayed-drag," +
-                              "cursor,accept-frame-lifetime,project,scene,inspector,hierarchy,handler-chain");
+                              "cursor,accept-frame-lifetime,cross-window-lifetime,terminal-exit," +
+                              "project,scene,inspector,hierarchy,handler-chain");
             return 0;
         }
         catch (Exception exception)
@@ -67,6 +68,19 @@ internal static class Program
         });
         Require(DragAndDrop.objectReferences.Length == 0 && DragAndDrop.activeControlID == 0,
             "Accepted drag data was not cleared at the end of DragPerform.");
+
+        DragAndDrop.objectReferences = [dragged];
+        DragAndDrop.StartDrag("Cross-window lifetime");
+        DragAndDrop.activeControlID = 91;
+        Dispatch(new Event(EventType.MouseMove) { mousePosition = new Vector2(240, 60) }, static () => { });
+        Require(DragAndDrop.objectReferences.Length == 1 && DragAndDrop.activeControlID == 0,
+            "A DragUpdated frame without a target retained a stale active control or lost its payload.");
+        Dispatch(new Event(EventType.MouseLeaveWindow), static () => { });
+        Require(DragAndDrop.objectReferences.Length == 1,
+            "Crossing an EditorWindow boundary cancelled the global drag payload.");
+        Dispatch(new Event(EventType.DragExited), static () => { });
+        Require(DragAndDrop.objectReferences.Length == 0,
+            "A terminal DragExited event left stale drag data active.");
     }
 
     private static void VerifyDelayedDragAndCursor()

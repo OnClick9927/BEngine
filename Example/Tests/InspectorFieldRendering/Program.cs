@@ -698,24 +698,21 @@ internal static class Program
             selected = RenderObjectField(rect, selected, typeof(GameObject), allowSceneObjects: true);
             Require(selected is null, "ObjectField None did not clear the current reference.");
 
-            var equivalentMaterial = new Material(Shader.Find("Tests/ObjectFieldEquivalent"))
-            {
-                name = "Object Field Equivalent"
-            };
-            typeof(BObject).GetProperty(nameof(BObject.Id))!.SetValue(equivalentMaterial, incompatible.Id);
-            Selection.activeObject = equivalentMaterial;
-            OpenObjectMenu(rect, incompatible, typeof(Material), allowSceneObjects: true);
+            var equivalentObject = scene.CreateGameObject("Object Field Equivalent");
+            typeof(BObject).GetProperty(nameof(BObject.Id))!.SetValue(equivalentObject, compatible.Id);
+            Selection.activeObject = equivalentObject;
+            OpenObjectMenu(rect, compatible, typeof(GameObject), allowSceneObjects: true);
             InvokeMenuItem(CapturedMenuItems().Single(item => IsSelectionItem(item) && MenuEnabled(item)));
-            BObject? unchangedAsset = null;
-            var reportedAssetChange = true;
+            BObject? unchangedObject = null;
+            var reportedObjectChange = true;
             Dispatch(new Event(EventType.Repaint), 320, 40, () =>
             {
-                unchangedAsset = EditorGUI.ObjectField(
-                    rect, "Target", incompatible, typeof(Material), allowSceneObjects: true);
-                reportedAssetChange = GUI.changed;
+                unchangedObject = EditorGUI.ObjectField(
+                    rect, "Target", compatible, typeof(GameObject), allowSceneObjects: true);
+                reportedObjectChange = GUI.changed;
             });
-            Require(ReferenceEquals(unchangedAsset, incompatible) && !reportedAssetChange,
-                "Selecting a stable-equivalent asset produced a redundant ObjectField change.");
+            Require(ReferenceEquals(unchangedObject, compatible) && !reportedObjectChange,
+                "Selecting a stable-equivalent scene object produced a redundant ObjectField change.");
 
             var probe = ScriptableObject.CreateInstance<InspectorProbe>();
             using (var serialized = new SerializedObject(probe))
@@ -791,12 +788,21 @@ internal static class Program
             DragAndDrop.objectReferences = [compatible];
             Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
                 () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));
-            Require(DragAndDrop.visualMode != DragAndDropVisualMode.Rejected,
-                "ObjectField rejected a compatible dragged GameObject.");
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Link &&
+                    DragAndDrop.activeControlID != 0,
+                "ObjectField did not claim a compatible dragged GameObject as its active drop target.");
             Dispatch(new Event(EventType.DragPerform) { mousePosition = new Vector2(210, 9) }, 320, 40,
                 () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));
             Require(ReferenceEquals(dragged, compatible),
                 "ObjectField did not accept a compatible dragged GameObject.");
+
+            BObject? compatibleAfterMismatch = null;
+            DragAndDrop.objectReferences = [incompatible, cameraObject];
+            Dispatch(new Event(EventType.DragPerform) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => compatibleAfterMismatch = EditorGUI.ObjectField(
+                    rect, "Target", compatibleAfterMismatch, typeof(GameObject), true));
+            Require(ReferenceEquals(compatibleAfterMismatch, cameraObject),
+                "ObjectField stopped at the first incompatible object instead of accepting the first valid drag reference.");
 
             BObject? draggedComponent = null;
             DragAndDrop.objectReferences = [cameraObject];
@@ -860,6 +866,48 @@ internal static class Program
                 () => asset = EditorGUI.ObjectField(rect, "Asset", asset, typeof(BAsset), false));
             Require(DragAndDrop.visualMode == DragAndDropVisualMode.Rejected && asset is null,
                 "An asset-only ObjectField accepted a scene Component.");
+
+            DragAndDrop.objectReferences = [incompatible];
+            Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => asset = EditorGUI.ObjectField(rect, "Asset", asset, typeof(BAsset), true));
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Rejected && asset is null,
+                "allowSceneObjects incorrectly allowed a transient, non-persistent BAsset.");
+
+            BObject? disabledDrop = null;
+            DragAndDrop.objectReferences = [cameraObject];
+            Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () =>
+                {
+                    EditorGUI.BeginDisabledGroup(true);
+                    try
+                    {
+                        disabledDrop = EditorGUI.ObjectField(
+                            rect, "Disabled", disabledDrop, typeof(GameObject), true);
+                    }
+                    finally { EditorGUI.EndDisabledGroup(); }
+                });
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Rejected && disabledDrop is null,
+                "A disabled ObjectField advertised or accepted a drag assignment.");
+
+            BObject? crossWindowDrop = null;
+            DragAndDrop.PrepareStartDrag();
+            DragAndDrop.objectReferences = [cameraObject];
+            DragAndDrop.StartDrag("Cross-window GameObject");
+            Dispatch(new Event(EventType.MouseLeaveWindow) { mousePosition = new Vector2(319, 9) },
+                320, 40, static () => { });
+            Require(DragAndDrop.objectReferences is [var retained] && ReferenceEquals(retained, cameraObject),
+                "Leaving the source EditorWindow destroyed the editor-wide drag payload.");
+            Dispatch(new Event(EventType.MouseMove) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => crossWindowDrop = EditorGUI.ObjectField(
+                    rect, "Cross Window", crossWindowDrop, typeof(GameObject), true));
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Link,
+                "A drag entering another EditorWindow did not become a valid ObjectField target.");
+            Dispatch(new Event(EventType.MouseUp) { mousePosition = new Vector2(210, 9), button = 0 },
+                320, 40, () => crossWindowDrop = EditorGUI.ObjectField(
+                    rect, "Cross Window", crossWindowDrop, typeof(GameObject), true));
+            Require(ReferenceEquals(crossWindowDrop, cameraObject) &&
+                    DragAndDrop.objectReferences.Length == 0 && DragAndDrop.activeControlID == 0,
+                "Cross-window ObjectField drop did not commit and close the global drag session.");
 
             Selection.activeObject = incompatible;
             Dispatch(new Event(EventType.MouseDown)

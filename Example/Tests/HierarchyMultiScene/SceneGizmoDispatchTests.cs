@@ -75,8 +75,16 @@ internal static class SceneGizmoDispatchTests
                     line.Color.b == Fix64.One && line.Color.a == Fix64.One &&
                     line.LineWidth == 2),
                 "A built-in Camera2D Gizmo did not use the white, thicker default line style.");
-            TestAssert.Require(wideCameraLines.Length == 4,
-                "A selected Camera2D did not emit its four-line view boundary Gizmo.");
+            TestAssert.Require(wideCameraLines.Length == 6,
+                "A selected Camera2D did not emit its four-line boundary and two diagonals.");
+            var lowerLeft = wideCameraLines[0].From;
+            var lowerRight = wideCameraLines[0].To;
+            var upperRight = wideCameraLines[1].To;
+            var upperLeft = wideCameraLines[2].To;
+            TestAssert.Require(
+                Connects(wideCameraLines[4], lowerLeft, upperRight) &&
+                Connects(wideCameraLines[5], lowerRight, upperLeft),
+                "The selected Camera2D Gizmo did not connect opposite view-boundary corners as an X.");
 
             var selectedSpriteLineCount = LineCount(Collect([scene], spriteObject, 640, 360));
             TestAssert.Require(selectedSpriteLineCount == 4,
@@ -86,8 +94,8 @@ internal static class SceneGizmoDispatchTests
             TestAssert.Require(selectedParticleLineCount == 3,
                 $"The selected ParticleSystem2D emitted {selectedParticleLineCount} lines instead of its " +
                 "three-line direction Gizmo.");
-            TestAssert.Require(LineCount(Collect([scene], cameraObject, 640, 360)) == 4,
-                "Selecting Camera2D did not draw its view boundary Gizmo.");
+            TestAssert.Require(LineCount(Collect([scene], cameraObject, 640, 360)) == 6,
+                "Selecting Camera2D did not draw its view boundary and diagonal Gizmo.");
         }
         finally
         {
@@ -167,6 +175,10 @@ internal static class SceneGizmoDispatchTests
         var cy = vertices[offset + 13];
         return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
     }
+
+    private static bool Connects(GizmoLine line, Vector2 first, Vector2 second) =>
+        line.From.Equals(first) && line.To.Equals(second) ||
+        line.From.Equals(second) && line.To.Equals(first);
 
     private static void VerifyTypeVisibility(Scene scene)
     {

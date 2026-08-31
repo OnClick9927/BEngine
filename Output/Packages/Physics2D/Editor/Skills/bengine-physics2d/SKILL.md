@@ -23,7 +23,7 @@ description: Develop or use BEngine's deterministic 2D physics package. Use for 
 
 ## Query and debug the simulation
 
-- Use static `Physics2D.Raycast`, `RaycastAll`, `OverlapCircle`, `CheckCircle`, `OverlapBox`, `CheckBox`, and `CircleCast`. Every query accepts the engine's power-of-two `ulong` layer mask and `QueryTriggerInteraction` where applicable.
+- Use static `Physics2D.Raycast`, `RaycastAll`, `OverlapCircle`, `CheckCircle`, `OverlapBox`, `CheckBox`, and `CircleCast`. Every query accepts an independent `ulong` layer mask and `QueryTriggerInteraction` where applicable. Layer values themselves are natural indices `1..63`; create masks with `SortingLayer.ToMask(layer)`, `LayerMask.MaskForLayer(layer)`, or `LayerMask.GetMask(names)` rather than bitwise-combining those indices.
 - Global runtime settings are `Physics2D.gravity`, `queriesHitTriggers`, `autoSimulation`, and `velocityIterations`. Call `Simulate(step)` only with a positive fixed step and normally only when auto simulation is disabled; use `SyncTransforms`, `IgnoreCollision`, and `GetIgnoreCollision` as needed.
 - Receive `OnCollisionEnter2D`, `Stay2D`, and `Exit2D` with `Collision2D`; receive trigger phases with the other `Collider2D`. Callbacks are discovered on enabled `MonoBehaviour` components on both GameObjects and exceptions are logged to Console.
 - Open the imported scene from Project, select its Rigidbody, Collider, trigger, or query driver in Hierarchy, and keep Scene, Game, Inspector, and Console together. Enter Play, use Pause/Step for fixed-step inspection, watch Rigidbody velocities/sleeping state, visualize selected colliders, and log query hits/contact points.

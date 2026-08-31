@@ -126,23 +126,63 @@ internal static class TagLayerSettingsProvider
 
     private static void DrawLayers()
     {
-        GUILayout.Label("World: 2^1 - 2^58    UI: 2^59 - 2^63", EditorStyles.miniLabel);
+        GUILayout.Label("Layer values are one-based indices. Built-in layers cannot be removed.",
+            EditorStyles.miniLabel);
         GUILayout.Space(4);
 
         var layerNames = Draft.EditableLayerNames;
         for (var offset = 0; offset < layerNames.Count; offset++)
         {
             var index = SortingLayer.MinimumIndex + offset;
-            var group = index >= SortingLayer.UiBaseIndex ? "UI" : "World";
+            var layer = Draft.SortingLayers[offset];
             GUILayout.BeginHorizontal(GUILayout.Height(EditorGUIUtility.singleLineHeight + 4));
-            GUILayout.Label($"2^{index}", EditorStyles.miniLabel, GUILayout.Width(52));
-            GUILayout.Label(group, EditorStyles.miniLabel, GUILayout.Width(48));
+            GUILayout.Label($"{index}", EditorStyles.miniLabel, GUILayout.Width(28));
+            if (layer.BuiltIn)
+                GUILayout.Label(new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Lock,
+                    "Built-in layers cannot be removed"), GUILayout.Width(24));
+            else
+                GUILayout.Space(24);
             var name = GUILayout.TextField(layerNames[offset],
-                GUILayout.Width(Fix64.Max(100, GUILayout.CurrentGroupWidth - 116)));
+                GUILayout.Width(Fix64.Max(100, GUILayout.CurrentGroupWidth - 142)));
             if (!name.Equals(layerNames[offset], StringComparison.Ordinal))
                 Draft.SetLayerName(index, name);
+            EditorGUI.BeginDisabledGroup(!Draft.CanMoveLayer(index, -1));
+            if (GUILayout.Button("^", EditorStyles.toolbarButton, GUILayout.Width(24)))
+            {
+                Draft.MoveLayer(index, -1);
+                EditorGUI.EndDisabledGroup();
+                GUILayout.EndHorizontal();
+                break;
+            }
+            EditorGUI.EndDisabledGroup();
+            EditorGUI.BeginDisabledGroup(!Draft.CanMoveLayer(index, 1));
+            if (GUILayout.Button("v", EditorStyles.toolbarButton, GUILayout.Width(24)))
+            {
+                Draft.MoveLayer(index, 1);
+                EditorGUI.EndDisabledGroup();
+                GUILayout.EndHorizontal();
+                break;
+            }
+            EditorGUI.EndDisabledGroup();
+            EditorGUI.BeginDisabledGroup(!Draft.CanRemoveLayer(index));
+            if (EditorToolbar.IconButton(EditorBuiltinIcons.Toolbar.Delete,
+                    $"Remove layer '{layerNames[offset]}'", GUILayout.Width(24)))
+            {
+                Draft.RemoveLayer(index);
+                EditorGUI.EndDisabledGroup();
+                GUILayout.EndHorizontal();
+                break;
+            }
+            EditorGUI.EndDisabledGroup();
             GUILayout.EndHorizontal();
         }
+
+        GUILayout.Space(4);
+        EditorGUI.BeginDisabledGroup(layerNames.Count >= SortingLayer.MaximumIndex);
+        if (GUILayout.Button(new GUIContent("Add Layer", EditorBuiltinIcons.Toolbar.Add, "Add a layer"),
+                GUILayout.Width(112)))
+            Draft.AddLayer();
+        EditorGUI.EndDisabledGroup();
     }
 
     private static void DrawFooter()

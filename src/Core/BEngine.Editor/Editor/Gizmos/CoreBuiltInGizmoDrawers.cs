@@ -13,7 +13,11 @@ internal static class CoreBuiltInGizmoDrawers
             Screen.width * (float)viewport.width));
         var height = Math.Max(1, (int)MathF.Round(
             Screen.height * (float)viewport.height));
-        DrawClosed(RenderCamera.From(camera).ViewBoundary(width, height));
+        var boundary = RenderCamera.From(camera).ViewBoundary(width, height);
+        DrawClosed(boundary);
+        if (boundary.Length < 4) return;
+        Gizmos.DrawLine(boundary[0], boundary[2]);
+        Gizmos.DrawLine(boundary[1], boundary[3]);
     }
 
     [DrawGizmo(GizmoType.Selected)]

@@ -17,7 +17,7 @@ internal static class ReadOnlyInspectorTests
             activeSelf = true,
             isStatic = false,
             tag = "Player",
-            layer = 8,
+            layer = 3,
             hideFlags = HideFlags.NotEditable
         };
         var component = target.AddComponent<InspectorActionProbe>();
@@ -46,7 +46,7 @@ internal static class ReadOnlyInspectorTests
         TestAssert.Require(!GenericMenuCapture.HasMenu,
             "A read-only GameObject opened its Tag mutation menu.");
         GenericMenuCapture.Reset();
-        inspector.Click(TestAssert.Text(inspector.Repaint(), "2^3  Gameplay"));
+        inspector.Click(TestAssert.Text(inspector.Repaint(), "3  Gameplay"));
         TestAssert.Require(!GenericMenuCapture.HasMenu,
             "A read-only GameObject opened its Layer mutation menu.");
 
@@ -75,7 +75,7 @@ internal static class ReadOnlyInspectorTests
         TestAssert.Require(!GenericMenuCapture.HasMenu,
             "A read-only GameObject opened the Add Component menu.");
         TestAssert.Require(target.name == "Read Only Target" && target.activeSelf && !target.isStatic &&
-                           target.tag == "Player" && target.layer == 8 && component.enabled &&
+                           target.tag == "Player" && target.layer == 3 && component.enabled &&
                            component.probeValue == 88 && component.probeLabel == "Immutable" &&
                            target.components.Count == 2 && !Undo.canUndo,
             "Inspector interaction mutated a HideFlags.NotEditable GameObject or recorded Undo.");

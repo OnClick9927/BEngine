@@ -39,7 +39,8 @@ internal sealed class NavigationGrid2D
         var colliders = surface.useGeometry == NavigationCollectGeometry2D.PhysicsColliders
             ? scene?.QueryComponents<Collider2D>().ToArray()
                 .Where(IsEnabled)
-                .Where(item => !item.isTrigger && (surface.layerMask & item.gameObject.layer) != 0)
+                .Where(item => !item.isTrigger &&
+                               (surface.layerMask & SortingLayer.ToMask(item.gameObject.layer)) != 0)
                 .ToArray() ?? []
             : [];
 

@@ -29,7 +29,7 @@ public readonly record struct RenderCamera(
         camera.viewportRect);
 
     public bool ContainsLayer(ulong layer) =>
-        SortingLayer.IsValid(layer) && (CullingMask & layer) != 0;
+        SortingLayer.IsValid(layer) && (CullingMask & SortingLayer.ToMask(layer)) != 0;
 
     public bool IsVisible(Vector2 center, Fix64 rotation, Vector2 size, int width, int height)
     {

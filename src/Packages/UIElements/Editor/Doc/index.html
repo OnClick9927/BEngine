@@ -24,13 +24,14 @@
 </nav><main>
 <section id="overview"><h1>UIElements 使用手册</h1>
   <p class="lead">UIElements 是可选的保留模式 UI 包。它通过 UIDocument 把 VisualElement 树提交到
-  五个 UI Sorting Layer，支持 UXML 结构、USS 样式、UI Builder、HTML 转换、运行时查询与控件事件。</p>
+  具有稳定内建身份的 UI Sorting Layer，支持 UXML 结构、USS 样式、UI Builder、HTML 转换、运行时查询与控件事件。</p>
   <figure><img src="images/overview.png" alt="UIElements 完整示例场景与 Inspector">
     <figcaption>图 1：Hierarchy 直接保存 Runtime World、HUD Document、Controls Gallery 和 Camera；
     中央 Scene/Game 表示世界之上的 UI，右侧 Inspector 展示 UXML、缩放模式与 UI Sorting Layer。</figcaption>
   </figure>
-  <div class="note">UI 永远位于世界层之上。UIDocument 和 VisualElement 必须使用 2^59 至 2^63
-  的五个 UI 层；同层仍按 orderInLayer、Hierarchy 和稳定透明顺序排序，可与 UI 层 Particle 穿插。</div>
+  <div class="note">UIDocument 和 VisualElement 使用具有稳定内建身份的 UI Layer；该 Layer 可以重命名和排序，
+  因此它的连续自然编号会随工程配置变化，不能写死数字。同层仍按 orderInLayer、Hierarchy 和稳定透明顺序排序，
+  可与使用 UI Layer 的 Particle 穿插。</div>
 </section>
 
 <section id="quickstart"><h2>快速开始</h2><ol>
@@ -58,7 +59,7 @@
 <section id="document"><h2>UIDocument 组件介绍</h2>
   <table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody>
     <tr><td>sourceAsset</td><td>UXML 或 BEngine UI 资源的工程相对路径；变更后 Reload。</td></tr>
-    <tr><td>sortingLayer / sortingOrder</td><td>五个 UI 层和层内顺序；UI 层可与 UI Particle 穿插。</td></tr>
+    <tr><td>sortingLayer / sortingOrder</td><td>稳定内建 UI Layer 和层内顺序；Layer 当前编号由工程排序动态确定，可与同层 Particle 穿插。</td></tr>
     <tr><td>material / atlas</td><td>设置 UI 材质与图集，Material + Shader + Atlas 决定合批兼容性。</td></tr>
     <tr><td>interactable</td><td>是否参与运行时指针派发；多个 Document 时优先最高 sortingOrder。</td></tr>
     <tr><td>scaleMode</td><td>ConstantPixelSize 或 ScaleWithScreenSize。</td></tr>

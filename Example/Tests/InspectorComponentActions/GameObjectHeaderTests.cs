@@ -8,7 +8,7 @@ internal static class GameObjectHeaderTests
     internal static void Run(InspectorWorkspaceFixture fixture)
     {
         Undo.ClearAll();
-        var target = new GameObject("Header Before") { tag = "Player", layer = 8 };
+        var target = new GameObject("Header Before") { tag = "Player", layer = 3 };
         using var inspector = new InspectorHarness(target, fixture.Workspace);
         GenericMenuCapture.Install();
 
@@ -49,10 +49,10 @@ internal static class GameObjectHeaderTests
 
         commands = inspector.Repaint();
         GenericMenuCapture.Reset();
-        inspector.Click(TestAssert.Text(commands, "2^3  Gameplay"));
-        TestAssert.Require(GenericMenuCapture.Items.Any(item => item.Path == "2^4  Enemies" && item.Enabled),
+        inspector.Click(TestAssert.Text(commands, "3  Gameplay"));
+        TestAssert.Require(GenericMenuCapture.Items.Any(item => item.Path == "4  Enemies" && item.Enabled),
             "The GameObject Layer field did not expose configured named layers.");
-        GenericMenuCapture.Invoke("2^4  Enemies");
+        GenericMenuCapture.Invoke("4  Enemies");
         inspector.Repaint();
         TestAssert.Require(target.layer == SortingLayer.FromIndex(4),
             "Selecting a GameObject Layer menu item did not update layer.");

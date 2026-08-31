@@ -24,6 +24,20 @@ internal static class EditorWindowMetadataRegistry
         lock (Gate) { EnsureFresh(); return Metadata.GetValueOrDefault(windowType).Commands ?? []; }
     }
 
+    internal static IReadOnlyList<EditorWindowTabDescriptor> GetTabDescriptors()
+    {
+        lock (Gate)
+        {
+            EnsureFresh();
+            return Metadata
+                .Where(static pair => pair.Value.TabPath is not null)
+                .Select(static pair => new EditorWindowTabDescriptor(pair.Key, pair.Value.TabPath!))
+                .OrderBy(static descriptor => descriptor.MenuPath, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static descriptor => descriptor.WindowType.FullName, StringComparer.Ordinal)
+                .ToArray();
+        }
+    }
+
     private static void EnsureFresh()
     {
         var generation = RuntimeTypeCache.stats.Generation;
@@ -42,6 +56,9 @@ internal static class EditorWindowMetadataRegistry
     private static WindowMetadata CreateMetadata(Type type, IEnumerable<MethodInfo> contextMethods)
     {
         var icon = type.GetCustomAttribute<EditorWindowIconAttribute>()?.resourcePath;
+        var tabPath = type.GetCustomAttribute<EditorWindowTabAttribute>(inherit: false) is { } tab
+            ? NormalizeTabPath(tab.menuPath, type)
+            : null;
         var commands = contextMethods.Where(method => method.DeclaringType?.IsAssignableFrom(type) == true)
             .SelectMany(method => method.GetCustomAttributes<ContextMenuAttribute>(inherit: false)
                 .Select(attribute => (Method: method, Attribute: attribute)))
@@ -50,7 +67,17 @@ internal static class EditorWindowMetadataRegistry
             .Select(item => new EditorWindowContextCommand(item.Attribute.itemName, item.Method.Name,
                 Compile(item.Method)))
             .ToArray();
-        return new WindowMetadata(icon, commands);
+        return new WindowMetadata(icon, tabPath, commands);
+    }
+
+    private static string NormalizeTabPath(string path, Type type)
+    {
+        var normalized = (path ?? string.Empty).Replace('\\', '/').Trim().Trim('/');
+        if (normalized.Length > 0) return normalized;
+        var name = type.Name.EndsWith("Window", StringComparison.Ordinal)
+            ? type.Name[..^"Window".Length]
+            : type.Name;
+        return ObjectNames.NicifyVariableName(name);
     }
 
     private static bool IsValid(MethodInfo method)
@@ -68,5 +95,10 @@ internal static class EditorWindowMetadataRegistry
         return Expression.Lambda<Action<EditorWindow>>(call, window).Compile();
     }
 
-    private readonly record struct WindowMetadata(string? Icon, EditorWindowContextCommand[] Commands);
+    private readonly record struct WindowMetadata(
+        string? Icon,
+        string? TabPath,
+        EditorWindowContextCommand[] Commands);
 }
+
+internal readonly record struct EditorWindowTabDescriptor(Type WindowType, string MenuPath);

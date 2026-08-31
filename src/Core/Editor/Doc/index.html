@@ -83,7 +83,7 @@
             <tr><td>Camera2D</td><td><code>size</code></td><td>正交半高，最小 0.001</td></tr>
             <tr><td>Camera2D</td><td><code>backgroundColor/clearMode</code></td><td>Color、DepthOnly、Nothing</td></tr>
             <tr><td>Camera2D</td><td><code>priority/isMain</code></td><td>多相机按 priority 从小到大稳定渲染</td></tr>
-            <tr><td>Camera2D</td><td><code>cullingMask/viewportRect</code></td><td>层掩码与左下角原点的归一化视口</td></tr>
+            <tr><td>Camera2D</td><td><code>cullingMask/viewportRect</code></td><td>独立 Layer 位掩码与左下角原点的归一化视口</td></tr>
             <tr><td>Renderer2D</td><td><code>sortingLayer/orderInLayer/opacity</code></td><td>通用 2D 排序字段</td></tr>
             <tr><td>SpriteRenderer</td><td><code>sprite/size/pivot/useSpritePivot</code></td><td>Sprite 引用、尺寸和轴心</td></tr>
             <tr><td>SpriteRenderer</td><td><code>color/flipX/flipY/material</code></td><td>视觉与批次资源</td></tr>
@@ -92,7 +92,7 @@
             <tr><td>ParticleSystem2D</td><td><code>startColor/startRotation/startAngularVelocity/maxParticles</code></td><td>颜色、角运动与容量</td></tr>
           </tbody>
         </table></div>
-        <p>Layer 值必须是 <code>2^1</code> 到 <code>2^63</code>。世界使用前 58 层，最高五层保留给 UI；ParticleSystem2D 可进入 UI 层以实现粒子穿插。</p>
+        <p>Sorting Layer 使用连续自然编号 <code>1..63</code>，不是位值。工程默认提供五个具有稳定内建身份的 Layer；它们可以重命名和排序，但不能删除；自定义 Layer 可以增加、删除、重命名和排序。Camera 与 Physics 的 Layer Mask 是独立位掩码，应通过 <code>SortingLayer.ToMask(layer)</code>、<code>LayerMask.MaskForLayer(layer)</code> 或 <code>LayerMask.GetMask(names)</code> 创建，不要直接按位组合 Layer 编号。内建 UI Layer 通过稳定身份动态定位，不能依赖固定编号。</p>
       </section>
 
       <section id="assets">
@@ -206,7 +206,7 @@ GUILayout.Button("Build", accent);</code></pre>
           <li>GameObject &gt; Camera 2D 创建相机，设置 size、priority、clearMode、cullingMask、viewportRect。</li>
           <li>在 Project 选中 PNG，在 Inspector 将 Texture Type 设为 Sprite，按需调整 Pivot/PPU 后点击 Apply；再创建 Sprite 对象，把同一图片赋给 SpriteRenderer。当前运行时图片解码器仅支持 PNG。</li>
           <li>需要 Atlas 时创建 Texture Atlas，在 Window &gt; 2D &gt; Texture Atlas 添加这些 Sprite 模式图片并 Build，无需复制图片或新建 Sprite 描述符。</li>
-          <li>Edit &gt; Project Settings &gt; Tags and Layers 配置 Tag 与 63 个 Layer。</li>
+          <li>Edit &gt; Project Settings &gt; Tags and Layers 配置 Tag 与 Layer。Layer 使用连续自然编号 1..63；五个内建层可重命名和排序但不可删除，自定义层可增删、重命名和排序。</li>
           <li>在 Scene 使用 W/E/R Handle 编辑位置、旋转和缩放，使用眼睛/锁控制可见与可选。</li>
           <li>进入 Play 验证；Game View 选择逻辑分辨率并展开 Status 检查 Camera、Batch、Draw Call。</li>
           <li>停止 Play，在 Edit Mode 执行 File &gt; Save Scene 保存原数据。</li>
