@@ -8,9 +8,9 @@ namespace BEngine.Editor;
 
 public static class EditorProjectSettings
 {
-    private static ProjectSettingsDocument _current = new();
+    private static ProjectSettingsData _current = new();
     private static string _path = string.Empty;
-    public static ProjectSettingsDocument current => _current;
+    public static ProjectSettingsData current => _current;
     public static string settingsPath => _path;
     public static event Action? projectSettingsChanged;
 
@@ -19,13 +19,13 @@ public static class EditorProjectSettings
         _path = Path.GetFullPath(path);
         try
         {
-            _current = File.Exists(_path) ? Document.Load<ProjectSettingsDocument>(_path) :
-                new ProjectSettingsDocument { ProductName = fallbackProductName ?? "BEngine Game" };
+            _current = File.Exists(_path) ? YamlUtility.Load<ProjectSettingsData>(_path) :
+                new ProjectSettingsData { ProductName = fallbackProductName ?? "BEngine Game" };
         }
         catch (Exception exception)
         {
             Debug.LogWarning($"Project settings could not be loaded; defaults are active: {exception.Message}");
-            _current = new ProjectSettingsDocument { ProductName = fallbackProductName ?? "BEngine Game" };
+            _current = new ProjectSettingsData { ProductName = fallbackProductName ?? "BEngine Game" };
         }
         Apply();
     }
@@ -49,7 +49,7 @@ public static class EditorProjectSettings
         SortingLayerRegistry.Configure(_current.SortingLayers.Select(item => item.ToDefinition()));
     }
 
-    private static void Validate(ProjectSettingsDocument value)
+    private static void Validate(ProjectSettingsData value)
     {
         if (value.Format != "BEngine.ProjectSettings" || value.Version != 3)
             throw new InvalidDataException($"Unsupported project settings '{value.Format}' v{value.Version}.");
@@ -76,8 +76,16 @@ public static class EditorProjectSettings
             throw new InvalidDataException("Sorting layer names must be non-empty and unique.");
     }
 
-    private static void NormalizeTagsAndLayers(ProjectSettingsDocument value)
+    private static void NormalizeTagsAndLayers(ProjectSettingsData value)
     {
-        ProjectSettingsMigration.Normalize(value);
+        value.Tags ??= TagManager.CreateDefaultTags().ToList();
+        value.SortingLayers ??= SortingLayerRegistry.CreateDefaults().Select(static layer => new SortingLayerData
+        {
+            Value = layer.Value,
+            Name = layer.Name,
+            BuiltIn = layer.IsBuiltIn,
+            IsUi = layer.IsUi,
+            BuiltInId = layer.BuiltInId
+        }).ToList();
     }
 }

@@ -17,7 +17,6 @@ public sealed class AnimatorController : ScriptableObject
         states.Add(state);
         if (string.IsNullOrWhiteSpace(defaultState)) defaultState = state.name;
     }
-    public void Save(string path) => Document.SaveBObject<AnimatorControllerDocument>(this, path);
-    public static AnimatorController Load(string path) =>
-        Document.LoadBObject<AnimatorControllerDocument, AnimatorController>(path);
+    public void Save(string path) => AnimatorControllerSerialization.Save(this, path);
+    public static AnimatorController Load(string path) => AnimatorControllerSerialization.Load(path);
 }

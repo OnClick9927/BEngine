@@ -9,10 +9,16 @@ namespace BEngine;
 
 internal static class BAssetReferenceLoader
 {
+    private static ReadOnlySpan<byte> PngSignature => [137, 80, 78, 71, 13, 10, 26, 10];
     private static readonly Lock Gate = new();
     private static readonly Dictionary<CacheKey, BAsset> Cache = [];
     private static readonly Dictionary<SubAssetCacheKey, BAsset> SubAssetCache = [];
+    private static readonly Dictionary<BundledSubAssetCacheKey, BAsset> BundledSubAssetCache = [];
+    private static readonly Dictionary<SubAssetCacheKey, Sprite> SpriteSubAssetCache = [];
     private static readonly Dictionary<Guid, string> GuidPaths = [];
+    private static readonly Dictionary<FileSubAssetKey, string> FileSubAssetPaths = [];
+    private static string _metadataIndexDataPath = string.Empty;
+    private static bool _metadataIndexReady;
 
     internal static BAsset? Load(string path, Type assetType)
     {
@@ -36,23 +42,19 @@ internal static class BAssetReferenceLoader
 
     private static BAsset? LoadUncached(string fullPath, Type assetType)
     {
-        var asset = assetType == typeof(Sprite)
-            ? LoadSprite(fullPath)
-            : assetType == typeof(Texture)
-                ? LoadKnown(fullPath, assetType)
-                : LoadKnown(fullPath, assetType) ?? InvokeTypeLoader(fullPath, assetType) ??
-                  LoadManagedOrYaml(fullPath, assetType);
+        var asset = assetType == typeof(Texture)
+            ? LoadKnown(fullPath, assetType)
+            : LoadKnown(fullPath, assetType) ?? InvokeTypeLoader(fullPath, assetType) ??
+              LoadManagedOrYaml(fullPath, assetType);
         if (asset is null) return null;
         if (!assetType.IsInstanceOfType(asset))
             throw new InvalidDataException(
                 $"Asset '{fullPath}' contains {asset.GetType().FullName}, expected {assetType.FullName}.");
         asset.BindAssetReference(AssetReferencePath.ToReference(fullPath), ResolveIdentity(fullPath, assetType));
         if (string.IsNullOrWhiteSpace(asset.name)) asset.name = AssetName(fullPath);
-        if (asset is FileAsset fileAsset)
-        {
-            fileAsset.sourcePath = fullPath;
-            fileAsset.assetType = assetType.Name;
-        }
+        asset.sourcePath = fullPath;
+        asset.artifactPath = fullPath;
+        asset.assetType = assetType.Name;
         if (asset is Scene scene) scene.path = asset.assetPath;
         if (asset is PrefabAsset prefab) prefab.assetPath = asset.assetPath;
         return asset;
@@ -65,11 +67,18 @@ internal static class BAssetReferenceLoader
         return path is null ? null : Load(path, assetType);
     }
 
-    internal static BAsset? LoadSubAsset(string path, long localIdentifier, Type assetType)
+    internal static BObject? LoadObjectReference(string path, Type objectType)
     {
-        ArgumentNullException.ThrowIfNull(assetType);
-        if (!typeof(BAsset).IsAssignableFrom(assetType) || assetType.IsAbstract || localIdentifier <= 0 ||
-            string.IsNullOrWhiteSpace(path)) return null;
+        ArgumentNullException.ThrowIfNull(objectType);
+        if (typeof(BAsset).IsAssignableFrom(objectType)) return Load(path, objectType);
+        if (objectType != typeof(Sprite) ||
+            !TryParseSubAssetReference(path, out var mainPath, out var localIdentifier)) return null;
+        return LoadSpriteSubAsset(mainPath, localIdentifier);
+    }
+
+    private static Sprite? LoadSpriteSubAsset(string path, long localIdentifier)
+    {
+        if (localIdentifier <= 0 || string.IsNullOrWhiteSpace(path)) return null;
         string mainFullPath;
         if (path.StartsWith("guid:", StringComparison.OrdinalIgnoreCase))
         {
@@ -79,9 +88,50 @@ internal static class BAssetReferenceLoader
         }
         else mainFullPath = AssetReferencePath.Resolve(path);
         if (!File.Exists(mainFullPath)) return null;
+
+        var mainMeta = ReadSubAssetMeta(mainFullPath + ".meta");
+        if (mainMeta is null || !Guid.TryParse(mainMeta.Guid, out var parentGuid) ||
+            !IsKnownImportedRepresentation(mainMeta, localIdentifier, typeof(Sprite))) return null;
+        var cacheKey = new SubAssetCacheKey(CanonicalPath(mainFullPath), localIdentifier, typeof(Sprite));
+        lock (Gate)
+            if (SpriteSubAssetCache.TryGetValue(cacheKey, out var cached)) return cached;
+
+        if (Load(mainFullPath, typeof(Texture)) is not Texture texture) return null;
+        var pivot = new Vector2(
+            (Fix64)(double)ReadPivot(mainMeta.Settings, "spritePivotX"),
+            (Fix64)(double)ReadPivot(mainMeta.Settings, "spritePivotY"));
+        var sprite = texture.CreateSprite(pivot, localIdentifier);
+        sprite.BindSourceIdentity(parentGuid.ToString("N"), localIdentifier,
+            AssetReferencePath.ToReference(mainFullPath));
+        lock (Gate) SpriteSubAssetCache[cacheKey] = sprite;
+        return sprite;
+    }
+
+    internal static BAsset? LoadSubAsset(string path, long localIdentifier, Type assetType)
+    {
+        ArgumentNullException.ThrowIfNull(assetType);
+        if (!typeof(BAsset).IsAssignableFrom(assetType) || assetType.IsAbstract || localIdentifier <= 0 ||
+            string.IsNullOrWhiteSpace(path)) return null;
+        string mainFullPath;
+        Guid requestedOwnerGuid = Guid.Empty;
+        if (path.StartsWith("guid:", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Guid.TryParse(path.AsSpan("guid:".Length), out requestedOwnerGuid)) return null;
+            if (ResolveGuidPath(requestedOwnerGuid) is not { } resolvedPath)
+                return LoadBundledSubAsset(requestedOwnerGuid, localIdentifier, assetType);
+            mainFullPath = resolvedPath;
+        }
+        else mainFullPath = AssetReferencePath.Resolve(path);
+        if (!File.Exists(mainFullPath))
+            return requestedOwnerGuid == Guid.Empty
+                ? null
+                : LoadBundledSubAsset(requestedOwnerGuid, localIdentifier, assetType);
         var mainReference = AssetReferencePath.ToReference(mainFullPath);
         var mainMeta = ReadSubAssetMeta(mainFullPath + ".meta");
-        if (mainMeta is null || !Guid.TryParse(mainMeta.Guid, out var parentGuid)) return null;
+        if (mainMeta is null || !Guid.TryParse(mainMeta.Guid, out var parentGuid))
+            return requestedOwnerGuid == Guid.Empty
+                ? null
+                : LoadBundledSubAsset(requestedOwnerGuid, localIdentifier, assetType);
         var cacheKey = new SubAssetCacheKey(CanonicalPath(mainFullPath), localIdentifier, assetType);
         lock (Gate)
             if (SubAssetCache.TryGetValue(cacheKey, out var cached)) return cached;
@@ -102,16 +152,42 @@ internal static class BAssetReferenceLoader
             asset = LoadUncached(childPath, assetType);
             asset?.BindSubAssetReference(mainReference, parentGuid, localIdentifier, asset.Id);
         }
-        else if (IsKnownImportedRepresentation(mainMeta, localIdentifier, assetType))
-        {
-            // Imported representations such as a Texture's Sprite share the main source file
-            // and have a stable importer-defined local identifier rather than a child meta file.
-            asset = Load(mainFullPath, assetType);
-            asset?.BindSubAssetReference(mainReference, parentGuid, localIdentifier, asset.Id);
-        }
-        if (asset is null) return null;
+        if (asset is null)
+            return requestedOwnerGuid == Guid.Empty
+                ? null
+                : LoadBundledSubAsset(requestedOwnerGuid, localIdentifier, assetType);
         lock (Gate) SubAssetCache[cacheKey] = asset;
         return asset;
+    }
+
+    private static BAsset? LoadBundledSubAsset(Guid ownerGuid, long localIdentifier, Type assetType)
+    {
+        var cacheKey = new BundledSubAssetCacheKey(ownerGuid, localIdentifier, assetType);
+        lock (Gate)
+            if (BundledSubAssetCache.TryGetValue(cacheKey, out var cached)) return cached;
+
+        var reference = $"guid:{ownerGuid:N}#subasset={localIdentifier}";
+        BAsset? asset;
+        try { asset = ResourceLoader.LoadAsset(reference, assetType, "Resources"); }
+        catch (Exception exception) when (exception is InvalidDataException or InvalidOperationException or
+                                          ArgumentException or IOException)
+        {
+            return null;
+        }
+        if (asset is null || !assetType.IsInstanceOfType(asset)) return null;
+        if (asset.parentAssetGuid != ownerGuid || asset.localIdentifier != localIdentifier)
+            asset.BindSubAssetReference(
+                string.IsNullOrWhiteSpace(asset.assetPath) ? $"guid:{ownerGuid:N}" : asset.assetPath,
+                ownerGuid,
+                localIdentifier,
+                asset.Id);
+        if (string.IsNullOrWhiteSpace(asset.assetType)) asset.assetType = assetType.Name;
+        lock (Gate)
+        {
+            if (BundledSubAssetCache.TryGetValue(cacheKey, out var existing)) return existing;
+            BundledSubAssetCache[cacheKey] = asset;
+            return asset;
+        }
     }
 
     private static bool IsKnownImportedRepresentation(
@@ -120,51 +196,42 @@ internal static class BAssetReferenceLoader
         Type assetType) =>
         localIdentifier == 21300000 && assetType == typeof(Sprite) &&
         mainMeta.Settings.TryGetValue("textureType", out var textureType) &&
-        textureType.Equals("Sprite", StringComparison.OrdinalIgnoreCase);
+        textureType.Equals(nameof(Sprite), StringComparison.OrdinalIgnoreCase);
 
     internal static void Invalidate(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
         var fullPath = AssetReferencePath.Resolve(path);
-        var affectedPaths = AssociatedCachePaths(fullPath);
+        var canonicalPath = CanonicalPath(fullPath);
+        var meta = ReadSubAssetMeta(fullPath + ".meta");
+        var assetGuid = meta is not null && Guid.TryParse(meta.Guid, out var parsedAssetGuid)
+            ? parsedAssetGuid
+            : Guid.Empty;
+        var parentGuid = meta is not null && Guid.TryParse(meta.ParentGuid, out var parsedParentGuid)
+            ? parsedParentGuid
+            : Guid.Empty;
         lock (Gate)
         {
-            foreach (var key in Cache.Keys.Where(key => affectedPaths.Contains(key.Path)).ToArray())
+            List<CacheKey>? staleKeys = null;
+            foreach (var (key, asset) in Cache)
+            {
+                var matchesAsset = assetGuid != Guid.Empty &&
+                                   (asset.Id == assetGuid || asset.parentAssetGuid == assetGuid);
+                var matchesParent = parentGuid != Guid.Empty &&
+                                    (asset.Id == parentGuid || asset.parentAssetGuid == parentGuid);
+                if (key.Path != canonicalPath && !matchesAsset && !matchesParent) continue;
+                (staleKeys ??= []).Add(key);
+            }
+            foreach (var key in staleKeys ?? [])
                 Cache.Remove(key);
 
             // A sub-asset cache key is rooted at the main asset, so invalidating either a
             // file-backed child or its owner must discard the resolved representation.
             SubAssetCache.Clear();
-            GuidPaths.Clear();
+            BundledSubAssetCache.Clear();
+            SpriteSubAssetCache.Clear();
+            ResetMetadataIndex();
         }
-    }
-
-    private static HashSet<string> AssociatedCachePaths(string fullPath)
-    {
-        var paths = new HashSet<string>(StringComparer.Ordinal) { CanonicalPath(fullPath) };
-        var meta = ReadSubAssetMeta(fullPath + ".meta");
-        if (meta is null) return paths;
-
-        Guid.TryParse(meta.Guid, out var assetGuid);
-        Guid.TryParse(meta.ParentGuid, out var parentGuid);
-        if (assetGuid == Guid.Empty && parentGuid == Guid.Empty) return paths;
-
-        foreach (var metaPath in EnumerateMetadataPaths())
-        {
-            var candidate = ReadSubAssetMeta(metaPath);
-            if (candidate is null) continue;
-            if (parentGuid != Guid.Empty && Guid.TryParse(candidate.Guid, out var candidateGuid) &&
-                candidateGuid == parentGuid)
-            {
-                paths.Add(CanonicalPath(metaPath[..^".meta".Length]));
-            }
-            if (assetGuid != Guid.Empty && Guid.TryParse(candidate.ParentGuid, out var candidateParent) &&
-                candidateParent == assetGuid)
-            {
-                paths.Add(CanonicalPath(metaPath[..^".meta".Length]));
-            }
-        }
-        return paths;
     }
 
     internal static void Clear()
@@ -173,85 +240,90 @@ internal static class BAssetReferenceLoader
         {
             Cache.Clear();
             SubAssetCache.Clear();
-            GuidPaths.Clear();
+            BundledSubAssetCache.Clear();
+            SpriteSubAssetCache.Clear();
+            ResetMetadataIndex();
         }
     }
 
     private static string? ResolveGuidPath(Guid guid)
     {
+        EnsureMetadataIndex();
         lock (Gate)
-            if (GuidPaths.TryGetValue(guid, out var cached)) return cached;
-
-        var dataPath = Application.dataPath;
-        if (string.IsNullOrWhiteSpace(dataPath)) return null;
-        var assetsRoot = Path.GetFullPath(dataPath);
-        var projectRoot = Path.GetFileName(assetsRoot).Equals("Assets", StringComparison.OrdinalIgnoreCase)
-            ? Directory.GetParent(assetsRoot)?.FullName
-            : null;
-        var roots = projectRoot is null
-            ? [assetsRoot]
-            : new[] { assetsRoot, Path.Combine(projectRoot, "Packages") };
-        foreach (var root in roots)
-        {
-            if (!Directory.Exists(root)) continue;
-            IEnumerable<string> metadata;
-            try { metadata = Directory.EnumerateFiles(root, "*.meta", SearchOption.AllDirectories); }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                continue;
-            }
-            foreach (var metaPath in metadata)
-            {
-                try
-                {
-                    var meta = YamlUtility.Deserialize<AssetMetaIdentity>(File.ReadAllText(metaPath));
-                    if (!Guid.TryParse(meta.Guid, out var candidate) || candidate != guid) continue;
-                    var sourcePath = metaPath[..^".meta".Length];
-                    lock (Gate) GuidPaths[guid] = sourcePath;
-                    return sourcePath;
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
-                                                  InvalidDataException or FormatException or
-                                                  YamlDotNet.Core.YamlException) { }
-            }
-        }
-        return null;
+            return GuidPaths.GetValueOrDefault(guid);
     }
 
     private static string? ResolveFileSubAsset(Guid parentGuid, long localIdentifier)
     {
-        foreach (var metaPath in EnumerateMetadataPaths())
-        {
-            var meta = ReadSubAssetMeta(metaPath);
-            if (meta is null || meta.LocalIdentifier != localIdentifier ||
-                !Guid.TryParse(meta.ParentGuid, out var parent) || parent != parentGuid) continue;
-            return metaPath[..^".meta".Length];
-        }
-        return null;
+        EnsureMetadataIndex();
+        lock (Gate)
+            return FileSubAssetPaths.GetValueOrDefault(new FileSubAssetKey(parentGuid, localIdentifier));
     }
 
-    private static IEnumerable<string> EnumerateMetadataPaths()
+    private static void EnsureMetadataIndex()
     {
         var dataPath = Application.dataPath;
-        if (string.IsNullOrWhiteSpace(dataPath)) yield break;
+        if (string.IsNullOrWhiteSpace(dataPath)) return;
         var assetsRoot = Path.GetFullPath(dataPath);
-        var projectRoot = Path.GetFileName(assetsRoot).Equals("Assets", StringComparison.OrdinalIgnoreCase)
-            ? Directory.GetParent(assetsRoot)?.FullName
-            : null;
-        var roots = projectRoot is null
-            ? [assetsRoot]
-            : new[] { assetsRoot, Path.Combine(projectRoot, "Packages") };
-        foreach (var root in roots)
+        var canonicalDataPath = CanonicalPath(assetsRoot);
+        lock (Gate)
         {
-            if (!Directory.Exists(root)) continue;
-            string[] metadata;
-            try { metadata = Directory.GetFiles(root, "*.meta", SearchOption.AllDirectories); }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            if (_metadataIndexReady && _metadataIndexDataPath == canonicalDataPath) return;
+            ResetMetadataIndex();
+            _metadataIndexDataPath = canonicalDataPath;
+
+            IndexMetadataRoot(assetsRoot);
+            var projectRoot = Path.GetFileName(assetsRoot).Equals("Assets", StringComparison.OrdinalIgnoreCase)
+                ? Directory.GetParent(assetsRoot)?.FullName
+                : null;
+            if (projectRoot is not null)
             {
-                continue;
+                IndexMetadataRoot(Path.Combine(projectRoot, "Packages"));
+                IndexMetadataRoot(Path.Combine(projectRoot, "Library", "Artifacts"));
             }
-            foreach (var path in metadata) yield return path;
+            _metadataIndexReady = true;
         }
+    }
+
+    private static void IndexMetadataRoot(string root)
+    {
+        if (!Directory.Exists(root)) return;
+        try
+        {
+            foreach (var metaPath in Directory.EnumerateFiles(root, "*.meta", SearchOption.AllDirectories))
+            {
+                var meta = ReadMetadataIndex(metaPath);
+                if (meta is null) continue;
+                var sourcePath = metaPath[..^".meta".Length];
+                Guid.TryParse(meta.Guid, out var assetGuid);
+                Guid.TryParse(meta.ParentGuid, out var parentGuid);
+
+                if (assetGuid != Guid.Empty) GuidPaths.TryAdd(assetGuid, sourcePath);
+                if (parentGuid == Guid.Empty) continue;
+                if (meta.LocalIdentifier > 0)
+                    FileSubAssetPaths.TryAdd(new FileSubAssetKey(parentGuid, meta.LocalIdentifier), sourcePath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A concurrently removed package or artifact root is ignored until the next invalidation.
+        }
+    }
+
+    private static AssetMetaIndexIdentity? ReadMetadataIndex(string metaPath)
+    {
+        try { return YamlUtility.Deserialize<AssetMetaIndexIdentity>(File.ReadAllText(metaPath)); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                                          InvalidDataException or FormatException or
+                                          YamlDotNet.Core.YamlException) { return null; }
+    }
+
+    private static void ResetMetadataIndex()
+    {
+        GuidPaths.Clear();
+        FileSubAssetPaths.Clear();
+        _metadataIndexDataPath = string.Empty;
+        _metadataIndexReady = false;
     }
 
     private static AssetMetaIdentity? ReadSubAssetMeta(string metaPath)
@@ -301,30 +373,14 @@ internal static class BAssetReferenceLoader
         if (assetType == typeof(Shader))
             return new Shader(Path.GetFileNameWithoutExtension(fullPath), File.ReadAllText(fullPath));
         if (assetType == typeof(TextAsset)) return new TextAsset(File.ReadAllText(fullPath), fullPath);
-        if (assetType == typeof(Scene)) return Document.LoadBObject<SceneDocument, Scene>(fullPath);
-        if (assetType == typeof(PrefabAsset)) return Document.LoadBObject<PrefabDocument, PrefabAsset>(fullPath);
+        if (assetType == typeof(Scene)) return SceneAssetSerialization.Load(fullPath);
+        if (assetType == typeof(PrefabAsset)) return PrefabAssetSerialization.Load(fullPath);
         return null;
-    }
-
-    private static Sprite? LoadSprite(string fullPath)
-    {
-        if (fullPath.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase))
-            return Sprite.Load(fullPath);
-        if (!Texture.IsSupportedSourcePath(fullPath) || !TryReadMeta(fullPath, out var meta) ||
-            !meta.Settings.TryGetValue("textureType", out var textureType) ||
-            !textureType.Equals("Sprite", StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        var reference = AssetReferencePath.ToReference(fullPath);
-        var pivot = new Vector2(
-            (Fix64)(double)ReadPivot(meta.Settings, "spritePivotX"),
-            (Fix64)(double)ReadPivot(meta.Settings, "spritePivotY"));
-        return Sprite.FromTexture(reference, pivot, reference);
     }
 
     private static BAsset? InvokeTypeLoader(string fullPath, Type assetType)
     {
-        var load = assetType.GetMethod("Load", BindingFlags.Public | BindingFlags.Static |
+        var load = assetType.GetMethod(nameof(Material.Load), BindingFlags.Public | BindingFlags.Static |
                                               BindingFlags.DeclaredOnly, binder: null,
             types: [typeof(string)], modifiers: null);
         if (load is null || !assetType.IsAssignableFrom(load.ReturnType)) return null;
@@ -336,7 +392,7 @@ internal static class BAssetReferenceLoader
     {
         if (fullPath.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase))
         {
-            var document = Document.Load<ManagedAssetDocument>(fullPath);
+            var document = YamlUtility.Load<ManagedAssetData>(fullPath);
             var storedType = ResolveType(document.TypeName) ?? throw new InvalidDataException(
                 $"Managed asset type '{document.TypeName}' is not loaded.");
             if (!assetType.IsAssignableFrom(storedType))
@@ -499,15 +555,26 @@ internal static class BAssetReferenceLoader
         if (!Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase)) return false;
         Span<byte> header = stackalloc byte[24];
         using var stream = File.OpenRead(path);
-        if (stream.Read(header) != header.Length ||
-            !header[..8].SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) return false;
-        width = BinaryPrimitives.ReadInt32BigEndian(header[16..20]);
-        height = BinaryPrimitives.ReadInt32BigEndian(header[20..24]);
+        return stream.Read(header) == header.Length && TryReadPngSize(header, out width, out height);
+    }
+
+    private static bool TryReadPngSize(ReadOnlySpan<byte> bytes, out int width, out int height)
+    {
+        width = height = 0;
+        if (bytes.Length < 24 ||
+            !bytes[..8].SequenceEqual(PngSignature)) return false;
+        width = BinaryPrimitives.ReadInt32BigEndian(bytes[16..20]);
+        height = BinaryPrimitives.ReadInt32BigEndian(bytes[20..24]);
         return width > 0 && height > 0;
     }
 
     private readonly record struct CacheKey(string Path, Type AssetType);
     private readonly record struct SubAssetCacheKey(string Path, long LocalIdentifier, Type AssetType);
+    private readonly record struct BundledSubAssetCacheKey(
+        Guid OwnerGuid,
+        long LocalIdentifier,
+        Type AssetType);
+    private readonly record struct FileSubAssetKey(Guid OwnerGuid, long LocalIdentifier);
 
     private sealed class AssetMetaIdentity
     {
@@ -516,6 +583,13 @@ internal static class BAssetReferenceLoader
         public string ParentGuid { get; set; } = string.Empty;
         public long LocalIdentifier { get; set; }
         public List<SubAssetIdentity> SubAssets { get; set; } = [];
+    }
+
+    private sealed class AssetMetaIndexIdentity
+    {
+        public string Guid { get; set; } = string.Empty;
+        public string ParentGuid { get; set; } = string.Empty;
+        public long LocalIdentifier { get; set; }
     }
 
     private sealed class SubAssetIdentity

@@ -1,9 +1,8 @@
-using System.Globalization;
 using BEngine.Documents;
-using BEngine.Serialization;
 
 namespace BEngine.UIElements;
 
+[EditorIcon("Icons/Assets/AssetMarkup.png")]
 public sealed class VisualTreeAsset : ScriptableObject
 {
     private UIAssetDocument _document = UIAssetSerializer.CreateDefaultDocument();
@@ -17,7 +16,10 @@ public sealed class VisualTreeAsset : ScriptableObject
         return new VisualTreeAsset { _document = UIAssetSerializer.ToDocument(root), _sourceRoot = root };
     }
 
-    public static VisualTreeAsset Load(string path)
+    public static VisualTreeAsset Load(string path) =>
+        Document<VisualTreeAsset>.Read(path, LoadAsset).ToAsset();
+
+    private static VisualTreeAsset LoadAsset(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (Path.GetExtension(path).Equals(".uxml", StringComparison.OrdinalIgnoreCase))
@@ -32,7 +34,10 @@ public sealed class VisualTreeAsset : ScriptableObject
             uxmlAsset.BindAssetReference(fullPath);
             return uxmlAsset;
         }
-        return Document.LoadBObject<UIAssetDocument, VisualTreeAsset>(path);
+        var sourcePath = Path.GetFullPath(path);
+        var document = BEngine.YamlUtility.Load<UIAssetDocument>(sourcePath);
+        UIAssetSerializer.Validate(document);
+        return FromDocument(document, sourcePath);
     }
 
     private bool _uxml;
@@ -42,6 +47,12 @@ public sealed class VisualTreeAsset : ScriptableObject
         : UIAssetSerializer.CreateElement(_document.Root);
 
     public void Save(string path)
+    {
+        Document<VisualTreeAsset>.FromAsset(this).Write(path,
+            static (asset, destination) => asset.SaveAsset(destination));
+    }
+
+    private void SaveAsset(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (Path.GetExtension(path).Equals(".uxml", StringComparison.OrdinalIgnoreCase))
@@ -57,13 +68,17 @@ public sealed class VisualTreeAsset : ScriptableObject
             _uxmlTemplate = UxmlSerializer.LoadTemplate(fullPath);
             return;
         }
-        Document.SaveBObject<UIAssetDocument>(this, path);
+        var document = CreateDocument();
+        UIAssetSerializer.Validate(document);
         _sourcePath = Path.GetFullPath(path);
+        BEngine.YamlUtility.Save(document, _sourcePath);
+        _document = document;
         BindAssetReference(_sourcePath);
     }
 
     internal static VisualTreeAsset FromDocument(UIAssetDocument document, string path)
     {
+        UIAssetSerializer.Validate(document);
         var fullPath = string.IsNullOrWhiteSpace(path) ? string.Empty : Path.GetFullPath(path);
         var asset = new VisualTreeAsset { _sourcePath = fullPath, _document = document };
         asset.BindAssetReference(fullPath);

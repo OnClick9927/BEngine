@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Editor.Documents;
 using BEngine.ProjectSystem;
@@ -125,7 +124,7 @@ internal static class Program
         Require(first == "Assets/Scripts/New Assembly Definition.asmdef.yaml" &&
                 second == "Assets/Scripts/New Assembly Definition 1.asmdef.yaml",
             $"Assembly definition creation did not produce stable unique paths: {first}, {second}");
-        var firstDocument = Document.Load<AssemblyDefinitionDocument>(
+        var firstDocument = BEngine.YamlUtility.Load<AssemblyDefinitionDocument>(
             Path.Combine(workspace.RootPath, first.Replace('/', Path.DirectorySeparatorChar)));
         Require(firstDocument.Name == "New.Assembly.Definition" &&
                 firstDocument.RootNamespace == "New.Assembly.Definition",
@@ -160,7 +159,7 @@ internal static class Program
         EditorProjectSettings.current.ScriptingDefineSymbols = ["FEATURE_ALPHA", "FEATURE_2"];
         EditorProjectSettings.Save();
 
-        var saved = Document.Load<ProjectSettingsDocument>(workspace.ProjectSettingsFilePath);
+        var saved = BEngine.YamlUtility.Load<ProjectSettingsData>(workspace.ProjectSettingsFilePath);
         Require(saved.ScriptingDefineSymbols.SequenceEqual(["FEATURE_ALPHA", "FEATURE_2"]),
             "Project Settings did not persist scripting define symbols.");
 

@@ -133,7 +133,8 @@ internal static class AssetBundleMenuCommands
                  .OrderBy(record => record.AssetPath, StringComparer.Ordinal))
         {
             hash.AppendData(Encoding.UTF8.GetBytes(
-                $"{record.Guid:N}\0{record.AssetPath.Replace('\\', '/')}\0{record.SourceHash}\0"));
+                $"{record.Guid:N}\0{record.AssetPath.Replace('\\', '/')}\0" +
+                $"{record.ArtifactHash}\0{record.ArtifactSize}\0"));
         }
         var value = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
         return $"content-{value[..24]}";

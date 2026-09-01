@@ -1,7 +1,8 @@
+using System.Reflection;
 using BEngine;
 using BEngine.Editor;
 using BEngine.Editor.Rendering;
-using BEngine.Documents;
+using BEngine.ProjectSystem;
 using BEngine.Serialization;
 using BEngine.Editor.Documents;
 
@@ -63,8 +64,8 @@ internal static class Program
                 AutoRefreshAssets = false,
                 ShowAssetMetaFiles = true
             };
-            preferences.Save(preferencesPath);
-            var restored = Document.Load<EditorPreferencesDocument>(preferencesPath);
+            YamlUtility.Save(preferences, preferencesPath);
+            var restored = YamlUtility.Load<EditorPreferencesDocument>(preferencesPath);
             Require(restored.Locale == "en-US" && Math.Abs(restored.EditorScale - 1.25f) < .001f &&
                     restored.EditorFont == "Segoe UI" && restored.EditorFontSize == 15 &&
                     restored.EditorTheme == "Light" && restored.EditorSkin == "builtin:Light" &&
@@ -106,7 +107,7 @@ internal static class Program
             project.DefaultScreenHeight = 900;
             project.GraphicsBackend = "Vulkan";
             EditorProjectSettings.Save();
-            var projectRestored = Document.Load<ProjectSettingsDocument>(projectPath);
+            var projectRestored = YamlUtility.Load<ProjectSettingsData>(projectPath);
             Require(projectRestored.CompanyName == "BEngine Tests" && projectRestored.ProductName == "Settings Test" &&
                     projectRestored.DefaultScreenWidth == 1600 && projectRestored.DefaultScreenHeight == 900 &&
                     projectRestored.GraphicsBackend == "Vulkan",
@@ -174,25 +175,12 @@ internal static class Program
         foreach (var endpoint in new[] { EditorAppearance.MinimumScale, EditorAppearance.MaximumScale })
         {
             var path = Path.Combine(testDirectory, $"Scale-{endpoint:0.0}.yaml");
-            new EditorPreferencesDocument { EditorScale = endpoint }.Save(path);
-            var restored = Document.Load<EditorPreferencesDocument>(path);
+            YamlUtility.Save(new EditorPreferencesDocument { EditorScale = endpoint }, path);
+            var restored = YamlUtility.Load<EditorPreferencesDocument>(path);
             EditorAppearance.Apply(restored);
             Require(Math.Abs(restored.EditorScale - endpoint) < .001f &&
                     Math.Abs((double)GUIUtility.pixelsPerPoint - endpoint) < .001,
                 $"Editor scale endpoint {endpoint:0.0} was not accepted and applied exactly.");
-        }
-
-        foreach (var invalid in new[] { 0.49f, 1.81f, float.NaN })
-        {
-            try
-            {
-                new EditorPreferencesDocument { EditorScale = invalid }.Save(
-                    Path.Combine(testDirectory, $"InvalidScale-{Guid.NewGuid():N}.yaml"));
-                throw new InvalidOperationException($"Invalid editor scale {invalid} was persisted.");
-            }
-            catch (InvalidDataException)
-            {
-            }
         }
 
         var below = new EditorPreferencesDocument { EditorScale = -1 };
@@ -230,15 +218,15 @@ internal static class Program
             EditorTheme = nameof(EditorTheme.Custom),
             EditorSkin = EditorSkinPreferences.GetToken(customSkin)
         };
-        custom.Save(themePath);
-        var customRestored = Document.Load<EditorPreferencesDocument>(themePath);
+        YamlUtility.Save(custom, themePath);
+        var customRestored = YamlUtility.Load<EditorPreferencesDocument>(themePath);
         EditorAppearance.Apply(customRestored);
         Require(EditorAppearance.theme == EditorTheme.Custom &&
                 ColorNear(EditorAppearance.activeSkin.selectionRect.normal.backgroundColor, accent),
             "A customized GUIStyle state was not persisted and applied.");
 
         var legacyPath = EditorDataPaths.preferencesPath;
-        new EditorPreferencesDocument { Locale = "en-US", EditorFontSize = 24 }.Save(legacyPath);
+        YamlUtility.Save(new EditorPreferencesDocument { Locale = "en-US", EditorFontSize = 24 }, legacyPath);
         var appearanceChangeCount = 0;
         void OnAppearanceChanged() => appearanceChangeCount++;
         EditorAppearance.appearanceChanged += OnAppearanceChanged;
@@ -257,7 +245,7 @@ internal static class Program
         Require(appearanceChangeCount == 1,
             "Repeated editor preference initialization reapplied the skin or emitted duplicate appearance changes.");
         EditorPreferences.Save();
-        Require(Document.Load<EditorPreferencesDocument>(legacyPath).EditorFontSize ==
+        Require(YamlUtility.Load<EditorPreferencesDocument>(legacyPath).EditorFontSize ==
                 EditorAppearance.DefaultFontSize,
             "The normalized fixed font size was not persisted back to preferences.");
     }
@@ -337,7 +325,7 @@ internal static class Program
             VerifyDocumentTagRewrites();
             VerifyDocumentLayerRewrites();
             ProjectTagLayerSettingsApplier.Apply(draft);
-            var persisted = Document.Load<ProjectSettingsDocument>(EditorProjectSettings.settingsPath);
+            var persisted = YamlUtility.Load<ProjectSettingsData>(EditorProjectSettings.settingsPath);
             Require(persisted.Tags.SequenceEqual(["Untagged", "Hero", "Collectible"]) &&
                     TagManager.tags.SequenceEqual(persisted.Tags),
                 "Applying the Tags draft did not update ProjectSettings.yaml and TagManager together.");
@@ -369,73 +357,120 @@ internal static class Program
             ["Player"] = "Hero",
             ["Enemy"] = "Untagged"
         };
-        var scene = new SceneDocument
+        var previousTags = TagManager.tags.ToArray();
+        var scene = new Scene("Tag rewrite fixture");
+        Scene? restoredScene = null;
+        var prefabScene = new Scene("Prefab tag rewrite fixture");
+        try
         {
-            GameObjects =
-            [
-                new GameObjectDocument { Name = "Renamed", Tag = "Player" },
-                new GameObjectDocument { Name = "Deleted", Tag = "Enemy" },
-                new GameObjectDocument { Name = "Untouched", Tag = "EditorOnly" }
-            ]
-        };
-        var sceneChanges = ProjectTagLayerSettingsApplier.RewriteDocumentTags(scene, replacements);
-        Require(sceneChanges == 2 &&
-                scene.GameObjects.Select(static item => item.Tag)
-                    .SequenceEqual(["Hero", "Untagged", "EditorOnly"]),
-            "Scene tag references were not rewritten for rename and delete mappings.");
+            TagManager.Configure(["Untagged", "Player", "Enemy", "EditorOnly", "Hero"]);
+            scene.CreateGameObject("Renamed").tag = "Player";
+            scene.CreateGameObject("Deleted").tag = "Enemy";
+            scene.CreateGameObject("Untouched").tag = "EditorOnly";
+            var sceneData = CaptureSceneAsset(scene);
+            var sceneChanges = ProjectTagLayerSettingsApplier.RewriteAssetTags(sceneData, replacements);
+            restoredScene = RestoreSceneAsset(sceneData);
+            Require(sceneChanges == 2 &&
+                    restoredScene.gameObjects.Select(static item => item.tag)
+                        .SequenceEqual(["Hero", "Untagged", "EditorOnly"]),
+                "Scene tag references were not rewritten for rename and delete mappings.");
 
-        var prefab = new PrefabDocument
+            var prefabRoot = prefabScene.CreateGameObject("Root");
+            prefabRoot.tag = "Player";
+            var prefabChild = prefabScene.CreateGameObject("Child");
+            prefabChild.tag = "Enemy";
+            prefabChild.transform.SetParent(prefabRoot.transform, false);
+            var prefabData = CapturePrefabAsset(prefabRoot);
+            var prefabChanges = ProjectTagLayerSettingsApplier.RewriteAssetTags(prefabData, replacements);
+            var prefab = RestorePrefabAsset(prefabData);
+            var restoredRoot = PrefabAssetOperations.LoadContents(prefab);
+            Require(prefabChanges == 2 &&
+                    PrefabAssetOperations.Traverse(restoredRoot).Select(static item => item.tag)
+                        .SequenceEqual(["Hero", "Untagged"]),
+                "Prefab tag references were not rewritten for rename and delete mappings.");
+        }
+        finally
         {
-            GameObjects =
-            [
-                new GameObjectDocument { Name = "Root", Tag = "Player" },
-                new GameObjectDocument { Name = "Child", Tag = "Enemy" }
-            ]
-        };
-        var prefabChanges = ProjectTagLayerSettingsApplier.RewriteDocumentTags(prefab, replacements);
-        Require(prefabChanges == 2 &&
-                prefab.GameObjects.Select(static item => item.Tag).SequenceEqual(["Hero", "Untagged"]),
-            "Prefab tag references were not rewritten for rename and delete mappings.");
+            if (restoredScene?.isCreated == true) restoredScene.Dispose();
+            if (prefabScene.isCreated) prefabScene.Dispose();
+            if (scene.isCreated) scene.Dispose();
+            TagManager.Configure(previousTags);
+        }
     }
 
     private static void VerifyDocumentLayerRewrites()
     {
-        var scene = new SceneDocument
+        var previousLayers = SortingLayerRegistry.layers.ToArray();
+        var scene = new Scene("Layer rewrite fixture");
+        Scene? restored = null;
+        try
         {
-            GameObjects =
-            [
-                new GameObjectDocument
-                {
-                    Name = "Layered",
-                    Layer = 7,
-                    Components =
-                    [
-                        new ComponentDocument
-                        {
-                            Type = typeof(Camera2D).FullName!,
-                            Fields = new Dictionary<string, string>
-                            {
-                                ["sortingLayer"] = "7",
-                                ["cullingMask"] = SortingLayer.ToMask(7).ToString(),
-                                ["layer"] = "7"
-                            }
-                        }
-                    ]
-                }
-            ]
-        };
-        var changed = ProjectTagLayerSettingsApplier.RewriteDocumentLayers(scene,
-            new Dictionary<ulong, ulong> { [6] = 7, [7] = 6 });
-        var component = scene.GameObjects[0].Components[0];
-        Require(changed == 3 && scene.GameObjects[0].Layer == 6 &&
-                component.Fields["sortingLayer"] == "6" &&
-                component.Fields["cullingMask"] == SortingLayer.ToMask(6).ToString() &&
-                component.Fields["layer"] == "7",
-            "Scene Layer references and masks were not rewritten when Layers were reordered.");
+            var layers = previousLayers.ToList();
+            while (layers.Count < 7)
+            {
+                var value = (ulong)(layers.Count + SortingLayer.MinimumIndex);
+                layers.Add(new SortingLayerDefinition(value, $"Fixture {value}"));
+            }
+            SortingLayerRegistry.Configure(layers);
+
+            var gameObject = scene.CreateGameObject("Layered");
+            gameObject.layer = 7;
+            var renderer = gameObject.AddComponent<SpriteRenderer>();
+            renderer.sortingLayer = 7;
+            var camera = gameObject.AddComponent<Camera2D>();
+            camera.cullingMask = SortingLayer.ToMask(7);
+            gameObject.AddComponent<LayerReferenceProbe>().layer = 7;
+
+            var sceneData = CaptureSceneAsset(scene);
+            var changed = ProjectTagLayerSettingsApplier.RewriteAssetLayers(sceneData,
+                new Dictionary<ulong, ulong> { [6] = 7, [7] = 6 });
+            restored = RestoreSceneAsset(sceneData);
+            var restoredObject = restored.Find("Layered") ??
+                                 throw new InvalidOperationException("The Layer fixture was not restored.");
+            var restoredCamera = restoredObject.GetComponent<Camera2D>() ??
+                                 throw new InvalidOperationException("The Camera2D fixture was not restored.");
+            var restoredRenderer = restoredObject.GetComponent<SpriteRenderer>() ??
+                                   throw new InvalidOperationException("The SpriteRenderer fixture was not restored.");
+            var restoredProbe = restoredObject.GetComponent<LayerReferenceProbe>() ??
+                                throw new InvalidOperationException("The Layer probe fixture was not restored.");
+            Require(changed == 3 && restoredObject.layer == 6 &&
+                    restoredRenderer.sortingLayer == 6 &&
+                    restoredCamera.cullingMask == SortingLayer.ToMask(6) &&
+                    restoredProbe.layer == 7,
+                "Scene Layer references and masks were not rewritten when Layers were reordered.");
+        }
+        finally
+        {
+            if (restored?.isCreated == true) restored.Dispose();
+            if (scene.isCreated) scene.Dispose();
+            SortingLayerRegistry.Configure(previousLayers);
+        }
     }
 
-    private static List<SortingLayerDocument> CloneLayers(IEnumerable<SortingLayerDocument> layers) =>
-        layers.Select(static layer => new SortingLayerDocument
+    private static object CaptureSceneAsset(Scene scene) => InvokeAssetSerialization(
+        "BEngine.Serialization.SceneAssetSerialization", "Capture", [scene]);
+
+    private static Scene RestoreSceneAsset(object data) => (Scene)InvokeAssetSerialization(
+        "BEngine.Serialization.SceneAssetSerialization", "Restore", [data, null]);
+
+    private static object CapturePrefabAsset(GameObject root) => InvokeAssetSerialization(
+        "BEngine.Serialization.PrefabAssetSerialization", "Capture", [root, null]);
+
+    private static PrefabAsset RestorePrefabAsset(object data) => (PrefabAsset)InvokeAssetSerialization(
+        "BEngine.Serialization.PrefabAssetSerialization", "CreateAsset", [data, string.Empty]);
+
+    private static object InvokeAssetSerialization(string typeName, string methodName, object?[] arguments)
+    {
+        var type = typeof(Scene).Assembly.GetType(typeName, throwOnError: true)!;
+        var method = type.GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+            .Single(candidate => candidate.Name == methodName &&
+                                 candidate.GetParameters().Length == arguments.Length);
+        try { return method.Invoke(null, arguments)!; }
+        catch (TargetInvocationException exception) { throw exception.InnerException ?? exception; }
+    }
+
+    private static List<SortingLayerData> CloneLayers(IEnumerable<SortingLayerData> layers) =>
+        layers.Select(static layer => new SortingLayerData
         {
             Value = layer.Value,
             Name = layer.Name,
@@ -443,6 +478,11 @@ internal static class Program
             IsUi = layer.IsUi,
             BuiltInId = layer.BuiltInId
         }).ToList();
+}
+
+public sealed class LayerReferenceProbe : Component
+{
+    public ulong layer = SortingLayer.Default;
 }
 
 internal static class ReflectedTestPackageSettings

@@ -11,7 +11,9 @@ public static class AssetDatabase
 {
     private static readonly ConditionalWeakTable<BObject, SubAssetBinding> SubAssetBindings = new();
     private static readonly Dictionary<Guid, WeakReference<BObject>> EmbeddedSubAssetCache = [];
+    private static readonly Dictionary<AssetCacheKey, WeakReference<BObject>> AssetCache = [];
     private static readonly Lock SubAssetGate = new();
+    private static readonly Lock FileSubAssetGate = new();
 
     public static string[] FindAssets(string filter) => FindAssets(filter, null);
 
@@ -73,93 +75,112 @@ public static class AssetDatabase
     private static BObject? LoadAssetRecord(EditorAssetRecord? record)
     {
         if (record is null) return null;
-        if (record.Value.AssetType == "Prefab" && File.Exists(record.Value.SourcePath))
+        var cacheKey = AssetCacheKey.From(record.Value);
+        lock (SubAssetGate)
+            if (AssetCache.TryGetValue(cacheKey, out var weak) && weak.TryGetTarget(out var cached))
+                return cached;
+
+        var loaded = LoadAssetRecordUncached(record.Value);
+        if (loaded is null) return null;
+        lock (SubAssetGate) AssetCache[cacheKey] = new WeakReference<BObject>(loaded);
+        return loaded;
+    }
+
+    private static BObject? LoadAssetRecordUncached(EditorAssetRecord record)
+    {
+        var loaded = LoadAssetRecordCore(record);
+        return loaded is BAsset asset
+            ? BEngine.Documents.Document<BAsset>.FromAsset(asset).ToAsset()
+            : loaded;
+    }
+
+    private static BObject? LoadAssetRecordCore(EditorAssetRecord record)
+    {
+        if (record.AssetType == "Prefab" && File.Exists(record.ArtifactPath))
         {
-            var prefab = Document.LoadBObject<PrefabDocument, PrefabAsset>(record.Value.SourcePath);
-            prefab.Id = record.Value.Guid;
-            prefab.Document.Id = record.Value.Guid;
-            prefab.assetPath = record.Value.AssetPath;
-            prefab.BindAssetReference(record.Value.AssetPath, record.Value.Guid);
-            return BindLoadedSubAsset(prefab, record.Value);
+            var prefab = PrefabAssetSerialization.Load(record.ArtifactPath);
+            prefab.Id = record.Guid;
+            prefab.Data.Id = record.Guid;
+            prefab.BindAssetFile(record.AssetPath, record.SourcePath, record.ArtifactPath,
+                record.Guid, record.AssetType);
+            return BindLoadedSubAsset(prefab, record);
         }
-        if (record.Value.AssetType == "AssemblyDefinition" && File.Exists(record.Value.SourcePath))
+        if (record.AssetType == "AssemblyDefinition" && File.Exists(record.ArtifactPath))
         {
             AssemblyDefinitionAsset definitionAsset;
             try
             {
-                definitionAsset = Document.LoadBObject<AssemblyDefinitionDocument, AssemblyDefinitionAsset>(
-                    record.Value.SourcePath);
+                definitionAsset = AssemblyDefinitionAssetSerialization.Load(record.ArtifactPath);
             }
             catch (Exception exception)
             {
                 definitionAsset = new AssemblyDefinitionAsset { importError = exception.Message };
             }
-            definitionAsset.name = Path.GetFileName(record.Value.SourcePath);
-            definitionAsset.Id = record.Value.Guid;
-            definitionAsset.assetPath = record.Value.AssetPath;
-            definitionAsset.sourcePath = record.Value.SourcePath;
-            definitionAsset.guid = record.Value.Guid.ToString("N");
-            definitionAsset.assetType = record.Value.AssetType;
-            return BindLoadedSubAsset(definitionAsset, record.Value);
+            definitionAsset.name = Path.GetFileName(record.SourcePath);
+            definitionAsset.BindAssetFile(record.AssetPath, record.SourcePath, record.ArtifactPath,
+                record.Guid, record.AssetType);
+            return BindLoadedSubAsset(definitionAsset, record);
         }
-        if (record.Value.SourcePath.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase) &&
-            File.Exists(record.Value.SourcePath))
+        if (record.SourcePath.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(record.ArtifactPath))
         {
             try
             {
-                var document = Document.Load<ManagedAssetDocument>(record.Value.SourcePath);
+                var document = YamlUtility.Load<ManagedAssetData>(record.ArtifactPath);
                 var type = ResolveManagedAssetType(document.TypeName);
                 if (type is not null && YamlUtility.Deserialize(document.Data, type) is BObject managed)
                 {
-                    managed.Id = record.Value.Guid;
+                    managed.Id = record.Guid;
                     if (managed is BAsset managedAsset)
-                        managedAsset.BindAssetReference(record.Value.AssetPath, record.Value.Guid);
+                        managedAsset.BindAssetFile(record.AssetPath, record.SourcePath, record.ArtifactPath,
+                            record.Guid, record.AssetType);
                     if (string.IsNullOrWhiteSpace(managed.name))
-                        managed.name = AssetPathUtility.SplitNameAndExtension(record.Value.AssetPath).Name;
-                    return BindLoadedSubAsset(managed, record.Value);
+                        managed.name = AssetPathUtility.SplitNameAndExtension(record.AssetPath).Name;
+                    return BindLoadedSubAsset(managed, record);
                 }
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"Could not load managed asset {record.Value.AssetPath}: {exception.Message}");
+                Debug.LogWarning($"Could not load managed asset {record.AssetPath}: {exception.Message}");
             }
         }
-        if (File.Exists(record.Value.SourcePath))
+        if (File.Exists(record.ArtifactPath))
         {
             try
             {
-                var context = new AssetLoadContext(record.Value.Guid, record.Value.AssetPath,
-                    record.Value.SourcePath, record.Value.AssetType);
+                var context = new AssetLoadContext(record.Guid, record.AssetPath,
+                    record.SourcePath, record.AssetType, record.ArtifactPath);
                 if (AssetTypeRegistry.Load(context) is { } registered)
                 {
-                    registered.Id = record.Value.Guid;
+                    registered.Id = record.Guid;
                     if (registered is BAsset registeredAsset)
-                        registeredAsset.BindAssetReference(record.Value.AssetPath, record.Value.Guid);
-                    if (registered is FileAsset fileAsset)
-                        fileAsset.BindAssetFile(record.Value.AssetPath, record.Value.SourcePath,
-                            record.Value.Guid, record.Value.AssetType);
-                    if (string.IsNullOrWhiteSpace(registered.name))
-                        registered.name = AssetPathUtility.SplitNameAndExtension(record.Value.AssetPath).Name;
-                    return BindLoadedSubAsset(registered, record.Value);
+                        registeredAsset.BindAssetFile(record.AssetPath, record.SourcePath, record.ArtifactPath,
+                            record.Guid, record.AssetType);
+                    if (record.ParentGuid.HasValue &&
+                        IsGeneratedArtifact(record, EditorBridge.Host))
+                        registered.name = GeneratedSubAssetName(record);
+                    else if (string.IsNullOrWhiteSpace(registered.name))
+                        registered.name = AssetPathUtility.SplitNameAndExtension(record.AssetPath).Name;
+                    return BindLoadedSubAsset(registered, record);
                 }
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException or
                                               YamlDotNet.Core.YamlException)
             {
-                Debug.LogWarning($"Could not load typed asset {record.Value.AssetPath}: {exception.Message}");
+                Debug.LogWarning($"Could not load typed asset {record.AssetPath}: {exception.Message}");
             }
         }
-        var isText = record.Value.AssetType is "Script" or "YamlAsset" or "Shader" or "JSON" or "XML" or
+        var isText = record.AssetType is "Script" or "YamlAsset" or "Shader" or "JSON" or "XML" or
             "Markdown" or "Text" or "UI Document" or "UI Style Sheet" or "HTML Document";
-        FileAsset asset = record.Value.AssetType == "Script" && File.Exists(record.Value.SourcePath)
-            ? CreateLegacyScript(record.Value.SourcePath)
-            : isText && File.Exists(record.Value.SourcePath)
-                ? new TextAsset { text = File.ReadAllText(record.Value.SourcePath) }
+        BAsset asset = record.AssetType == nameof(Script) && File.Exists(record.ArtifactPath)
+            ? CreateLegacyScript(record.ArtifactPath)
+            : isText && File.Exists(record.ArtifactPath)
+                ? new TextAsset { text = File.ReadAllText(record.ArtifactPath) }
                 : new DefaultAsset();
-        asset.name = Path.GetFileName(record.Value.SourcePath);
-        asset.BindAssetFile(record.Value.AssetPath, record.Value.SourcePath,
-            record.Value.Guid, record.Value.AssetType);
-        return BindLoadedSubAsset(asset, record.Value);
+        asset.name = Path.GetFileName(record.SourcePath);
+        asset.BindAssetFile(record.AssetPath, record.SourcePath, record.ArtifactPath,
+            record.Guid, record.AssetType);
+        return BindLoadedSubAsset(asset, record);
     }
 
     public static T? LoadAssetAtPath<T>(string assetPath) where T : BObject
@@ -232,7 +253,7 @@ public static class AssetDatabase
         AssetModificationProcessorDispatcher.OnWillCreateAsset(path);
         if (path.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase))
         {
-            new ManagedAssetDocument
+            new ManagedAssetData
             {
                 TypeName = asset.GetType().AssemblyQualifiedName ?? asset.GetType().FullName ?? asset.GetType().Name,
                 Data = YamlUtility.Serialize(asset)
@@ -240,7 +261,8 @@ public static class AssetDatabase
         }
         else
         {
-            var save = asset.GetType().GetMethod("Save", BindingFlags.Instance | BindingFlags.Public,
+            var save = asset.GetType().GetMethod(nameof(Material.Save),
+                BindingFlags.Instance | BindingFlags.Public,
                 binder: null, types: [typeof(string)], modifiers: null);
             if (save is not null)
             {
@@ -258,10 +280,10 @@ public static class AssetDatabase
     public static void ImportAsset(string path, ImportAssetOptions options = ImportAssetOptions.Default)
     {
         EditorAssetWritePolicy.EnsureCanWrite("Importing project assets");
-        try { BAsset.Invalidate(ResolveAssetPath(path)); }
-        catch (InvalidDataException) { BAsset.Invalidate(path); }
-        EditorBridge.Host?.ImportAsset(path);
-        lock (SubAssetGate) EmbeddedSubAssetCache.Clear();
+        var host = EditorBridge.Host;
+        InvalidateAssetCaches(host?.GetAsset(path));
+        host?.ImportAsset(path);
+        InvalidateAssetCaches(host?.GetAsset(path));
         if (path.EndsWith(".atlas.yaml", StringComparison.OrdinalIgnoreCase) ||
             Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase))
             TextureAtlasResolver.Clear();
@@ -314,6 +336,7 @@ public static class AssetDatabase
     {
         EditorAssetWritePolicy.EnsureCanWrite("Refreshing project assets");
         BAsset.ClearLoadedAssets();
+        ClearAssetCache();
         TextureAtlasResolver.Clear();
         EditorBridge.Host?.RefreshAssets();
     }
@@ -344,13 +367,12 @@ public static class AssetDatabase
             return SaveEmbeddedSubAsset(asset, subAsset);
         var fullPath = ResolveAssetPath(assetPath);
         if (!File.Exists(fullPath)) return false;
-        if (asset is Sprite && !IsLegacySpritePath(assetPath)) return false;
         if (asset is BEngine.Texture or BEngine.Font or Script or Shader or DefaultAsset) return false;
 
         AssetModificationProcessorDispatcher.OnWillSaveAssets([assetPath]);
         if (fullPath.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase))
         {
-            new ManagedAssetDocument
+            new ManagedAssetData
             {
                 TypeName = asset.GetType().AssemblyQualifiedName ?? asset.GetType().FullName ?? asset.GetType().Name,
                 Data = YamlUtility.Serialize(asset)
@@ -358,7 +380,8 @@ public static class AssetDatabase
         }
         else
         {
-            var save = asset.GetType().GetMethod("Save", BindingFlags.Instance | BindingFlags.Public,
+            var save = asset.GetType().GetMethod(nameof(Material.Save),
+                BindingFlags.Instance | BindingFlags.Public,
                 binder: null, types: [typeof(string)], modifiers: null);
             if (save is not null)
             {
@@ -367,10 +390,11 @@ public static class AssetDatabase
             }
             else
             {
-                try { Document.SaveBObject(asset, fullPath); }
-                catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException)
+                switch (asset)
                 {
-                    YamlUtility.Save(asset, fullPath);
+                    case Scene scene: SceneAssetSerialization.Save(scene, fullPath); break;
+                    case PrefabAsset prefab: PrefabAssetSerialization.Save(prefab, fullPath); break;
+                    default: YamlUtility.Save(asset, fullPath); break;
                 }
             }
         }
@@ -395,18 +419,18 @@ public static class AssetDatabase
             EditorUtility.ClearDirty(asset);
             return true;
         }
-        if (asset is Sprite && !IsLegacySpritePath(path)) return false;
-        BAsset.Invalidate(path);
-        if (LoadMainAssetAtPath(path) is not BAsset restored ||
+        var record = EditorBridge.Host?.GetAsset(path);
+        if (record is null) return false;
+        InvalidateAssetCaches(record);
+        if (LoadAssetRecordUncached(record.Value) is not BAsset restored ||
             restored.GetType() != asset.GetType()) return false;
         EditorUtility.CopySerialized(restored, asset);
         asset.name = restored.name;
+        lock (SubAssetGate)
+            AssetCache[AssetCacheKey.From(record.Value)] = new WeakReference<BObject>(asset);
         EditorUtility.ClearDirty(asset);
         return true;
     }
-
-    private static bool IsLegacySpritePath(string path) =>
-        path.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase);
 
     public static void StartAssetEditing() { }
     public static void StopAssetEditing() => Refresh();
@@ -438,15 +462,26 @@ public static class AssetDatabase
         var host = EditorBridge.Host;
         if (host is null) return false;
         var owner = host.GetAsset(path);
+        var generated = owner is { ParentGuid: null }
+            ? host.FindAssets(string.Empty).Where(item => item.ParentGuid == owner.Value.Guid &&
+                                                          IsGeneratedArtifact(item, host)).ToArray()
+            : [];
         if (owner is { ParentGuid: null })
             foreach (var child in host.FindAssets(string.Empty).Where(item => item.ParentGuid == owner.Value.Guid)
+                         .Where(item => !IsGeneratedArtifact(item, host))
                          .ToArray())
             {
                 if (!host.DeleteAsset(child.AssetPath)) return false;
                 BAsset.ClearLoadedAssets();
+                ClearAssetCache();
             }
         var deleted = host.DeleteAsset(path);
-        if (deleted) BAsset.ClearLoadedAssets();
+        if (deleted)
+        {
+            foreach (var artifact in generated) DeleteGeneratedArtifact(artifact);
+            BAsset.ClearLoadedAssets();
+            ClearAssetCache();
+        }
         return deleted;
     }
 
@@ -464,8 +499,19 @@ public static class AssetDatabase
             ? host.FindAssets(string.Empty).FirstOrDefault(item =>
                 item.ParentGuid == owner.Value.Guid &&
                 item.LocalIdentifier == 2800000 &&
-                Path.GetExtension(item.AssetPath).Equals(".png", StringComparison.OrdinalIgnoreCase))
+                item.AssetType.Equals(nameof(Texture), StringComparison.OrdinalIgnoreCase))
             : default;
+        if (atlasChild.Guid != Guid.Empty && IsGeneratedArtifact(atlasChild, host))
+        {
+            var generatedMoveError = host.MoveAsset(oldPath, newPath);
+            if (generatedMoveError.Length == 0)
+            {
+                BAsset.ClearLoadedAssets();
+                ClearAssetCache();
+                TextureAtlasResolver.Clear();
+            }
+            return generatedMoveError;
+        }
         var outputPath = newPath.EndsWith(".atlas.yaml", StringComparison.OrdinalIgnoreCase)
             ? newPath[..^".atlas.yaml".Length] + ".png"
             : Path.ChangeExtension(newPath, ".png").Replace('\\', '/');
@@ -495,18 +541,21 @@ public static class AssetDatabase
         var moveError = host.MoveAsset(oldPath, newPath);
         if (moveError.Length > 0) return moveError;
         BAsset.ClearLoadedAssets();
+        ClearAssetCache();
         if (atlasChild.Guid == Guid.Empty) return string.Empty;
         var childMoveError = moveAtlasChild ? host.MoveAsset(atlasChild.AssetPath, outputPath) : string.Empty;
         if (childMoveError.Length > 0)
         {
             var rollbackError = TryRollbackAssetMove(host, newPath, oldPath);
             BAsset.ClearLoadedAssets();
+            ClearAssetCache();
             return rollbackError.Length == 0
                 ? $"The generated atlas Texture could not be moved; the atlas move was rolled back: {childMoveError}"
                 : $"The generated atlas Texture could not be moved: {childMoveError} " +
                   $"Rolling the atlas back also failed: {rollbackError}";
         }
         BAsset.ClearLoadedAssets();
+        ClearAssetCache();
         try
         {
             var atlas = TextureAtlas.Load(ResolveAssetPath(newPath));
@@ -526,6 +575,7 @@ public static class AssetDatabase
             var restoredPath = atlasRollbackError.Length == 0 ? oldPath : newPath;
             var restoreError = TryRestoreAtlasContents(host, restoredPath, originalAtlasContents);
             BAsset.ClearLoadedAssets();
+            ClearAssetCache();
             TextureAtlasResolver.Clear();
             var rollbackErrors = new[] { childRollbackError, atlasRollbackError, restoreError }
                 .Where(error => error.Length > 0).ToArray();
@@ -540,6 +590,33 @@ public static class AssetDatabase
     private static bool SameAssetPath(string left, string right) =>
         left.Replace('\\', '/').Trim('/').Equals(right.Replace('\\', '/').Trim('/'),
             StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGeneratedArtifact(EditorAssetRecord record, IEditorHost? host) =>
+        host is not null && GeneratedAssetArtifacts.IsGeneratedPath(record.SourcePath, host.ProjectRootPath);
+
+    private static string GeneratedSubAssetName(EditorAssetRecord record)
+    {
+        var name = Path.GetFileName(record.AssetPath);
+        if (name.EndsWith(".atlas.yaml", StringComparison.OrdinalIgnoreCase))
+            name = name[..^".atlas.yaml".Length];
+        else name = Path.GetFileNameWithoutExtension(name);
+        return $"{name} Texture";
+    }
+
+    private static void DeleteGeneratedArtifact(EditorAssetRecord record)
+    {
+        try
+        {
+            if (File.Exists(record.SourcePath)) File.Delete(record.SourcePath);
+            if (File.Exists(record.SourcePath + ".meta")) File.Delete(record.SourcePath + ".meta");
+            if (!record.ArtifactPath.Equals(record.SourcePath, StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(record.ArtifactPath)) File.Delete(record.ArtifactPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Debug.LogWarning($"Could not remove generated artifact '{record.SourcePath}': {exception.Message}");
+        }
+    }
 
     private static string TryRollbackAssetMove(IEditorHost host, string movedPath, string originalPath)
     {
@@ -666,8 +743,8 @@ public static class AssetDatabase
             meta.LocalIdentifier = 0;
             meta.Save(child.SourcePath + ".meta");
             SubAssetBindings.Remove(objectToRemove);
-            if (objectToRemove is BAsset fileAsset)
-                fileAsset.BindAssetReference(child.AssetPath, child.Guid);
+            if (objectToRemove is BAsset asset)
+                asset.BindAssetReference(child.AssetPath, child.Guid);
             EditorBridge.Host!.ImportAsset(child.AssetPath);
             return;
         }
@@ -759,18 +836,22 @@ public static class AssetDatabase
             throw new FileNotFoundException("The sub-asset source file does not exist.", childFullPath);
         if (!File.Exists(parentFullPath))
             throw new FileNotFoundException("The main asset source file does not exist.", parentFullPath);
-        var parent = LoadOrCreateMeta(parentFullPath);
-        var assignedLocalIdentifier = Math.Max(1, localIdentifier);
-        if (parent.SubAssets?.Any(item => item.LocalIdentifier == assignedLocalIdentifier) == true)
-            throw new InvalidOperationException(
-                $"Sub-asset local identifier {assignedLocalIdentifier} is already assigned to an embedded object.");
-        if (FindFileSubAssetCollision(parent.Guid, assignedLocalIdentifier, childFullPath) is { } collision)
-            throw new InvalidOperationException(
-                $"Sub-asset identity {parent.Guid}/{assignedLocalIdentifier} is already assigned to '{collision}'.");
-        var child = LoadOrCreateMeta(childFullPath);
-        child.ParentGuid = parent.Guid;
-        child.LocalIdentifier = assignedLocalIdentifier;
-        child.Save(childFullPath + ".meta");
+        lock (FileSubAssetGate)
+        {
+            var parent = LoadOrCreateMeta(parentFullPath);
+            var assignedLocalIdentifier = Math.Max(1, localIdentifier);
+            if (parent.SubAssets?.Any(item => item.LocalIdentifier == assignedLocalIdentifier) == true)
+                throw new InvalidOperationException(
+                    $"Sub-asset local identifier {assignedLocalIdentifier} is already assigned to an embedded object.");
+            if (FindFileSubAssetCollision(parent.Guid, assignedLocalIdentifier, childFullPath) is { } collision)
+                throw new InvalidOperationException(
+                    $"Sub-asset identity {parent.Guid}/{assignedLocalIdentifier} is already assigned to '{collision}'.");
+            var childMetaPath = childFullPath + ".meta";
+            var child = File.Exists(childMetaPath) ? LoadMeta(childFullPath) : CreateMeta(childFullPath);
+            child.ParentGuid = parent.Guid;
+            child.LocalIdentifier = assignedLocalIdentifier;
+            child.Save(childMetaPath);
+        }
     }
 
     private static string? FindFileSubAssetCollision(
@@ -788,39 +869,72 @@ public static class AssetDatabase
         if (inMemory is { } collisionRecord && collisionRecord.Guid != Guid.Empty)
             return collisionRecord.AssetPath;
 
-        var root = host?.AssetsRootPath ?? FindAssetScanRoot(childFullPath);
-        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return null;
-        string[] metadataPaths;
-        try { metadataPaths = Directory.GetFiles(root, "*.meta", SearchOption.AllDirectories); }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        foreach (var root in FindAssetScanRoots(childFullPath, host))
         {
-            return null;
-        }
-        foreach (var metaPath in metadataPaths)
-        {
-            var sourcePath = metaPath[..^".meta".Length];
-            if (Path.GetFullPath(sourcePath).Equals(canonicalChild, StringComparison.OrdinalIgnoreCase)) continue;
-            try
+            string[] metadataPaths;
+            try { metadataPaths = Directory.GetFiles(root, "*.meta", SearchOption.AllDirectories); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                var meta = Document.Load<AssetMetaDocument>(metaPath);
-                if (meta.LocalIdentifier == localIdentifier &&
-                    meta.ParentGuid.Equals(parentGuid, StringComparison.OrdinalIgnoreCase))
-                    return host is null ? sourcePath : ToProjectPath(sourcePath);
+                continue;
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
-                                              InvalidDataException or FormatException or
-                                              YamlDotNet.Core.YamlException) { }
+            foreach (var metaPath in metadataPaths)
+            {
+                var sourcePath = metaPath[..^".meta".Length];
+                if (Path.GetFullPath(sourcePath).Equals(canonicalChild, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    var meta = YamlUtility.Load<AssetMetaDocument>(metaPath);
+                    if (meta.LocalIdentifier == localIdentifier && SameGuid(meta.ParentGuid, parentGuid))
+                        return host is null ? sourcePath : ToProjectPath(sourcePath);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                                                  InvalidDataException or FormatException or
+                                                  YamlDotNet.Core.YamlException) { }
+            }
         }
         return null;
     }
 
-    private static string FindAssetScanRoot(string path)
+    private static IReadOnlyList<string> FindAssetScanRoots(string path, IEditorHost? host)
     {
-        for (var directory = Directory.GetParent(Path.GetFullPath(path)); directory is not null;
-             directory = directory.Parent)
-            if (directory.Name.Equals("Assets", StringComparison.OrdinalIgnoreCase)) return directory.FullName;
-        return Path.GetDirectoryName(Path.GetFullPath(path)) ?? string.Empty;
+        if (host is not null)
+            return
+            [
+                host.AssetsRootPath,
+                Path.Combine(host.ProjectRootPath, "Packages"),
+                Path.Combine(host.ProjectRootPath, "Library")
+            ];
+
+        var fullPath = Path.GetFullPath(path);
+        for (var directory = Directory.GetParent(fullPath); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, ProjectWorkspace.ProjectFileName)))
+                return
+                [
+                    Path.Combine(directory.FullName, "Assets"),
+                    Path.Combine(directory.FullName, "Packages"),
+                    Path.Combine(directory.FullName, "Library")
+                ];
+
+        for (var directory = Directory.GetParent(fullPath); directory is not null; directory = directory.Parent)
+            if (directory.Name.Equals("Assets", StringComparison.OrdinalIgnoreCase) ||
+                directory.Name.Equals("Packages", StringComparison.OrdinalIgnoreCase) ||
+                directory.Name.Equals("Library", StringComparison.OrdinalIgnoreCase))
+            {
+                var projectRoot = directory.Parent?.FullName ?? directory.FullName;
+                return
+                [
+                    Path.Combine(projectRoot, "Assets"),
+                    Path.Combine(projectRoot, "Packages"),
+                    Path.Combine(projectRoot, "Library")
+                ];
+            }
+        return [Path.GetDirectoryName(fullPath) ?? string.Empty];
     }
+
+    private static bool SameGuid(string left, string right) =>
+        Guid.TryParse(left, out var leftGuid) && Guid.TryParse(right, out var rightGuid)
+            ? leftGuid == rightGuid
+            : left.Equals(right, StringComparison.OrdinalIgnoreCase);
 
     private static T BindLoadedSubAsset<T>(T asset, EditorAssetRecord record) where T : BObject
     {
@@ -902,7 +1016,7 @@ public static class AssetDatabase
         var metaPath = sourcePath.EndsWith(".meta", StringComparison.OrdinalIgnoreCase)
             ? sourcePath
             : sourcePath + ".meta";
-        var meta = Document.Load<AssetMetaDocument>(metaPath);
+        var meta = YamlUtility.Load<AssetMetaDocument>(metaPath);
         meta.Settings ??= [];
         meta.SubAssets ??= [];
         return meta;
@@ -912,20 +1026,24 @@ public static class AssetDatabase
     {
         var metaPath = sourcePath + ".meta";
         if (File.Exists(metaPath)) return LoadMeta(sourcePath);
-        var document = new AssetMetaDocument
+        var document = CreateMeta(sourcePath);
+        document.Save(metaPath);
+        return document;
+    }
+
+    private static AssetMetaDocument CreateMeta(string sourcePath) =>
+        new()
         {
             Guid = Guid.NewGuid().ToString("N"),
             AssetType = AssetTypeRegistry.Resolve(sourcePath) ??
                         (Path.GetExtension(sourcePath).Equals(".png", StringComparison.OrdinalIgnoreCase)
                             ? "Texture"
                             : "DefaultAsset"),
-            Importer = Path.GetExtension(sourcePath).Equals(".png", StringComparison.OrdinalIgnoreCase)
-                ? nameof(TextureImporter)
-                : "DefaultImporter"
+            Importer = AssetTypeRegistry.ResolveImporterName(sourcePath) ??
+                       (Path.GetExtension(sourcePath).Equals(".png", StringComparison.OrdinalIgnoreCase)
+                           ? nameof(TextureImporter)
+                           : nameof(DefaultImporter))
         };
-        document.Save(metaPath);
-        return document;
-    }
 
     private static long NextLocalIdentifier(AssetMetaDocument meta)
     {
@@ -1090,6 +1208,44 @@ public static class AssetDatabase
         script.SetImportedContents(File.ReadAllText(sourcePath),
             FindScriptClass(Path.GetFileNameWithoutExtension(sourcePath)));
         return script;
+    }
+
+    private static void InvalidateAssetCache(EditorAssetRecord? record)
+    {
+        if (record is null) return;
+        var ownerGuid = record.Value.ParentGuid ?? record.Value.Guid;
+        lock (SubAssetGate)
+        {
+            foreach (var key in AssetCache.Keys.Where(key => key.OwnerGuid == ownerGuid).ToArray())
+                AssetCache.Remove(key);
+            EmbeddedSubAssetCache.Clear();
+        }
+    }
+
+    private static void InvalidateAssetCaches(EditorAssetRecord? record)
+    {
+        InvalidateAssetCache(record);
+        if (record is not { } asset) return;
+        if (!string.IsNullOrWhiteSpace(asset.SourcePath)) BAsset.Invalidate(asset.SourcePath);
+        if (!string.IsNullOrWhiteSpace(asset.ArtifactPath) &&
+            !asset.ArtifactPath.Equals(asset.SourcePath, StringComparison.OrdinalIgnoreCase))
+            BAsset.Invalidate(asset.ArtifactPath);
+    }
+
+    private static void ClearAssetCache()
+    {
+        lock (SubAssetGate)
+        {
+            AssetCache.Clear();
+            EmbeddedSubAssetCache.Clear();
+        }
+    }
+
+    private readonly record struct AssetCacheKey(Guid OwnerGuid, long LocalIdentifier)
+    {
+        internal static AssetCacheKey From(EditorAssetRecord record) =>
+            new(record.ParentGuid ?? record.Guid,
+                record.ParentGuid.HasValue ? Math.Max(1, record.LocalIdentifier) : 0);
     }
 
     private sealed record SubAssetBinding(

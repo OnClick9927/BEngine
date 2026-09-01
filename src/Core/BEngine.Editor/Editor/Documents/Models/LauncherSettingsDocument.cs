@@ -2,7 +2,7 @@ using BEngine.Documents;
 
 namespace BEngine.Editor.Documents;
 
-public sealed class LauncherSettingsDocument : Document
+public sealed class LauncherSettingsDocument
 {
     public string Format { get; set; } = "BEngine.LauncherSettings";
     public int Version { get; set; } = 1;

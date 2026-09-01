@@ -1,4 +1,3 @@
-using BEngine.Documents;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
 using BEngine.Serialization;
@@ -25,12 +24,12 @@ internal sealed class SceneFixture : IDisposable
         var firstRoot = first.CreateGameObject("First Root");
         var firstChild = first.CreateGameObject("First Child");
         firstChild.transform.SetParent(firstRoot.transform, false);
-        Document.SaveBObject<SceneDocument>(first, FirstScenePath);
+        SceneAssetSerialization.Save(first, FirstScenePath);
         first.Dispose();
 
         var second = new Scene("Second Scene");
         second.CreateGameObject("Second Root");
-        Document.SaveBObject<SceneDocument>(second, SecondScenePath);
+        SceneAssetSerialization.Save(second, SecondScenePath);
         second.Dispose();
     }
 

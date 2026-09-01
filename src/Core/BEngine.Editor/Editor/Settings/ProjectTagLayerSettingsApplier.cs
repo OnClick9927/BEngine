@@ -1,4 +1,4 @@
-using BEngine.Documents;
+using BEngine.Serialization;
 
 namespace BEngine.Editor;
 
@@ -14,7 +14,7 @@ internal static class ProjectTagLayerSettingsApplier
         EditorAssetWritePolicy.EnsureCanWrite("Changing project Tags and Layers");
 
         var nextTags = draft.Tags.Select(static tag => tag.Trim()).ToArray();
-        var nextLayers = draft.SortingLayers.Select(static layer => new SortingLayerDocument
+        var nextLayers = draft.SortingLayers.Select(static layer => new SortingLayerData
         {
             Value = layer.Value,
             Name = layer.Name.Trim(),
@@ -48,7 +48,7 @@ internal static class ProjectTagLayerSettingsApplier
             }
 
             foreach (var pending in pendingAssets)
-                pending.UpdatedText = pending.Document.ToYaml();
+                pending.UpdatedText = YamlUtility.Serialize(pending.Data);
 
             foreach (var pending in pendingAssets)
             {
@@ -109,18 +109,18 @@ internal static class ProjectTagLayerSettingsApplier
         EditorBridge.Host?.RepaintAllWindows();
     }
 
-    internal static int RewriteDocumentTags(Document document,
+    internal static int RewriteAssetTags(object data,
         IReadOnlyDictionary<string, string> replacements)
     {
-        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(replacements);
-        var gameObjects = document switch
+        var gameObjects = data switch
         {
-            SceneDocument scene => scene.GameObjects,
-            PrefabDocument prefab => prefab.GameObjects,
+            SceneAssetData scene => scene.GameObjects,
+            PrefabAssetData prefab => prefab.GameObjects,
             _ => throw new ArgumentException(
-                $"Only {nameof(SceneDocument)} and {nameof(PrefabDocument)} contain GameObject Tags.",
-                nameof(document))
+                $"Only {nameof(SceneAssetData)} and {nameof(PrefabAssetData)} contain GameObject Tags.",
+                nameof(data))
         };
 
         var changed = 0;
@@ -134,18 +134,18 @@ internal static class ProjectTagLayerSettingsApplier
         return changed;
     }
 
-    internal static int RewriteDocumentLayers(Document document,
+    internal static int RewriteAssetLayers(object data,
         IReadOnlyDictionary<ulong, ulong> replacements)
     {
-        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(replacements);
-        var gameObjects = document switch
+        var gameObjects = data switch
         {
-            SceneDocument scene => scene.GameObjects,
-            PrefabDocument prefab => prefab.GameObjects,
+            SceneAssetData scene => scene.GameObjects,
+            PrefabAssetData prefab => prefab.GameObjects,
             _ => throw new ArgumentException(
-                $"Only {nameof(SceneDocument)} and {nameof(PrefabDocument)} contain Layer references.",
-                nameof(document))
+                $"Only {nameof(SceneAssetData)} and {nameof(PrefabAssetData)} contain Layer references.",
+                nameof(data))
         };
         var changed = 0;
         foreach (var gameObject in gameObjects)
@@ -170,16 +170,16 @@ internal static class ProjectTagLayerSettingsApplier
         if (replacements.Count == 0 && layerReplacements.Count == 0 || EditorBridge.Host is null) return [];
 
         var result = new List<PendingAssetMigration>();
-        Collect<SceneDocument>("t:Scene", replacements, layerReplacements, result);
-        Collect<PrefabDocument>("t:Prefab", replacements, layerReplacements, result);
+        Collect<SceneAssetData>("t:Scene", replacements, layerReplacements, result);
+        Collect<PrefabAssetData>("t:Prefab", replacements, layerReplacements, result);
         return result;
     }
 
-    private static void Collect<TDocument>(string filter,
+    private static void Collect<TData>(string filter,
         IReadOnlyDictionary<string, string> replacements,
         IReadOnlyDictionary<ulong, ulong> layerReplacements,
         ICollection<PendingAssetMigration> result)
-        where TDocument : Document
+        where TData : class
     {
         foreach (var guid in AssetDatabase.FindAssets(filter))
         {
@@ -188,11 +188,11 @@ internal static class ProjectTagLayerSettingsApplier
             var sourcePath = AssetDatabase.ResolveAssetPath(assetPath);
             try
             {
-                var document = Document.Load<TDocument>(sourcePath);
-                if (RewriteDocumentTags(document, replacements) +
-                    RewriteDocumentLayers(document, layerReplacements) == 0) continue;
+                var data = YamlUtility.Load<TData>(sourcePath);
+                if (RewriteAssetTags(data, replacements) +
+                    RewriteAssetLayers(data, layerReplacements) == 0) continue;
                 result.Add(new PendingAssetMigration(assetPath, sourcePath,
-                    File.ReadAllText(sourcePath), document));
+                    File.ReadAllText(sourcePath), data));
             }
             catch (Exception exception)
             {
@@ -262,8 +262,8 @@ internal static class ProjectTagLayerSettingsApplier
         return result;
     }
 
-    private static List<SortingLayerDocument> CloneLayers(
-        IEnumerable<SortingLayerDocument> layers) => layers.Select(static layer => new SortingLayerDocument
+    private static List<SortingLayerData> CloneLayers(
+        IEnumerable<SortingLayerData> layers) => layers.Select(static layer => new SortingLayerData
     {
         Value = layer.Value,
         Name = layer.Name,
@@ -358,12 +358,12 @@ internal static class ProjectTagLayerSettingsApplier
         string assetPath,
         string sourcePath,
         string previousText,
-        Document document)
+        object data)
     {
         public string AssetPath { get; } = assetPath;
         public string SourcePath { get; } = sourcePath;
         public string PreviousText { get; } = previousText;
-        public Document Document { get; } = document;
+        public object Data { get; } = data;
         public string UpdatedText { get; set; } = string.Empty;
     }
 

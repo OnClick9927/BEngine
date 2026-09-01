@@ -68,7 +68,7 @@ public static class ScriptAssemblyStore
         var referencePath = GetReferencePath(rootPath, assemblyName);
         if (File.Exists(referencePath))
         {
-            var document = Document.Load<ScriptAssemblyReferenceDocument>(referencePath);
+            var document = YamlUtility.Load<ScriptAssemblyReferenceData>(referencePath);
             ValidateDocument(document, assemblyName, referencePath);
             var resolved = ResolveInsideRoot(rootPath, document.RelativePath, referencePath);
             if (!File.Exists(resolved))
@@ -118,7 +118,7 @@ public static class ScriptAssemblyStore
             throw new InvalidDataException(
                 $"Script assembly '{fullPath}' declares '{actualName}', expected '{assemblyName}'.");
 
-        SaveAtomically(new ScriptAssemblyReferenceDocument
+        SaveAtomically(new ScriptAssemblyReferenceData
         {
             Assembly = assemblyName,
             BuildId = buildId,
@@ -127,10 +127,10 @@ public static class ScriptAssemblyStore
         }, GetReferencePath(rootPath, assemblyName));
     }
 
-    public static ProjectScriptAssemblyManifestDocument? LoadProjectManifest(ProjectWorkspace workspace)
+    public static ProjectScriptAssemblyManifestData? LoadProjectManifest(ProjectWorkspace workspace)
         => LoadProjectManifest(workspace, workspace.ScriptAssembliesPath);
 
-    public static ProjectScriptAssemblyManifestDocument? LoadProjectManifest(
+    public static ProjectScriptAssemblyManifestData? LoadProjectManifest(
         ProjectWorkspace workspace,
         string scriptAssembliesPath)
     {
@@ -139,19 +139,19 @@ public static class ScriptAssemblyStore
         var rootPath = Path.GetFullPath(scriptAssembliesPath);
         var path = GetProjectManifestPath(rootPath);
         if (!File.Exists(path)) return null;
-        var document = Document.Load<ProjectScriptAssemblyManifestDocument>(path);
+        var document = YamlUtility.Load<ProjectScriptAssemblyManifestData>(path);
         ValidateProjectManifest(document, rootPath, path);
         return document;
     }
 
     public static string ResolveProjectAssemblyPath(
         ProjectWorkspace workspace,
-        ProjectScriptAssemblyDocument assembly)
+        ProjectScriptAssemblyData assembly)
         => ResolveProjectAssemblyPath(workspace, assembly, workspace.ScriptAssembliesPath);
 
     public static string ResolveProjectAssemblyPath(
         ProjectWorkspace workspace,
-        ProjectScriptAssemblyDocument assembly,
+        ProjectScriptAssemblyData assembly,
         string scriptAssembliesPath)
     {
         ArgumentNullException.ThrowIfNull(workspace);
@@ -172,12 +172,12 @@ public static class ScriptAssemblyStore
 
     public static void PublishProjectManifest(
         ProjectWorkspace workspace,
-        ProjectScriptAssemblyManifestDocument manifest)
+        ProjectScriptAssemblyManifestData manifest)
         => PublishProjectManifest(workspace, manifest, workspace.ScriptAssembliesPath);
 
     public static void PublishProjectManifest(
         ProjectWorkspace workspace,
-        ProjectScriptAssemblyManifestDocument manifest,
+        ProjectScriptAssemblyManifestData manifest,
         string scriptAssembliesPath)
     {
         ArgumentNullException.ThrowIfNull(workspace);
@@ -189,12 +189,12 @@ public static class ScriptAssemblyStore
         SaveAtomically(manifest, path);
     }
 
-    private static void SaveAtomically(Document document, string path)
+    private static void SaveAtomically<TData>(TData document, string path) where TData : class
     {
         var temporaryPath = $"{path}.tmp.{Environment.ProcessId}.{Guid.NewGuid():N}";
         try
         {
-            document.Save(temporaryPath);
+            YamlUtility.Save(document, temporaryPath);
             File.Move(temporaryPath, path, overwrite: true);
         }
         finally
@@ -204,7 +204,7 @@ public static class ScriptAssemblyStore
     }
 
     private static void ValidateDocument(
-        ScriptAssemblyReferenceDocument document,
+        ScriptAssemblyReferenceData document,
         string assemblyName,
         string referencePath)
     {
@@ -219,7 +219,7 @@ public static class ScriptAssemblyStore
     }
 
     private static void ValidateProjectManifest(
-        ProjectScriptAssemblyManifestDocument document,
+        ProjectScriptAssemblyManifestData document,
         string rootPath,
         string manifestPath)
     {

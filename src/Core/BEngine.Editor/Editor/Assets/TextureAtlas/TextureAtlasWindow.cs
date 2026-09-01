@@ -1,18 +1,18 @@
 namespace BEngine.Editor;
 
-[EditorWindowIcon("Icons/Assets/AssetImage.png")]
+[EditorWindowIcon("Icons/Assets/AssetAtlas.png")]
 public sealed class TextureAtlasWindow : EditorWindow
 {
     private TextureAtlas _atlas = new();
     private string _assetPath = string.Empty;
-    private string _sourcePath = string.Empty;
     private bool _dirty;
     private string _message = string.Empty;
     private Vector2 _sourceScroll;
+    private Sprite? _pendingSource;
 
     public TextureAtlasWindow()
     {
-        titleContent = new GUIContent("Texture Atlas", EditorBuiltinIcons.Assets.Image, "Texture Atlas");
+        titleContent = new GUIContent("Texture Atlas", EditorBuiltinIcons.Assets.Atlas);
         minSize = new Vector2(940, 560);
         position = new Rect(120, 90, 1080, 700);
     }
@@ -28,6 +28,10 @@ public sealed class TextureAtlasWindow : EditorWindow
         {
             _assetPath = selected;
             LoadAtlas();
+        }
+        else if (Selection.activeObject is Sprite sprite)
+        {
+            _pendingSource = sprite;
         }
         Repaint();
     }
@@ -57,7 +61,8 @@ public sealed class TextureAtlasWindow : EditorWindow
             if (EditorToolbar.IconButton(EditorBuiltinIcons.Toolbar.Save,
                     "Save texture atlas", GUILayout.Width(26)))
                 SaveAtlas();
-        if (EditorToolbar.IconButton(EditorBuiltinIcons.Toolbar.Refresh, "Reload texture atlas", GUILayout.Width(26)))
+        if (EditorToolbar.IconButton(EditorBuiltinIcons.Toolbar.Refresh,
+                "Reload texture atlas", GUILayout.Width(26)))
             LoadAtlas();
         _assetPath = EditorGUILayout.TextField("Atlas", _assetPath);
         if (GUILayout.Button("Load", GUILayout.Width(60))) LoadAtlas();
@@ -69,8 +74,8 @@ public sealed class TextureAtlasWindow : EditorWindow
     private void DrawSettings()
     {
         GUILayout.Label("Packing", EditorStyles.boldLabel);
-        var maxSize = Math.Clamp(EditorGUILayout.IntField("Max Size", _atlas.MaxSize), 32, 16384);
-        maxSize = PreviousPowerOfTwo(maxSize);
+        var maxSize = PreviousPowerOfTwo(Math.Clamp(
+            EditorGUILayout.IntField("Max Size", _atlas.MaxSize), 32, 16384));
         var padding = Math.Clamp(EditorGUILayout.IntField("Padding", _atlas.Padding), 0, 64);
         var extrude = Math.Clamp(EditorGUILayout.IntField("Extrude", _atlas.Extrude), 0, padding);
         if (maxSize != _atlas.MaxSize || padding != _atlas.Padding || extrude != _atlas.Extrude)
@@ -91,8 +96,14 @@ public sealed class TextureAtlasWindow : EditorWindow
         GUILayout.Space(8);
         GUILayout.Label("Sprites", EditorStyles.boldLabel);
         GUILayout.BeginHorizontal();
-        _sourcePath = EditorGUILayout.TextField("Sprite", _sourcePath);
-        if (GUILayout.Button("Add", GUILayout.Width(52))) AddSource(_sourcePath);
+        _pendingSource = EditorGUILayout.ObjectField("Sprite", _pendingSource,
+            typeof(Sprite), false) as Sprite;
+        using (new EditorGUI.DisabledScope(_pendingSource is null))
+            if (GUILayout.Button("Add", GUILayout.Width(52)))
+            {
+                AddSource(_pendingSource!);
+                _pendingSource = null;
+            }
         if (GUILayout.Button("Add Selected", GUILayout.Width(96))) AddSelected();
         GUILayout.EndHorizontal();
 
@@ -100,71 +111,36 @@ public sealed class TextureAtlasWindow : EditorWindow
         var viewport = GUILayoutUtility.GetControlRect(viewportHeight);
         var rowHeight = (Fix64)27;
         var contentWidth = Fix64.Max(590, viewport.width - 14);
-        var legacyRows = _atlas.Sources.Count == 0 ? 0 : _atlas.Sources.Count + 1;
-        var contentHeight = Fix64.Max(viewportHeight,
-            (_atlas.SpriteReferences.Count + legacyRows + 1) * rowHeight + 4);
+        var contentHeight = Fix64.Max(viewportHeight, (_atlas.Sources.Length + 1) * rowHeight + 4);
         _sourceScroll = GUI.BeginScrollView(viewport, _sourceScroll,
             new Rect(0, 0, contentWidth, contentHeight));
-        var removeReference = -1;
-        var removeLegacy = -1;
         GUI.Label(new Rect(4, 2, contentWidth - 34, rowHeight - 2),
             "Sprite Asset", EditorStyles.miniLabel);
-        for (var index = 0; index < _atlas.SpriteReferences.Count; index++)
-        {
-            var reference = _atlas.SpriteReferences[index];
-            var y = (index + 1) * rowHeight;
-            var current = LoadSpriteReference(reference);
-            var selected = EditorGUI.ObjectField(
-                new Rect(4, y, contentWidth - 34, rowHeight - 3),
-                current, typeof(Sprite), allowSceneObjects: false);
-            if (selected is not null)
-            {
-                var selectedPath = AssetDatabase.GetAssetPath(selected);
-                var selectedGuid = SpriteGuid(selected as Sprite);
-                if (TryLoadImportedSprite(selectedPath, out _) && selectedGuid.Length > 0 &&
-                    !selectedGuid.Equals(reference, StringComparison.OrdinalIgnoreCase))
-                {
-                    _atlas.SpriteReferences[index] = selectedGuid;
-                    _atlas.Version = 3;
-                    _dirty = true;
-                }
-                else if (!selectedGuid.Equals(reference, StringComparison.OrdinalIgnoreCase))
-                    _message = "Choose a PNG whose Texture Type is Sprite.";
-            }
-            else if (current is null)
-            {
-                GUI.Label(new Rect(10, y, contentWidth - 46, rowHeight - 3),
-                    new GUIContent(reference, tooltip: "Missing Sprite asset"), EditorStyles.miniLabel);
-            }
-            if (GUI.Button(new Rect(contentWidth - 24, y, 22, rowHeight - 3),
-                    new GUIContent(EditorBuiltinIcons.Toolbar.Delete, tooltip: $"Remove {reference}"),
-                    EditorStyles.toolbarIconButton)) removeReference = index;
-        }
 
-        var legacyStart = _atlas.SpriteReferences.Count + 1;
-        if (_atlas.Sources.Count > 0)
-            GUI.Label(new Rect(4, legacyStart * rowHeight, contentWidth - 8, rowHeight - 2),
-                "Legacy PNG Sources (version 1 compatibility)", EditorStyles.miniLabel);
-        for (var index = 0; index < _atlas.Sources.Count; index++)
+        var removeIndex = -1;
+        for (var index = 0; index < _atlas.Sources.Length; index++)
         {
             var source = _atlas.Sources[index];
-            var y = (legacyStart + index + 1) * rowHeight;
-            GUI.Label(new Rect(4, y, contentWidth - 34, rowHeight - 3),
-                new GUIContent($"{source.Name}  |  {source.Path}", tooltip: "Legacy source"),
-                EditorStyles.miniLabel);
+            var y = (index + 1) * rowHeight;
+            var selected = EditorGUI.ObjectField(
+                new Rect(4, y, contentWidth - 34, rowHeight - 3),
+                source, typeof(Sprite), false) as Sprite;
+            if (selected is not null && !ReferenceEquals(selected, source) &&
+                !ContainsSource(selected, index))
+            {
+                _atlas.Sources[index] = selected;
+                _dirty = true;
+            }
             if (GUI.Button(new Rect(contentWidth - 24, y, 22, rowHeight - 3),
-                    new GUIContent(EditorBuiltinIcons.Toolbar.Delete, tooltip: $"Remove {source.Name}"),
-                    EditorStyles.toolbarIconButton)) removeLegacy = index;
+                    new GUIContent(EditorBuiltinIcons.Toolbar.Delete, tooltip: $"Remove {source.name}"),
+                    EditorStyles.toolbarIconButton))
+                removeIndex = index;
         }
         GUI.EndScrollView();
-        if (removeReference >= 0)
+
+        if (removeIndex >= 0)
         {
-            _atlas.SpriteReferences.RemoveAt(removeReference);
-            _dirty = true;
-        }
-        if (removeLegacy >= 0)
-        {
-            _atlas.Sources.RemoveAt(removeLegacy);
+            _atlas.Sources = _atlas.Sources.Where((_, index) => index != removeIndex).ToArray();
             _dirty = true;
         }
     }
@@ -185,58 +161,41 @@ public sealed class TextureAtlasWindow : EditorWindow
                 rect.y + (rect.height - previewHeight) * Fix64.Half, previewWidth, previewHeight);
             GUI.DrawTexture(preview, ResolvePreviewPath(_atlas.Texture));
         }
-        else GUI.Box(rect, new GUIContent("No generated atlas"), EditorStyles.helpBox);
+        else
+        {
+            GUI.Box(rect, new GUIContent("No generated atlas"), EditorStyles.helpBox);
+        }
     }
 
     private void AddSelected()
     {
-        foreach (var path in Selection.objects.Select(AssetDatabase.GetAssetPath)
-                     .Where(path => TryLoadImportedSprite(path, out _)))
-            AddSource(path);
+        var sprites = Selection.objects.OfType<Sprite>().ToList();
+        foreach (var texture in Selection.objects.OfType<Texture>())
+            if (AssetDatabase.LoadAssetAtPath<Sprite>(texture.assetPath) is { } sprite)
+                sprites.Add(sprite);
+        foreach (var sprite in sprites) AddSource(sprite);
     }
 
-    private void AddSource(string path)
+    private void AddSource(Sprite sprite)
     {
-        path = path.Trim().Replace('\\', '/');
-        if (string.IsNullOrWhiteSpace(path)) return;
-        if (!TryLoadImportedSprite(path, out _))
-        {
-            _message = "Choose a PNG whose Texture Type is Sprite.";
-            return;
-        }
-        var guid = AssetDatabase.AssetPathToGUID(path);
-        if (guid.Length == 0 || _atlas.SpriteReferences.Contains(guid, StringComparer.OrdinalIgnoreCase)) return;
-        _atlas.SpriteReferences.Add(guid);
-        _atlas.Version = 3;
-        _sourcePath = string.Empty;
+        if (ContainsSource(sprite)) return;
+        _atlas.Sources = [.. _atlas.Sources, sprite];
         _dirty = true;
     }
 
-    private static bool TryLoadImportedSprite(string path, out Sprite? sprite)
+    private bool ContainsSource(Sprite sprite, int ignoredIndex = -1)
     {
-        sprite = null;
-        if (!Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase)) return false;
-        sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-        return sprite is not null;
+        var identity = TextureAtlas.SourceIdentity(sprite);
+        return _atlas.Sources.Where((_, index) => index != ignoredIndex)
+            .Any(source => TextureAtlas.SourceIdentity(source)
+                .Equals(identity, StringComparison.OrdinalIgnoreCase));
     }
-
-    private static Sprite? LoadSpriteReference(string reference)
-    {
-        var path = Guid.TryParse(reference, out _)
-            ? AssetDatabase.GUIDToAssetPath(reference)
-            : reference;
-        return path.Length == 0 ? null : AssetDatabase.LoadAssetAtPath<Sprite>(path);
-    }
-
-    private static string SpriteGuid(Sprite? sprite) => sprite is not null &&
-        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(sprite, out var guid, out _)
-            ? guid
-            : string.Empty;
 
     private void NewAtlas()
     {
         _atlas = new TextureAtlas();
         _assetPath = string.Empty;
+        _pendingSource = null;
         _dirty = true;
         _message = "New atlas";
     }
@@ -250,7 +209,10 @@ public sealed class TextureAtlasWindow : EditorWindow
             _dirty = false;
             _message = "Atlas loaded";
         }
-        catch (Exception exception) { _message = exception.Message; }
+        catch (Exception exception)
+        {
+            _message = exception.Message;
+        }
     }
 
     private void SaveAtlas()
@@ -264,7 +226,10 @@ public sealed class TextureAtlasWindow : EditorWindow
             _dirty = false;
             _message = "Atlas saved";
         }
-        catch (Exception exception) { _message = exception.Message; }
+        catch (Exception exception)
+        {
+            _message = exception.Message;
+        }
     }
 
     private void BuildAtlas()
@@ -279,7 +244,10 @@ public sealed class TextureAtlasWindow : EditorWindow
             _message = $"Built {result.SpriteCount} sprites at {result.Width} x {result.Height}";
             Repaint();
         }
-        catch (Exception exception) { _message = exception.Message; }
+        catch (Exception exception)
+        {
+            _message = exception.Message;
+        }
     }
 
     private void EnsureAssetPath()
@@ -306,7 +274,18 @@ public sealed class TextureAtlasWindow : EditorWindow
         ? Path.GetFullPath(path)
         : AssetDatabase.ResolveAssetPath(path);
 
-    private static string ResolvePreviewPath(string path) => Path.IsPathRooted(path)
-        ? path
-        : Path.Combine(EditorApplication.projectPath, path.Replace('/', Path.DirectorySeparatorChar));
+    private static string ResolvePreviewPath(string path)
+    {
+        if (path.StartsWith("guid:", StringComparison.OrdinalIgnoreCase) &&
+            BAsset.Load<Texture>(path) is { } texture)
+        {
+            var importedPath = string.IsNullOrWhiteSpace(texture.artifactPath)
+                ? texture.sourcePath
+                : texture.artifactPath;
+            if (File.Exists(importedPath)) return importedPath;
+        }
+        return Path.IsPathRooted(path)
+            ? path
+            : Path.Combine(EditorApplication.projectPath, path.Replace('/', Path.DirectorySeparatorChar));
+    }
 }

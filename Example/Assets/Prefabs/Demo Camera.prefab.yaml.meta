@@ -1,7 +1,12 @@
 format: BEngine.AssetMeta
 version: 1
 guid: 597d8a9116cb4266b3a1e81a215afbe0
-importer: PrefabImporter
+importer: DefaultImporter
 assetType: Prefab
 sourceHash: e7f56a9c831eb825d192c0c998fdf081e720c6afb3b35e8d4d195bf6d116b8fd
+importFingerprint: 5ee341f4a80180207b7e674381376c1e0bd71329a92d9c3f4fab13d7b493a835
 settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

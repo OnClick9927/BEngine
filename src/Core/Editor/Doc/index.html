@@ -103,7 +103,7 @@
             <tr><td>Scene</td><td><code>*.scene.yaml</code></td><td>保存 GameObject、Transform、Component；支持 Single/Additive</td></tr>
             <tr><td>PrefabAsset</td><td><code>*.prefab.yaml</code></td><td>实例化后可 Apply、Revert、Unpack</td></tr>
             <tr><td>Sprite</td><td><code>PNG + .meta</code></td><td>在 PNG Inspector 将 Texture Type 设为 Sprite 后 Apply；同一图片可赋给 SpriteRenderer 或加入 Atlas</td></tr>
-            <tr><td>TextureAtlas</td><td><code>MaxSize/Padding/Extrude/SpriteReferences</code></td><td>SpriteReferences 保存 Sprite GUID；在 Texture Atlas 窗口 Build</td></tr>
+            <tr><td>TextureAtlas</td><td><code>MaxSize/Padding/Extrude/Sources</code></td><td>Sources 是 Sprite 数组，以 ownerGuid + localIdentifier 保存稳定引用；在 Texture Atlas 窗口 Build</td></tr>
             <tr><td>Material</td><td><code>shader/color/renderQueue</code></td><td>保存 `.material.yaml` 和材质属性</td></tr>
             <tr><td>GUISkin</td><td><code>*.guiskin.yaml</code></td><td>继承 BAsset；保存全部 EditorStyles 样式槽和 customStyles</td></tr>
             <tr><td>TextureImporter</td><td><code>compressionFormat/filterMode/wrapMode</code></td><td>写入源图旁 `.meta`</td></tr>
@@ -111,6 +111,9 @@
             <tr><td>BAsset</td><td><code>assetPath/guid</code></td><td>加载后绑定稳定工程路径和 GUID</td></tr>
           </tbody>
         </table></div>
+        <h3>统一 BAsset 导入链路</h3>
+        <p>Scene、Texture、Font、Shader、Material、TextureAtlas 与 ScriptableObject 资产统一继承 <code>BAsset</code>，不存在并行的资产基类层级。Sprite 是 TextureImporter 从 Texture 创建的 <code>BObject</code> SubAsset，以主 Texture 的 GUID 与非零 localIdentifier 标识。</p>
+        <p>编辑器读取流程为 <code>Source -&gt; AssetDatabase -&gt; AssetImporter -&gt; Artifact -&gt; BAsset</code>。AssetDatabase 管理工程路径、GUID、Source/Artifact 地址、哈希、SubAsset 身份和 BAsset 缓存；Assets 面板根据这些记录构建，不直接把磁盘目录当成资源模型。内部泛型 <code>Document&lt;TAsset&gt;</code> 只负责可序列化 BAsset 与磁盘文档的转换，不构成新的资产类型。运行时从 AssetBundle 读取 BAsset 并按需创建 GPU 对象，不能保存资源。</p>
         <div class="warning">Texture 压缩格式是请求值。后端尚未实现的 GPU 转码不会被报告为成功，但设置会稳定 round-trip 到 `.meta`。</div>
       </section>
 
@@ -180,7 +183,7 @@ public sealed class PlayerMover : MonoBehaviour
         <p>文本输入框按系统键盘节奏重复处理长按 <code>Backspace</code>、<code>Delete</code>、左右方向键、<code>Home</code> 和 <code>End</code>。首次按下立即执行，系统延迟后连续执行；按键抬起或输入框失焦时停止。</p>
         <h3>SubAsset</h3>
         <p>SubAsset 由“主资源 GUID + 非零 <code>localIdentifier</code>”唯一标识，主资源的 localIdentifier 为 0。BAsset 子资源引用序列化为 <code>guid:&lt;主资源 GUID&gt;#subasset=&lt;localIdentifier&gt;</code>，因此主资源移动或重命名不会破坏引用。<code>TryGetGUIDAndLocalFileIdentifier</code> 返回该身份；<code>LoadAllAssetsAtPath</code> 返回主资源和全部表示，<code>LoadAllAssetRepresentationsAtPath</code> 只返回 SubAsset。</p>
-        <p>用 <code>AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)</code> 创建内嵌 SubAsset，用 <code>RemoveObjectFromAsset</code> 移除。SubAsset 不能再拥有子资源，由 Importer 管理的 Sprite 等表示不能手动移除。Project 默认隐藏 SubAsset，可通过 ObjectField、Inspector 和枚举 API 访问。</p>
+        <p>用 <code>AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)</code> 创建内嵌 SubAsset，用 <code>RemoveObjectFromAsset</code> 移除。SubAsset 不能再拥有子资源，由 Importer 管理的 Sprite 等表示不能手动移除。Project 将 SubAsset 挂在主资源节点下；展开主资源即可查看、选择和拖拽，ObjectField、Inspector 与枚举 API 使用同一对象身份。</p>
       </section>
 
       <section id="themes">
@@ -215,7 +218,7 @@ GUILayout.Button("Build", accent);</code></pre>
           <li>File &gt; New Scene 后立即保存到 <code>Assets/Scenes</code>。</li>
           <li>GameObject &gt; Camera 2D 创建相机，设置 size、priority、clearMode、cullingMask、viewportRect。</li>
           <li>在 Project 选中 PNG，在 Inspector 将 Texture Type 设为 Sprite，按需调整 Pivot/PPU 后点击 Apply；再创建 Sprite 对象，把同一图片赋给 SpriteRenderer。当前运行时图片解码器仅支持 PNG。</li>
-          <li>需要 Atlas 时创建 Texture Atlas，在 Atlas Inspector 或 Window &gt; 2D &gt; Texture Atlas 通过 Sprite ObjectField 添加图片并 Build。清单保存 Sprite GUID；生成 PNG 以 Atlas GUID 和保留 localIdentifier 注册为隐藏 SubAsset，不在 Project 中单独显示。</li>
+          <li>需要 Atlas 时创建 Texture Atlas，在 Atlas Inspector 或 Window &gt; 2D &gt; Texture Atlas 通过 Sprite ObjectField 添加图片并 Build。清单保存 Sprite 的 ownerGuid 与 localIdentifier；生成 PNG 以 Atlas GUID 和保留 localIdentifier 注册为 SubAsset，在 Project 展开 Atlas 节点后显示，但不成为独立顶层资源。</li>
           <li>Edit &gt; Project Settings &gt; Tags and Layers 配置 Tag 与 Layer。Layer 使用连续自然编号 1..63；五个内建层可重命名和排序但不可删除，自定义层可增删、重命名和排序。</li>
           <li>在 Scene 使用 W/E/R Handle 编辑位置、旋转和缩放，使用眼睛/锁控制可见与可选。</li>
           <li>进入 Play 验证；Game View 选择逻辑分辨率并展开 Status 检查 Camera、Batch、Draw Call。</li>

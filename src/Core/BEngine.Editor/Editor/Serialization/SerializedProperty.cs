@@ -44,7 +44,9 @@ public sealed class SerializedProperty : IDisposable
     public bool isArray => IsSupportedCollectionType(valueType);
     public bool hasVisibleChildren => _serializedObject.GetVisibleChildren(this).Count > 0;
     public bool isExpanded { get; set; }
-    public SerializedPropertyType propertyType => GetPropertyType(valueType);
+    public SerializedPropertyType propertyType => IsLayerMaskProperty()
+        ? SerializedPropertyType.LayerMask
+        : GetPropertyType(valueType);
 
     internal SerializedProperty(SerializedObject serializedObject, string propertyPath)
     {
@@ -85,6 +87,14 @@ public sealed class SerializedProperty : IDisposable
     {
         get => Convert.ToInt64(boxedValue, System.Globalization.CultureInfo.InvariantCulture);
         set => boxedValue = ConvertNumeric(value);
+    }
+
+    public ulong ulongValue
+    {
+        get => boxedValue is LayerMask mask
+            ? mask.value
+            : Convert.ToUInt64(boxedValue, System.Globalization.CultureInfo.InvariantCulture);
+        set => boxedValue = valueType == typeof(LayerMask) ? new LayerMask(value) : ConvertNumeric(value);
     }
 
     public bool boolValue { get => boxedValue is true; set => boxedValue = value; }
@@ -457,4 +467,14 @@ public sealed class SerializedProperty : IDisposable
         if (typeof(BObject).IsAssignableFrom(type)) return SerializedPropertyType.ObjectReference;
         return SerializedPropertyType.Generic;
     }
+
+    private bool IsLayerMaskProperty() =>
+        valueType == typeof(LayerMask) ||
+        IsIntegralType(valueType) &&
+        (name.Equals("cullingMask", StringComparison.OrdinalIgnoreCase) ||
+         name.EndsWith("LayerMask", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsIntegralType(Type type) =>
+        type == typeof(byte) || type == typeof(short) || type == typeof(int) || type == typeof(long) ||
+        type == typeof(uint) || type == typeof(ulong);
 }

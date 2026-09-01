@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using BEngine.Editor.Diagnostics;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
 using BEngine.Rendering;
@@ -31,6 +32,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private readonly IEditorTaskScheduler _tasks;
     private readonly bool _ownsTaskScheduler;
     private readonly ProjectAssetDatabase _assets;
+    private IReadOnlyList<AssetRecord>? _hostAssetSnapshotSource;
+    private EditorAssetRecord[] _hostAssetSnapshot = [];
     private readonly ProjectSourceChangeMonitor _sourceChanges;
     private readonly BPackageManager _packages;
     private readonly EditorLayoutStore _layoutStore;
@@ -42,6 +45,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private readonly Dictionary<EditorWindow, NativeFloatingEditorWindow> _nativeTransientOwners = [];
     private readonly Dictionary<NativeFloatingEditorWindow, NativeWindowDockTracker> _nativeDockTrackers = [];
     private readonly Dictionary<NativeFloatingEditorWindow, Vector2> _nativeFloatingCarries = [];
+    private readonly Dictionary<EditorWindow, Vector2> _lastFloatingSizes = [];
     private readonly List<(EditorWindow Window, DockArea Area)> _builtInWindows = [];
     private readonly Dictionary<Type, List<ClosedEditorWindowPlacement>> _closedWindowPlacements = [];
     private readonly Queue<PendingUndock> _pendingUndocks = [];
@@ -63,6 +67,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private readonly ImGuiConsoleWindow _console;
     private readonly ImGuiPackageManagerWindow _packageManager;
     private readonly List<EditorOpenScene> _openScenes = [];
+    private Scene[] _openSceneSnapshot = [];
     private Scene[] _loadedSceneSnapshot = [];
     private Scene _scene;
     private Scene? _mainScene;
@@ -119,9 +124,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private Rect? _genericMenuAnchor;
     private EditorProgressInfo _progress;
     private Rect _dockBounds;
-    private string _activeLayoutName = "Last Session";
+    private string _activeLayoutName = EditorLayoutStore.LastSessionName;
     private bool _layoutSaved;
     private bool _suppressClosedWindowCapture;
+    private EditorProfilerFrameScope _profilerFrame;
+    private double _profiledNativeWindowMilliseconds;
     private GameObject? _copiedGameObject;
     private string? _copiedAssetPath;
     private readonly Dictionary<Type, string?> _scriptSourceCache = [];
@@ -212,7 +219,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _packages.packagesReloading += OnPackagesReloading;
         _packages.packagesUnloading += OnPackagesUnloading;
         CompileScripts();
-        CompileShaders(_assets.assets.Where(asset => asset.AssetType == "Shader")
+        CompileShaders(_assets.assets.Where(asset => asset.AssetType == nameof(Shader))
             .Select(asset => asset.AssetPath));
         _packages.BeginDynamicEditorInitialization();
         EditorUtility.DisplayProgressBar("打开项目", "构建运行时与编辑器反射缓存...", 0.68f);
@@ -223,7 +230,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         _scenePath = ResolveInitialScene();
         EditorUtility.DisplayProgressBar("打开项目", "载入场景...", 0.76f);
-        _scene = Document.LoadBObject<SceneDocument, Scene>(_scenePath, _services);
+        _scene = SceneAssetSerialization.Load(_scenePath, _services);
         _scene.path = _scenePath;
         _openScenes.Add(new EditorOpenScene(_scene, _scenePath, ToAssetPath(_scenePath)));
         RefreshLoadedSceneSnapshot();
@@ -249,8 +256,10 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _mainWindow = new ImGuiNativeWindow(BuildTitle(), 1500, 920);
         _mainWindow.gui += OnGUI;
         _mainWindow.updating += OnUpdate;
+        _mainWindow.frameProfiled += OnMainWindowProfiled;
         _mainWindow.closing += OnClosing;
         _mainWindow.focusChanged += OnMainWindowFocusChanged;
+        FrameDebuggerService.Shared.Changed += OnFrameDebuggerChanged;
         _dock.UndockRequested += QueueUndock;
         _windowLayer.WindowClosed += CloseEditorWindow;
         _windowLayer.DockRequested += DockFloatingWindow;
@@ -313,6 +322,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _sessionLogWriter.Dispose();
         if (_ownsTaskScheduler) _tasks.Dispose();
         EditorUtility.progressChanged -= OnProgressChanged;
+        FrameDebuggerService.Shared.Changed -= OnFrameDebuggerChanged;
         GenericMenuDispatcher.Handler = null;
         EditorObjectPickerPopupDispatcher.Handler = null;
         _dock.UndockRequested -= QueueUndock;
@@ -343,6 +353,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _nativeMainMenuBar?.Dispose();
         _nativeMainMenuBar = null;
         _nativeDockPreviewOverlay.Dispose();
+        _profilerFrame.Dispose();
+        _mainWindow.frameProfiled -= OnMainWindowProfiled;
         _mainWindow.Dispose();
         _ownedServices?.Dispose();
         GC.SuppressFinalize(this);
@@ -441,10 +453,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void FocusGameViewIfOpen()
     {
+        var gameViews = HostedWindows<ImGuiGameWindow>().Where(window => window.IsOpen).ToArray();
         var gameView = EditorWindow.focusedWindow as ImGuiGameWindow ??
-                       HostedWindows<ImGuiGameWindow>().FirstOrDefault(window => _dock.IsSelected(window)) ??
-                       HostedWindows<ImGuiGameWindow>().FirstOrDefault(window => ReferenceEquals(window, _gameView)) ??
-                       HostedWindows<ImGuiGameWindow>().FirstOrDefault();
+                       gameViews.FirstOrDefault(window => _dock.IsSelected(window)) ??
+                       gameViews.FirstOrDefault(window => ReferenceEquals(window, _gameView)) ??
+                       gameViews.FirstOrDefault();
         if (gameView is null) return;
         if (_editorPanels.TryGetValue(gameView, out var panel))
         {
@@ -453,6 +466,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
         if (_nativeFloatingWindows.TryGetValue(gameView, out var native))
         {
+            gameView.FocusInternal();
             native.Focus();
             return;
         }
@@ -605,11 +619,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             yield return new("Layouts/Save Current", true, SaveCurrentLayout);
             yield return new("Layouts/Save As...", true,
                 () => SaveLayoutWindow.Open(_activeLayoutName, SaveNamedLayout));
-            yield return new("Layouts/Load Last Session", _layoutStore.HasLastSession, RestoreLastLayout);
+            yield return new("Layouts/Load Last Session", _layoutStore.HasLastSession,
+                SwitchToLastSessionLayout);
             foreach (var name in _layoutStore.Names)
             {
                 var capturedName = name;
                 yield return new($"Layouts/Switch/{name}", true, () => LoadNamedLayout(capturedName));
+                yield return new($"Layouts/Rename/{name}", true, () => BeginRenameNamedLayout(capturedName));
                 yield return new($"Layouts/Delete/{name}", true, () => DeleteNamedLayout(capturedName));
             }
             foreach (var builtIn in _builtInWindows.OrderBy(item => BuiltInWindowMenuPath(item.Window),
@@ -832,13 +848,45 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 new GUIContent(string.Empty, _playing ? EditorBuiltinIcons.Toolbar.Stop : EditorBuiltinIcons.Toolbar.Play,
                     _playing ? "Stop" : "Play"))) TogglePlay();
         var old = GUI.enabled; GUI.enabled = _playing;
-        _paused = EditorToolbar.Toggle(new Rect(center + transportWidth + transportGap, buttonY,
+        var paused = EditorToolbar.Toggle(new Rect(center + transportWidth + transportGap, buttonY,
                 transportWidth, buttonHeight), _paused,
             new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Pause, _paused ? "Resume" : "Pause"));
+        if (paused != _paused) EditorApplication.isPaused = paused;
         if (EditorToolbar.Button(new Rect(center + (transportWidth + transportGap) * 2, buttonY,
                 transportWidth, buttonHeight),
                 new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Step, "Step"))) Step();
         GUI.enabled = old;
+
+        var showLayoutName = rect.width >= 680;
+        var layoutContent = new GUIContent(showLayoutName ? _activeLayoutName : string.Empty,
+            EditorBuiltinIcons.Toolbar.Layout, $"Layout: {_activeLayoutName}");
+        var desiredLayoutWidth = showLayoutName
+            ? EditorStyles.toolbarDropDown.CalcSize(layoutContent).x + 24
+            : (Fix64)48;
+        var layoutWidth = Fix64.Min(220, Fix64.Max(48, desiredLayoutWidth));
+        var layoutRect = new Rect(rect.xMax - layoutWidth - 6, buttonY, layoutWidth, buttonHeight);
+        var undoHistoryRect = new Rect(layoutRect.x - toolWidth - 4, buttonY, toolWidth, buttonHeight);
+        if (EditorToolbar.Button(undoHistoryRect, new GUIContent(string.Empty,
+                EditorBuiltinIcons.Toolbar.UndoHistory, "Undo History")))
+            EditorToolbarDropdowns.CreateUndoHistoryMenu().DropDown(undoHistoryRect);
+        if (EditorGUI.DropDownButton(layoutRect, layoutContent, FocusType.Passive,
+                EditorStyles.toolbarDropDown))
+            ShowLayoutMenu(layoutRect);
+    }
+
+    private void ShowLayoutMenu(Rect anchor)
+    {
+        var menu = EditorToolbarDropdowns.CreateLayoutMenu(
+            _activeLayoutName,
+            _layoutStore.HasLastSession,
+            _layoutStore.Names,
+            SaveCurrentLayout,
+            () => SaveLayoutWindow.Open(_activeLayoutName, SaveNamedLayout),
+            SwitchToLastSessionLayout,
+            LoadNamedLayout,
+            BeginRenameNamedLayout,
+            DeleteNamedLayout);
+        menu.DropDown(anchor);
     }
 
     private void DrawPrefabStageBar(Rect rect)
@@ -955,21 +1003,91 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void OnUpdate(double deltaSeconds)
     {
-        _tasks.PumpMainThread(TimeSpan.FromMilliseconds(2));
-        var delta = Math.Clamp(deltaSeconds, 0, 0.1);
-        Time.deltaTime = (Fix64)delta;
-        Time.time += Time.deltaTime;
-        if (Interlocked.Exchange(ref _errorPauseRequested, 0) != 0 && _playing)
-            EditorApplication.isPaused = true;
-        EditorFeatureGuard.Invoke("EditorApplication.update", EditorApplication.RaiseUpdate);
-        if (_playing && !_paused)
-            foreach (var runtime in _runtimes.ToArray())
-                EditorFeatureGuard.Invoke(runtime, "SceneRuntime.Tick", () => runtime.Tick(Time.deltaTime));
-        foreach (var window in EditorWindow.EnumerateOpenWindows()) window.UpdateInternal();
-        EditorFeatureGuard.Invoke("DockWorkspace.ProcessPendingUndocks", ProcessPendingUndocks);
-        EditorFeatureGuard.Invoke("NativeFloatingWindows.Pump", PumpNativeFloatingWindows);
-        ApplyPendingApplicationFocusLoss();
-        ProcessProjectSourceChanges();
+        _profilerFrame.Dispose();
+        _profilerFrame = EditorProfiler.BeginFrame();
+        _profiledNativeWindowMilliseconds = 0;
+        var profiling = EditorProfiler.Recording;
+        var updateStarted = profiling ? Stopwatch.GetTimestamp() : 0;
+        var runtimeMilliseconds = 0d;
+        try
+        {
+            _tasks.PumpMainThread(TimeSpan.FromMilliseconds(2));
+            var delta = Math.Clamp(deltaSeconds, 0, 0.1);
+            Time.deltaTime = (Fix64)delta;
+            Time.time += Time.deltaTime;
+            if (Interlocked.Exchange(ref _errorPauseRequested, 0) != 0 && _playing)
+                EditorApplication.isPaused = true;
+            using (EditorProfiler.BeginMethodSample(typeof(EditorApplication), nameof(EditorApplication.update),
+                       EditorProfilerDomain.Editor))
+                EditorFeatureGuard.Invoke("EditorApplication.update", EditorApplication.RaiseUpdate);
+            if (_playing && !_paused)
+            {
+                var runtimeStarted = profiling ? Stopwatch.GetTimestamp() : 0;
+                try
+                {
+                    foreach (var runtime in _runtimes.ToArray())
+                    {
+                        using var methodSample = EditorProfiler.BeginMethodSample(runtime.GetType(),
+                            "Tick", EditorProfilerDomain.Runtime);
+                        EditorFeatureGuard.Invoke(runtime, "SceneRuntime.Tick",
+                            () => runtime.Tick(Time.deltaTime));
+                    }
+                }
+                finally
+                {
+                    if (profiling)
+                    {
+                        runtimeMilliseconds = Stopwatch.GetElapsedTime(runtimeStarted).TotalMilliseconds;
+                        EditorProfiler.ReportSample(EditorProfilerArea.Runtime, runtimeMilliseconds);
+                    }
+                }
+            }
+            foreach (var window in EditorWindow.EnumerateOpenWindows()) window.UpdateInternal();
+            EditorFeatureGuard.Invoke("DockWorkspace.ProcessPendingUndocks", ProcessPendingUndocks);
+            EditorFeatureGuard.Invoke("NativeFloatingWindows.Pump", PumpNativeFloatingWindows);
+            ApplyPendingApplicationFocusLoss();
+            ProcessProjectSourceChanges();
+        }
+        finally
+        {
+            if (profiling)
+            {
+                var hostUpdateMilliseconds = Math.Max(0,
+                    Stopwatch.GetElapsedTime(updateStarted).TotalMilliseconds - runtimeMilliseconds -
+                    _profiledNativeWindowMilliseconds);
+                EditorProfiler.ReportSample(EditorProfilerArea.Update, hostUpdateMilliseconds);
+            }
+        }
+    }
+
+    private void OnMainWindowProfiled(ImGuiNativeFrameProfile profile)
+    {
+        ReportWindowProfile(profile);
+        _profilerFrame.Dispose();
+        _profilerFrame = default;
+    }
+
+    private void OnNativeWindowProfiled(ImGuiNativeFrameProfile profile)
+    {
+        _profiledNativeWindowMilliseconds += profile.TotalMilliseconds;
+        ReportWindowProfile(profile);
+    }
+
+    private void OnFrameDebuggerChanged()
+    {
+        if (_disposed) return;
+        _mainWindow.Repaint();
+        foreach (var pair in _nativeFloatingWindows)
+            if (pair.Key is ImGuiGameWindow or FrameDebuggerWindow) pair.Value.Repaint();
+    }
+
+    private static void ReportWindowProfile(ImGuiNativeFrameProfile profile)
+    {
+        EditorProfiler.ReportSample(EditorProfilerArea.Render, profile.BackgroundMilliseconds);
+        EditorProfiler.ReportSample(EditorProfilerArea.IMGUI,
+            profile.LayoutMilliseconds + profile.InputMilliseconds +
+            profile.RepaintMilliseconds + profile.CanvasMilliseconds);
+        EditorProfiler.ReportSample(EditorProfilerArea.Present, profile.PresentMilliseconds);
     }
 
     private void OnMainWindowFocusChanged(bool focused)
@@ -1054,21 +1172,39 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private void RenderSceneBackground(IGraphicsDevice device, int width, int height)
     {
         var renderer = SceneRendererFor(device);
+        var renderedGameViews = new HashSet<ImGuiGameWindow>();
 
         foreach (var sceneView in HostedWindows<ImGuiSceneWindow>()
                      .Where(window => _dock.IsSelected(window)))
             RenderEditorSceneViewport(sceneView, renderer, device, width, height);
         foreach (var gameView in HostedWindows<ImGuiGameWindow>()
                      .Where(window => _dock.IsSelected(window)))
+        {
             RenderGameViewport(gameView, renderer, device, width, height);
+            renderedGameViews.Add(gameView);
+        }
 
         foreach (var presentation in _windowLayer.Presentations)
         {
             if (presentation.Window is ImGuiSceneWindow sceneView)
                 RenderEditorSceneViewport(sceneView, renderer, device, width, height);
             else if (presentation.Window is ImGuiGameWindow gameView)
+            {
                 RenderGameViewport(gameView, renderer, device, width, height);
+                renderedGameViews.Add(gameView);
+            }
         }
+
+        // A hidden dock tab normally has no background pass. Frame Debugger replay still needs one
+        // frame from its selected Game view so the step image can be read back in the debugger itself.
+        var frameDebugger = FrameDebuggerService.Shared;
+        var hiddenDebugTarget = _editorPanels
+            .Where(pair => pair.Value.Visible && pair.Key is ImGuiGameWindow)
+            .Select(pair => (ImGuiGameWindow)pair.Key)
+            .FirstOrDefault(gameView => !renderedGameViews.Contains(gameView) &&
+                                        frameDebugger.RequiresRender(gameView));
+        if (hiddenDebugTarget is not null)
+            RenderGameViewport(hiddenDebugTarget, renderer, device, width, height);
     }
 
     private void RenderNativeWindowBackground(NativeFloatingEditorWindow presentation,
@@ -1091,6 +1227,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private void RenderEditorSceneViewport(ImGuiSceneWindow sceneView, PortableSceneRenderer renderer,
         IGraphicsDevice device, int frameWidth, int frameHeight)
     {
+        using var methodSample = EditorProfiler.BeginMethodSample(typeof(GpuEditorApplication),
+            nameof(RenderEditorSceneViewport), EditorProfilerDomain.Editor);
         if (!TryGetRenderViewport(sceneView, device, frameWidth, frameHeight, out var viewport)) return;
         _lastWidth = viewport.Width;
         _lastHeight = viewport.Height;
@@ -1100,6 +1238,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         renderer.RenderViewport(scenes, _scene, editorCamera, viewport,
             initializeColor: true, drawGrid: true, drawUi: false, drawGizmos: false,
             objectFilter: SceneVisibilityManager.instance.IsVisible);
+        EditorProfiler.ReportRenderStatistics(renderer.LastRenderStatistics);
         if (!SceneGizmoVisibility.Enabled) return;
         var gizmos = SceneGizmoPass.Collect(scenes, _selected, viewport.Width, viewport.Height);
         renderer.DrawGizmos(gizmos.Lines, editorCamera, viewport);
@@ -1108,8 +1247,20 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private void RenderGameViewport(ImGuiGameWindow gameView, PortableSceneRenderer renderer,
         IGraphicsDevice device, int frameWidth, int frameHeight)
     {
+        using var methodSample = EditorProfiler.BeginMethodSample(typeof(GpuEditorApplication),
+            nameof(RenderGameViewport), _playing
+                ? EditorProfilerDomain.Runtime
+                : EditorProfilerDomain.Editor);
         if (!TryGetRenderViewport(gameView, device, frameWidth, frameHeight, out var availableViewport)) return;
         var viewport = gameView.FitRenderViewport(availableViewport);
+        var previewArea = new FrameDebugPreviewArea(
+            ToTopLeftViewport(device.Backend, viewport, frameHeight),
+            frameWidth,
+            frameHeight);
+        using var frameDebug = device is FrameDebugGraphicsDevice debugDevice
+            ? FrameDebuggerService.Shared.BeginRender(
+                gameView, debugDevice, gameView.titleContent.text, previewArea)
+            : default;
         if (viewport != availableViewport)
             renderer.FillViewport(availableViewport, new NVector4(0.025f, 0.028f, 0.032f, 1));
         var targetSize = gameView.ApplyTargetSize(viewport);
@@ -1117,7 +1268,20 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         renderer.RenderCameras(LoadedScenes(), _scene, cameras, viewport,
             targetSize.Width, targetSize.Height, drawUi: true);
         gameView.UpdateRenderStatistics(renderer.LastRenderStatistics);
+        EditorProfiler.ReportRenderStatistics(renderer.LastRenderStatistics);
     }
+
+    private static GraphicsRect ToTopLeftViewport(
+        GraphicsBackend backend,
+        GraphicsRect viewport,
+        int surfaceHeight) =>
+        backend == GraphicsBackend.OpenGL
+            ? new GraphicsRect(
+                viewport.X,
+                surfaceHeight - viewport.Y - viewport.Height,
+                viewport.Width,
+                viewport.Height)
+            : viewport;
 
     private bool TryGetRenderViewport(EditorWindow window, IGraphicsDevice device,
         int frameWidth, int frameHeight, out GraphicsRect viewport)
@@ -1126,7 +1290,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             ? native.ContentRect(frameWidth, frameHeight)
             : _windowLayer.TryGetContentRect(window, out var floatingContent)
                 ? floatingContent
-                : window.position;
+                : TryGetDockContentRect(window, out var dockContent)
+                    ? dockContent
+                    : window.position;
         var toolbarHeight = EditorStyles.toolbar.fixedHeight;
         var scale = Math.Max(0.01f, (float)RenderScaleFor(window));
         var left = Math.Clamp((int)MathF.Floor((float)rect.x * scale), 0, frameWidth);
@@ -1145,6 +1311,24 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             ? frameHeight - bottom
             : top;
         viewport = new GraphicsRect(left, graphicsY, viewportWidth, viewportHeight);
+        return true;
+    }
+
+    private bool TryGetDockContentRect(EditorWindow window, out Rect content)
+    {
+        if (!_editorPanels.TryGetValue(window, out var panel) || panel.Group is not { } group ||
+            group.Bounds.width <= 4 || group.Bounds.height <= 4)
+        {
+            content = default;
+            return false;
+        }
+
+        var titleBarHeight = Fix64.Max(EditorStyles.windowTitle.fixedHeight + 2,
+            Fix64.Max(EditorStyles.dockTab.fixedHeight + 2,
+                EditorStyles.toolbarIconButton.fixedHeight + 2));
+        content = new Rect(group.Bounds.x + 2, group.Bounds.y + titleBarHeight,
+            Fix64.Max(1, group.Bounds.width - 4),
+            Fix64.Max(1, group.Bounds.height - titleBarHeight - 2));
         return true;
     }
 
@@ -1405,6 +1589,15 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     internal void Select(ProjectBrowserItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
+        if (item.SubAssetObject is { } subAsset)
+        {
+            _selected = null;
+            _selectedAssetPath = item.NormalizedPath;
+            _selectedAsset = subAsset;
+            Selection.NotifyHostSelectionChanged(subAsset);
+            RebuildInspectors();
+            return;
+        }
         if (item.Asset is { } record)
         {
             Select(record);
@@ -2303,7 +2496,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         var entry = FindSceneEntry(scene);
         if (entry is null || !entry.IsLoaded) return false;
         if (!entry.IsDirty) return true;
-        Document.SaveBObject<SceneDocument>(scene, entry.SourcePath);
+        SceneAssetSerialization.Save(scene, entry.SourcePath);
         entry.IsDirty = false;
         if (ReferenceEquals(scene, _scene)) _dirty = false;
         _mainWindow.SetTitle(BuildTitle());
@@ -2572,9 +2765,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private IReadOnlyList<Scene> LoadedScenes() => _loadedSceneSnapshot;
 
-    private void RefreshLoadedSceneSnapshot() => _loadedSceneSnapshot = _prefabStage is not null
-        ? [_scene]
-        : _openScenes.Where(item => item.IsLoaded).Select(item => item.Scene).ToArray();
+    private void RefreshLoadedSceneSnapshot()
+    {
+        _openSceneSnapshot = _openScenes.Select(static item => item.Scene).ToArray();
+        _loadedSceneSnapshot = _prefabStage is not null
+            ? [_scene]
+            : _openScenes.Where(static item => item.IsLoaded).Select(static item => item.Scene).ToArray();
+    }
 
     private EditorOpenScene? FindSceneEntry(Scene scene) =>
         _openScenes.FirstOrDefault(item => ReferenceEquals(item.Scene, scene));
@@ -2647,7 +2844,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             return placeholder;
         }
 
-        var scene = Document.LoadBObject<SceneDocument, Scene>(fullPath, _services);
+        var scene = SceneAssetSerialization.Load(fullPath, _services);
         scene.path = fullPath;
         scene.isLoaded = true;
         var entry = new EditorOpenScene(scene, fullPath, assetPath);
@@ -2906,7 +3103,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (shadersChanged && shaderPaths.Length == 0)
-            shaderPaths = _assets.assets.Where(asset => asset.AssetType == "Shader")
+            shaderPaths = _assets.assets.Where(asset => asset.AssetType == nameof(Shader))
                 .Select(asset => asset.AssetPath).ToArray();
         if (scriptsChanged) QueueScriptCompilation();
         if (shadersChanged || shaderPaths.Length > 0) QueueShaderCompilation(shaderPaths);
@@ -3293,7 +3490,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (!File.Exists(settingsPath)) return _workspace.StartupScenePath;
         try
         {
-            var document = Document.Load<EditorSettingsDocument>(settingsPath);
+            var document = YamlUtility.Load<EditorSettingsDocument>(settingsPath);
             var path = _workspace.ResolveInside(document.LastScene);
             return File.Exists(path) ? path : _workspace.StartupScenePath;
         }
@@ -3377,7 +3574,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     IEditorTaskScheduler IEditorHost.TaskScheduler => _tasks;
     Scene IEditorHost.ActiveScene => _scene;
-    IReadOnlyList<Scene> IEditorHost.OpenScenes => _openScenes.Select(item => item.Scene).ToArray();
+    IReadOnlyList<Scene> IEditorHost.OpenScenes => _openSceneSnapshot;
     BObject? IEditorHost.ActiveObject
     {
         get => _selected ?? (BObject?)_selectedAsset;
@@ -3451,7 +3648,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     void IEditorHost.Exit(int exitCode) => RequestExit();
     string IEditorHost.ProjectRootPath => _workspace.RootPath;
     string IEditorHost.AssetsRootPath => _workspace.AssetsPath;
-    EditorAssetRecord[] IEditorHost.FindAssets(string search) => _assets.FindAssets(search).Select(ToRecord).ToArray();
+    EditorAssetRecord[] IEditorHost.FindAssets(string search) => FindEditorAssets(search);
     EditorAssetRecord? IEditorHost.GetAsset(string assetPath) => _assets.GetRecord(assetPath) is { } item ? ToRecord(item) : null;
     EditorAssetRecord? IEditorHost.GetAsset(Guid guid) => _assets.GetRecord(guid) is { } item ? ToRecord(item) : null;
     void IEditorHost.RefreshAssets() => RefreshAssets();
@@ -3501,9 +3698,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _mainScene = _scene;
         _mainSelection = _selected;
         _mainSceneDirty = _dirty;
-        var root = PrefabDocumentOperations.LoadContents(prefab);
+        var root = PrefabAssetOperations.LoadContents(prefab);
         var stageScene = new Scene(prefab.name + " (Prefab)");
-        foreach (var gameObject in PrefabDocumentOperations.Traverse(root))
+        foreach (var gameObject in PrefabAssetOperations.Traverse(root))
             if (gameObject.scene is null) stageScene.Add(gameObject);
         _scene = stageScene;
         _prefabStage = new PrefabStage(record.AssetPath, stageScene, root);
@@ -3525,10 +3722,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         var record = _assets.GetRecord(_prefabStage.assetPath);
         if (record is null) return false;
         var assetId = record.Guid;
-        var document = Document.FromBObject<PrefabDocument>(_prefabStage.prefabContentsRoot,
-            new DocumentConversionContext(record.SourcePath));
-        document.Id = assetId;
-        document.Save(record.SourcePath);
+        PrefabAssetSerialization.Save(_prefabStage.prefabContentsRoot, record.SourcePath, assetId);
         CancelAssetRefresh();
         _assets.ImportAsset(record.SourcePath);
         InvalidateProjectWindows();
@@ -3568,7 +3762,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void SaveCurrentLayout()
     {
-        if (_activeLayoutName.Equals("Last Session", StringComparison.OrdinalIgnoreCase))
+        if (_activeLayoutName.Equals(EditorLayoutStore.LastSessionName, StringComparison.OrdinalIgnoreCase))
         {
             _layoutSaved = false;
             SaveLastLayout();
@@ -3602,7 +3796,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var document = _layoutStore.Load(name);
             ApplyLayout(document);
             _activeLayoutName = name;
-            var lastSession = CaptureLayout("Last Session");
+            var lastSession = CaptureLayout(EditorLayoutStore.LastSessionName);
             lastSession.ActiveLayout = name;
             _layoutStore.SaveLastSession(lastSession);
             _layoutSaved = false;
@@ -3614,13 +3808,58 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
     }
 
+    private void SwitchToLastSessionLayout()
+    {
+        if (!_layoutStore.HasLastSession) return;
+        try
+        {
+            ApplyLayout(_layoutStore.LoadLastSession());
+            _activeLayoutName = EditorLayoutStore.LastSessionName;
+            _layoutSaved = false;
+            Debug.Log("Loaded the Last Session editor layout.");
+        }
+        catch (Exception exception)
+        {
+            EditorFeatureGuard.Report("Load Last Session editor layout", exception);
+        }
+    }
+
+    private void BeginRenameNamedLayout(string name) =>
+        SaveLayoutWindow.OpenRename(name, renamed => RenameNamedLayout(name, renamed));
+
+    private void RenameNamedLayout(string name, string newName)
+    {
+        try
+        {
+            var renamed = _layoutStore.Rename(name, newName);
+            if (_activeLayoutName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                _activeLayoutName = renamed;
+            var lastSession = CaptureLayout(EditorLayoutStore.LastSessionName);
+            lastSession.ActiveLayout = _activeLayoutName;
+            _layoutStore.SaveLastSession(lastSession);
+            _layoutSaved = false;
+            Debug.Log($"Renamed editor layout '{name}' to '{renamed}'.");
+        }
+        catch (Exception exception)
+        {
+            EditorFeatureGuard.Report($"Rename editor layout {name}", exception);
+        }
+    }
+
     private void DeleteNamedLayout(string name)
     {
         try
         {
+            if (EditorLayoutStore.IsBuiltInName(name) ||
+                !EditorUtility.DisplayDialog("Delete Layout",
+                    $"Delete the editor layout '{name}'?", "Delete", "Cancel")) return;
             if (!_layoutStore.Delete(name)) return;
             if (_activeLayoutName.Equals(name, StringComparison.OrdinalIgnoreCase))
-                _activeLayoutName = "Last Session";
+                _activeLayoutName = EditorLayoutStore.LastSessionName;
+            var lastSession = CaptureLayout(EditorLayoutStore.LastSessionName);
+            lastSession.ActiveLayout = _activeLayoutName;
+            _layoutStore.SaveLastSession(lastSession);
+            _layoutSaved = false;
             Debug.Log($"Deleted editor layout '{name}'.");
         }
         catch (Exception exception)
@@ -3637,7 +3876,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var document = _layoutStore.LoadLastSession();
             ApplyLayout(document);
             _activeLayoutName = string.IsNullOrWhiteSpace(document.ActiveLayout)
-                ? "Last Session" : document.ActiveLayout;
+                ? EditorLayoutStore.LastSessionName : document.ActiveLayout;
         }
         catch (Exception exception)
         {
@@ -3650,7 +3889,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (_layoutSaved) return;
         try
         {
-            var document = CaptureLayout("Last Session");
+            var document = CaptureLayout(EditorLayoutStore.LastSessionName);
             document.ActiveLayout = _activeLayoutName;
             _layoutStore.SaveLastSession(document);
             _layoutSaved = true;
@@ -3834,7 +4073,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         foreach (var item in resolved.Values.Where(item => !item.Record.Docked ||
                                                             item.State == EditorWindowState.Aux))
-            ShowFloating(item.Window, item.State, positionIsScreenSpace: true);
+            ShowFloating(item.Window, item.State, positionIsScreenSpace: true, focus: false);
         RestoreClosedWindowPlacements(document.ClosedWindows ?? [], resolved.Keys);
         if (document.FocusedWindowId is { } focusedId && resolved.TryGetValue(focusedId, out var focused))
             focused.Window.Focus();
@@ -3900,13 +4139,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private void ShowEditorWindow(EditorWindow window)
     {
         var requestedState = window.ConsumeRequestedState();
+        var focus = window.ConsumeRequestedFocus();
         if (_editorPanels.TryGetValue(window, out var panel))
         {
             if (requestedState == EditorWindowState.Normal)
             {
-                _dock.Show(panel.Id);
                 window.windowState = requestedState;
-                window.FocusInternal();
+                if (focus) FocusEditorWindow(window);
+                else _dock.Show(panel.Id);
                 return;
             }
             _editorPanels.Remove(window);
@@ -3917,7 +4157,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (floating.State == requestedState ||
                 floating.State == EditorWindowState.Normal && requestedState == EditorWindowState.Normal)
             {
-                _windowLayer.Focus(window);
+                if (focus) FocusEditorWindow(window);
                 return;
             }
             _windowLayer.Remove(window);
@@ -3926,7 +4166,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             if (requestedState == EditorWindowState.Pop && transientOwner.ContainsTransient(window))
             {
-                transientOwner.FocusTransient(window);
+                if (focus) FocusEditorWindow(window);
                 return;
             }
             transientOwner.RemoveTransient(window);
@@ -3937,7 +4177,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (native.State == requestedState ||
                 native.State == EditorWindowState.Normal && requestedState == EditorWindowState.Normal)
             {
-                native.Focus();
+                if (focus) FocusEditorWindow(window);
                 return;
             }
             PrepareWindowForHostTransfer(window);
@@ -3946,7 +4186,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         else if (TryTakeClosedWindowPlacement(window.GetType(), window, out var closed))
         {
-            RestoreClosedWindow(closed);
+            RestoreClosedWindow(closed, focus);
             return;
         }
 
@@ -3958,9 +4198,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (requestedState == EditorWindowState.Normal)
         {
             _editorPanels[window] = _dock.Add(id, window, DockArea.Center, true); window.docked = true;
+            if (focus) FocusEditorWindow(window);
         }
-        else ShowFloating(window, requestedState);
-        window.FocusInternal();
+        else ShowFloating(window, requestedState, focus: focus);
         _layoutSaved = false;
     }
 
@@ -3990,7 +4230,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     }
 
     private void ShowFloating(EditorWindow window, EditorWindowState state,
-        bool positionIsScreenSpace = false)
+        bool positionIsScreenSpace = false, bool focus = true)
     {
         if (state == EditorWindowState.Modal)
         {
@@ -4008,7 +4248,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 window.position = new Rect(screenPosition.x, screenPosition.y,
                     clientSize.x, clientSize.y);
             }
-            ShowNativeFloating(window, state);
+            ShowNativeFloating(window, state, focus);
             return;
         }
         if (state == EditorWindowState.Pop &&
@@ -4019,12 +4259,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             return;
         }
         _windowLayer.Show(window, state);
-        _windowLayer.Focus(window);
-        if (state == EditorWindowState.Modal) _mainWindow.Focus();
+        if (focus) _windowLayer.Focus(window);
+        if (focus && state == EditorWindowState.Modal) _mainWindow.Focus();
     }
 
     private void CloseEditorWindow(EditorWindow window)
     {
+        if (window is ImGuiGameWindow && !_nativeFloatingWindows.ContainsKey(window))
+            FrameDebuggerService.Shared.ReleaseTarget(window);
         RememberClosedWindow(window);
         if (_editorPanels.Remove(window, out var panel)) _dock.Remove(panel.Id);
         if (_nativeTransientOwners.Remove(window, out var transientOwner))
@@ -4036,6 +4278,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _windowLayer.Remove(window);
         if (_nativeFloatingWindows.ContainsKey(window))
         {
+            window.CloseInternal();
             _pendingNativeCloses.Add(window);
             return;
         }
@@ -4116,7 +4359,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         return true;
     }
 
-    private void RestoreClosedWindow(ClosedEditorWindowPlacement placement)
+    private void RestoreClosedWindow(ClosedEditorWindowPlacement placement, bool focus = true)
     {
         var window = placement.Window;
         _layoutSaved = false;
@@ -4130,15 +4373,13 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 placement.PreferredArea, placement.PreviousPanelId, placement.NextPanelId,
                 placement.PanelIndex, placement.DockPoint);
             if (placement.WasMaximized && !_dock.IsMaximized(window)) _dock.ToggleMaximize(window);
-            window.FocusInternal();
-            _mainWindow.Focus();
+            if (focus) FocusEditorWindow(window);
             return;
         }
 
         window.windowState = placement.State;
         window.docked = false;
-        ShowFloating(window, placement.State, positionIsScreenSpace: true);
-        window.FocusInternal();
+        ShowFloating(window, placement.State, positionIsScreenSpace: true, focus: focus);
     }
 
     private void QueueUndock(ImGuiDockPanel panel, Vector2 pointer)
@@ -4160,12 +4401,22 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var screenPoint = _mainWindow.GUIToScreen(pending.CanvasPosition, GUIUtility.pixelsPerPoint);
             var dockedScreenOrigin = _mainWindow.GUIToScreen(dockedBounds.position,
                 GUIUtility.pixelsPerPoint);
-            var clientSize = ImGuiNativeWindow.GUIToClient(new Vector2(
+            var dockedClientSize = ImGuiNativeWindow.GUIToClient(new Vector2(
                     Fix64.Max(window.minSize.x, dockedBounds.width),
                     Fix64.Max(window.minSize.y, dockedBounds.height)),
                 GUIUtility.pixelsPerPoint);
-            window.position = new Rect(dockedScreenOrigin.x, dockedScreenOrigin.y,
-                clientSize.x, clientSize.y);
+            var minimumSize = ImGuiNativeWindow.GUIToClient(window.minSize,
+                GUIUtility.pixelsPerPoint);
+            var maximumSize = ImGuiNativeWindow.GUIToClient(window.maxSize,
+                GUIUtility.pixelsPerPoint);
+            _lastFloatingSizes.TryGetValue(window, out var rememberedSize);
+            window.position = NativeFloatingWindowGeometry.CreateUndockedBounds(
+                dockedScreenOrigin,
+                dockedClientSize,
+                rememberedSize.x > 0 && rememberedSize.y > 0 ? rememberedSize : null,
+                minimumSize,
+                maximumSize,
+                NativeFloatingWindowGeometry.CurrentWorkAreas());
             ShowNativeFloating(window, EditorWindowState.Normal);
             window.FocusInternal();
             if (_nativeFloatingWindows.TryGetValue(window, out var presentation) &&
@@ -4209,11 +4460,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _mainWindow.Repaint();
     }
 
-    private void ShowNativeFloating(EditorWindow window, EditorWindowState state)
+    private void ShowNativeFloating(EditorWindow window, EditorWindowState state, bool focus = true)
     {
         if (_nativeFloatingWindows.TryGetValue(window, out var existing))
         {
-            existing.Focus();
+            if (focus) existing.Focus();
             return;
         }
 
@@ -4227,6 +4478,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         presentation.TransientClosed += OnNativeTransientClosed;
         presentation.NativeMoveUpdated += OnNativeMoveUpdated;
         presentation.NativeMoveCompleted += OnNativeMoveCompleted;
+        presentation.FrameProfiled += OnNativeWindowProfiled;
         presentation.RenderBackground = (device, width, height) =>
             RenderNativeWindowBackground(presentation, device, width, height);
         _nativeFloatingWindows.Add(window, presentation);
@@ -4238,7 +4490,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             presentation.Initialize();
             _nativeDockTrackers[presentation].Reset(
                 presentation.ScreenPosition, presentation.ScreenBounds.size);
-            presentation.Focus();
+            if (focus) presentation.Focus();
         }
         catch
         {
@@ -4398,6 +4650,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void RemoveNativeFloatingWindow(NativeFloatingEditorWindow presentation, bool closeWindow)
     {
+        if (presentation.State == EditorWindowState.Normal &&
+            presentation.ScreenBounds.width > 0 && presentation.ScreenBounds.height > 0)
+            _lastFloatingSizes[presentation.Window] = presentation.ScreenBounds.size;
+        if (closeWindow && presentation.Window is ImGuiGameWindow)
+            FrameDebuggerService.Shared.ReleaseTarget(presentation.Window);
         if (_nativeDockDragPoint is not null) ClearNativeDockPreview();
         presentation.CloseRequested -= QueueNativeClose;
         presentation.DockRequested -= QueueNativeDock;
@@ -4405,6 +4662,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         presentation.TransientClosed -= OnNativeTransientClosed;
         presentation.NativeMoveUpdated -= OnNativeMoveUpdated;
         presentation.NativeMoveCompleted -= OnNativeMoveCompleted;
+        presentation.FrameProfiled -= OnNativeWindowProfiled;
         foreach (var transient in _nativeTransientOwners
                      .Where(pair => ReferenceEquals(pair.Value, presentation))
                      .Select(pair => pair.Key).ToArray())
@@ -4461,8 +4719,29 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private string ResolveAssetPath(string path) => Path.IsPathRooted(path) ? Path.GetFullPath(path) :
         _workspace.ResolveInside(path.Replace('\\', '/'));
+
+    private EditorAssetRecord[] FindEditorAssets(string search)
+    {
+        search ??= string.Empty;
+        var records = _assets.FindAssets(search);
+        if (search.Length > 0)
+        {
+            var filtered = new EditorAssetRecord[records.Count];
+            for (var index = 0; index < filtered.Length; index++) filtered[index] = ToRecord(records[index]);
+            return filtered;
+        }
+        if (ReferenceEquals(records, _hostAssetSnapshotSource)) return _hostAssetSnapshot;
+
+        var snapshot = new EditorAssetRecord[records.Count];
+        for (var index = 0; index < snapshot.Length; index++) snapshot[index] = ToRecord(records[index]);
+        _hostAssetSnapshotSource = records;
+        _hostAssetSnapshot = snapshot;
+        return snapshot;
+    }
+
     private static EditorAssetRecord ToRecord(AssetRecord record) =>
-        new(record.Guid, record.AssetPath, record.SourcePath, record.AssetType, record.IsDirectory,
+        new(record.Guid, record.AssetPath, record.SourcePath, record.ArtifactPath,
+            record.AssetType, record.IsDirectory,
             record.ParentGuid, record.LocalIdentifier);
 
     private readonly record struct MenuEntry(string Label, bool Enabled, Action? Action, bool Checked = false);
@@ -4723,12 +5002,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             HandleDrag(gameObject, rowRect);
 
             const int sceneStateButtonWidth = 18;
-            const int sceneStateActionWidth = sceneStateButtonWidth * 2;
+            var visibleRight = Fix64.Min(rowRect.xMax, GUI.visibleViewWidth);
+            var showSceneStateButtons = visibleRight - rowRect.x >= 72;
+            var sceneStateActionWidth = showSceneStateButtons ? sceneStateButtonWidth * 2 : 0;
             var treeLeft = rowRect.x + sceneStateActionWidth;
             const int minimumLabelWidth = 13;
             var objectDepth = Math.Max(0, item.depth - 1);
             var desiredFoldoutX = treeLeft + objectDepth * 14;
-            var maximumFoldoutX = Fix64.Max(treeLeft, rowRect.xMax - 18 - minimumLabelWidth);
+            var maximumFoldoutX = Fix64.Max(treeLeft, visibleRight - 18 - minimumLabelWidth);
             var foldoutRect = new Rect(Fix64.Min(desiredFoldoutX, maximumFoldoutX), rowRect.y, 18, rowHeight);
             if (item.hasChildren)
             {
@@ -4742,7 +5023,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             }
 
             var itemLabelRect = new Rect(foldoutRect.xMax, rowRect.y,
-                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax), rowHeight);
+                Fix64.Max(1, visibleRight - foldoutRect.xMax), rowHeight);
             if (_renamingId == gameObject.Id)
             {
                 var commit = Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return;
@@ -4765,28 +5046,32 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 GUI.Label(itemLabelRect, new GUIContent(gameObject.name, visibleIcon, string.Empty), style);
             }
 
-            var sceneVisibility = SceneVisibilityManager.instance;
-            var hidden = sceneVisibility.IsHidden(gameObject);
-            var visibilityRect = new Rect(rowRect.x, rowRect.y, sceneStateButtonWidth, rowHeight);
-            if (GUI.Button(visibilityRect, new GUIContent(string.Empty,
-                    hidden ? EditorBuiltinIcons.Toolbar.Hidden : EditorBuiltinIcons.Toolbar.Visible,
-                    hidden ? $"Show {gameObject.name} in Scene view" : $"Hide {gameObject.name} in Scene view"),
-                    EditorStyles.hierarchyAction))
-                sceneVisibility.ToggleVisibility(gameObject, includeDescendants: true);
+            if (showSceneStateButtons)
+            {
+                var sceneVisibility = SceneVisibilityManager.instance;
+                var hidden = sceneVisibility.IsHidden(gameObject);
+                var visibilityRect = new Rect(rowRect.x, rowRect.y, sceneStateButtonWidth, rowHeight);
+                if (GUI.Button(visibilityRect, new GUIContent(string.Empty,
+                        hidden ? EditorBuiltinIcons.Toolbar.Hidden : EditorBuiltinIcons.Toolbar.Visible,
+                        hidden ? $"Show {gameObject.name} in Scene view" : $"Hide {gameObject.name} in Scene view"),
+                        EditorStyles.hierarchyAction))
+                    sceneVisibility.ToggleVisibility(gameObject, includeDescendants: true);
 
-            var pickingDisabled = sceneVisibility.IsPickingDisabled(gameObject);
-            var pickingRect = new Rect(visibilityRect.xMax, rowRect.y, sceneStateButtonWidth, rowHeight);
-            if (GUI.Button(pickingRect, new GUIContent(string.Empty,
-                    pickingDisabled ? EditorBuiltinIcons.Toolbar.Lock : EditorBuiltinIcons.Toolbar.Unlock,
-                    pickingDisabled ? $"Enable Scene picking for {gameObject.name}" :
-                        $"Disable Scene picking for {gameObject.name}"), EditorStyles.hierarchyAction))
-                sceneVisibility.TogglePicking(gameObject, includeDescendants: true);
+                var pickingDisabled = sceneVisibility.IsPickingDisabled(gameObject);
+                var pickingRect = new Rect(visibilityRect.xMax, rowRect.y, sceneStateButtonWidth, rowHeight);
+                if (GUI.Button(pickingRect, new GUIContent(string.Empty,
+                        pickingDisabled ? EditorBuiltinIcons.Toolbar.Lock : EditorBuiltinIcons.Toolbar.Unlock,
+                        pickingDisabled ? $"Enable Scene picking for {gameObject.name}" :
+                            $"Disable Scene picking for {gameObject.name}"), EditorStyles.hierarchyAction))
+                    sceneVisibility.TogglePicking(gameObject, includeDescendants: true);
+            }
             EditorObjectPing.DrawHierarchy(gameObject, rowRect);
         }
 
         private void DrawSceneTreeRow(HierarchyTreeItem item, Rect rowRect, HierarchyTreeView tree)
         {
             var scene = item.Scene;
+            var visibleRight = Fix64.Min(rowRect.xMax, GUI.visibleViewWidth);
             var active = scene is not null && ReferenceEquals(app.Scene, scene);
             GUI.Box(rowRect, GUIContent.none,
                 active ? EditorStyles.hierarchySceneHeaderActive : EditorStyles.hierarchySceneHeader);
@@ -4807,7 +5092,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
             var showAction = item.SceneEntry is not null && _showRowActions;
             var labelRect = new Rect(foldoutRect.xMax, rowRect.y,
-                Fix64.Max(1, rowRect.xMax - foldoutRect.xMax - (showAction ? 22 : 0)), rowRect.height);
+                Fix64.Max(1, visibleRight - foldoutRect.xMax - (showAction ? 22 : 0)), rowRect.height);
             var suffix = item.Loaded ? item.Dirty ? " *" : string.Empty : " (Not Loaded)";
             var sceneIcon = labelRect.width >= 28 ? EditorBuiltinIcons.Assets.Scene : string.Empty;
             var tooltip = string.IsNullOrWhiteSpace(item.SceneEntry?.AssetPath)
@@ -4819,7 +5104,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
             if (showAction)
             {
-                var moreRect = new Rect(rowRect.xMax - 22, rowRect.y, 22, rowRect.height);
+                var moreRect = new Rect(visibleRight - 22, rowRect.y, 22, rowRect.height);
                 if (GUI.Button(moreRect, new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.More,
                         $"{item.displayName} options"), EditorStyles.hierarchyAction) && scene is not null)
                     ShowSceneMenu(item.SceneEntry!, scene, item.Loaded, moreRect);
@@ -5930,6 +6215,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var current = Event.current;
             var id = GUIUtility.GetControlID(nameof(ImGuiSceneWindow).GetHashCode(StringComparison.Ordinal),
                 FocusType.Passive, viewport);
+            if (app._tool == Tool.View)
+                EditorGUIUtility.AddCursorRect(viewport, MouseCursor.Pan);
             if (current.type == EventType.ScrollWheel && viewport.Contains(current.mousePosition))
             {
                 app.ZoomEditorCamera((float)current.delta.y);
@@ -5963,9 +6250,6 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 _navigationButton = -1;
                 current.Use();
             }
-
-            if (GUIUtility.hotControl == id || app._tool == Tool.View)
-                EditorGUIUtility.AddCursorRect(viewport, MouseCursor.Pan);
         }
 
         private void HandleObjectPicking(Rect viewport)
@@ -6031,7 +6315,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private sealed class ImGuiGameWindow(GpuEditorApplication app) : EditorWindow
     {
         private const int StatusButtonWidth = 68;
+        private const int FrameDebuggerButtonWidth = 26;
         private readonly GameViewResolutionSettings _resolutions = new();
+        private readonly FrameDebuggerGamePreviewView _frameDebuggerPreview = new();
         private GraphicsRect _lastFittedViewport;
         private SceneRenderStatistics _renderStatistics;
         private bool _hasRenderStatistics;
@@ -6060,11 +6346,12 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             DrawWindowToolbarBackground();
             var toolbarWidth = GUI.visibleViewWidth;
-            var showResolution = toolbarWidth >= StatusButtonWidth + 56;
+            var showResolution = toolbarWidth >= StatusButtonWidth + FrameDebuggerButtonWidth + 56;
             var statusWidth = (Fix64)StatusButtonWidth;
+            var debuggerWidth = (Fix64)FrameDebuggerButtonWidth;
             var resolutionWidth = showResolution
                 ? Fix64.Max(44, Fix64.Min(132,
-                    toolbarWidth - statusWidth - 12))
+                    toolbarWidth - statusWidth - debuggerWidth - 14))
                 : Fix64.Zero;
             GUILayout.BeginHorizontal(GUILayout.Height(EditorStyles.toolbar.fixedHeight));
             if (showResolution && GUILayout.Button(new GUIContent(_resolutions.selected.SizeLabel,
@@ -6081,13 +6368,40 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 ? 8 + resolutionWidth
                 : (Fix64)4;
             GUILayout.Space(Fix64.Max(0,
-                toolbarWidth - statusWidth - 4 - usedBeforeStatus));
+                toolbarWidth - statusWidth - debuggerWidth - 6 - usedBeforeStatus));
+            var frameDebugger = FrameDebuggerService.Shared;
+            var debuggingThisView = frameDebugger.Enabled && frameDebugger.IsTarget(this);
+            if (GUILayout.Button(new GUIContent(string.Empty,
+                        EditorBuiltinIcons.Toolbar.FrameDebugger, "Open Frame Debugger"),
+                    debuggingThisView
+                        ? EditorStyles.toolbarIconButtonSelected
+                        : EditorStyles.toolbarIconButton,
+                    GUILayout.Width(debuggerWidth)))
+                FrameDebuggerWindow.OpenForTarget(this, titleContent.text);
+            GUILayout.Space(2);
             if (GUILayout.Button(new GUIContent("Status", "Show Game rendering statistics"),
                     _statusExpanded ? EditorStyles.toolbarIconButtonSelected : EditorStyles.toolbarButton,
                     GUILayout.Width(statusWidth)))
                 _statusExpanded = !_statusExpanded;
             GUILayout.EndHorizontal();
+            DrawFrameDebuggerPreview(frameDebugger);
             if (_statusExpanded) DrawStatusOverlay();
+        }
+
+        protected override void OnDisable() => _frameDebuggerPreview.Dispose();
+
+        private void DrawFrameDebuggerPreview(FrameDebuggerService service)
+        {
+            var step = service.StepLimit;
+            if (!service.Enabled || step < 0 || !service.IsTarget(this))
+            {
+                _frameDebuggerPreview.Clear();
+                return;
+            }
+            var toolbarHeight = EditorStyles.toolbar.fixedHeight;
+            var area = new Rect(0, toolbarHeight, GUIUtility.currentViewWidth,
+                Fix64.Max(1, GUIUtility.currentViewHeight - toolbarHeight));
+            _frameDebuggerPreview.Draw(area, service.Preview, step);
         }
 
         private void DrawStatusOverlay()
@@ -6917,7 +7231,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private readonly HashSet<string> _folderParentPaths = new(StringComparer.OrdinalIgnoreCase);
         private string? _pingedAssetPath;
         private string? _framePingPath;
+        private string? _framePingKey;
         private string? _selectedPath;
+        private string? _selectedKey;
         private string? _renamingPath;
         private string _renameValue = string.Empty;
         private string? _dragCandidatePath;
@@ -6941,7 +7257,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (EditorObjectPing.currentTarget is { } target) HandleObjectPing(target);
         }
         protected override void OnDisable() => EditorObjectPing.pinged -= HandleObjectPing;
-        internal override string? CaptureLockContext() => isLocked ? _selectedPath ?? string.Empty : null;
+        internal override string? CaptureLockContext() => isLocked ? _selectedKey ?? _selectedPath ?? string.Empty : null;
         internal override void RestoreLockContext(string? context)
         {
             if (!isLocked || context is null) return;
@@ -6949,16 +7265,18 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (context.Length == 0)
             {
                 _selectedPath = null;
+                _selectedKey = null;
                 Repaint();
                 return;
             }
 
             var items = _cache ??= BuildItems();
             var path = ProjectBrowserPath.Normalize(context);
-            ProjectBrowserItem? selected = null;
+            var selected = items.FirstOrDefault(item => item.BrowserKey.Equals(
+                path, StringComparison.OrdinalIgnoreCase));
             while (!string.IsNullOrWhiteSpace(path))
             {
-                selected = items.FirstOrDefault(item => item.NormalizedPath.Equals(
+                selected ??= items.FirstOrDefault(item => item.NormalizedPath.Equals(
                     path, StringComparison.OrdinalIgnoreCase));
                 if (selected is not null) break;
                 path = ProjectBrowserPath.Parent(path) ?? string.Empty;
@@ -6966,9 +7284,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             selected ??= items.FirstOrDefault(item => item.NormalizedPath.Equals(
                 "Assets", StringComparison.OrdinalIgnoreCase));
             _selectedPath = selected?.NormalizedPath;
-            for (var parent = selected?.ParentPath; !string.IsNullOrWhiteSpace(parent);
-                 parent = ProjectBrowserPath.Parent(parent))
-                _expanded.Add(parent);
+            _selectedKey = selected?.BrowserKey;
+            ExpandBrowserAncestors(selected?.BrowserKey, items);
             Repaint();
         }
         internal void Invalidate()
@@ -6989,27 +7306,35 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             path = ProjectBrowserPath.Normalize(path);
             if (string.IsNullOrWhiteSpace(path)) return;
             _pingedAssetPath = path;
-            RevealPingPath(path);
+            RevealPingPath(path, path);
             Repaint();
         }
         private void HandleObjectPing(BObject target)
         {
             var path = ProjectBrowserPath.Normalize(AssetDatabase.GetAssetPath(target));
             if (string.IsNullOrWhiteSpace(path)) return;
+            var items = _cache ??= BuildItems();
+            var key = items.FirstOrDefault(item => item.SubAssetObject is { } value &&
+                EditorObjectPicker.SameObject(value, target))?.BrowserKey ?? path;
             _pingedAssetPath = path;
-            RevealPingPath(path);
+            RevealPingPath(path, key);
             Repaint();
         }
 
-        private void RevealPingPath(string path)
+        private void RevealPingPath(string path, string key)
         {
             // Ping must remain visible even if this Project window is locked or currently filtered.
             // It does not update the global Selection; it only navigates this view to the target.
             _search = string.Empty;
             ExpandAncestors(path);
+            ExpandBrowserAncestors(key, _cache ??= BuildItems());
             _framePingPath = path;
+            _framePingKey = key;
             if (IsTwoColumn && ProjectBrowserPath.Parent(path) is { } folder)
+            {
                 _selectedPath = folder;
+                _selectedKey = folder;
+            }
             _assetsTreeView?.Invalidate();
             _packagesTreeView?.Invalidate();
         }
@@ -7019,6 +7344,19 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             for (var parent = ProjectBrowserPath.Parent(path); !string.IsNullOrWhiteSpace(parent);
                  parent = ProjectBrowserPath.Parent(parent))
                 _expanded.Add(parent);
+        }
+
+        private void ExpandBrowserAncestors(string? key, IReadOnlyList<ProjectBrowserItem> items)
+        {
+            var current = key;
+            while (!string.IsNullOrWhiteSpace(current) &&
+                   items.FirstOrDefault(item => item.BrowserKey.Equals(
+                       current, StringComparison.OrdinalIgnoreCase)) is { } item &&
+                   !string.IsNullOrWhiteSpace(item.TreeParentKey))
+            {
+                _expanded.Add(item.TreeParentKey);
+                current = item.TreeParentKey;
+            }
         }
         protected override void OnGUI()
         {
@@ -7169,6 +7507,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (_framePingPath is { } pingPath && tree.TryFramePath(pingPath))
             {
                 _framePingPath = null;
+                _framePingKey = null;
                 Repaint();
             }
             if (packages) _packagesScroll.position = _packagesTreeState.scrollPos;
@@ -7267,8 +7606,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var columns = Math.Max(1, (int)((viewport.width - 10) / cellWidth));
             var rows = Math.Max(1, (visible.Length + columns - 1) / columns);
             var contentHeight = Fix64.Max(viewport.height, rows * cellHeight + 10);
-            var pingIndex = _framePingPath is null ? -1 : Array.FindIndex(visible, item =>
-                item.NormalizedPath.Equals(_framePingPath, StringComparison.OrdinalIgnoreCase));
+            var pingKey = _framePingKey ?? _framePingPath;
+            var pingIndex = pingKey is null ? -1 : Array.FindIndex(visible, item =>
+                item.BrowserKey.Equals(pingKey, StringComparison.OrdinalIgnoreCase));
             if (pingIndex >= 0)
             {
                 var pingTop = 5 + pingIndex / columns * cellHeight;
@@ -7278,6 +7618,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 else if (pingBottom > nextY + viewport.height) nextY = pingBottom - viewport.height;
                 _assetScroll = new Vector2(_assetScroll.x, Fix64.Max(0, nextY));
                 _framePingPath = null;
+                _framePingKey = null;
             }
             _assetScroll = GUI.BeginScrollView(viewport, _assetScroll,
                 new Rect(0, 0, Fix64.Max(1, viewport.width - 10), contentHeight));
@@ -7294,7 +7635,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var cell = new Rect(5 + column * cellWidth, 5 + row * cellHeight,
                 cellWidth - 4, cellHeight - 4);
             HandleDrag(item, cell);
-            var selected = item.NormalizedPath.Equals(_selectedPath, StringComparison.OrdinalIgnoreCase);
+            var selected = item.BrowserKey.Equals(_selectedKey ?? _selectedPath,
+                StringComparison.OrdinalIgnoreCase);
             var clicked = GUI.Button(cell, new GUIContent(string.Empty, tooltip: ItemTooltip(item)),
                 TreeRowStyle(selected));
             var preview = new Rect(cell.x + (cell.width - _thumbnailSize) / 2, cell.y + 4,
@@ -7304,10 +7646,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 EditorGUIUtility.singleLineHeight + 2);
             GUI.Label(labelRect, new GUIContent(item.EffectiveDisplayName,
                 tooltip: ItemTooltip(item)), EditorStyles.centeredMiniLabel);
-            EditorObjectPing.DrawPath(item.NormalizedPath, cell);
+            DrawProjectItemPing(item, cell);
             if (clicked)
             {
                 _selectedPath = item.NormalizedPath;
+                _selectedKey = item.BrowserKey;
                 _pingedAssetPath = null;
                 if (app is not null) app.Select(item);
                 if (Event.current.clickCount >= 2)
@@ -7320,6 +7663,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (Event.current.type == EventType.ContextClick && cell.Contains(Event.current.mousePosition))
             {
                 _selectedPath = item.NormalizedPath;
+                _selectedKey = item.BrowserKey;
                 if (app is not null) app.Select(item);
                 ShowItemContextMenu(item);
                 Event.current.Use();
@@ -7368,7 +7712,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _indexedCache = items;
             _parentPaths.Clear();
             _folderParentPaths.Clear();
-            foreach (var parent in items.Select(item => item.ParentPath).OfType<string>())
+            foreach (var parent in items.Select(item => item.TreeParentKey).OfType<string>())
                 _parentPaths.Add(parent);
             foreach (var parent in items.Where(item => item.IsDirectory)
                          .Select(item => item.ParentPath).OfType<string>())
@@ -7399,8 +7743,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                         ? canExpand && expanded ? EditorAssetIcons.OpenFolder : EditorAssetIcons.ClosedFolder
                         : EditorAssetIcons.EmptyFolder
                     : EditorAssetIcons.GetIconPath(item.SourcePath);
-            var selected = item.NormalizedPath.Equals(_selectedPath, StringComparison.OrdinalIgnoreCase) ||
-                           item.NormalizedPath.Equals(_dropTargetPath, StringComparison.OrdinalIgnoreCase);
+            var selected = item.BrowserKey.Equals(_selectedKey ?? _selectedPath,
+                               StringComparison.OrdinalIgnoreCase) ||
+                           item.BrowserKey.Equals(_dropTargetPath, StringComparison.OrdinalIgnoreCase);
             if (canExpand)
             {
                 var foldoutIcon = expanded ? EditorBuiltinIcons.Toolbar.FoldoutOpen :
@@ -7424,10 +7769,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             else
                 clicked = GUILayout.Button(new GUIContent(item.EffectiveDisplayName, icon, ItemTooltip(item)),
                     TreeRowStyle(selected), GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight));
-            EditorObjectPing.DrawPath(item.NormalizedPath, rowRect);
+            DrawProjectItemPing(item, rowRect);
             if (clicked)
             {
                 _selectedPath = item.NormalizedPath;
+                _selectedKey = item.BrowserKey;
                 _pingedAssetPath = null;
                 app.Select(item);
                 if (item.Asset is { } asset)
@@ -7444,6 +7790,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (Event.current.type == EventType.ContextClick && rowRect.Contains(Event.current.mousePosition))
             {
                 _selectedPath = item.NormalizedPath;
+                _selectedKey = item.BrowserKey;
                 app.Select(item);
                 ShowItemContextMenu(item);
                 Event.current.Use();
@@ -7457,7 +7804,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 packages ? "Packages Root" : "Assets Root", null);
             var section = packages ? "Packages" : "Assets";
             var byParent = items.Where(item => item.IsPackage == packages && (!foldersOnly || item.IsDirectory))
-                .GroupBy(item => item.ParentPath ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(item => item.TreeParentKey ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
             var sectionItem = items.FirstOrDefault(item => item.IsPackage == packages &&
                 item.NormalizedPath.Equals(section, StringComparison.OrdinalIgnoreCase));
@@ -7468,9 +7815,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private ProjectTreeItem BuildProjectTreeItem(ProjectBrowserItem item,
             IReadOnlyDictionary<string, ProjectBrowserItem[]> byParent)
         {
-            var node = new ProjectTreeItem(ProjectTreeId(item.NormalizedPath), 0,
+            var node = new ProjectTreeItem(ProjectTreeId(item.BrowserKey), 0,
                 item.EffectiveDisplayName, item);
-            if (item.IsDirectory && byParent.TryGetValue(item.NormalizedPath, out var children))
+            if (byParent.TryGetValue(item.BrowserKey, out var children))
                 foreach (var child in ProjectBrowserItemOrdering.Sort(children))
                     node.AddChild(BuildProjectTreeItem(child, byParent));
             return node;
@@ -7512,13 +7859,15 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             var rowRect = args.rowRect;
             GUI.Box(rowRect, GUIContent.none,
                 args.selected ? EditorStyles.treeViewRowSelected : EditorStyles.treeViewRow);
-            if (_dropTargetPath?.Equals(item.NormalizedPath, StringComparison.OrdinalIgnoreCase) == true)
+            if (_dropTargetPath?.Equals(item.BrowserKey, StringComparison.OrdinalIgnoreCase) == true)
                 GUI.Box(rowRect, GUIContent.none, EditorStyles.treeViewRowSelected);
             HandleDrag(item, rowRect);
 
-            var hasEntries = item.IsDirectory && _parentPaths.Contains(item.NormalizedPath);
+            // The left TwoColumn tree only contains folders, but its icon must also
+            // reflect file/sub-asset children that are shown in the right pane.
+            var hasEntries = _parentPaths.Contains(item.BrowserKey);
             var expanded = tree.Searching || tree.IsExpanded(node.id);
-            var icon = item.AssetType == "Missing Package"
+            var icon = item.SubAssetIcon ?? (item.AssetType == "Missing Package"
                 ? EditorBuiltinIcons.Toolbar.Warning
                 : item.AssetType == "Package" || item.VirtualPath == "Packages"
                     ? "Icons/Windows/PackageManager.png"
@@ -7526,7 +7875,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                         ? hasEntries
                             ? node.hasChildren && expanded ? EditorAssetIcons.OpenFolder : EditorAssetIcons.ClosedFolder
                             : EditorAssetIcons.EmptyFolder
-                        : EditorAssetIcons.GetIconPath(item.SourcePath);
+                        : EditorAssetIcons.GetIconPath(item.SourcePath));
             var foldoutX = rowRect.x + Math.Max(0, node.depth) * 14;
             var foldoutRect = new Rect(foldoutX, rowRect.y, 18, rowRect.height);
             if (!tree.Searching && node.hasChildren)
@@ -7551,7 +7900,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             else
                 GUI.Label(labelRect, new GUIContent(item.EffectiveDisplayName, icon, ItemTooltip(item)),
                     args.selected ? EditorStyles.treeViewRowSelected : EditorStyles.treeViewRow);
-            EditorObjectPing.DrawPath(item.NormalizedPath, rowRect);
+            DrawProjectItemPing(item, rowRect);
         }
 
         private sealed class ProjectTreeView(
@@ -7582,8 +7931,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 else
                     SetExpanded(expanded);
 
-                var selection = owner._selectedPath is { } path && OwnsPath(path)
-                    ? new[] { owner.ProjectTreeId(path) }
+                var selectedKey = owner._selectedKey ?? owner._selectedPath;
+                var selection = selectedKey is { } key && OwnsPath(key)
+                    ? new[] { owner.ProjectTreeId(key) }
                     : [];
                 SetSelection(selection);
             }
@@ -7621,6 +7971,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 var id = selectedIds.LastOrDefault();
                 if (id == 0 || FindItem(id, rootItem) is not ProjectTreeItem { Item: { } item }) return;
                 owner._selectedPath = item.NormalizedPath;
+                owner._selectedKey = item.BrowserKey;
                 owner._pingedAssetPath = null;
                 if (owner.Application is not null) owner.Application.Select(item);
             }
@@ -7638,6 +7989,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 if (FindItem(id, rootItem) is ProjectTreeItem { Item: { } item })
                 {
                     owner._selectedPath = item.NormalizedPath;
+                    owner._selectedKey = item.BrowserKey;
                     if (owner.Application is not null) owner.Application.Select(item);
                     owner.ShowItemContextMenu(item);
                 }
@@ -7650,7 +8002,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             internal bool Searching => hasSearch;
             internal bool TryFramePath(string path)
             {
-                var id = owner.ProjectTreeId(path);
+                var key = owner._framePingKey ?? path;
+                var id = owner.ProjectTreeId(key);
                 if (GetRows().All(item => item.id != id)) return false;
                 FrameItem(id);
                 return true;
@@ -7670,6 +8023,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private void ShowItemContextMenu(ProjectBrowserItem item)
         {
             _selectedPath = item.NormalizedPath;
+            _selectedKey = item.BrowserKey;
             var menu = new GenericMenu();
             (app._menuItems ?? MenuItemRegistry.Discover()).PopulateRoot(menu, "Assets", app.SelectedAsset);
             menu.ShowAsContext();
@@ -7694,8 +8048,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                 return;
             }
             if (Event.current.keyCode == KeyCode.F2 && !EditorGUIUtility.editingTextField &&
-                _selectedPath is { } selectedPath &&
-                items.FirstOrDefault(item => item.VirtualPath.Equals(selectedPath,
+                (_selectedKey ?? _selectedPath) is { } selectedPath &&
+                items.FirstOrDefault(item => item.BrowserKey.Equals(selectedPath,
                     StringComparison.OrdinalIgnoreCase)) is { } selected && CanEdit(selected))
             {
                 BeginRename(selected);
@@ -7709,6 +8063,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             _renamingPath = item.VirtualPath;
             _renameValue = AssetPathUtility.EditableName(item.VirtualPath, item.IsDirectory);
             _selectedPath = item.VirtualPath;
+            _selectedKey = item.BrowserKey;
             for (var parent = item.ParentPath; !string.IsNullOrWhiteSpace(parent);
                  parent = ProjectBrowserPath.Parent(parent))
                 _expanded.Add(parent);
@@ -7724,7 +8079,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             {
                 var error = AssetDatabase.RenameAsset(item.VirtualPath, value);
                 if (!string.IsNullOrWhiteSpace(error)) Debug.LogError(error);
-                else _selectedPath = null;
+                else
+                {
+                    _selectedPath = null;
+                    _selectedKey = null;
+                }
             }
             CancelRename();
         }
@@ -7866,8 +8225,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         private ProjectBrowserItem? SelectedItem()
         {
             if (_selectedPath is null) return null;
-            return (_cache ??= BuildItems()).FirstOrDefault(candidate => candidate.VirtualPath.Equals(
-                _selectedPath, StringComparison.OrdinalIgnoreCase));
+            var key = _selectedKey ?? _selectedPath;
+            return (_cache ??= BuildItems()).FirstOrDefault(candidate => candidate.BrowserKey.Equals(
+                key, StringComparison.OrdinalIgnoreCase));
         }
 
         private void OpenItem(ProjectBrowserItem item)
@@ -7876,6 +8236,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             {
                 _expanded.Add(item.NormalizedPath);
                 _selectedPath = item.NormalizedPath;
+                _selectedKey = item.BrowserKey;
                 _assetScroll = Vector2.zero;
                 Repaint();
             }
@@ -7941,6 +8302,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (CopySelectedPath() is not { } path) return;
             if (!AssetDatabase.DeleteAsset(path)) return;
             _selectedPath = ProjectBrowserPath.Parent(path) ?? "Assets";
+            _selectedKey = _selectedPath;
             _cache = null;
             app._selectedAsset = null;
             app._selectedAssetPath = null;
@@ -7966,55 +8328,64 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             if (current.type == EventType.MouseDown && current.button == 0 && rowRect.Contains(current.mousePosition) &&
                 CanStartObjectDrag(item))
             {
-                _dragCandidatePath = item.VirtualPath;
+                _dragCandidatePath = item.BrowserKey;
                 _dragStart = current.mousePosition;
                 return;
             }
             if (current.type == EventType.MouseDrag && _dragCandidatePath is { } candidate &&
                 _draggedPath is null && (current.mousePosition - _dragStart).sqrMagnitude >= 16)
             {
+                var candidateItem = (_cache ??= BuildItems()).FirstOrDefault(entry =>
+                    entry.BrowserKey.Equals(candidate, StringComparison.OrdinalIgnoreCase));
+                if (candidateItem is null)
+                {
+                    ClearDrag();
+                    return;
+                }
                 _draggedPath = candidate;
                 DragAndDrop.PrepareStartDrag();
-                DragAndDrop.paths = [candidate];
-                var candidateItem = (_cache ??= BuildItems()).FirstOrDefault(entry =>
-                    entry.NormalizedPath.Equals(candidate, StringComparison.OrdinalIgnoreCase));
-                DragAndDrop.objectReferences = candidateItem is not null && DragObject(candidateItem) is { } asset
+                DragAndDrop.paths = [candidateItem.NormalizedPath];
+                DragAndDrop.objectReferences = DragObject(candidateItem) is { } asset
                     ? [asset]
                     : [];
-                DragAndDrop.SetGenericData("BEngine.Project.AssetPath", candidate);
-                DragAndDrop.StartDrag(Path.GetFileName(candidate));
+                DragAndDrop.SetGenericData("BEngine.Project.AssetPath", candidateItem.NormalizedPath);
+                DragAndDrop.StartDrag(candidateItem.EffectiveDisplayName);
             }
-            if (updating && _draggedPath is { } dragged && CanMoveDraggedItem(dragged) &&
-                CanDrop(dragged, item) && rowRect.Contains(current.mousePosition))
+            if (updating && _draggedPath is { } dragged && DraggedItem(dragged) is { } draggedItem &&
+                CanMoveDraggedItem(draggedItem) && CanDrop(draggedItem.NormalizedPath, item) &&
+                rowRect.Contains(current.mousePosition))
             {
-                _dropTargetPath = item.VirtualPath;
+                _dropTargetPath = item.BrowserKey;
                 DragAndDrop.visualMode = DragAndDropVisualMode.Move;
                 Repaint();
                 return;
             }
             if (!performing || _draggedPath is not { } source ||
-                _dropTargetPath?.Equals(item.VirtualPath, StringComparison.OrdinalIgnoreCase) != true ||
+                _dropTargetPath?.Equals(item.BrowserKey, StringComparison.OrdinalIgnoreCase) != true ||
                 !rowRect.Contains(current.mousePosition)) return;
-            var destination = $"{item.VirtualPath.TrimEnd('/')}/{Path.GetFileName(source)}";
-            if (destination.Equals(source, StringComparison.OrdinalIgnoreCase))
+            if (DraggedItem(source) is not { } sourceItem) return;
+            var destination = $"{item.VirtualPath.TrimEnd('/')}/{Path.GetFileName(sourceItem.NormalizedPath)}";
+            if (destination.Equals(sourceItem.NormalizedPath, StringComparison.OrdinalIgnoreCase))
             {
                 DragAndDrop.AcceptDrag();
                 ClearDrag();
                 current.Use();
                 return;
             }
-            var error = AssetDatabase.MoveAsset(source, destination);
+            var error = AssetDatabase.MoveAsset(sourceItem.NormalizedPath, destination);
             if (!string.IsNullOrWhiteSpace(error)) Debug.LogError(error);
             else
             {
                 _selectedPath = destination;
+                _selectedKey = destination;
                 DragAndDrop.AcceptDrag();
             }
             ClearDrag();
             current.Use();
         }
 
-        private static bool CanEdit(ProjectBrowserItem item) => !item.IsPackage && item.Asset is not null &&
+        private static bool CanEdit(ProjectBrowserItem item) => !item.IsPackage && !item.IsSubAsset &&
+            item.Asset is not null &&
             !item.VirtualPath.Equals("Assets", StringComparison.OrdinalIgnoreCase);
 
         private static bool CanStartObjectDrag(ProjectBrowserItem item) =>
@@ -8023,13 +8394,15 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             (item.Asset is not null || item.IsPackage &&
                 (File.Exists(item.SourcePath) || Directory.Exists(item.SourcePath)));
 
-        private static BObject? DragObject(ProjectBrowserItem item) => item.Asset is { } record
+        private static BObject? DragObject(ProjectBrowserItem item) => item.SubAssetObject ?? (item.Asset is { } record
             ? AssetDatabase.LoadMainAssetAtPath(record.AssetPath)
-            : item.IsPackage ? ProjectBrowserSelection.CreateReadOnlyAsset(item) : null;
+            : item.IsPackage ? ProjectBrowserSelection.CreateReadOnlyAsset(item) : null);
 
-        private bool CanMoveDraggedItem(string source) =>
-            (_cache ??= BuildItems()).FirstOrDefault(item => item.NormalizedPath.Equals(
-                source, StringComparison.OrdinalIgnoreCase)) is { } item && CanEdit(item);
+        private ProjectBrowserItem? DraggedItem(string key) =>
+            (_cache ??= BuildItems()).FirstOrDefault(item => item.BrowserKey.Equals(
+                key, StringComparison.OrdinalIgnoreCase));
+
+        private static bool CanMoveDraggedItem(ProjectBrowserItem item) => CanEdit(item);
 
         private static bool CanDrop(string source, ProjectBrowserItem target) => !target.IsPackage &&
             target.IsDirectory && !target.VirtualPath.Equals(source, StringComparison.OrdinalIgnoreCase) &&
@@ -8167,6 +8540,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             if (!folder.IsDirectory) return;
             _selectedPath = folder.NormalizedPath;
+            _selectedKey = folder.BrowserKey;
             _pingedAssetPath = null;
             _assetScroll = Vector2.zero;
             _expanded.Add(folder.NormalizedPath);
@@ -8181,7 +8555,15 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             ? item.PackageId is null
                 ? $"Enabled project packages\n{item.SourcePath}"
                 : $"{item.PackageId} {item.PackageVersion}\n{item.SourcePath}"
-            : $"{item.AssetType}\n{item.SourcePath}";
+            : item.IsSubAsset
+                ? $"{item.AssetType} (SubAsset)\n{item.NormalizedPath}"
+                : $"{item.AssetType}\n{item.SourcePath}";
+
+        private static void DrawProjectItemPing(ProjectBrowserItem item, Rect rect)
+        {
+            if (item.SubAssetObject is { } subAsset) EditorObjectPing.Draw(subAsset, rect);
+            else EditorObjectPing.DrawPath(item.NormalizedPath, rect);
+        }
 
         private static string FitText(string text, Fix64 width)
         {

@@ -11,7 +11,7 @@ internal static class PlayerPackageLoader
     public static void Load(ProjectWorkspace workspace)
     {
         var manifest = File.Exists(workspace.PackageManifestPath)
-            ? Document.Load<PlayerPackageManifest>(workspace.PackageManifestPath)
+            ? YamlUtility.Load<PlayerPackageManifest>(workspace.PackageManifestPath)
             : new PlayerPackageManifest();
         var enabled = manifest.Packages
             .Where(package => package.Enabled)
@@ -97,14 +97,14 @@ internal static class PlayerPackageLoader
         ProjectWorkspace workspace)
     {
         var projectDefinitions = DiscoverDefinitionsUnder(workspace.PackagesPath)
-            .Select(static path => (Path: path, Document: Document.Load<PlayerPackageDefinition>(path)))
+            .Select(static path => (Path: path, Document: YamlUtility.Load<PlayerPackageDefinition>(path)))
             .ToArray();
         var installed = Path.Combine(AppContext.BaseDirectory, "Packages");
         var projectIds = projectDefinitions
             .Select(static item => item.Document.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var installedDefinitions = DiscoverDefinitionsUnder(installed)
-            .Select(static path => (Path: path, Document: Document.Load<PlayerPackageDefinition>(path)))
+            .Select(static path => (Path: path, Document: YamlUtility.Load<PlayerPackageDefinition>(path)))
             .Where(item => !projectIds.Contains(item.Document.Id));
         return [.. installedDefinitions, .. projectDefinitions];
     }

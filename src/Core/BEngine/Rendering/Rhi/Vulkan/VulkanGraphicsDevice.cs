@@ -9,7 +9,7 @@ using NVector4 = System.Numerics.Vector4;
 namespace BEngine.Rendering.Rhi.Vulkan;
 
 public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphicsResourceRetirement,
-    IGraphicsDeviceStatistics
+    IGraphicsDeviceStatistics, IGraphicsColorReadback
 {
     private const GraphicsDeviceFeatures SupportedFeatures =
         GraphicsDeviceFeatures.Rasterization |
@@ -26,6 +26,8 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
     private readonly CommandList _commands;
     private readonly Fence _frameFence;
     private readonly List<IDisposable> _retiredResources = [];
+    private readonly List<VulkanColorReadbackRequest> _recordingReadbacks = [];
+    private readonly List<VulkanColorReadbackRequest> _submittedReadbacks = [];
     private readonly GraphicsDeviceCapabilities _capabilities;
     private VulkanProgram? _activeProgram;
     private VulkanTexture2D? _boundTexture;
@@ -49,6 +51,9 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
         get { return _capabilities; }
     }
     public GraphicsDrawStatistics DrawStatistics => _drawStatistics;
+    public GraphicsColorReadbackCapabilities ColorReadbackCapabilities => new(
+        true,
+        GraphicsColorReadbackValidation.DefaultMaximumBytes);
 
     internal Vd.GraphicsDevice NativeDevice => _device;
     internal ResourceFactory Factory => _factory;
@@ -100,7 +105,13 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
         {
             _device.SubmitCommands(_commands, _frameFence);
             _frameSubmitted = true;
+            SubmitReadbacks();
             _device.SwapBuffers();
+        }
+        catch (Exception exception)
+        {
+            if (!_frameSubmitted) AbandonRecordingReadbacks(exception.Message);
+            throw;
         }
         finally
         {
@@ -145,6 +156,73 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
     {
         throw new NotSupportedException("Vulkan offscreen render targets are not enabled in this lightweight provider yet.");
     }
+
+    public GraphicsColorReadbackRequest RequestColorReadback(
+        GraphicsRect region,
+        int surfaceWidth,
+        int surfaceHeight)
+    {
+        ThrowIfDisposed();
+        RequireFrame();
+        GraphicsColorReadbackValidation.ValidateRegion(
+            region,
+            surfaceWidth,
+            surfaceHeight,
+            GraphicsColorReadbackValidation.DefaultMaximumBytes);
+        if (surfaceWidth != _frameWidth || surfaceHeight != _frameHeight)
+            return GraphicsColorReadbackRequest.Unavailable(region,
+                "The requested surface size does not match the active Vulkan swapchain.");
+
+        var colorTargets = _device.MainSwapchain.Framebuffer.ColorTargets;
+        if (colorTargets.Count == 0)
+            return GraphicsColorReadbackRequest.Unavailable(region,
+                "The active Vulkan framebuffer has no color attachment.");
+        var source = colorTargets[0].Target;
+        if (!VulkanColorReadbackRequest.Supports(source.Format))
+            return GraphicsColorReadbackRequest.Unavailable(region,
+                $"Vulkan color readback does not support {source.Format}.");
+
+        Vd.Texture? staging = null;
+        try
+        {
+            var framebufferRegion = ToFramebufferReadRegion(region);
+            staging = _factory.CreateTexture(TextureDescription.Texture2D(
+                (uint)region.Width,
+                (uint)region.Height,
+                1,
+                1,
+                source.Format,
+                TextureUsage.Staging));
+            _commands.CopyTexture(
+                source,
+                (uint)framebufferRegion.X,
+                (uint)framebufferRegion.Y,
+                0,
+                0,
+                0,
+                staging,
+                0,
+                0,
+                0,
+                0,
+                0,
+                (uint)region.Width,
+                (uint)region.Height,
+                1,
+                1);
+            var request = new VulkanColorReadbackRequest(this, region, staging, source.Format);
+            staging = null;
+            _recordingReadbacks.Add(request);
+            return request;
+        }
+        catch (Exception exception)
+        {
+            staging?.Dispose();
+            return GraphicsColorReadbackRequest.Failed(region, exception.Message);
+        }
+    }
+
+    internal static GraphicsRect ToFramebufferReadRegion(GraphicsRect region) => region;
 
     public void SetViewport(GraphicsRect viewport)
     {
@@ -270,8 +348,10 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
             try { _commands.End(); }
             catch { }
             _frameOpen = false;
+            AbandonRecordingReadbacks("The Vulkan device was disposed before the readback frame was submitted.");
         }
         _device.WaitForIdle();
+        AbandonSubmittedReadbacks("The Vulkan device was disposed before the readback result was consumed.");
         _frameSubmitted = false;
         _fallbackTexture?.Dispose();
         _fallbackTexture = null;
@@ -306,8 +386,42 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
             _device.WaitForFence(_frameFence);
             _device.ResetFence(_frameFence);
             _frameSubmitted = false;
+            CompleteSubmittedReadbacks();
         }
         DisposeRetiredResources();
+    }
+
+    private void SubmitReadbacks()
+    {
+        if (_recordingReadbacks.Count == 0) return;
+        _submittedReadbacks.AddRange(_recordingReadbacks);
+        _recordingReadbacks.Clear();
+    }
+
+    private void CompleteSubmittedReadbacks()
+    {
+        foreach (var request in _submittedReadbacks) request.MarkGpuCompleted();
+        _submittedReadbacks.Clear();
+    }
+
+    private void AbandonRecordingReadbacks(string error)
+    {
+        foreach (var request in _recordingReadbacks) request.Abandon(error);
+        _recordingReadbacks.Clear();
+    }
+
+    private void AbandonSubmittedReadbacks(string error)
+    {
+        foreach (var request in _submittedReadbacks) request.Abandon(error);
+        _submittedReadbacks.Clear();
+    }
+
+    private bool TryCompleteReadback(VulkanColorReadbackRequest request)
+    {
+        if (request.GpuCompleted) return true;
+        if (!_frameOpen && _frameSubmitted && _submittedReadbacks.Contains(request))
+            CompleteSubmittedFrame();
+        return request.GpuCompleted;
     }
 
     private void DisposeRetiredResources()
@@ -317,6 +431,139 @@ public sealed class VulkanGraphicsDevice : IGraphicsPresentationDevice, IGraphic
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
+    private sealed class VulkanColorReadbackRequest : GraphicsColorReadbackRequest
+    {
+        private VulkanGraphicsDevice? _owner;
+        private Vd.Texture? _staging;
+        private readonly PixelFormat _format;
+        private GraphicsColorReadbackImage? _image;
+        private string _error = string.Empty;
+        private bool _gpuCompleted;
+        private bool _disposed;
+
+        internal VulkanColorReadbackRequest(
+            VulkanGraphicsDevice owner,
+            GraphicsRect region,
+            Vd.Texture staging,
+            PixelFormat format)
+        {
+            _owner = owner;
+            Region = region;
+            _staging = staging;
+            _format = format;
+        }
+
+        public override GraphicsRect Region { get; }
+        internal bool GpuCompleted => _gpuCompleted;
+
+        public override GraphicsColorReadbackStatus Status
+        {
+            get
+            {
+                if (_disposed) return GraphicsColorReadbackStatus.Disposed;
+                if (_image is not null) return GraphicsColorReadbackStatus.Ready;
+                if (!string.IsNullOrEmpty(_error)) return GraphicsColorReadbackStatus.Failed;
+                return GraphicsColorReadbackStatus.Pending;
+            }
+        }
+
+        public override string Error => _disposed
+            ? "The color readback request was disposed."
+            : _error;
+
+        public override bool TryGetResult(out GraphicsColorReadbackImage? image)
+        {
+            image = null;
+            if (_disposed || !string.IsNullOrEmpty(_error)) return false;
+            if (_image is not null)
+            {
+                image = _image;
+                return true;
+            }
+            var owner = _owner;
+            if (owner is null || !owner.TryCompleteReadback(this)) return false;
+            Resolve(owner);
+            image = _image;
+            return image is not null;
+        }
+
+        public override void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            if (_gpuCompleted || _owner is null) ReleaseStaging();
+            _image = null;
+        }
+
+        internal void MarkGpuCompleted()
+        {
+            _gpuCompleted = true;
+            if (_disposed) ReleaseStaging();
+        }
+
+        internal void Abandon(string error)
+        {
+            _gpuCompleted = true;
+            if (!_disposed) _error = string.IsNullOrWhiteSpace(error) ? "Vulkan color readback failed." : error;
+            ReleaseStaging();
+            _owner = null;
+        }
+
+        internal static bool Supports(PixelFormat format) => format is
+            PixelFormat.R8_G8_B8_A8_UNorm or
+            PixelFormat.R8_G8_B8_A8_UNorm_SRgb or
+            PixelFormat.B8_G8_R8_A8_UNorm or
+            PixelFormat.B8_G8_R8_A8_UNorm_SRgb;
+
+        private void Resolve(VulkanGraphicsDevice owner)
+        {
+            var staging = _staging;
+            if (staging is null) return;
+            try
+            {
+                var mapped = owner._device.Map(staging, MapMode.Read);
+                try
+                {
+                    var rowBytes = checked(Region.Width * 4);
+                    var pixels = new byte[checked(rowBytes * Region.Height)];
+                    for (var row = 0; row < Region.Height; row++)
+                    {
+                        var sourceOffset = checked((int)(mapped.RowPitch * (uint)row));
+                        Marshal.Copy(IntPtr.Add(mapped.Data, sourceOffset), pixels, row * rowBytes, rowBytes);
+                    }
+                    if (_format is PixelFormat.B8_G8_R8_A8_UNorm or PixelFormat.B8_G8_R8_A8_UNorm_SRgb)
+                    {
+                        for (var offset = 0; offset < pixels.Length; offset += 4)
+                            (pixels[offset], pixels[offset + 2]) = (pixels[offset + 2], pixels[offset]);
+                    }
+                    _image = GraphicsColorReadbackImage.FromOwnedRgba8(
+                        Region.Width,
+                        Region.Height,
+                        pixels);
+                }
+                finally
+                {
+                    owner._device.Unmap(staging);
+                }
+            }
+            catch (Exception exception)
+            {
+                _error = exception.Message;
+            }
+            finally
+            {
+                ReleaseStaging();
+                _owner = null;
+            }
+        }
+
+        private void ReleaseStaging()
+        {
+            var staging = Interlocked.Exchange(ref _staging, null);
+            staging?.Dispose();
+        }
+    }
 
     private abstract class VulkanResource : IGraphicsResource
     {

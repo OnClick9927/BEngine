@@ -78,7 +78,7 @@ internal static class ProjectAssetCreation
     {
         var path = Unique(folder, "New Scene.scene.yaml");
         AssetModificationProcessorDispatcher.OnWillCreateAsset(path);
-        Document.SaveBObject<SceneDocument>(new Scene("New Scene"), AssetDatabase.ResolveAssetPath(path));
+        SceneAssetSerialization.Save(new Scene("New Scene"), AssetDatabase.ResolveAssetPath(path));
         AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
         return path;
     }
@@ -148,7 +148,7 @@ internal static class ProjectAssetCreation
         var fullPath = AssetDatabase.ResolveAssetPath(path);
         AssetModificationProcessorDispatcher.OnWillCreateAsset(path);
 
-        var save = entry.AssetType.GetMethod("Save", BindingFlags.Instance | BindingFlags.Public,
+        var save = entry.AssetType.GetMethod(nameof(Material.Save), BindingFlags.Instance | BindingFlags.Public,
             binder: null, types: [typeof(string)], modifiers: null);
         if (save is not null && suffix != ".asset.yaml")
         {
@@ -157,7 +157,7 @@ internal static class ProjectAssetCreation
         }
         else
         {
-            new ManagedAssetDocument
+            new ManagedAssetData
             {
                 TypeName = entry.AssetType.AssemblyQualifiedName ?? entry.AssetType.FullName ?? entry.AssetType.Name,
                 Data = YamlUtility.Serialize(asset)

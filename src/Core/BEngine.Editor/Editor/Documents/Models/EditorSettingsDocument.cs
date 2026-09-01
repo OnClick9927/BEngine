@@ -2,7 +2,7 @@ using BEngine.Documents;
 
 namespace BEngine.Editor.Documents;
 
-public sealed class EditorSettingsDocument : Document
+public sealed class EditorSettingsDocument
 {
     public string Format { get; set; } = "BEngine.EditorSettings";
     public int Version { get; set; } = 1;

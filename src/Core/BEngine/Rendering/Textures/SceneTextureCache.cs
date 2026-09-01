@@ -21,7 +21,9 @@ internal sealed class SceneTextureCache : IDisposable
         if (string.IsNullOrWhiteSpace(source) || source.StartsWith("missing:", StringComparison.Ordinal))
             return Missing();
         var path = ResolvePath(source);
-        if (!Texture.IsSupportedSourcePath(path ?? source)) return Missing();
+        var isGuidSubAsset = path is null && source.StartsWith("guid:", StringComparison.OrdinalIgnoreCase) &&
+                             source.Contains("#subasset=", StringComparison.OrdinalIgnoreCase);
+        if (!isGuidSubAsset && !Texture.IsSupportedSourcePath(path ?? source)) return Missing();
         var stamp = SourceStamp.Read(path);
         if (_textures.TryGetValue(source, out var cached) && cached.Stamp == stamp)
             return cached.Texture;
@@ -88,6 +90,15 @@ internal sealed class SceneTextureCache : IDisposable
     {
         try
         {
+            if (source.StartsWith("guid:", StringComparison.OrdinalIgnoreCase) &&
+                BAsset.Load<Texture>(source) is { } imported)
+            {
+                var importedPath = string.IsNullOrWhiteSpace(imported.artifactPath)
+                    ? imported.sourcePath
+                    : imported.artifactPath;
+                if (!string.IsNullOrWhiteSpace(importedPath) && File.Exists(importedPath))
+                    return Path.GetFullPath(importedPath);
+            }
             if (Path.IsPathRooted(source))
             {
                 var rooted = Path.GetFullPath(source);

@@ -59,7 +59,7 @@ public sealed class SceneRuntime
             foreach (var system in _systems.ToArray())
             {
                 if (!IsRunning || !Scene.isCreated) break;
-                InvokeSystem(system, "Start", () => system.Start(Scene));
+                InvokeSystemStart(system, Scene);
             }
             if (!IsRunning || !Scene.isCreated) return;
             InitializeBehaviours();
@@ -93,7 +93,7 @@ public sealed class SceneRuntime
                     if (IsBehaviourActive(behaviour)) InvokeBehaviourFixedUpdate(behaviour);
 
                 foreach (var system in _systems)
-                    InvokeSystem(system, "FixedUpdate", () => system.FixedUpdate(Scene, fixedDelta));
+                    InvokeSystemFixedUpdate(system, Scene, fixedDelta);
 
                 _fixedAccumulator -= fixedDelta;
                 Time.EndFixedStepUnchecked();
@@ -105,7 +105,7 @@ public sealed class SceneRuntime
             CoroutineScheduler.Tick(Scene);
 
             foreach (var system in _systems)
-                InvokeSystem(system, "Update", () => system.Update(Scene, frameDelta));
+                InvokeSystemUpdate(system, Scene, frameDelta);
 
             foreach (var behaviour in EnabledBehaviours())
                 if (IsBehaviourActive(behaviour)) InvokeBehaviourLateUpdate(behaviour);
@@ -132,7 +132,7 @@ public sealed class SceneRuntime
             for (var index = _systems.Length - 1; index >= 0; index--)
             {
                 var system = _systems[index];
-                InvokeSystem(system, "Stop", () => system.Stop(Scene));
+                InvokeSystemStop(system, Scene, "Stop");
             }
 
             Application.quitting -= OnApplicationQuit;
@@ -411,7 +411,7 @@ public sealed class SceneRuntime
         for (var index = _systems.Length - 1; index >= 0; index--)
         {
             var system = _systems[index];
-            InvokeSystem(system, "Stop after failed start", () => system.Stop(Scene));
+            InvokeSystemStop(system, Scene, "Stop after failed start");
         }
 
         IsRunning = false;
@@ -464,14 +464,17 @@ public sealed class SceneRuntime
         }
     }
 
-    private static void InvokeSystem(ISceneRuntimeSystem system, string callbackName, Action callback)
-    {
-        try { callback(); }
-        catch (Exception exception)
-        {
-            Debug.LogError($"{system.GetType().FullName}.{callbackName} failed: {exception.Message}");
-        }
-    }
+    private static void InvokeSystemStart(ISceneRuntimeSystem system, Scene scene)
+    { try { system.Start(scene); } catch (Exception exception) { LogSystemFailure(system, "Start", exception); } }
+    private static void InvokeSystemFixedUpdate(ISceneRuntimeSystem system, Scene scene, Fix64 fixedDeltaTime)
+    { try { system.FixedUpdate(scene, fixedDeltaTime); } catch (Exception exception) { LogSystemFailure(system, "FixedUpdate", exception); } }
+    private static void InvokeSystemUpdate(ISceneRuntimeSystem system, Scene scene, Fix64 deltaTime)
+    { try { system.Update(scene, deltaTime); } catch (Exception exception) { LogSystemFailure(system, "Update", exception); } }
+    private static void InvokeSystemStop(ISceneRuntimeSystem system, Scene scene, string callbackName)
+    { try { system.Stop(scene); } catch (Exception exception) { LogSystemFailure(system, callbackName, exception); } }
+
+    private static void LogSystemFailure(ISceneRuntimeSystem system, string callbackName, Exception exception) =>
+        Debug.LogError($"{system.GetType().FullName}.{callbackName} failed: {exception.Message}");
 
     private static void InvokeBehaviourFixedUpdate(MonoBehaviour behaviour)
     { try { behaviour.FixedUpdate(); } catch (Exception exception) { LogBehaviourFailure(behaviour, "FixedUpdate", exception); } }

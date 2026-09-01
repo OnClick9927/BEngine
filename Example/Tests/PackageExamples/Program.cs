@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Editor.Documents;
 using BEngine.ProjectSystem;
@@ -22,10 +21,11 @@ static void ValidateDefaultProject(string repositoryRoot)
     Require(!Directory.Exists(Path.Combine(projectRoot, "Assets", "Examples")),
         "The default Example project must not contain imported examples.");
 
-    var packages = Document.Load<PackageManifestDocument>(Path.Combine(projectRoot, "Packages", "manifest.yaml"));
+    var packages = BEngine.YamlUtility.Load<PackageManifestDocument>(
+        Path.Combine(projectRoot, "Packages", "manifest.yaml"));
     Require(packages.Packages.Count == 0, "The default Example project must not enable extension packages.");
 
-    var project = Document.Load<ProjectDocument>(Path.Combine(projectRoot, "Project.yaml"));
+    var project = BEngine.YamlUtility.Load<ProjectData>(Path.Combine(projectRoot, "Project.yaml"));
     Require(!project.StartupScene.Contains("Examples", StringComparison.OrdinalIgnoreCase),
         "The default startup scene must not come from an imported example.");
 }

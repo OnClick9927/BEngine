@@ -86,14 +86,15 @@ internal static partial class Win32GenericMenuPresenter
             }
 
             if (segments.Length == 0) continue;
-            NativeMenuNode? leaf = null;
-            foreach (var segment in segments)
-            {
-                leaf = FindOrAdd(level, segment);
-                level = leaf.Children;
-            }
+            for (var index = 0; index < segments.Length - 1; index++)
+                level = FindOrAdd(level, segments[index]).Children;
 
-            leaf!.On = item.On;
+            // Win32 permits repeated labels. Keep leaves distinct so histories with repeated
+            // operation names do not overwrite each other's command callbacks.
+            var leaf = new NativeMenuNode(segments[^1]);
+            level.Add(leaf);
+
+            leaf.On = item.On;
             leaf.Enabled = item.Enabled;
             leaf.Action = item.Action;
         }

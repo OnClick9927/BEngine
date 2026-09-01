@@ -1,24 +1,24 @@
-using BEngine.Documents;
 using BEngine.Editor.Documents;
 
 namespace BEngine.Editor;
 
-internal sealed class AssemblyDefinitionDocumentConverter
-    : DocumentConverter<AssemblyDefinitionDocument, AssemblyDefinitionAsset>
+internal static class AssemblyDefinitionAssetSerialization
 {
-    internal static AssemblyDefinitionDocumentConverter Shared { get; } = new();
-
-    protected override AssemblyDefinitionAsset ToBObject(
+    internal static AssemblyDefinitionAsset Restore(
         AssemblyDefinitionDocument document,
-        DocumentConversionContext context) => new()
+        string sourcePath) => new()
     {
-        name = Path.GetFileName(context.SourcePath),
-        assetPath = context.SourcePath,
+        name = Path.GetFileName(sourcePath),
+        assetPath = sourcePath,
         assetType = "AssemblyDefinition",
         definition = document
     };
 
-    protected override AssemblyDefinitionDocument FromBObject(
-        AssemblyDefinitionAsset value,
-        DocumentConversionContext context) => value.definition;
+    internal static AssemblyDefinitionDocument Capture(AssemblyDefinitionAsset value) => value.definition;
+
+    internal static AssemblyDefinitionAsset Load(string path) =>
+        Restore(YamlUtility.Load<AssemblyDefinitionDocument>(path), path);
+
+    internal static void Save(AssemblyDefinitionAsset asset, string path) =>
+        YamlUtility.Save(Capture(asset), path);
 }

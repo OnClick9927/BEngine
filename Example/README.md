@@ -1,19 +1,68 @@
-# BEngine 2D Showcase
+# BEngine 默认 2D 示例
 
-默认场景 `Assets/Scenes/Main.scene.yaml` 展示核心 2D 工作流：
+打开 `Project.yaml` 后，编辑器会加载 `Assets/Scenes/Main.scene.yaml`。这个场景是一个可以直接运行和拆解学习的最小 2D 工程，展示资源导入、Sprite 图集、渲染层、相机、粒子、脚本生命周期和输入。
 
-- 世界层级、Order in Layer、Hierarchy 与透明物体排序。
-- `Assets/Art/Showcase.atlas.yaml` 中的 Sprite/Particle 图集合批。
-- `Assets/Art/Sources/*.png` 直接通过 TextureImporter 的 `Texture Type = Sprite` 使用；示例不创建独立 Sprite YAML。
-- 主相机与右上角观察相机的优先级、视口、Clear Mode 和层级筛选。
-- Play 模式下的旋转、浮动、双粒子发射器，以及方向键/WASD 控制的导航图标。
+## 直接运行
 
-Scene 视图初始中心为 `(0, 0)`、Size 为 `6`。修改 Play 中的对象不会写回场景资源。
+1. 通过 Hub 打开本目录下的 `Project.yaml`。
+2. 等待脚本编译和资源导入完成。
+3. 点击 Play，Game 窗口会立即获得一次焦点。
+4. 使用 `WASD` 或方向键移动右下角的 Navigation 图标。
+5. 停止 Play。Player 位置、旋转动画和粒子状态会立即恢复到播放前状态，运行时数据不会写回场景资源。
 
-## 启动与故障提示
+如果工程启动失败，Hub 或 Editor 会弹窗显示原因。详细日志位于 `Output/EditorData/Logs`。
 
-从 `Output/BEngine.bat` 打开 Hub 并选择 Example。Hub 会保留到 Editor 完成首帧并报告 Ready；如果托管初始化失败、原生进程崩溃或启动超时，Hub 会重新显示并弹窗说明原因，同时给出本次故障实际使用的日志路径。
+## 场景结构
 
-直接运行 `Output/BEgine/BEngine.Editor.exe Example/Project.yaml` 时，可捕获的启动异常由 Editor 自己用原生弹窗报告。通常先检查 `Output/EditorData/Logs/EditorBootstrap.log`；Editor 来不及生成该日志的原生崩溃或 Hub 启动超时会记录到 `Output/EditorData/Logs/EditorStartup.log`。
+- `Environment`：Background 层上的纯色 SpriteRenderer，组成背景、地面和左右装饰。
+- `Atlas Showcase`：Gameplay 层上的四张功能卡片、BEngine 标志和可移动 Player。
+- `Foreground Effects`：Foreground 层上的两个 ParticleSystem2D，共用 Spark 图集区域。
+- `Inset Camera Content`：只属于 Inset Only 层的独立内容。
+- `Main Camera`：渲染 Background、Gameplay 和 Foreground 三层。
+- `Inset Camera`：只渲染 Inset Only 层，并通过 `Viewport Rect` 叠加在右上角。
 
-编辑器布局恢复时只恢复页签与逻辑焦点，原生窗口初始化完成前不会调用原生 Focus；实际窗口焦点在首帧之后交接。
+Hierarchy 名称直接说明对象用途。选中任意图标即可在 Inspector 中查看 Sprite、Sorting Layer、Order in Layer 和脚本参数。
+
+## Sprite 与 Texture Atlas
+
+`Assets/Art/Sources` 中的 PNG 由 TextureImporter 以 `Texture Type = Sprite` 导入。每张 Texture 会产生一个 Sprite SubAsset：
+
+- `BEngine.png`：中心品牌标志。
+- `Animation.png`：左上角动画图标。
+- `Physics2D.png`：右上角物理图标。
+- `Navigation2D.png`：下方导航图标和 Player。
+- `Spark.png`：粒子贴图。
+
+`Assets/Art/Showcase.atlas.yaml` 保存这些 Sprite 的 GUID 与 Local Identifier。SpriteRenderer 仍然只引用 Sprite，不引用 TextureAtlas；编辑器把生成纹理作为图集的子资源写入 `Library/Artifacts`，运行时会根据图集中的 Sprite 引用自动选择对应纹理和 UV，因此同一图集、Material 与 Shader 的对象可以合批。
+
+在 Project 中选中 `Showcase.atlas` 可以查看和编辑 Sources。添加或删除 Sprite 后重新 Build，即可更新图集 PNG SubAsset。
+
+## 示例脚本
+
+`Assets/Scripts/ShowcaseMotion.cs` 展示 `Start`、`Update`、公开 Inspector 字段、正弦位移和旋转。不同图标使用相同组件，只修改振幅、速度、相位和旋转速度。
+
+`Assets/Scripts/PlayerMover.cs` 展示：
+
+- `Input.GetKey` 读取 WASD 与方向键。
+- 归一化斜向输入，保证各方向速度一致。
+- 使用 `Time.deltaTime` 进行帧率无关移动。
+- 通过 `moveBounds` 将 Player 保持在相机可见范围内。
+- `Reset` 为组件提供稳定的默认值，并明确关闭 Edit Mode 执行。
+
+脚本由 `Assets/Scripts/Game.asmdef.yaml` 归入 `Game` 程序集。编辑器扩展示例位于 `Assets/Editor/ProjectMenus.cs`，会在 `Tools/Showcase` 下增加一个带验证方法的菜单项。
+
+## 推荐练习
+
+1. 修改 `ShowcaseMotion` 的公开字段，观察 Inspector 和 Play 镜像中的变化。
+2. 将一个图标切换到其他 Sorting Layer，再调整 Camera 的 Culling Mask。
+3. 修改 SpriteRenderer 的 Order in Layer，观察卡片背景与图标的前后关系。
+4. 在 `Showcase.atlas` 的 Sources 中暂时移除一个 Sprite 并重新 Build，观察它从图集合批退回原始 Texture。
+5. 在 Play 中移动或修改对象，然后停止 Play，确认场景文件和组件原值没有变化。
+
+## 启动入口
+
+从已导出引擎启动时运行 `Output/BEngine.bat`，然后在 Hub 中选择 Example。也可以直接运行：
+
+```text
+Output/BEgine/BEngine.Editor.exe Example/Project.yaml
+```

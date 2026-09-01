@@ -1,9 +1,9 @@
 using BEngine.AssetBundles;
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Player;
 using BEngine.Rendering;
 using BEngine.SceneManagement;
+using BEngine.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BEngine.ExampleTests.AssetBundleHotUpdate;
@@ -15,8 +15,91 @@ internal static class RuntimeAssetBundleTests
         AssetBundleBuildResult build)
     {
         await SerialLoadsAreCachedAndReferenceCounted(workspace, build).ConfigureAwait(false);
+        await FileBackedSubAssetsLoadByOwnerIdentity(workspace, build).ConfigureAwait(false);
         await ResourcesAndPlayerPreferActiveBundles(workspace, build).ConfigureAwait(false);
         await ValidOfflineCacheSurvivesRestartAndRecoversPointer(workspace, build).ConfigureAwait(false);
+    }
+
+    private static async Task FileBackedSubAssetsLoadByOwnerIdentity(
+        AssetBundleTestWorkspace workspace,
+        AssetBundleBuildResult build)
+    {
+        var atlas = build.Catalog.Assets.Single(asset =>
+            asset.Address == AssetBundleTestWorkspace.AtlasAddress && asset.LocalIdentifier == 0);
+        var textureEntry = build.Catalog.Assets.Single(asset =>
+            asset.OwnerGuid == workspace.AtlasOwnerGuid &&
+            asset.LocalIdentifier == AssetBundleTestWorkspace.AtlasTextureLocalIdentifier);
+        TestAssert.That(atlas.Address == AssetBundleTestWorkspace.AtlasAddress &&
+                        textureEntry.Address == workspace.AtlasTextureAddress &&
+                        textureEntry.Guid != workspace.AtlasOwnerGuid &&
+                        textureEntry.Entry.Contains($"/{workspace.AtlasOwnerGuid:N}/",
+                            StringComparison.Ordinal) &&
+                        textureEntry.Entry.EndsWith(
+                            $"/{AssetBundleTestWorkspace.AtlasTextureLocalIdentifier}.png",
+                            StringComparison.Ordinal) &&
+                        textureEntry.Bundle == atlas.Bundle,
+            "The generated TextureAtlas Texture did not retain owner/local identity without changing its owner address.");
+
+        var cache = Path.Combine(workspace.Root, "Caches", "file-subassets");
+        await using var manager = CreateManager(cache, build.PackageDirectory);
+        await manager.InitializeAsync().ConfigureAwait(false);
+        TestAssert.That(manager.TryLoadBytes(workspace.AtlasTextureAddress, out var directBytes) &&
+                        directBytes.AsSpan().SequenceEqual(workspace.AtlasTextureBytes),
+            "The file-backed sub-asset payload was not written under its synthetic bundle address.");
+        var explicitlyLoaded = AssetBundleAssetLoader.LoadTexture(manager, workspace.AtlasTextureReference);
+        TestAssert.That(explicitlyLoaded is not null &&
+                        explicitlyLoaded.assetPath == AssetBundleTestWorkspace.AtlasAddress &&
+                        explicitlyLoaded.width == workspace.AtlasWidth &&
+                        explicitlyLoaded.height == workspace.AtlasHeight,
+            "AssetBundleAssetLoader did not restore the generated Texture and its owner path.");
+
+        var provider = new AssetBundleResourceProvider(manager);
+        var previousDataPath = Application.dataPath;
+        var runtimeAssets = Path.Combine(workspace.Root, "RuntimeWithoutProjectFiles", "Assets");
+        Directory.CreateDirectory(runtimeAssets);
+        BEngine.Resources.RegisterResourceProvider(provider);
+        try
+        {
+            Application.dataPath = runtimeAssets;
+            BAsset.ClearLoadedAssets();
+            var texture = BAsset.Load<Texture>(workspace.AtlasTextureReference);
+            var cachedTexture = BAsset.Load<Texture>(workspace.AtlasTextureReference);
+            var resourceTexture = BEngine.Resources.Load<Texture>(workspace.AtlasTextureReference);
+            TestAssert.That(texture is not null &&
+                            ReferenceEquals(texture, cachedTexture) &&
+                            resourceTexture is not null &&
+                            texture.width == workspace.AtlasWidth &&
+                            texture.height == workspace.AtlasHeight &&
+                            texture.Id == textureEntry.Guid &&
+                            texture.assetPath == AssetBundleTestWorkspace.AtlasAddress &&
+                            texture.guid.Equals(workspace.AtlasOwnerGuid.ToString("N"),
+                                StringComparison.OrdinalIgnoreCase) &&
+                            texture.parentAssetGuid == workspace.AtlasOwnerGuid &&
+                            texture.localIdentifier == AssetBundleTestWorkspace.AtlasTextureLocalIdentifier &&
+                            !texture.sRGB &&
+                            !texture.alphaIsTransparency &&
+                            texture.isReadable &&
+                            texture.compressionFormat == TextureCompressionFormat.Bc7 &&
+                            texture.filterMode == TextureFilterMode.Point &&
+                            texture.wrapMode == TextureWrapMode.Mirror &&
+                            texture.mipMaps &&
+                            texture.maxSize == 1024 &&
+                            texture.pixelsPerUnit == 64 &&
+                            resourceTexture.Id == textureEntry.Guid &&
+                            resourceTexture.filterMode == texture.filterMode &&
+                            resourceTexture.wrapMode == texture.wrapMode &&
+                            BEngine.Resources.Load<byte[]>(workspace.AtlasTextureReference) is { } guidBytes &&
+                            guidBytes.AsSpan().SequenceEqual(workspace.AtlasTextureBytes),
+                "A guid:<owner>#subasset=<id> reference did not preserve the bundled Texture identity, " +
+                "import settings, or BAsset cache at runtime.");
+        }
+        finally
+        {
+            BAsset.ClearLoadedAssets();
+            Application.dataPath = previousDataPath;
+            _ = BEngine.Resources.UnregisterResourceProvider(provider);
+        }
+        _ = manager.UnloadUnused();
     }
 
     private static async Task SerialLoadsAreCachedAndReferenceCounted(
@@ -71,7 +154,7 @@ internal static class RuntimeAssetBundleTests
         await using (var scene = await manager.LoadTextAsync(
                          AssetBundleTestWorkspace.SceneAddress).ConfigureAwait(false))
         {
-            var document = Document.FromYaml<SceneDocument>(scene.Value);
+            var document = BEngine.YamlUtility.Deserialize<SceneAssetData>(scene.Value);
             TestAssert.That(document.Name == "Bundled Scene",
                 "Text loading did not decode the bundled scene payload.");
             TestAssert.That(manager.UnloadUnused() == 0,
@@ -139,10 +222,11 @@ internal static class RuntimeAssetBundleTests
                                 Math.Abs((double)sprite.pivot.y - 0.75) < 0.0001,
                     "The bundled Scene did not restore its SpriteRenderer from bundle importer metadata.");
                 TestAssert.That(BEngine.Resources.Load<byte[]>(sprite!.Texture) is { } bundledBytes &&
-                                bundledBytes.AsSpan().SequenceEqual(workspace.SpriteBytes),
+                                bundledBytes.AsSpan().SequenceEqual(workspace.SpriteArtifactBytes),
                     "The Sprite texture did not resolve to the active bundle after its project source was deleted.");
 
                 workspace.WriteStaleSpriteSource();
+                workspace.DeleteAtlasTextureArtifact();
                 var engineResourceRoot = Path.Combine(FindRepositoryRoot(), "src", "Core");
                 BEngine.Resources.RegisterResourceRoot(engineResourceRoot);
                 try
@@ -152,11 +236,13 @@ internal static class RuntimeAssetBundleTests
                     renderer.Render(scene, RenderCamera.Default, 128, 128,
                         drawGrid: false, drawUi: false, drawExtensions: false);
                     TestAssert.That(graphics.Textures.Any(texture =>
-                                            texture.Label.EndsWith("bundled.png", StringComparison.OrdinalIgnoreCase) &&
-                                            texture.Description.Width == 2 && texture.Description.Height == 2 &&
-                                            texture.InitialData.Length == 16) &&
+                                            !texture.Label.EndsWith("MissingTexture", StringComparison.Ordinal) &&
+                                            texture.Description.Width == workspace.AtlasWidth &&
+                                            texture.Description.Height == workspace.AtlasHeight &&
+                                            texture.InitialData.Length ==
+                                            workspace.AtlasWidth * workspace.AtlasHeight * 4) &&
                                     graphics.DrawCount > 0,
-                        "The renderer did not decode and draw the Sprite texture from bundle bytes.");
+                        "The renderer did not decode and draw the Sprite's Atlas texture from bundle bytes.");
                 }
                 finally
                 {

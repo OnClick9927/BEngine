@@ -107,11 +107,20 @@ internal sealed class ImGuiDockWorkspace
         if (group.Panels.Count == 0) Collapse(group);
     }
 
-    public ImGuiDockPanel DockExternal(string id, EditorWindow window, Vector2 point)
+    public ImGuiDockPanel DockExternal(string id, EditorWindow window, Vector2 point) =>
+        DockAt(id, window, point, externalHitTest: true);
+
+    private ImGuiDockPanel DockAt(string id, EditorWindow window, Vector2 point,
+        bool externalHitTest)
     {
         var panel = new ImGuiDockPanel(id, window);
         _panels.Add(panel);
-        if (!TryGetDrop(point, out var target, out var position, out _))
+        DockGroup target;
+        DockDropPosition position;
+        var resolved = externalHitTest
+            ? TryGetExternalDrop(point, out target, out position, out _)
+            : TryGetDrop(point, out target, out position, out _);
+        if (!resolved)
         {
             target = _defaults[DockArea.Center];
             EnsureAttached(target, DockArea.Center);
@@ -152,7 +161,7 @@ internal sealed class ImGuiDockWorkspace
         }
 
         if (_workspaceBounds.Contains(dockPoint) && TryGetDrop(dockPoint, out _, out _, out _))
-            return DockExternal(id, window, dockPoint);
+            return DockAt(id, window, dockPoint, externalHitTest: false);
 
         var fallback = Add(id, window, preferredArea, true);
         if (fallback.Group is { } fallbackGroup)
@@ -332,8 +341,7 @@ internal sealed class ImGuiDockWorkspace
         group.SelectedId = selected.Id;
         var sceneSurface = selected.Window.titleContent.text is "Scene" or "Game";
         if (!sceneSurface) GUI.Box(rect, GUIContent.none, GUI.skin.window);
-        var titleBarHeight = Fix64.Max(EditorStyles.windowTitle.fixedHeight + 2,
-            Fix64.Max(EditorStyles.dockTab.fixedHeight + 2, EditorStyles.toolbarIconButton.fixedHeight + 2));
+        var titleBarHeight = DockTitleBarHeight();
         var titleBar = new Rect(rect.x, rect.y, rect.width, titleBarHeight);
         GUI.PassiveBox(titleBar, GUIContent.none, EditorStyles.windowTitle);
 
@@ -613,7 +621,7 @@ internal sealed class ImGuiDockWorkspace
     private void DrawExternalDockHint()
     {
         if (_dragging is not null || _externalDragPoint is not { } point ||
-            !TryGetDrop(point, out _, out _, out var preview)) return;
+            !TryGetExternalDrop(point, out _, out _, out var preview)) return;
         DrawDockPreview(preview);
     }
 
@@ -678,8 +686,8 @@ internal sealed class ImGuiDockWorkspace
         }
 
         var bounds = target.Bounds;
-        var edgeX = Fix64.Min(90, bounds.width * Fix64.FromDecimal(0.25m));
-        var edgeY = Fix64.Min(70, bounds.height * Fix64.FromDecimal(0.25m));
+        var edgeX = DockEdgeExtent(bounds.width);
+        var edgeY = DockEdgeExtent(bounds.height);
         position = point.x < bounds.x + edgeX ? DockDropPosition.Left :
             point.x > bounds.xMax - edgeX ? DockDropPosition.Right :
             point.y < bounds.y + edgeY ? DockDropPosition.Top :
@@ -697,15 +705,88 @@ internal sealed class ImGuiDockWorkspace
         return true;
     }
 
+    private bool TryGetExternalDrop(Vector2 point, out DockGroup target,
+        out DockDropPosition position, out Rect preview)
+    {
+        var node = _maximizedGroup ?? _root;
+        target = FindGroup(node, point)!;
+        if (target is null)
+        {
+            position = default;
+            preview = default;
+            return false;
+        }
+
+        var bounds = target.Bounds;
+        var titleHeight = Fix64.Min(bounds.height, DockTitleBarHeight());
+        var titleBar = new Rect(bounds.x, bounds.y, bounds.width, titleHeight);
+        if (titleBar.Contains(point))
+        {
+            position = DockDropPosition.Center;
+            preview = bounds;
+            return true;
+        }
+
+        var content = new Rect(bounds.x, titleBar.yMax, bounds.width,
+            Fix64.Max(0, bounds.yMax - titleBar.yMax));
+        if (!content.Contains(point))
+        {
+            position = default;
+            preview = default;
+            return false;
+        }
+
+        var edgeX = DockEdgeExtent(content.width);
+        var edgeY = DockEdgeExtent(content.height);
+        if (point.x < content.x + edgeX)
+            position = DockDropPosition.Left;
+        else if (point.x > content.xMax - edgeX)
+            position = DockDropPosition.Right;
+        else if (point.y < content.y + edgeY)
+            position = DockDropPosition.Top;
+        else if (point.y > content.yMax - edgeY)
+            position = DockDropPosition.Bottom;
+        else
+        {
+            position = default;
+            preview = default;
+            return false;
+        }
+
+        preview = position switch
+        {
+            DockDropPosition.Left => new Rect(bounds.x, bounds.y, bounds.width / 2, bounds.height),
+            DockDropPosition.Right => new Rect(bounds.x + bounds.width / 2, bounds.y,
+                bounds.width / 2, bounds.height),
+            DockDropPosition.Top => new Rect(bounds.x, bounds.y, bounds.width, bounds.height / 2),
+            DockDropPosition.Bottom => new Rect(bounds.x, bounds.y + bounds.height / 2,
+                bounds.width, bounds.height / 2),
+            _ => bounds
+        };
+        return true;
+    }
+
     internal bool CanDockAt(Vector2 point) => _workspaceBounds.Contains(point) &&
-                                               TryGetDrop(point, out _, out _, out _);
+                                               TryGetExternalDrop(point, out _, out _, out _);
 
     internal bool TryGetExternalDockPreview(Vector2 point, out Rect preview)
     {
-        if (_workspaceBounds.Contains(point) && TryGetDrop(point, out _, out _, out preview))
+        if (_workspaceBounds.Contains(point) &&
+            TryGetExternalDrop(point, out _, out _, out preview))
             return true;
         preview = default;
         return false;
+    }
+
+    private static Fix64 DockTitleBarHeight() =>
+        Fix64.Max(EditorStyles.windowTitle.fixedHeight + 2,
+            Fix64.Max(EditorStyles.dockTab.fixedHeight + 2,
+                EditorStyles.toolbarIconButton.fixedHeight + 2));
+
+    private static Fix64 DockEdgeExtent(Fix64 size)
+    {
+        var dynamicExtent = Fix64.Clamp(size * Fix64.FromDecimal(0.125m), 40, 75);
+        return Fix64.Min(dynamicExtent, Fix64.Max(1, size / 2));
     }
 
     private static EditorDockNodeDocument? CaptureNode(DockNode? node)

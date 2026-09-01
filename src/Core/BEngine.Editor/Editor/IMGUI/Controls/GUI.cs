@@ -7,6 +7,7 @@ public static class GUI
     internal const int ContentImageTextOffset = 22;
 
     [ThreadStatic] private static ImGuiContext? _context;
+    [ThreadStatic] private static ImGuiContext? _cachedContext;
     [ThreadStatic] private static Dictionary<int, TextState>? _textStates;
     [ThreadStatic] private static string? _focusedControlName;
     [ThreadStatic] private static string? _pendingFocusControlName;
@@ -71,11 +72,10 @@ public static class GUI
         _textStates ??= [];
         _coordinateScopes ??= [];
         _coordinateScopes.Clear();
-        _context = new ImGuiContext(logicalWidth, logicalHeight, renderScale, commands, _textStates)
-        {
-            FocusedName = _focusedControlName ?? string.Empty,
-            FocusRequest = _pendingFocusControlName ?? string.Empty
-        };
+        _context = _cachedContext ??= new ImGuiContext();
+        _context.Reset(logicalWidth, logicalHeight, renderScale, commands, _textStates);
+        _context.FocusedName = _focusedControlName ?? string.Empty;
+        _context.FocusRequest = _pendingFocusControlName ?? string.Empty;
         GUILayout.BeginFrame(new Rect(0, 0, logicalWidth, logicalHeight));
         changed = false;
     }
@@ -86,7 +86,9 @@ public static class GUI
         DragAndDrop.ApplyCursor();
         if (_context is not null) _focusedControlName = _context.FocusedName;
         GUILayout.EndFrame();
+        _context?.ReleaseFrame();
         _context = null;
+        GUIContent.ClearTemporary();
         DragAndDrop.EndEvent(Event.current);
         if (_endUndoGroupAfterPointerEvent ||
             _endUndoGroupAfterKeyboardEvent && !isEditingTextField)
@@ -96,25 +98,25 @@ public static class GUI
         Event.ClearCurrent();
     }
 
-    public static void Label(Rect position, string text) => Label(position, new GUIContent(text), null);
+    public static void Label(Rect position, string text) => Label(position, GUIContent.Temp(text), null);
     public static void Label(Rect position, string text, GUIStyle? style) =>
-        Label(position, new GUIContent(text), style);
+        Label(position, GUIContent.Temp(text), style);
     public static void Label(Rect position, GUIContent content, GUIStyle? style = null) =>
         DrawContent(position, content, style ?? skin.label, false, false);
     internal static void Label(Rect position, GUIContent content, GUIStyle style, Fix64 leadingTextOffset) =>
         DrawContent(position, content, style, false, false, leadingTextOffset: leadingTextOffset);
-    public static void Box(Rect position, string text = "") => Box(position, new GUIContent(text), null);
+    public static void Box(Rect position, string text = "") => Box(position, GUIContent.Temp(text), null);
     public static void Box(Rect position, string text, GUIStyle? style) =>
-        Box(position, new GUIContent(text), style);
+        Box(position, GUIContent.Temp(text), style);
     public static void Box(Rect position, GUIContent content, GUIStyle? style = null) =>
         DrawContent(position, content, style ?? skin.box, true, false);
 
     internal static void PassiveBox(Rect position, GUIContent content, GUIStyle style) =>
         DrawContent(position, content, style, true, false, ignoreHover: true);
 
-    public static bool Button(Rect position, string text) => Button(position, new GUIContent(text), null);
+    public static bool Button(Rect position, string text) => Button(position, GUIContent.Temp(text), null);
     public static bool Button(Rect position, string text, GUIStyle? style) =>
-        Button(position, new GUIContent(text), style);
+        Button(position, GUIContent.Temp(text), style);
     public static bool Button(Rect position, GUIContent content, GUIStyle? style = null) =>
         Button(position, content, style, FocusType.Keyboard);
 
@@ -138,9 +140,9 @@ public static class GUI
     }
 
     public static bool Toggle(Rect position, bool value, string text) =>
-        Toggle(position, value, new GUIContent(text), null);
+        Toggle(position, value, GUIContent.Temp(text), null);
     public static bool Toggle(Rect position, bool value, string text, GUIStyle? style) =>
-        Toggle(position, value, new GUIContent(text), style);
+        Toggle(position, value, GUIContent.Temp(text), style);
     public static bool Toggle(Rect position, bool value, GUIContent content, GUIStyle? style = null)
     {
         style ??= skin.toggle;
@@ -287,6 +289,7 @@ public static class GUI
         if (_context is null) return default;
         return new FeatureIsolationScope(
             _context,
+            _context.FrameVersion,
             _context.CaptureStructuralState(),
             GUILayout.CaptureState(),
             EditorGUI.CaptureFeatureState(),
@@ -458,7 +461,9 @@ public static class GUI
         _context?.SetText(id, state);
         if (focused) { _activeTextControl = id; _activeTextState = state; }
         GUIUtility.textFieldInput = focused;
-        var displayed = new GUIContent(mask is null ? state.Text : new string(mask.Value, state.Text.Length));
+        var displayed = GUIContent.Temp(mask is null
+            ? state.Text
+            : new string(mask.Value, state.Text.Length));
         DrawContent(rect, displayed, style, true, false, focused);
         var textRect = GetContentTextRect(rect, displayed.text, style, true, false);
         var visualState = ResolveStyleState(style, false, false, focused, hovered);
@@ -913,24 +918,53 @@ public static class GUI
 
     private static readonly Fix64 TextHorizontalInset = 4;
 
-    internal sealed class ImGuiContext(
-        Fix64 width,
-        Fix64 height,
-        Fix64 scaleFactor,
-        List<GpuCanvasCommand> commands,
-        Dictionary<int, TextState> texts)
+    internal sealed class ImGuiContext
     {
         private readonly Stack<Rect> _groups = new();
         private readonly Stack<GpuCanvasRect> _clips = new();
-        private readonly Dictionary<int, TextState> _texts = texts;
-        public List<GpuCanvasCommand> Commands { get; } = commands;
+        private Dictionary<int, TextState> _texts = null!;
+        private Fix64 _width;
+        private Fix64 _height;
+        public List<GpuCanvasCommand> Commands { get; private set; } = null!;
         public string Tooltip { get; set; } = string.Empty;
         public string NextControlName { get; set; } = string.Empty;
         public string FocusRequest { get; set; } = string.Empty;
         public string FocusedName { get; set; } = string.Empty;
-        public Fix64 ScaleFactor { get; } = scaleFactor;
+        public Fix64 ScaleFactor { get; private set; }
+        public int FrameVersion { get; private set; }
         public Vector2 InputOrigin { get; set; }
-        public GpuCanvasRect Clip => _clips.Count > 0 ? _clips.Peek() : new(0, 0, (float)width, (float)height);
+        public GpuCanvasRect Clip => _clips.Count > 0
+            ? _clips.Peek()
+            : new(0, 0, (float)_width, (float)_height);
+
+        public void Reset(Fix64 width, Fix64 height, Fix64 scaleFactor,
+            List<GpuCanvasCommand> commands, Dictionary<int, TextState> texts)
+        {
+            _groups.Clear();
+            _clips.Clear();
+            _width = width;
+            _height = height;
+            ScaleFactor = scaleFactor;
+            FrameVersion = unchecked(FrameVersion + 1);
+            Commands = commands;
+            _texts = texts;
+            Tooltip = string.Empty;
+            NextControlName = string.Empty;
+            FocusRequest = string.Empty;
+            FocusedName = string.Empty;
+            InputOrigin = Vector2.zero;
+        }
+
+        public void ReleaseFrame()
+        {
+            _groups.Clear();
+            _clips.Clear();
+            Commands = null!;
+            Tooltip = string.Empty;
+            NextControlName = string.Empty;
+            FocusRequest = string.Empty;
+        }
+
         public GpuCanvasRect Scale(Rect rect) => new((float)(rect.x * ScaleFactor),
             (float)(rect.y * ScaleFactor), (float)(rect.width * ScaleFactor),
             (float)(rect.height * ScaleFactor));
@@ -1018,6 +1052,7 @@ public static class GUI
 
     internal readonly struct FeatureIsolationScope(
         ImGuiContext? context,
+        int frameVersion,
         object? contextState,
         object? layoutState,
         object? editorGuiState,
@@ -1049,7 +1084,8 @@ public static class GUI
     {
         internal void Restore(bool succeeded)
         {
-            if (context is null || !ReferenceEquals(_context, context)) return;
+            if (context is null || !ReferenceEquals(_context, context) ||
+                context.FrameVersion != frameVersion) return;
             var consumedControlCount = GUIUtility.CaptureControlCount();
             GUILayout.RestoreState(layoutState);
             context.RestoreStructuralState(contextState!);

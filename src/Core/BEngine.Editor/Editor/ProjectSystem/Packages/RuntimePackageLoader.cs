@@ -23,7 +23,7 @@ public static class RuntimePackageLoader
             .GroupBy(item => item.Document.Id, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         var manifest = File.Exists(workspace.PackageManifestPath)
-            ? Document.Load<PackageManifestDocument>(workspace.PackageManifestPath)
+            ? YamlUtility.Load<PackageManifestDocument>(workspace.PackageManifestPath)
             : new PackageManifestDocument();
         var manifestById = manifest.Packages.ToDictionary(
             package => package.Id, StringComparer.OrdinalIgnoreCase);
@@ -73,7 +73,7 @@ public static class RuntimePackageLoader
             .GroupBy(item => item.Document.Id, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         var manifest = File.Exists(workspace.PackageManifestPath)
-            ? Document.Load<PackageManifestDocument>(workspace.PackageManifestPath)
+            ? YamlUtility.Load<PackageManifestDocument>(workspace.PackageManifestPath)
             : new PackageManifestDocument();
         var enabledIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var references = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

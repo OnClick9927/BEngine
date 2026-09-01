@@ -1,7 +1,7 @@
 namespace BEngine;
 
 [EditorIcon("Icons/Assets/AssetScript.png")]
-public class Script : FileAsset
+public class Script : BAsset
 {
     private string _text = string.Empty;
     private Type? _scriptClass;

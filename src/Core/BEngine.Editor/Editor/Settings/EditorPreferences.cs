@@ -19,7 +19,7 @@ public static class EditorPreferences
         try
         {
             _current = File.Exists(EditorDataPaths.preferencesPath)
-                ? Document.Load<EditorPreferencesDocument>(EditorDataPaths.preferencesPath)
+                ? YamlUtility.Load<EditorPreferencesDocument>(EditorDataPaths.preferencesPath)
                 : new EditorPreferencesDocument();
         }
         catch (Exception exception)

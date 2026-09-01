@@ -1,5 +1,5 @@
-using BEngine.Documents;
 using BEngine.SceneManagement;
+using BEngine.Serialization;
 
 namespace BEngine.ExampleTests.HierarchyMultiScene;
 
@@ -36,9 +36,9 @@ internal static class RuntimeSceneLoadingTests
         BObject.DontDestroyOnLoad(firstChild);
         TestAssert.Require(firstRoot.isDontDestroyOnLoad && firstChild.isDontDestroyOnLoad,
             "DontDestroyOnLoad on a child did not mark the hierarchy root.");
-        var transientDocument = Document.FromBObject<SceneDocument>(first).ToYaml();
-        TestAssert.Require(!transientDocument.Contains("DontDestroyOnLoad", StringComparison.OrdinalIgnoreCase),
-            "DontDestroyOnLoad leaked from runtime state into SceneDocument serialization.");
+        var transientScene = SceneAssetSerialization.Serialize(first);
+        TestAssert.Require(!transientScene.Contains("DontDestroyOnLoad", StringComparison.OrdinalIgnoreCase),
+            "DontDestroyOnLoad leaked from runtime state into SceneAssetData serialization.");
         var replacement = manager.LoadScene(fixture.SecondScenePath, LoadSceneMode.Single);
         TestAssert.Require(manager.SceneCount == 1 && ReferenceEquals(manager.ActiveScene, replacement),
             "A subsequent Single load did not replace all ordinary loaded Scenes.");

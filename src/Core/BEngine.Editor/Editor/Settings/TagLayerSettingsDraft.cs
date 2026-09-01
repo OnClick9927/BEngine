@@ -9,7 +9,7 @@ internal sealed class TagLayerSettingsDraft
     private readonly List<string> _editableTags = [];
     private readonly List<string> _tags = [];
     private readonly List<LayerEntry> _layerEntries = [];
-    private readonly List<SortingLayerDocument> _sortingLayers = [];
+    private readonly List<SortingLayerData> _sortingLayers = [];
     private readonly List<string> _editableLayerNames = [];
     private readonly List<LayerSnapshot> _originalLayers = [];
     private readonly Dictionary<string, string> _tagReplacements = new(StringComparer.Ordinal);
@@ -17,7 +17,7 @@ internal sealed class TagLayerSettingsDraft
     private ulong _defaultOriginalValue;
 
     internal IReadOnlyList<string> Tags => _tags;
-    internal IReadOnlyList<SortingLayerDocument> SortingLayers => _sortingLayers;
+    internal IReadOnlyList<SortingLayerData> SortingLayers => _sortingLayers;
     internal IReadOnlyDictionary<string, string> TagReplacements => _tagReplacements;
     internal IReadOnlyDictionary<ulong, ulong> LayerReplacements => _layerReplacements;
     internal IReadOnlyList<string> EditableTags => _editableTags;
@@ -147,7 +147,7 @@ internal sealed class TagLayerSettingsDraft
         {
             var entry = _layerEntries[offset];
             _editableLayerNames.Add(entry.Name);
-            _sortingLayers.Add(new SortingLayerDocument
+            _sortingLayers.Add(new SortingLayerData
             {
                 Value = (ulong)(offset + SortingLayer.MinimumIndex),
                 Name = entry.Name.Trim(),

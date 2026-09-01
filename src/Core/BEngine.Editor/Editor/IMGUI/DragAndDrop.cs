@@ -74,7 +74,7 @@ public static class DragAndDrop
         DragAndDrop.title = title ?? string.Empty;
         isDragging = true;
         _accepted = false;
-        visualMode = DragAndDropVisualMode.None;
+        visualMode = DragAndDropVisualMode.Rejected;
     }
 
     public static void AcceptDrag() => _accepted = true;
@@ -210,7 +210,7 @@ public static class DragAndDrop
         {
             _accepted = false;
             activeControlID = 0;
-            visualMode = DragAndDropVisualMode.None;
+            visualMode = DragAndDropVisualMode.Rejected;
             inputEvent.type = EventType.DragUpdated;
         }
         else if (inputEvent.type == EventType.MouseUp)
@@ -231,7 +231,7 @@ public static class DragAndDrop
             DragAndDropVisualMode.Link => MouseCursor.Link,
             DragAndDropVisualMode.Move => MouseCursor.MoveArrow,
             DragAndDropVisualMode.Rejected => MouseCursor.ArrowMinus,
-            _ => MouseCursor.MoveArrow
+            _ => MouseCursor.ArrowMinus
         };
         GUI.AddCursorRect(new Rect(0, 0, GUIUtility.currentViewWidth, GUIUtility.currentViewHeight), cursor);
     }

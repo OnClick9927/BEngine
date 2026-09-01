@@ -1,4 +1,4 @@
-using BEngine.Documents;
+using BEngine.ProjectSystem;
 
 namespace BEngine.ExampleTests.GameObjectLayerTag;
 
@@ -6,71 +6,55 @@ internal static class SceneSerializationTests
 {
     public static void Run()
     {
-        var source = new Scene("Layer Tag Round Trip");
+        var directory = Path.Combine(Path.GetTempPath(), $"BEngineSceneRoundTrip-{Guid.NewGuid():N}");
+        var scenePath = Path.Combine(directory, "LayerTag.scene.yaml");
+        Scene? restored = null;
         try
         {
-            var root = source.CreateGameObject("Tagged Root");
-            root.tag = "Player";
-            root.layer = LayerMask.NameToLayer("Gameplay");
-            root.isStatic = true;
-            var sprite = root.AddComponent<SpriteRenderer>();
-            sprite.sortingLayer = LayerMask.NameToLayer("Gameplay");
-            sprite.orderInLayer = 12;
-            var child = source.CreateGameObject("Inactive Child");
-            child.tag = "EditorOnly";
-            child.layer = LayerMask.NameToLayer("Ignore Raycast");
-            child.SetActive(false);
-            child.transform.SetParent(root.transform, false);
+            Directory.CreateDirectory(directory);
+            var rootId = Guid.NewGuid();
+            var childId = Guid.NewGuid();
+            var gameplayLayer = LayerMask.NameToLayer("Gameplay");
+            var ignoreRaycastLayer = LayerMask.NameToLayer("Ignore Raycast");
+            File.WriteAllText(scenePath, CurrentSceneYaml(rootId, childId, gameplayLayer, ignoreRaycastLayer));
 
-            var document = Document.FromBObject<SceneDocument>(source);
-            var rootDocument = document.GameObjects.Single(item => item.Id == root.Id);
-            var childDocument = document.GameObjects.Single(item => item.Id == child.Id);
-            TestAssert.Require(rootDocument.Tag == "Player" && rootDocument.Layer == root.layer &&
-                               rootDocument.IsStatic,
-                "SceneDocument did not capture the root GameObject's Tag, Layer and Static values.");
-            TestAssert.Require(childDocument.Parent == root.Id && childDocument.Tag == "EditorOnly" &&
-                               childDocument.Layer == child.layer && !childDocument.Active,
-                "SceneDocument did not capture child hierarchy, Tag, Layer or activeSelf.");
+            restored = BAsset.Load<Scene>(scenePath) ??
+                       throw new InvalidOperationException("The current Scene BAsset could not be loaded.");
+            var restoredRoot = restored.Find(rootId) ??
+                               throw new InvalidOperationException("The root GameObject was lost in YAML.");
+            var restoredChild = restored.Find(childId) ??
+                                throw new InvalidOperationException("The child GameObject was lost in YAML.");
+            TestAssert.Require(restoredRoot.tag == "Player" && restoredRoot.layer == gameplayLayer &&
+                               restoredRoot.isStatic,
+                "Scene YAML did not restore the root GameObject's Tag, Layer and Static values.");
+            var restoredSprite = restoredRoot.GetComponent<SpriteRenderer>() ??
+                                 throw new InvalidOperationException("The SpriteRenderer was lost in YAML.");
+            TestAssert.Require(restoredSprite.sortingLayer == gameplayLayer &&
+                               restoredSprite.orderInLayer == 12,
+                "Scene YAML did not restore the renderer's natural sorting layer and order.");
+            TestAssert.Require(ReferenceEquals(restoredChild.transform.parent, restoredRoot.transform) &&
+                               restoredChild.tag == "EditorOnly" &&
+                               restoredChild.layer == ignoreRaycastLayer &&
+                               !restoredChild.activeSelf && !restoredChild.activeInHierarchy,
+                "Scene YAML did not restore child hierarchy, Tag, Layer or active state.");
 
-            var yaml = document.ToYaml();
-            var restored = (Scene)Document.FromYaml<SceneDocument>(yaml).ToBObject();
-            try
-            {
-                var restoredRoot = restored.Find("Tagged Root") ??
-                                   throw new InvalidOperationException("The root GameObject was lost in YAML.");
-                var restoredChild = restored.Find("Inactive Child") ??
-                                    throw new InvalidOperationException("The child GameObject was lost in YAML.");
-                TestAssert.Require(restoredRoot.tag == "Player" && restoredRoot.layer == root.layer &&
-                                   restoredRoot.isStatic,
-                    "Scene YAML did not restore the root GameObject's Tag, Layer and Static values.");
-                var restoredSprite = restoredRoot.GetComponent<SpriteRenderer>() ??
-                                     throw new InvalidOperationException("The SpriteRenderer was lost in YAML.");
-                TestAssert.Require(restoredSprite.sortingLayer == sprite.sortingLayer &&
-                                   restoredSprite.orderInLayer == sprite.orderInLayer,
-                    "Scene YAML did not restore the renderer's ulong sorting layer.");
-                TestAssert.Require(ReferenceEquals(restoredChild.transform.parent, restoredRoot.transform) &&
-                                   restoredChild.tag == "EditorOnly" && restoredChild.layer == child.layer &&
-                                   !restoredChild.activeSelf && !restoredChild.activeInHierarchy,
-                    "Scene YAML did not restore child hierarchy, Tag, Layer or active state.");
-            }
-            finally
-            {
-                if (restored.isCreated) restored.Dispose();
-            }
-
-            var projectSettings = new ProjectSettingsDocument
+            var projectSettings = new ProjectSettingsData
             {
                 Tags = TagManager.tags.ToList(),
-                SortingLayers = LayerMask.layers.Select(item => new SortingLayerDocument
+                SortingLayers = LayerMask.layers.Select(item => new SortingLayerData
                 {
                     Value = item.Value,
-                    Name = item.Name
+                    Name = item.Name,
+                    BuiltIn = item.IsBuiltIn,
+                    IsUi = item.IsUi,
+                    BuiltInId = item.BuiltInId
                 }).ToList()
             };
-            var restoredSettings = Document.FromYaml<ProjectSettingsDocument>(projectSettings.ToYaml());
+            var settingsYaml = YamlUtility.Serialize(projectSettings);
+            var restoredSettings = YamlUtility.Deserialize<ProjectSettingsData>(settingsYaml);
             TestAssert.Require(restoredSettings.Tags.SequenceEqual(TagManager.tags) &&
                                restoredSettings.SortingLayers.Count == LayerMask.layers.Count &&
-                               restoredSettings.SortingLayers.Any(item => item.Value == SortingLayer.FromIndex(6) &&
+                               restoredSettings.SortingLayers.Any(item => item.Value == gameplayLayer &&
                                                                           item.Name == "Gameplay") &&
                                restoredSettings.SortingLayers.Any(item => item.Value == SortingLayer.Ui &&
                                                                           item.Name == "UI"),
@@ -78,7 +62,52 @@ internal static class SceneSerializationTests
         }
         finally
         {
-            if (source.isCreated) source.Dispose();
+            if (restored?.isCreated == true) restored.Dispose();
+            BAsset.Invalidate(scenePath);
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
+
+    private static string CurrentSceneYaml(Guid rootId, Guid childId, ulong gameplayLayer,
+        ulong ignoreRaycastLayer) => $$"""
+        format: BEngine.Scene
+        version: 2
+        id: {{Guid.NewGuid()}}
+        name: Layer Tag Round Trip
+        gameObjects:
+        - id: {{rootId}}
+          name: Tagged Root
+          active: true
+          tag: Player
+          layer: {{gameplayLayer}}
+          isStatic: true
+          transform:
+            id: {{Guid.NewGuid()}}
+            type: BEngine.Transform
+            localPosition: { x: '0', y: '0' }
+            localRotation: '0'
+            localScale: { x: '1', y: '1' }
+            fields: {}
+          components:
+          - id: {{Guid.NewGuid()}}
+            type: BEngine.SpriteRenderer
+            enabled: true
+            fields:
+              sortingLayer: '{{gameplayLayer}}'
+              orderInLayer: '12'
+        - id: {{childId}}
+          name: Inactive Child
+          active: false
+          tag: EditorOnly
+          layer: {{ignoreRaycastLayer}}
+          parent: {{rootId}}
+          transform:
+            id: {{Guid.NewGuid()}}
+            type: BEngine.Transform
+            localPosition: { x: '0', y: '0' }
+            localRotation: '0'
+            localScale: { x: '1', y: '1' }
+            fields: {}
+          components: []
+        """;
 }

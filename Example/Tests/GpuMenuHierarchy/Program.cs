@@ -26,11 +26,14 @@ internal static class Program
             Require(builtInRoots.Contains("Component", StringComparer.Ordinal),
                 "The editor menu bar is missing its Component root.");
             var invoked = false;
+            var repeatedInvocations = new List<int>();
             var menu = new GenericMenu();
             menu.AddItem(new GUIContent("Parent/Child"), true, () => invoked = true);
             menu.AddDisabledItem(new GUIContent("Parent/Disabled"));
             menu.AddSeparator("Parent/");
             menu.AddItem(new GUIContent("Standalone"), false, () => { });
+            menu.AddItem(new GUIContent("Repeated/Action"), false, () => repeatedInvocations.Add(1));
+            menu.AddItem(new GUIContent("Repeated/Action"), false, () => repeatedInvocations.Add(2));
 
             var items = typeof(GenericMenu).GetProperty("Items", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(menu)!;
@@ -45,6 +48,16 @@ internal static class Program
             var draw = popupType.GetMethod("Draw")!;
             var isOpen = popupType.GetProperty("isOpen")!;
             open.Invoke(popup, [items, new Vector2(20, 20)]);
+            var popupRoots = ((IEnumerable)popupType.GetField("_roots",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(popup)!).Cast<object>().ToArray();
+            var repeatedRoot = popupRoots.Single(root => Get<string>(root, "Name") == "Repeated");
+            var repeatedChildren = ((IEnumerable)Get<object>(repeatedRoot, "Children")).Cast<object>().ToArray();
+            Require(repeatedChildren.Length == 2 &&
+                    repeatedChildren.All(child => Get<Action?>(child, "Action") is not null),
+                "The IMGUI popup collapsed repeated labels and lost a command callback.");
+            foreach (var repeatedChild in repeatedChildren) Get<Action>(repeatedChild, "Action")();
+            Require(repeatedInvocations.SequenceEqual([1, 2]),
+                "The IMGUI popup routed repeated labels to the same callback.");
 
             var hoverEvent = new Event(EventType.MouseMove) { mousePosition = new Vector2(35, 32) };
             Dispatch(draw, popup, hoverEvent, []);

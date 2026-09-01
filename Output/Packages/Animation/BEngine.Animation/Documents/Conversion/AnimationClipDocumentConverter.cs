@@ -2,9 +2,9 @@ using BEngine.Documents;
 
 namespace BEngine.Animation;
 
-internal sealed class AnimationClipDocumentConverter : DocumentConverter<AnimationClipDocument, AnimationClip>
+internal static class AnimationClipSerialization
 {
-    protected override AnimationClip ToBObject(AnimationClipDocument document, DocumentConversionContext context)
+    internal static AnimationClip Restore(AnimationClipData document)
     {
         Validate(document);
         return new AnimationClip
@@ -37,20 +37,20 @@ internal sealed class AnimationClipDocumentConverter : DocumentConverter<Animati
         };
     }
 
-    protected override AnimationClipDocument FromBObject(AnimationClip clip, DocumentConversionContext context) => new()
+    internal static AnimationClipData Capture(AnimationClip clip) => new()
     {
         Name = clip.name,
         FrameRate = clip.frameRate.RawValue,
         WrapMode = clip.wrapMode,
         Legacy = clip.legacy,
-        Bindings = [.. clip.bindings.Select(binding => new AnimationBindingDocument
+        Bindings = [.. clip.bindings.Select(binding => new AnimationBindingData
         {
             RelativePath = binding.relativePath,
             ComponentType = binding.componentType,
             PropertyName = binding.propertyName,
             PreWrapMode = binding.curve.preWrapMode,
             PostWrapMode = binding.curve.postWrapMode,
-            Keys = [.. binding.curve.keys.Select(key => new KeyframeDocument
+            Keys = [.. binding.curve.keys.Select(key => new KeyframeData
             {
                 Time = key.time.RawValue,
                 Value = key.value.RawValue,
@@ -58,7 +58,7 @@ internal sealed class AnimationClipDocumentConverter : DocumentConverter<Animati
                 OutTangent = key.outTangent.RawValue
             })]
         })],
-        Events = [.. clip.events.Select(item => new AnimationEventDocument
+        Events = [.. clip.events.Select(item => new AnimationEventData
         {
             Time = item.time.RawValue,
             FunctionName = item.functionName,
@@ -68,9 +68,15 @@ internal sealed class AnimationClipDocumentConverter : DocumentConverter<Animati
         })]
     };
 
-    internal static void Validate(AnimationClipDocument document)
+    internal static void Validate(AnimationClipData document)
     {
         if (document.Format != "BEngine.AnimationClip" || document.Version != 1)
             throw new InvalidDataException("Unsupported animation clip.");
     }
+
+    internal static AnimationClip Load(string path) => Document<AnimationClip>
+        .Read(path, sourcePath => Restore(YamlUtility.Load<AnimationClipData>(sourcePath))).ToAsset();
+
+    internal static void Save(AnimationClip clip, string path) => Document<AnimationClip>.FromAsset(clip)
+        .Write(path, static (asset, destination) => YamlUtility.Save(Capture(asset), destination));
 }

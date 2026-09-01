@@ -234,7 +234,7 @@ internal static class AssetBundleSettingsProvider
         try
         {
             _draft = path.Length > 0 && File.Exists(path)
-                ? Document.Load<AssetBundleSettingsDocument>(path)
+                ? YamlUtility.Load<AssetBundleSettingsDocument>(path)
                 : new AssetBundleSettingsDocument();
         }
         catch (Exception exception)

@@ -54,16 +54,16 @@ public static class ProjectWorkspaceFactory
         IReadOnlyList<string> packageIds)
     {
         var trimmedName = projectName.Trim();
-        var project = new ProjectDocument
+        var project = new ProjectData
         {
             Name = trimmedName,
-            Window = new WindowDocument { Title = trimmedName }
+            Window = new WindowData { Title = trimmedName }
         };
         var workspace = new ProjectWorkspace(root, project);
         project.Save(workspace.ProjectFilePath);
         new EditorSettingsDocument().Save(Path.Combine(workspace.ProjectSettingsPath, "EditorSettings.yaml"));
         new EditorLayoutDocument().Save(workspace.EditorLayoutPath);
-        new ProjectSettingsDocument
+        new ProjectSettingsData
         {
             ProductName = project.Name,
             DefaultScreenWidth = project.Window.Width,
@@ -97,7 +97,7 @@ public static class ProjectWorkspaceFactory
         var sprite = scene.CreateGameObject("Sprite");
         sprite.AddComponent<BEngine.SpriteRenderer>();
 
-        Document.SaveBObject<SceneDocument>(scene, workspace.StartupScenePath);
+        SceneAssetSerialization.Save(scene, workspace.StartupScenePath);
     }
 
     private static void CreateDefaultScript(ProjectWorkspace workspace)

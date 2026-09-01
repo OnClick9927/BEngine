@@ -1,9 +1,10 @@
 format: BEngine.AssetMeta
 version: 1
 guid: 998f96caba774fb1b07e7a43e149f376
-importer: YamlImporter
+importer: TextureAtlasImporter
 assetType: TextureAtlas
-sourceHash: b4e7fba6b1e98614f4e0abdca4a3fbb07a15618a5149ac6623dc245d5819c26c
+sourceHash: 4b379d1f8b9c33a91d6d0e9b5964192076001055c0fc0ac61628b8bc2b4030c8
+importFingerprint: 306a9ff7c24cb8c4e0fc52b09ed762cf7f2bcf306d1e72e55f7614165cb3d2c1
 settings: {}
 parentGuid: ''
 localIdentifier: 0

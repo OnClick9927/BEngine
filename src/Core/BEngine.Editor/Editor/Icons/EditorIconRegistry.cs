@@ -44,9 +44,28 @@ public static class EditorIconRegistry
         var registered = GetIconPath(type);
         if (!string.IsNullOrWhiteSpace(registered)) return registered;
         if (typeof(Camera2D).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Camera2D;
-        if (typeof(SpriteRenderer).IsAssignableFrom(type)) return EditorBuiltinIcons.Assets.Image;
-        if (typeof(MonoBehaviour).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Script;
+        if (typeof(SpriteRenderer).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.SpriteRenderer;
         if (typeof(Transform).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Transform;
+        var builtIn = type.Name switch
+        {
+            nameof(ParticleSystem2D) => EditorBuiltinIcons.Components.ParticleSystem2D,
+            nameof(EditorBuiltinIcons.Components.Rigidbody2D) => EditorBuiltinIcons.Components.Rigidbody2D,
+            nameof(EditorBuiltinIcons.Components.Collider2D) or nameof(EditorBuiltinIcons.Components.BoxCollider2D)
+                or nameof(EditorBuiltinIcons.Components.CircleCollider2D)
+                or nameof(EditorBuiltinIcons.Components.CapsuleCollider2D)
+                or nameof(EditorBuiltinIcons.Components.PolygonCollider2D) =>
+                EditorBuiltinIcons.Components.Collider2D,
+            nameof(EditorBuiltinIcons.Components.Animator) or nameof(EditorBuiltinIcons.Components.Animation) =>
+                EditorBuiltinIcons.Components.Animator,
+            nameof(EditorBuiltinIcons.Components.Tilemap) or nameof(EditorBuiltinIcons.Components.TilemapRenderer) =>
+                EditorBuiltinIcons.Components.Tilemap,
+            nameof(EditorBuiltinIcons.Components.UIDocument) => EditorBuiltinIcons.Components.UIDocument,
+            var name when name.StartsWith("Navigation", StringComparison.Ordinal) =>
+                EditorBuiltinIcons.Components.Navigation,
+            _ => null
+        };
+        if (builtIn is not null) return builtIn;
+        if (typeof(MonoBehaviour).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Script;
         return EditorBuiltinIcons.Components.Default;
     }
 

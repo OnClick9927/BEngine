@@ -4,7 +4,7 @@ using BEngine.Serialization;
 
 namespace BEngine.ProjectSystem.Editor;
 
-public sealed class AssetDatabaseDocument : Document
+public sealed class AssetDatabaseDocument
 {
     public string Format { get; set; } = "BEngine.AssetDatabase";
     public int Version { get; set; } = 1;

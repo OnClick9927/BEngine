@@ -17,16 +17,16 @@ public sealed class CodexProjectStore
         SessionPath = Path.Combine(ProjectRoot, "Library", "Codex", "Session.yaml");
     }
 
-    public CodexProjectSettingsDocument LoadSettings()
+    public CodexProjectSettingsData LoadSettings()
     {
         if (!File.Exists(SettingsPath))
         {
-            var defaults = new CodexProjectSettingsDocument();
+            var defaults = new CodexProjectSettingsData();
             SaveSettings(defaults);
             return defaults;
         }
 
-        var settings = Document.Load<CodexProjectSettingsDocument>(SettingsPath);
+        var settings = YamlUtility.Load<CodexProjectSettingsData>(SettingsPath);
         Validate(settings.Format, settings.Version, "BEngine.CodexSettings", SettingsPath);
         if (CodexProtocolSettings.Normalize(settings)) SaveSettings(settings);
         return settings;
@@ -35,13 +35,13 @@ public sealed class CodexProjectStore
     public CodexSessionDocument LoadSession()
     {
         if (!File.Exists(SessionPath)) return new CodexSessionDocument();
-        var session = Document.Load<CodexSessionDocument>(SessionPath);
+        var session = YamlUtility.Load<CodexSessionDocument>(SessionPath);
         Validate(session.Format, session.Version, "BEngine.CodexSession", SessionPath);
         session.Transcript ??= [];
         return session;
     }
 
-    public void SaveSettings(CodexProjectSettingsDocument settings)
+    public void SaveSettings(CodexProjectSettingsData settings)
     {
         CodexProtocolSettings.Normalize(settings);
         settings.Save(SettingsPath);

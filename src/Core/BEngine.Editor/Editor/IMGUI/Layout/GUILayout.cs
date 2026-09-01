@@ -3,8 +3,13 @@ namespace BEngine.Editor;
 public static class GUILayout
 {
     [ThreadStatic] private static LayoutContext? _context;
+    [ThreadStatic] private static LayoutContext? _cachedContext;
     [ThreadStatic] private static Rect _lastRect;
-    internal static void BeginFrame(Rect area) => _context = new LayoutContext(area);
+    internal static void BeginFrame(Rect area)
+    {
+        _context = _cachedContext ??= new LayoutContext();
+        _context.Reset(area);
+    }
     internal static void EndFrame() => _context = null;
     public static void BeginHorizontal(params GUILayoutOption[] options) =>
         _lastRect = Context.BeginGroup(true, DefaultControlHeight, options);
@@ -14,7 +19,7 @@ public static class GUILayout
         _lastRect = Context.BeginGroup(true, StyleHeight(style, DefaultControlHeight), options);
         GUI.Box(new Rect(0, 0, _lastRect.width, _lastRect.height), GUIContent.none, style);
     }
-    public static void EndHorizontal() => Context.EndGroup();
+    public static void EndHorizontal() => _lastRect = Context.EndGroup();
     public static void BeginVertical(params GUILayoutOption[] options) =>
         _lastRect = Context.BeginGroup(false, DefaultControlHeight, options);
     public static void BeginVertical(GUIStyle? style, params GUILayoutOption[] options)
@@ -23,7 +28,7 @@ public static class GUILayout
         _lastRect = Context.BeginGroup(false, StyleHeight(style, DefaultControlHeight), options);
         GUI.Box(new Rect(0, 0, _lastRect.width, _lastRect.height), GUIContent.none, style);
     }
-    public static void EndVertical() => Context.EndGroup();
+    public static void EndVertical() => _lastRect = Context.EndGroup();
     public static void Space(Fix64 pixels) => Context.Space(pixels);
     public static void FlexibleSpace() => Context.Space(8);
     public static void Label(string text, params GUILayoutOption[] options) =>
@@ -33,7 +38,7 @@ public static class GUILayout
     public static void Label(string text, GUIStyle? style, params GUILayoutOption[] options)
     {
         style ??= GUI.skin.label;
-        GUI.Label(Next(StyleHeight(style, DefaultControlHeight), options), new GUIContent(text), style);
+        GUI.Label(Next(StyleHeight(style, DefaultControlHeight), options), text, style);
     }
     public static void Label(GUIContent content, GUIStyle? style, params GUILayoutOption[] options)
     {
@@ -47,7 +52,7 @@ public static class GUILayout
     public static void Box(string text, GUIStyle? style, params GUILayoutOption[] options)
     {
         style ??= GUI.skin.box;
-        GUI.Box(Next(StyleHeight(style, DefaultControlHeight + 2), options), new GUIContent(text), style);
+        GUI.Box(Next(StyleHeight(style, DefaultControlHeight + 2), options), text, style);
     }
     public static void Box(GUIContent content, GUIStyle? style, params GUILayoutOption[] options)
     {
@@ -61,7 +66,7 @@ public static class GUILayout
     public static bool Button(string text, GUIStyle? style, params GUILayoutOption[] options)
     {
         style ??= GUI.skin.button;
-        return GUI.Button(Next(StyleHeight(style, DefaultControlHeight), options), new GUIContent(text), style);
+        return GUI.Button(Next(StyleHeight(style, DefaultControlHeight), options), text, style);
     }
     public static bool Button(GUIContent content, GUIStyle? style, params GUILayoutOption[] options)
     {
@@ -183,10 +188,18 @@ public static class GUILayout
         public void Dispose() => EndArea();
     }
 
-    private sealed class LayoutContext(Rect root)
+    private sealed class LayoutContext
     {
         private readonly Stack<Group> _groups = new();
-        public LayoutContext() : this(default) { }
+        private readonly Group _root = new(default, false);
+
+        public void Reset(Rect root)
+        {
+            _groups.Clear();
+            _root.Reset(root, false);
+            _groups.Push(_root);
+        }
+
         public Rect BeginGroup(bool horizontal, Fix64 defaultHeight, GUILayoutOption[] options)
         {
             var parent = Current;
@@ -195,7 +208,13 @@ public static class GUILayout
             GUI.BeginGroup(rect);
             return rect;
         }
-        public void EndGroup() { if (_groups.Count > 1) { _groups.Pop(); GUI.EndGroup(); } }
+        public Rect EndGroup()
+        {
+            if (_groups.Count <= 1) return Current.Bounds;
+            var group = _groups.Pop();
+            GUI.EndGroup();
+            return group.Bounds;
+        }
         public void BeginArea(Rect rect) => _groups.Push(new Group(new Rect(0, 0, rect.width, rect.height), false));
         public void EndArea() { if (_groups.Count > 1) _groups.Pop(); }
         public Rect Next(Fix64 defaultHeight, GUILayoutOption[] options) => Current.Next(defaultHeight, options);
@@ -211,22 +230,32 @@ public static class GUILayout
         }
         private Group Current
         {
-            get
-            {
-                if (_groups.Count == 0) _groups.Push(new Group(root, false));
-                return _groups.Peek();
-            }
+            get => _groups.Peek();
         }
     }
 
-    private sealed class Group(Rect rect, bool horizontal)
+    private sealed class Group
     {
-        private Fix64 _cursorX = 4;
-        private Fix64 _cursorY = horizontal ? Fix64.Zero : (Fix64)4;
-        private Fix64 _contentHeight = 4;
-        public Rect Next(Fix64 defaultHeight, IEnumerable<GUILayoutOption> options)
+        private Rect _rect;
+        private bool _horizontal;
+        private Fix64 _cursorX;
+        private Fix64 _cursorY;
+        private Fix64 _contentHeight;
+
+        public Group(Rect rect, bool horizontal) => Reset(rect, horizontal);
+
+        public void Reset(Rect rect, bool horizontal)
         {
-            var width = horizontal ? (Fix64)100 : Fix64.Max(0, rect.width - 8);
+            _rect = rect;
+            _horizontal = horizontal;
+            _cursorX = 4;
+            _cursorY = horizontal ? Fix64.Zero : (Fix64)4;
+            _contentHeight = 4;
+        }
+
+        public Rect Next(Fix64 defaultHeight, GUILayoutOption[] options)
+        {
+            var width = _horizontal ? (Fix64)100 : Fix64.Max(0, _rect.width - 8);
             var height = defaultHeight;
             foreach (var option in options)
             {
@@ -237,19 +266,19 @@ public static class GUILayout
                 if (option.Type == GUILayoutOptionType.MinHeight) height = Fix64.Max(height, option.Value);
                 if (option.Type == GUILayoutOptionType.MaxHeight) height = Fix64.Min(height, option.Value);
                 if (option.Type == GUILayoutOptionType.ExpandWidth && option.Value > 0)
-                    width = horizontal ? Fix64.Max(0, rect.width - _cursorX - 4) :
-                        Fix64.Max(0, rect.width - 8);
+                    width = _horizontal ? Fix64.Max(0, _rect.width - _cursorX - 4) :
+                        Fix64.Max(0, _rect.width - 8);
                 if (option.Type == GUILayoutOptionType.ExpandHeight && option.Value > 0)
-                    height = Fix64.Max(height, rect.height - _cursorY - 4);
+                    height = Fix64.Max(height, _rect.height - _cursorY - 4);
             }
             var result = new Rect(_cursorX, _cursorY, width, height);
             _contentHeight = Fix64.Max(_contentHeight, result.yMax + 3);
-            if (horizontal) _cursorX += width + 4; else _cursorY += height + 3;
+            if (_horizontal) _cursorX += width + 4; else _cursorY += height + 3;
             return result;
         }
         public void Space(Fix64 pixels)
         {
-            if (horizontal) _cursorX += pixels;
+            if (_horizontal) _cursorX += pixels;
             else
             {
                 _cursorY += pixels;
@@ -257,6 +286,7 @@ public static class GUILayout
             }
         }
         public Fix64 ContentHeight => _contentHeight;
-        public Fix64 Width => rect.width;
+        public Fix64 Width => _rect.width;
+        public Rect Bounds => _rect;
     }
 }

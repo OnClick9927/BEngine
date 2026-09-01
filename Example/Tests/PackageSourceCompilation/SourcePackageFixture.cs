@@ -51,6 +51,19 @@ internal sealed class SourcePackageFixture(string repositoryRoot)
                 target: runtime
             """);
         WriteSource(root, BaseRuntimeAssembly, "BaseValue.cs", """
+            #if !BENGINE || !BENGINE_1_0 || !BENGINE_1_0_OR_NEWER
+            #error BEngine identity and version symbols were not passed to a runtime package.
+            #endif
+            #if !BENGINE || BENGINE_EDITOR
+            #error Runtime package context symbols are invalid.
+            #endif
+            #if !DEBUG || RELEASE
+            #error Runtime package build configuration symbols are invalid.
+            #endif
+            #if !BENGINE_WINDOWS && !BENGINE_LINUX && !BENGINE_OSX
+            #error No supported BEngine platform symbol was passed to a runtime package.
+            #endif
+
             namespace BEngine.Tests.SourceBase;
 
             public static class BaseValue
@@ -60,6 +73,13 @@ internal sealed class SourcePackageFixture(string repositoryRoot)
             """);
         WriteAssemblyDefinition(root, BaseRuntimeAssembly, "BEngine.Tests.SourceBase", [], false);
         WriteSource(root, BaseEditorAssembly, "BaseEditorValue.cs", """
+            #if !BENGINE || !BENGINE_EDITOR
+            #error Editor package context symbols are invalid.
+            #endif
+            #if !BENGINE_1_0 || !BENGINE_1_0_OR_NEWER || !DEBUG || RELEASE
+            #error Editor package version or configuration symbols are invalid.
+            #endif
+
             using BEngine.Tests.SourceBase;
 
             namespace BEngine.Tests.SourceBase.Editor;

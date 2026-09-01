@@ -1,6 +1,6 @@
 using BEngine.AssetBundles;
-using BEngine.Documents;
 using BEngine.SceneManagement;
+using BEngine.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BEngine.ExampleTests.SceneRuntimeArchitecture;
@@ -19,6 +19,7 @@ internal static class Program
             VerifyFailedSystemCreationDisposesCreatedScopes();
             VerifyReentrantSingleSceneLoadDuringAwake();
             VerifySceneSerializationRoundtrip();
+            RuntimeHotPathTests.Run();
             Console.WriteLine(
                 "SCENE_RUNTIME_ARCHITECTURE_OK|no-ecs,no-runtime-threading,managed-query,destroy," +
                 "single-thread-systems,monobehaviour,current-scene,object-domain,start-rollback," +
@@ -101,8 +102,7 @@ internal static class Program
         using var editorScene = new Scene("Editor original", services);
         var editorObject = editorScene.CreateGameObject("Mirrored object");
         var editorBehaviour = editorObject.AddComponent<SceneProbeBehaviour>();
-        var document = Document.FromBObject<SceneDocument>(editorScene);
-        using var runtimeScene = (Scene)document.ToBObject(new DocumentConversionContext(Services: services));
+        using var runtimeScene = SceneAssetSerialization.Clone(editorScene, services);
         var runtimeObject = runtimeScene.Find("Mirrored object") ??
                             throw new InvalidOperationException("The runtime mirror lost its GameObject.");
         var runtimeBehaviour = runtimeObject.GetComponent<SceneProbeBehaviour>() ??
@@ -277,8 +277,8 @@ internal static class Program
         try
         {
             var path = Path.Combine(directory, "Managed.scene.yaml");
-            Document.SaveBObject<SceneDocument>(source, path);
-            using var restored = Document.LoadBObject<SceneDocument, Scene>(path);
+            SceneAssetSerialization.Save(source, path);
+            using var restored = SceneAssetSerialization.Load(path);
             var restoredObject = restored.Find("Serialized object") ??
                                  throw new InvalidOperationException("YAML lost the GameObject.");
 

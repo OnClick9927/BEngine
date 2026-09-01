@@ -1,7 +1,12 @@
 format: BEngine.AssetMeta
 version: 1
 guid: 97d9571061bf46dcb6eff1fcf4274327
-importer: YamlImporter
+importer: DefaultImporter
 assetType: Scene
-sourceHash: 3ae98e552e4c50be42d7246ffc39dc380e526384515b2569a41bbc12b15b0474
+sourceHash: 43780df9354c27f94aeb50330671d2228790c1dafe3396c93dec4feecd329893
+importFingerprint: 65884c53d1fc6648785c2fe573a6ec2fef2ac8af3b1c2a069efb4f0dd2a6689d
 settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

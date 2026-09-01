@@ -1,5 +1,4 @@
 using System.Reflection;
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Editor.Rendering;
 using BEngine.Rendering;
@@ -17,6 +16,7 @@ internal static class Program
         try
         {
             VerifyEventApi();
+            var imGuiAllocatedBytes = VerifyImGuiAllocationHotPaths();
             VerifyGpuCommandsAndTextEditing();
             VerifyScaledTextCaretAndHitTesting();
             VerifyAlignedTextEditingAtScale();
@@ -32,6 +32,7 @@ internal static class Program
             VerifyIconToolbarLanguage();
             VerifyPrefabWorkflow();
             VerifyAssemblyBoundary();
+            Console.WriteLine($"IMGUI_HOT_PATHS|passes=256,bytes={imGuiAllocatedBytes}");
             Console.WriteLine("GPU_IMGUI_OK|event-current,layout,input,repaint,gpu-commands,caret,scaled-caret,aligned-text-editing,cjk-hit-testing,double-click,numeric-edit-buffer,field-focus-isolation,system-clipboard-paste,editing-key-repeat,native-drag-routing,window-local-input,scroll,scrollbar-drag,scrollbar-release,dock-tabs,focus,mouse-over,border,object-ping,project-tree-row-clip,assets-packages-separator,icon-toolbar-separators,prefab,package-boundary,imgui-editor-boundary,editor-owned-infrastructure");
             return 0;
         }
@@ -40,6 +41,45 @@ internal static class Program
             Console.Error.WriteLine($"GPU_IMGUI_FAILED|{exception}");
             return 1;
         }
+    }
+
+    private static long VerifyImGuiAllocationHotPaths()
+    {
+        const int measuredPasses = 128;
+        var layoutEvent = new Event(EventType.Layout);
+        var repaintEvent = new Event(EventType.Repaint);
+        var commands = new List<GpuCanvasCommand>(4);
+
+        void DrawFrame(Event current)
+        {
+            commands.Clear();
+            GUI.BeginFrame(current, 320, 180, commands);
+            try
+            {
+                GUI.Label(new Rect(4, 4, 120, 20), "Status");
+                _ = GUI.TextField(new Rect(4, 28, 120, 20), "Value");
+                GUILayout.Label("Row");
+            }
+            finally { GUI.EndFrame(); }
+        }
+
+        for (var index = 0; index < 8; index++)
+        {
+            DrawFrame(layoutEvent);
+            DrawFrame(repaintEvent);
+        }
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < measuredPasses; index++)
+        {
+            DrawFrame(layoutEvent);
+            DrawFrame(repaintEvent);
+        }
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Require(allocated <= 1024,
+            $"Steady-state IMGUI Layout/Repaint allocated {allocated} bytes across " +
+            $"{measuredPasses * 2} passes.");
+        return allocated;
     }
 
     private static void VerifyIconToolbarLanguage()
@@ -97,21 +137,19 @@ internal static class Program
             child.transform.SetParent(root.transform, false);
             child.AddComponent<SpriteRenderer>().opacity = Fix64.Parse("0.5");
             var path = Path.Combine(directory, "Robot.prefab.yaml");
-            Document.SaveBObject<PrefabDocument>(root, path);
-            var prefab = Document.LoadBObject<PrefabDocument, PrefabAsset>(path);
+            _ = PrefabAssetSerialization.Save(root, path);
+            var prefab = PrefabAssetSerialization.Load(path);
             Require(prefab.objectCount == 2 && File.ReadAllText(path).Contains("BEngine.Prefab"),
                 "Prefab YAML did not preserve the hierarchy.");
             var scene = new Scene("Instances");
-            var first = PrefabDocumentOperations.Instantiate(
-                Document.LoadBObject<PrefabDocument, PrefabAsset>(path), scene);
-            var second = PrefabDocumentOperations.Instantiate(
-                Document.LoadBObject<PrefabDocument, PrefabAsset>(path), scene);
+            var first = PrefabAssetOperations.Instantiate(PrefabAssetSerialization.Load(path), scene);
+            var second = PrefabAssetOperations.Instantiate(PrefabAssetSerialization.Load(path), scene);
             Require(first.Id != second.Id && first.transform.Id != second.transform.Id,
                 "Prefab instances reused runtime IDs.");
             Require(first.transform.children.Count == 1 && first.GetComponent<Camera2D>()?.size == (Fix64)7,
                 "Prefab hierarchy or components did not round-trip.");
             Require(PrefabUtility.IsPartOfPrefabInstance(first), "Prefab instance linkage is missing.");
-            var restored = (Scene)Document.FromBObject<SceneDocument>(scene).ToBObject();
+            var restored = SceneAssetSerialization.Clone(scene);
             var restoredRoot = restored.rootGameObjects.First();
             Require(PrefabUtility.IsPartOfPrefabInstance(restoredRoot), "Scene reload lost prefab linkage.");
             PrefabUtility.UnpackPrefabInstance(restoredRoot, PrefabUnpackMode.OutermostRoot);

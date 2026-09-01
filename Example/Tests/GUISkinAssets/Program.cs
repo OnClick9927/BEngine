@@ -1,7 +1,6 @@
 using System.Reflection;
 using BEngine.Editor;
 using BEngine.Editor.Rendering;
-using BEngine.Documents;
 
 namespace BEngine.ExampleTests.GUISkinAssets;
 
@@ -24,7 +23,7 @@ internal static class Program
         toolbarPopupRight toolbarDropDownLeft toolbarDropDown toolbarDropDownRight toolbarDropDownToggle
         toolbarDropDownToggleButton toolbarDropDownToggleRight toolbarCreateAddNewDropDown toolbarTextField
         toolbarLabel inspectorDefaultMargins inspectorHorizontalDefaultMargins inspectorFullWidthMargins
-        defaultContentMargins frameBox helpBox toolbarSearchField toolbarSearchFieldPopup
+        defaultContentMargins frameBox helpBox helpBoxLabel toolbarSearchField toolbarSearchFieldPopup
         toolbarSearchFieldWithJumpSynced toolbarSearchFieldWithJumpPopupSynced toolbarSearchFieldWithJump
         toolbarSearchFieldWithJumpPopup toolbarSearchFieldJumpButton toolbarSearchFieldCancelButton
         toolbarSearchFieldCancelButtonEmpty toolbarSearchFieldCancelButtonWithJump
@@ -51,7 +50,7 @@ internal static class Program
             VerifyAssetRoundTrip(root);
             VerifyInvalidAssetFallback(root);
             VerifyBuiltInReadOnly(root);
-            Console.WriteLine("GUI_SKIN_ASSETS_OK|editor-assembly,basset,143-slots,toolbar-toggle,public-editorstyles,texture-state,style-only-theme,custom-styles," +
+            Console.WriteLine("GUI_SKIN_ASSETS_OK|editor-assembly,basset,144-slots,toolbar-toggle,public-editorstyles,texture-state,style-only-theme,custom-styles," +
                               "deep-clone,versioned-yaml,typed-loader,create-menu,icon,builtin-readonly," +
                               "builtin-foldout,stable-custom-foldout");
             return 0;
@@ -88,7 +87,7 @@ internal static class Program
     private static void VerifyCompleteNamedStyles()
     {
         var skin = new GUISkin();
-        Require(skin.styles.Count == 143, $"Expected 143 built-in GUI styles, found {skin.styles.Count}.");
+        Require(skin.styles.Count == 144, $"Expected 144 built-in GUI styles, found {skin.styles.Count}.");
         Require(skin.centeredBoldLabel.alignment == TextAnchor.MiddleCenter &&
                 skin.centeredMiniLabel.alignment == TextAnchor.MiddleCenter,
             "Centered editor label styles are not owned by GUISkin.");
@@ -97,6 +96,8 @@ internal static class Program
                 skin.button.normal.backgroundImage is Texture &&
                 skin.toolbarToggle.normal.backgroundImage is Texture &&
                 !skin.toolbarToggle.onNormal.backgroundColor.Equals(skin.toolbarToggle.normal.backgroundColor) &&
+                skin.helpBoxLabel.normal.backgroundColor.a == Fix64.Zero &&
+                skin.helpBoxLabel.wordWrap &&
                 !skin.treeViewRowSelected.normal.backgroundColor.Equals(skin.treeViewRow.normal.backgroundColor),
             "A newly created GUISkin is not initialized as a complete usable theme.");
         foreach (var name in EditorStyleSlots)
@@ -249,7 +250,7 @@ internal static class Program
             EditorPreferences.Initialize();
             Require(EditorAppearance.activeSkin.name == nameof(EditorTheme.Dark) &&
                     EditorPreferences.current.EditorSkin == "builtin:Dark" &&
-                    Document.Load<BEngine.Editor.Documents.EditorPreferencesDocument>(
+                    BEngine.YamlUtility.Load<BEngine.Editor.Documents.EditorPreferencesDocument>(
                         EditorDataPaths.preferencesPath).EditorSkin == "builtin:Dark",
                 "An invalid active GUISkin did not fall back to the built-in Dark skin.");
         }

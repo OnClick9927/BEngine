@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
+using System.Text;
 using BEngine.Documents;
+using BEngine.Editor;
 using BEngine.Serialization;
 
 namespace BEngine.ProjectSystem.Editor;
@@ -71,14 +73,14 @@ public sealed class AssetDatabase
             changes = [];
             return false;
         }
+        _assetSnapshot = CreateSortedSnapshot(snapshot.Records);
         _byGuid.Clear();
         _byPath.Clear();
-        foreach (var record in snapshot.Records)
+        foreach (var record in _assetSnapshot)
         {
             _byGuid[record.Guid] = record;
-            _byPath[record.AssetPath] = record;
+            if (!record.IsSubAsset) _byPath[record.AssetPath] = record;
         }
-        _assetSnapshot = snapshot.Records.ToArray();
 
         Interlocked.Increment(ref _revision);
         changes = snapshot.Changes;
@@ -100,15 +102,30 @@ public sealed class AssetDatabase
                 throw new FileNotFoundException("Asset does not exist.", fullPath);
             }
 
+            var previous = _assetSnapshot.ToDictionary(static record => record.Guid,
+                ToManifestEntry);
             var record = Import(fullPath, Directory.Exists(fullPath));
-            _byGuid[record.Guid] = record;
-            _byPath[record.AssetPath] = record;
-            _assetSnapshot = _byGuid.Values.ToArray();
-            SaveManifest(_byGuid.Values);
+            var records = _byGuid.Values.Where(candidate => candidate.Guid != record.Guid &&
+                    candidate.ParentGuid != record.Guid &&
+                    !candidate.AssetPath.Equals(record.AssetPath, StringComparison.OrdinalIgnoreCase))
+                .Append(record)
+                .ToList();
+            AppendGeneratedArtifacts(records, CancellationToken.None, record.Guid);
+            var changes = BuildChanges(previous, records);
+
+            _assetSnapshot = CreateSortedSnapshot(records);
+            _byGuid.Clear();
+            _byPath.Clear();
+            foreach (var current in _assetSnapshot)
+            {
+                _byGuid[current.Guid] = current;
+                if (!current.IsSubAsset) _byPath[current.AssetPath] = current;
+            }
+            SaveManifest(_assetSnapshot);
             Interlocked.Increment(ref _revision);
-            BEngine.Editor.EditorCallbackDispatcher.Invoke(assetsChanged,
-                (IReadOnlyList<AssetChange>)[new AssetChange(AssetChangeKind.Imported, record.Guid, record.AssetPath)],
-                nameof(assetsChanged));
+            if (changes.Count > 0)
+                BEngine.Editor.EditorCallbackDispatcher.Invoke(assetsChanged,
+                    (IReadOnlyList<AssetChange>)changes, nameof(assetsChanged));
             return record;
         }
         finally { _refreshGate.Release(); }
@@ -139,12 +156,22 @@ public sealed class AssetDatabase
     public IReadOnlyList<AssetRecord> FindAssets(string search)
     {
         search ??= string.Empty;
-        return _byGuid.Values.Where(record =>
-                record.AssetPath.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+        if (search.Length == 0) return _assetSnapshot;
+
+        var matches = new List<AssetRecord>();
+        foreach (var record in _assetSnapshot)
+        {
+            if (record.AssetPath.Contains(search, StringComparison.OrdinalIgnoreCase) ||
                 record.AssetType.Contains(search, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(record => record.AssetPath, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+                matches.Add(record);
+        }
+        return matches;
     }
+
+    private static AssetRecord[] CreateSortedSnapshot(IEnumerable<AssetRecord> records) =>
+        records.OrderBy(static record => record.AssetPath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static record => record.LocalIdentifier)
+            .ToArray();
 
     private List<AssetRecord> ScanAssets(
         Action<AssetScanProgress>? progress,
@@ -163,48 +190,139 @@ public sealed class AssetDatabase
         {
             cancellationToken.ThrowIfCancellationRequested();
             var path = paths[index];
-            records.Add(Import(path, Directory.Exists(path)));
+            records.Add(Import(path, Directory.Exists(path), cancellationToken));
             BEngine.Editor.EditorCallbackDispatcher.Invoke(progress,
                 new AssetScanProgress(index + 1, paths.Length, ToProjectPath(path)),
                 "AssetDatabase.scanProgress");
         }
+        AppendGeneratedArtifacts(records, cancellationToken);
         return records;
     }
 
-    private AssetRecord Import(string sourcePath, bool isDirectory)
+    private void AppendGeneratedArtifacts(
+        ICollection<AssetRecord> records,
+        CancellationToken cancellationToken,
+        Guid? ownerFilter = null)
     {
+        if (!Directory.Exists(_workspace.AssetArtifactsPath)) return;
+        var scanRoot = ownerFilter.HasValue
+            ? Path.Combine(_workspace.AssetArtifactsPath, ownerFilter.Value.ToString("N")[..2])
+            : _workspace.AssetArtifactsPath;
+        if (!Directory.Exists(scanRoot)) return;
+        var owners = records.Where(record => !record.IsSubAsset)
+            .ToDictionary(record => record.Guid);
+        var subAssetIdentities = records.Where(static record => record.ParentGuid.HasValue)
+            .Select(static record => (record.ParentGuid!.Value, record.LocalIdentifier))
+            .ToHashSet();
+        foreach (var metaPath in Directory.EnumerateFiles(
+                     scanRoot, "*.meta", SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AssetMetaDocument meta;
+            try { meta = YamlUtility.Load<AssetMetaDocument>(metaPath); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                                               InvalidDataException or FormatException or
+                                               YamlDotNet.Core.YamlException)
+            {
+                BEngine.Debug.LogWarning($"Ignoring invalid generated artifact metadata '{metaPath}': " +
+                                         exception.Message);
+                continue;
+            }
+
+            if (!Guid.TryParse(meta.Guid, out var guid) ||
+                !Guid.TryParse(meta.ParentGuid, out var parentGuid) ||
+                meta.LocalIdentifier <= 0 ||
+                ownerFilter.HasValue && parentGuid != ownerFilter.Value ||
+                !owners.TryGetValue(parentGuid, out var owner)) continue;
+            var artifactPath = metaPath[..^".meta".Length];
+            if (!File.Exists(artifactPath)) continue;
+            if (!subAssetIdentities.Add((parentGuid, meta.LocalIdentifier)))
+                throw new InvalidDataException(
+                    $"Generated sub-asset identity {parentGuid:N}/{meta.LocalIdentifier} is duplicated.");
+            var hash = ComputeHash(artifactPath);
+            var assetType = string.IsNullOrWhiteSpace(meta.AssetType)
+                ? ResolveAssetType(artifactPath, isDirectory: false)
+                : meta.AssetType;
+            records.Add(new AssetRecord(guid, owner.AssetPath, artifactPath, metaPath,
+                artifactPath, assetType, hash, false, parentGuid, meta.LocalIdentifier)
+            {
+                ArtifactHash = hash,
+                ArtifactSize = new FileInfo(artifactPath).Length
+            });
+        }
+    }
+
+    private AssetRecord Import(
+        string sourcePath,
+        bool isDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         var metaPath = sourcePath + ".meta";
         var meta = LoadOrCreateMeta(metaPath, sourcePath, isDirectory);
+        meta.Settings ??= [];
         var guid = Guid.Parse(meta.Guid);
         var assetPath = ToProjectPath(sourcePath);
         var hash = isDirectory ? string.Empty : ComputeHash(sourcePath);
         var resolvedAssetType = ResolveAssetType(sourcePath, isDirectory);
-        var resolvedImporter = ResolveImporter(sourcePath, isDirectory);
+        var importer = isDirectory
+            ? null
+            : AssetImporter.CreateForImport(assetPath, sourcePath, meta.Settings);
+        var resolvedImporter = importer?.GetType().Name ?? "FolderImporter";
+        var importFingerprint = importer is null
+            ? string.Empty
+            : ComputeImportFingerprint(hash, importer.GetType(), meta.Settings);
         var artifactDirectory = Path.Combine(_workspace.AssetArtifactsPath, meta.Guid[..2]);
         Directory.CreateDirectory(artifactDirectory);
         var extension = isDirectory ? ".folder" : Path.GetExtension(sourcePath);
         var artifactPath = Path.Combine(artifactDirectory, meta.Guid + extension);
 
-        if (!isDirectory && (!File.Exists(artifactPath) || !string.Equals(hash, meta.SourceHash, StringComparison.Ordinal)))
+        if (importer is not null &&
+            (!File.Exists(artifactPath) ||
+             !string.Equals(importFingerprint, meta.ImportFingerprint, StringComparison.Ordinal)))
         {
             using var artifactLock = AcquireWriteLock(artifactPath + ".lock");
-            if (!File.Exists(artifactPath) || !string.Equals(hash, meta.SourceHash, StringComparison.Ordinal))
-                File.Copy(sourcePath, artifactPath, overwrite: true);
+            if (!File.Exists(artifactPath) ||
+                !string.Equals(importFingerprint, meta.ImportFingerprint, StringComparison.Ordinal))
+            {
+                using var context = new AssetImportContext(assetPath, sourcePath, artifactPath,
+                    meta.Settings, cancellationToken);
+                importer.Import(context);
+                context.Commit();
+            }
+        }
+
+        // Importers may normalize their source document while producing the Artifact.
+        // Persist the post-import fingerprint so the next scan does not report a false update.
+        if (!isDirectory)
+        {
+            hash = ComputeHash(sourcePath);
+            importFingerprint = importer is null
+                ? string.Empty
+                : ComputeImportFingerprint(hash, importer.GetType(), meta.Settings);
         }
 
         if (!string.Equals(meta.SourceHash, hash, StringComparison.Ordinal) ||
             !string.Equals(meta.AssetType, resolvedAssetType, StringComparison.Ordinal) ||
-            !string.Equals(meta.Importer, resolvedImporter, StringComparison.Ordinal))
+            !string.Equals(meta.Importer, resolvedImporter, StringComparison.Ordinal) ||
+            !string.Equals(meta.ImportFingerprint, importFingerprint, StringComparison.Ordinal))
         {
             meta.SourceHash = hash;
             meta.AssetType = resolvedAssetType;
             meta.Importer = resolvedImporter;
+            meta.ImportFingerprint = importFingerprint;
             meta.Save(metaPath);
         }
 
         var parentGuid = Guid.TryParse(meta.ParentGuid, out var parsedParent) ? parsedParent : (Guid?)null;
+        var artifactHash = isDirectory ? string.Empty : ComputeHash(artifactPath);
+        var artifactSize = isDirectory ? 0 : new FileInfo(artifactPath).Length;
         return new AssetRecord(guid, assetPath, sourcePath, metaPath, artifactPath,
-            meta.AssetType, hash, isDirectory, parentGuid, Math.Max(0, meta.LocalIdentifier));
+            meta.AssetType, hash, isDirectory, parentGuid, Math.Max(0, meta.LocalIdentifier))
+        {
+            ArtifactHash = artifactHash,
+            ArtifactSize = artifactSize
+        };
     }
 
     private static AssetMetaDocument LoadOrCreateMeta(string metaPath, string sourcePath, bool isDirectory)
@@ -214,7 +332,7 @@ public sealed class AssetDatabase
         {
             try
             {
-                var existing = Document.Load<AssetMetaDocument>(metaPath);
+                var existing = YamlUtility.Load<AssetMetaDocument>(metaPath);
                 if (existing.Format == "BEngine.AssetMeta" && existing.Version == 1 && Guid.TryParse(existing.Guid, out _))
                 {
                     return existing;
@@ -268,7 +386,8 @@ public sealed class AssetDatabase
             {
                 changes.Add(new AssetChange(AssetChangeKind.Moved, record.Guid, record.AssetPath, old.AssetPath));
             }
-            else if (!string.Equals(old.SourceHash, record.SourceHash, StringComparison.Ordinal))
+            else if (!string.Equals(old.SourceHash, record.SourceHash, StringComparison.Ordinal) ||
+                     !string.Equals(old.ArtifactHash, record.ArtifactHash, StringComparison.Ordinal))
             {
                 changes.Add(new AssetChange(AssetChangeKind.Updated, record.Guid, record.AssetPath));
             }
@@ -285,7 +404,7 @@ public sealed class AssetDatabase
         if (!File.Exists(_workspace.AssetDatabasePath)) return new AssetDatabaseDocument();
         try
         {
-            return Document.Load<AssetDatabaseDocument>(_workspace.AssetDatabasePath);
+            return YamlUtility.Load<AssetDatabaseDocument>(_workspace.AssetDatabasePath);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
         {
@@ -299,18 +418,22 @@ public sealed class AssetDatabase
         new AssetDatabaseDocument
         {
             Assets = records.OrderBy(record => record.AssetPath, StringComparer.OrdinalIgnoreCase)
-                .Select(record => new AssetDatabaseEntryDocument
-                {
-                    Guid = record.Guid.ToString("N"),
-                    AssetPath = record.AssetPath,
-                    AssetType = record.AssetType,
-                    SourceHash = record.SourceHash,
-                    ArtifactPath = Path.GetRelativePath(_workspace.LibraryPath, record.ArtifactPath).Replace('\\', '/'),
-                    ParentGuid = record.ParentGuid?.ToString("N") ?? string.Empty,
-                    LocalIdentifier = record.LocalIdentifier
-                }).ToList()
+                .Select(ToManifestEntry).ToList()
         }.Save(_workspace.AssetDatabasePath);
     }
+
+    private AssetDatabaseEntryDocument ToManifestEntry(AssetRecord record) => new()
+    {
+        Guid = record.Guid.ToString("N"),
+        AssetPath = record.AssetPath,
+        AssetType = record.AssetType,
+        SourceHash = record.SourceHash,
+        ArtifactPath = Path.GetRelativePath(_workspace.LibraryPath, record.ArtifactPath).Replace('\\', '/'),
+        ArtifactHash = record.ArtifactHash,
+        ArtifactSize = record.ArtifactSize,
+        ParentGuid = record.ParentGuid?.ToString("N") ?? string.Empty,
+        LocalIdentifier = record.LocalIdentifier
+    };
 
     private void EnsureInsideAssets(string path)
     {
@@ -328,20 +451,29 @@ public sealed class AssetDatabase
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
-    private static string ResolveImporter(string path, bool isDirectory) => isDirectory ? "FolderImporter" :
-        BEngine.Editor.AssetTypeRegistry.ResolveImporterName(path) is { } registeredImporter
-            ? registeredImporter
-            : path.EndsWith(".prefab.yaml", StringComparison.OrdinalIgnoreCase) ? "PrefabImporter" :
-                Path.GetExtension(path).ToLowerInvariant() switch
-                {
-                    ".cs" => "ScriptImporter",
-                    ".html" or ".htm" => "HtmlImporter",
-                    ".png" => "TextureImporter",
-                    ".shader" or ".glsl" => "ShaderImporter",
-                    ".bpackage" => "BPackageImporter",
-                    ".yaml" => "YamlImporter",
-                    _ => "DefaultImporter"
-                };
+    private static string ComputeImportFingerprint(
+        string sourceHash,
+        Type importerType,
+        IReadOnlyDictionary<string, string> settings)
+    {
+        var value = new StringBuilder();
+        AppendFingerprintValue(value, sourceHash);
+        AppendFingerprintValue(value, importerType.AssemblyQualifiedName ?? importerType.FullName ?? importerType.Name);
+        foreach (var setting in settings.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            AppendFingerprintValue(value, setting.Key);
+            AppendFingerprintValue(value, setting.Value ?? string.Empty);
+        }
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.ToString())))
+            .ToLowerInvariant();
+    }
+
+    private static void AppendFingerprintValue(StringBuilder target, string value) =>
+        target.Append(value.Length).Append(':').Append(value).Append(';');
+
+    private static string ResolveImporter(string path, bool isDirectory) => isDirectory
+        ? "FolderImporter"
+        : AssetImporter.ResolveImporterType(path).Name;
 
     private static string ResolveAssetType(string path, bool isDirectory) => isDirectory ? "Folder" :
         path.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase) ? ResolveManagedAssetType(path) :
@@ -372,7 +504,7 @@ public sealed class AssetDatabase
     {
         try
         {
-            var document = Document.Load<ManagedAssetDocument>(path);
+            var document = YamlUtility.Load<ManagedAssetData>(path);
             if (document.Format == "BEngine.ManagedAsset" && !string.IsNullOrWhiteSpace(document.TypeName))
                 return document.TypeName.Split(',')[0].Split('.').Last();
         }

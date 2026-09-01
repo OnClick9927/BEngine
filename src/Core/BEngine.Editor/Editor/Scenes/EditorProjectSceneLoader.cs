@@ -11,7 +11,7 @@ internal sealed class EditorProjectSceneLoader(string projectRootPath) : ISceneL
     public Scene LoadScene(string sceneNameOrPath, IServiceProvider services)
     {
         var sourcePath = ResolveScenePath(sceneNameOrPath);
-        var scene = Document.LoadBObject<SceneDocument, Scene>(sourcePath, services);
+        var scene = SceneAssetSerialization.Load(sourcePath, services);
         scene.path = sourcePath;
         return scene;
     }

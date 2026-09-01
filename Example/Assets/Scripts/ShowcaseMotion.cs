@@ -22,4 +22,13 @@ public sealed class ShowcaseMotion : MonoBehaviour
         transform.localPosition = _origin + movementAmplitude * wave;
         transform.Rotate(rotationSpeed * Time.deltaTime);
     }
+
+    public override void Reset()
+    {
+        movementAmplitude = Vector2.zero;
+        movementSpeed = Fix64.One;
+        rotationSpeed = Fix64.Zero;
+        phaseOffset = Fix64.Zero;
+        runInEditMode = false;
+    }
 }

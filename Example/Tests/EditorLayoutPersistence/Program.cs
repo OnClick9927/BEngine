@@ -1,4 +1,3 @@
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Editor.Documents;
 using BEngine.ProjectSystem;
@@ -13,9 +12,11 @@ internal static class Program
         try
         {
             VerifyProjectPackagesSplitterLayout();
+            VerifyGroupedUndoHistory();
+            VerifyUndoHistoryDropdown();
             VerifyLayoutRoundTrip(root);
             Console.WriteLine(
-                "EDITOR_LAYOUT_PERSISTENCE_OK|yaml-v2,named,last-session,dock-tree,closed-window-placement,selection,lock-context,project-packages-splitter,project-packages-height");
+                "EDITOR_LAYOUT_PERSISTENCE_OK|yaml-v2,named,last-session,dock-tree,closed-window-placement,selection,lock-context,project-packages-splitter,project-packages-height,undo-group-collapse,undo-history-jump,toolbar-layout-menu,layout-rename,case-only-layout-rename,builtin-layout-protection");
             return 0;
         }
         catch (Exception exception)
@@ -26,6 +27,73 @@ internal static class Program
         finally
         {
             try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    private static void VerifyUndoHistoryDropdown()
+    {
+        Undo.ClearAll();
+        var target = new GameObject("Before");
+        try
+        {
+            Undo.RecordObject(target, "First Rename");
+            target.name = "First";
+            Undo.IncrementCurrentGroup();
+            Undo.RecordObject(target, "Second Rename");
+            target.name = "Second";
+
+            var history = Undo.GetHistory(out var cursor);
+            Require(cursor == 2 && history.Select(static item => item.Name)
+                    .SequenceEqual(["First Rename", "Second Rename"]) &&
+                    history.All(static item => !item.IsRedo),
+                "Undo history did not expose two chronological operation groups at the current cursor.");
+            var undoMenu = EditorToolbarDropdowns.CreateUndoHistoryMenu();
+            Require(undoMenu.Items.Any(item => item.Path == "Undo/Second Rename" && item.Enabled) &&
+                    undoMenu.Items.Any(item => item.Path == "Undo/First Rename" && item.Enabled) &&
+                    undoMenu.Items.Any(item => item.Path == "Redo/No Redo History" && !item.Enabled),
+                "The toolbar Undo history menu did not expose the expected undo and redo branches.");
+
+            undoMenu.Items.Single(item => item.Path == "Undo/First Rename").Action!.Invoke();
+            history = Undo.GetHistory(out cursor);
+            Require(target.name == "Before" && cursor == 0 && history.All(static item => item.IsRedo),
+                "Selecting an older Undo history entry did not jump back through all newer groups.");
+
+            var redoMenu = EditorToolbarDropdowns.CreateUndoHistoryMenu();
+            redoMenu.Items.Single(item => item.Path == "Redo/Second Rename").Action!.Invoke();
+            Undo.GetHistory(out cursor);
+            Require(target.name == "Second" && cursor == 2,
+                "Selecting a later Redo history entry did not replay every preceding group.");
+        }
+        finally
+        {
+            Undo.ClearAll();
+        }
+    }
+
+    private static void VerifyGroupedUndoHistory()
+    {
+        Undo.ClearAll();
+        var target = new GameObject("Before");
+        try
+        {
+            Undo.RecordObject(target, "Grouped Rename");
+            target.name = "First";
+            Undo.RecordObject(target, "Grouped Rename");
+            target.name = "Second";
+
+            var history = Undo.GetHistory(out var cursor);
+            Require(cursor == 1 && history is [{ Name: "Grouped Rename", IsRedo: false }],
+                "Multiple records in one Undo group were exposed as separate history entries.");
+            Require(Undo.MoveToHistoryCursor(0) && target.name == "Before",
+                "Jumping before a grouped history entry did not restore every record in the group.");
+            history = Undo.GetHistory(out cursor);
+            Require(cursor == 0 && history is [{ Name: "Grouped Rename", IsRedo: true }] &&
+                    Undo.MoveToHistoryCursor(1) && target.name == "Second",
+                "Replaying a grouped history entry did not restore every record in chronological order.");
+        }
+        finally
+        {
+            Undo.ClearAll();
         }
     }
 
@@ -65,7 +133,8 @@ internal static class Program
     private static void VerifyLayoutRoundTrip(string root)
     {
         Directory.CreateDirectory(root);
-        new ProjectDocument { Name = "Layout Test" }.Save(Path.Combine(root, ProjectWorkspace.ProjectFileName));
+        YamlUtility.Save(new ProjectData { Name = "Layout Test" },
+            Path.Combine(root, ProjectWorkspace.ProjectFileName));
         var workspace = ProjectWorkspace.Open(root);
         var store = new EditorLayoutStore(workspace);
         var hierarchy = new LayoutProbeWindow("Hierarchy") { PersistentId = "Hierarchy" };
@@ -167,6 +236,26 @@ internal static class Program
         Require(store.LoadLastSession().ActiveLayout == "Editing",
             "The last-session layout did not remember the active named layout.");
 
+        var menuActions = new List<string>();
+        var layoutMenu = EditorToolbarDropdowns.CreateLayoutMenu(
+            "Editing", store.HasLastSession, store.Names,
+            () => menuActions.Add("save"),
+            () => menuActions.Add("save-as"),
+            () => menuActions.Add("last-session"),
+            name => menuActions.Add("switch:" + name),
+            name => menuActions.Add("rename:" + name),
+            name => menuActions.Add("delete:" + name));
+        Require(layoutMenu.Items.Any(item => item.Path == "Save Current" && item.Enabled) &&
+                layoutMenu.Items.Any(item => item.Path == "Save As..." && item.Enabled) &&
+                layoutMenu.Items.Any(item => item.Path == "Switch/Last Session" && item.Enabled) &&
+                layoutMenu.Items.Any(item => item.Path == "Switch/Editing" && item.On) &&
+                layoutMenu.Items.Any(item => item.Path == "Rename/Editing" && item.Enabled) &&
+                layoutMenu.Items.Any(item => item.Path == "Delete/Editing" && item.Enabled),
+            "The toolbar Layout menu did not expose save, switch, rename, and delete actions.");
+        layoutMenu.Items.Single(item => item.Path == "Rename/Editing").Action!.Invoke();
+        Require(menuActions.SequenceEqual(["rename:Editing"]),
+            "The toolbar Layout menu dispatched the wrong named-layout action.");
+
         var restored = new ImGuiDockWorkspace();
         restored.Add("Hierarchy", hierarchy, DockArea.Left, true);
         restored.Add("Scene", scene, DockArea.Center, true);
@@ -175,8 +264,26 @@ internal static class Program
         Render(restored);
         Require(panels.Count == 2 && restored.IsSelected(scene),
             "Restoring the dock tree lost a window or selected tab.");
-        Require(store.Delete("Editing") && store.Names.Count == 0,
-            "Deleting a named layout left it in the layout list.");
+        var renamed = store.Rename("Editing", "Review/Layout");
+        var renamedDocument = store.Load(renamed);
+        Require(renamed == "Review_Layout" && store.Names.SequenceEqual([renamed]) &&
+                renamedDocument.Name == renamed && renamedDocument.ActiveLayout == renamed,
+            "Renaming a named layout did not update its file and serialized identity together.");
+        var caseRenamed = store.Rename(renamed, "review_layout");
+        var caseRenamedDocument = store.Load(caseRenamed);
+        Require(caseRenamed == "review_layout" && store.Names.SequenceEqual([caseRenamed]) &&
+                caseRenamedDocument.Name == caseRenamed && caseRenamedDocument.ActiveLayout == caseRenamed,
+            "Changing only a layout name's casing did not update its file and serialized identity together.");
+        Require(!store.Delete(EditorLayoutStore.LastSessionName),
+            "The built-in Last Session layout could be deleted.");
+        RequireThrows<InvalidOperationException>(() =>
+                store.Rename(EditorLayoutStore.LastSessionName, "Renamed"),
+            "The built-in Last Session layout could be renamed.");
+        RequireThrows<InvalidOperationException>(() =>
+                store.Save(EditorLayoutStore.LastSessionName, new EditorLayoutDocument()),
+            "A named layout overwrote the built-in Last Session identity.");
+        Require(store.Delete(caseRenamed) && store.Names.Count == 0,
+            "Deleting a renamed layout left it in the layout list.");
         hierarchy.CloseInternal();
         scene.CloseInternal();
     }
@@ -203,5 +310,12 @@ internal static class Program
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static void RequireThrows<TException>(Action action, string message) where TException : Exception
+    {
+        try { action(); }
+        catch (TException) { return; }
+        throw new InvalidOperationException(message);
     }
 }

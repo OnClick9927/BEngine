@@ -6,7 +6,7 @@ public sealed class AssetBundleCatalog
 {
     public const string CurrentFormat = "BEngine.AssetBundleCatalog";
     public const int MinimumSupportedSchemaVersion = 1;
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     [JsonPropertyOrder(0)] public string Format { get; set; } = CurrentFormat;
     [JsonPropertyOrder(1)] public int SchemaVersion { get; set; } = CurrentSchemaVersion;

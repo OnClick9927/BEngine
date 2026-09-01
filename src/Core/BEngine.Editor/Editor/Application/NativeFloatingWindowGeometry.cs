@@ -45,6 +45,33 @@ internal static class NativeFloatingWindowGeometry
         return new Rect(x, y, width, height);
     }
 
+    internal static Rect CreateUndockedBounds(
+        Vector2 screenOrigin,
+        Vector2 dockedClientSize,
+        Vector2? previousFloatingSize,
+        Vector2 minimumSize,
+        Vector2 maximumSize,
+        IReadOnlyList<Rect> workAreas)
+    {
+        var desired = previousFloatingSize is { } remembered &&
+                      remembered.x > 0 && remembered.y > 0
+            ? remembered
+            : new Vector2(Fix64.Max(1, dockedClientSize.x * 2),
+                Fix64.Max(1, dockedClientSize.y * 2));
+        var bounds = ConstrainSize(new Rect(screenOrigin.x, screenOrigin.y, desired.x, desired.y),
+            minimumSize, maximumSize);
+        var available = workAreas.Where(IsValid).ToArray();
+        if (available.Length == 0) return bounds;
+
+        var target = available.FirstOrDefault(area => area.Contains(screenOrigin));
+        if (!IsValid(target)) target = available.MinBy(area => DistanceSquared(screenOrigin, area));
+        var width = Fix64.Min(bounds.width, target.width);
+        var height = Fix64.Min(bounds.height, target.height);
+        var x = Fix64.Clamp(bounds.x, target.x, Fix64.Max(target.x, target.xMax - width));
+        var y = Fix64.Clamp(bounds.y, target.y, Fix64.Max(target.y, target.yMax - height));
+        return new Rect(x, y, width, height);
+    }
+
     private static bool HasReachableTitle(Rect bounds, Rect workArea)
     {
         var title = new Rect(bounds.x, bounds.y,

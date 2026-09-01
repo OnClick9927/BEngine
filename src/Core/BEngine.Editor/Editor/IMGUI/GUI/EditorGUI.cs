@@ -18,6 +18,7 @@ public static class EditorGUI
     private static readonly Stack<bool> EnabledStack = new();
     private static readonly Stack<bool> ChangedStack = new();
     private static readonly Dictionary<int, int> PendingPopupSelections = [];
+    private static readonly Dictionary<int, ulong> PendingLayerMaskSelections = [];
     [ThreadStatic] private static Dictionary<ObjectFieldStructuralIdentity, int>? ObjectFieldOccurrences;
     private static readonly ConditionalWeakTable<SerializedObject, Dictionary<string, ReorderableList>>
         DefaultReorderableLists = new();
@@ -30,6 +31,7 @@ public static class EditorGUI
         EnabledStack.Reverse().ToArray(),
         ChangedStack.Reverse().ToArray(),
         new Dictionary<int, int>(PendingPopupSelections),
+        new Dictionary<int, ulong>(PendingLayerMaskSelections),
         EditorObjectPicker.CaptureState(),
         DragAndDrop.CaptureState(),
         indentLevel,
@@ -49,6 +51,9 @@ public static class EditorGUI
             PendingPopupSelections.Clear();
             foreach (var pair in snapshot.PopupSelections)
                 PendingPopupSelections[pair.Key] = pair.Value;
+            PendingLayerMaskSelections.Clear();
+            foreach (var pair in snapshot.LayerMaskSelections)
+                PendingLayerMaskSelections[pair.Key] = pair.Value;
             EditorObjectPicker.RestoreState(snapshot.ObjectPickerState);
             DragAndDrop.RestoreState(snapshot.DragAndDropState);
         }
@@ -70,6 +75,7 @@ public static class EditorGUI
         bool[] EnabledValues,
         bool[] ChangedValues,
         IReadOnlyDictionary<int, int> PopupSelections,
+        IReadOnlyDictionary<int, ulong> LayerMaskSelections,
         object ObjectPickerState,
         object DragAndDropState,
         int IndentLevel,
@@ -509,6 +515,46 @@ public static class EditorGUI
         string[] displayedOptions, GUIStyle? style) => DrawPopup(position, label, selectedIndex,
         displayedOptions, forceAdvanced: true, style);
 
+    public static ulong LayerMaskField(Rect position, string label, ulong value) =>
+        LayerMaskField(position, label, value, null);
+
+    public static ulong LayerMaskField(Rect position, string label, ulong value, GUIStyle? style)
+    {
+        style ??= EditorStyles.layerMaskField;
+        var field = PrefixLabel(position, new GUIContent(label));
+        var id = GUIUtility.GetControlID("LayerMaskField".GetHashCode(StringComparison.Ordinal),
+            FocusType.Keyboard, field);
+        var token = ControlToken(id, label);
+        if (PendingLayerMaskSelections.Remove(token, out var pending))
+        {
+            value = pending;
+            GUI.changed = true;
+        }
+
+        var menuValue = value & SortingLayer.AllMask;
+        if (DropDownButton(field, LayerMaskSummary(menuValue), FocusType.Keyboard, style))
+        {
+            var menu = new GenericMenu();
+            AddLayerMaskMenuItem(menu, "Everything", menuValue == SortingLayer.AllMask,
+                SortingLayer.AllMask, token);
+            AddLayerMaskMenuItem(menu, "Nothing", menuValue == 0, 0, token);
+            menu.AddSeparator(string.Empty);
+            foreach (var layer in SortingLayerRegistry.layers)
+            {
+                var bit = SortingLayer.ToMask(layer.Value);
+                var group = layer.IsUi ? "UI" : "World";
+                var layerName = layer.Name.Replace('/', '-');
+                AddLayerMaskMenuItem(menu, $"{group}/{layer.Index} {layerName}",
+                    (menuValue & bit) != 0, menuValue ^ bit, token);
+            }
+            menu.DropDown(field);
+        }
+        return value;
+    }
+
+    public static LayerMask LayerMaskField(Rect position, string label, LayerMask value,
+        GUIStyle? style = null) => new(LayerMaskField(position, label, value.value, style));
+
     public static bool DropDownButton(Rect position, string text, FocusType focusType,
         GUIStyle? style = null) => DropDownButton(position, new GUIContent(text), focusType, style);
 
@@ -852,13 +898,17 @@ public static class EditorGUI
                         value => property.boolValue = value);
                     break;
                 case SerializedPropertyType.Integer:
-                case SerializedPropertyType.LayerMask:
                     ApplyControlValue(
                         () => range is null
                             ? IntField(position, label.text, property.intValue, style)
                             : IntSlider(position, label.text, property.intValue,
                                 (int)MathF.Ceiling(range.min), (int)MathF.Floor(range.max), style),
                         value => property.intValue = value);
+                    break;
+                case SerializedPropertyType.LayerMask:
+                    ApplyControlValue(
+                        () => LayerMaskField(position, label.text, property.ulongValue, style),
+                        value => property.ulongValue = value);
                     break;
                 case SerializedPropertyType.Float:
                     ApplyControlValue(
@@ -905,6 +955,28 @@ public static class EditorGUI
             }
         }
         finally { showMixedValue = previousMixedValue; }
+    }
+
+    private static void AddLayerMaskMenuItem(GenericMenu menu, string label, bool selected,
+        ulong value, int token) => menu.AddItem(new GUIContent(label), selected, () =>
+    {
+        PendingLayerMaskSelections[token] = value;
+        EditorApplication.QueuePlayerLoopUpdate();
+    });
+
+    private static string LayerMaskSummary(ulong mask)
+    {
+        mask &= SortingLayer.AllMask;
+        if (mask == SortingLayer.AllMask) return "Everything";
+        if (mask == 0) return "Nothing";
+        if ((mask & (mask - 1)) == 0)
+        {
+            var index = System.Numerics.BitOperations.TrailingZeroCount(mask) +
+                        SortingLayer.MinimumIndex;
+            var layer = SortingLayer.FromIndex(index);
+            return $"{index} {SortingLayerRegistry.NameOf(layer)}";
+        }
+        return $"{System.Numerics.BitOperations.PopCount(mask)} Layers";
     }
 
     private static void ApplyControlValue<T>(Func<T> drawControl, Action<T> applyValue)

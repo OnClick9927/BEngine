@@ -41,7 +41,7 @@ internal sealed class PlayerApplication : IDisposable
 
     internal PlayerApplication(
         ProjectWorkspace workspace,
-        ProjectSettingsDocument projectSettings,
+        ProjectSettingsData projectSettings,
         IServiceProvider services,
         ISceneRuntimeFactory sceneRuntimeFactory,
         IRuntimeSceneManager sceneManager,
@@ -81,7 +81,7 @@ internal sealed class PlayerApplication : IDisposable
     private PlayerApplication((ProjectWorkspace Workspace, ServiceProvider Services) startup)
         : this(
             startup.Workspace,
-            startup.Services.GetRequiredService<ProjectSettingsDocument>(),
+            startup.Services.GetRequiredService<ProjectSettingsData>(),
             startup.Services,
             startup.Services.GetRequiredService<ISceneRuntimeFactory>(),
             startup.Services.GetRequiredService<IRuntimeSceneManager>(),

@@ -4,7 +4,8 @@ namespace Game;
 
 public sealed class PlayerMover : MonoBehaviour
 {
-    public Fix64 speed { get; set; } = 3;
+    public Fix64 speed { get; set; } = Fix64.Parse("3.2");
+    public Vector2 moveBounds { get; set; } = new(Fix64.Parse("7.2"), Fix64.Parse("3.6"));
 
     public override void Update()
     {
@@ -14,7 +15,17 @@ public sealed class PlayerMover : MonoBehaviour
             Fix64.Clamp(horizontal, -Fix64.One, Fix64.One),
             Fix64.Clamp(vertical, -Fix64.One, Fix64.One));
         if (direction.sqrMagnitude > Fix64.One) direction = direction.normalized;
-        transform.Translate(direction * speed * Time.deltaTime, Space.World);
+        var next = transform.localPosition + direction * speed * Time.deltaTime;
+        transform.localPosition = new Vector2(
+            Fix64.Clamp(next.x, -Fix64.Abs(moveBounds.x), Fix64.Abs(moveBounds.x)),
+            Fix64.Clamp(next.y, -Fix64.Abs(moveBounds.y), Fix64.Abs(moveBounds.y)));
+    }
+
+    public override void Reset()
+    {
+        speed = Fix64.Parse("3.2");
+        moveBounds = new Vector2(Fix64.Parse("7.2"), Fix64.Parse("3.6"));
+        runInEditMode = false;
     }
 
     private static Fix64 Axis(KeyCode negative, KeyCode positive) =>

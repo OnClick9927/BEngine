@@ -1,6 +1,6 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
-using BEngine.Documents;
 using BEngine.Editor.Documents;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
@@ -14,6 +14,7 @@ internal static class Program
         var roots = new List<string>();
         try
         {
+            VerifyBuiltInSymbolSets();
             VerifyDiscoveryAndNearestOwnership(roots);
             VerifyRuntimeTopologyAndEditorOnlyAssembly(roots);
             VerifyIncrementalDependencyRebuild(roots);
@@ -26,7 +27,7 @@ internal static class Program
             VerifyCycleFailure(roots);
 
             Console.WriteLine(
-                "ASSEMBLY_DEFINITIONS_OK|discovery,nearest-owner,topology,incremental-dependents," +
+                "ASSEMBLY_DEFINITIONS_OK|built-in-symbols,discovery,nearest-owner,topology,incremental-dependents," +
                 "define-constraints,unsafe," +
                 "platform-filters,auto-reference,duplicate-name,missing-reference,runtime-editor-boundary," +
                 "cycle,editor-only");
@@ -41,6 +42,34 @@ internal static class Program
         {
             foreach (var root in roots) TryDelete(root);
         }
+    }
+
+    private static void VerifyBuiltInSymbolSets()
+    {
+        var symbolType = typeof(ProjectScriptCompiler).Assembly.GetType(
+            "BEngine.ProjectSystem.BEngineCompilationSymbols", throwOnError: true)!;
+        var create = symbolType.GetMethod("Create", BindingFlags.Static | BindingFlags.NonPublic) ??
+                     throw new MissingMethodException(symbolType.FullName, "Create");
+        var runtimeDebug = (IReadOnlyList<string>)create.Invoke(null, [false, "Debug"])!;
+        var editorRelease = (IReadOnlyList<string>)create.Invoke(null, [true, "Release"])!;
+
+        var expectedPlatform = OperatingSystem.IsWindows() ? "BENGINE_WINDOWS" :
+            OperatingSystem.IsMacOS() ? "BENGINE_OSX" : "BENGINE_LINUX";
+        var common = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "BENGINE",
+            "BENGINE_1_0",
+            "BENGINE_1_0_OR_NEWER",
+            expectedPlatform,
+            $"BENGINE_{RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant()}"
+        };
+        var expectedRuntimeDebug = common.Append("DEBUG").ToHashSet(StringComparer.Ordinal);
+        var expectedEditorRelease = common.Append("BENGINE_EDITOR").Append("RELEASE")
+            .ToHashSet(StringComparer.Ordinal);
+        Require(expectedRuntimeDebug.SetEquals(runtimeDebug),
+            $"Runtime Debug symbol set is incorrect: [{string.Join(", ", runtimeDebug)}].");
+        Require(expectedEditorRelease.SetEquals(editorRelease),
+            $"Editor Release symbol set is incorrect: [{string.Join(", ", editorRelease)}].");
     }
 
     private static void VerifyDiscoveryAndNearestOwnership(ICollection<string> roots)
@@ -93,6 +122,13 @@ internal static class Program
         var editorDirectory = Path.Combine(workspace.EditorScriptsPath, "Tools");
         WriteDefinition(editorDirectory, editorName, [gameplayName], "AssemblyTests.Editor", editorOnly: true);
         WriteSource(editorDirectory, "EditorProbe.cs", """
+            #if !BENGINE || !BENGINE_EDITOR
+            #error Editor project scripts did not receive the BEngine editor symbols.
+            #endif
+            #if !BENGINE_1_0 || !BENGINE_1_0_OR_NEWER || !DEBUG || RELEASE
+            #error Editor project scripts received invalid version or configuration symbols.
+            #endif
+
             using AssemblyTests.Gameplay;
             namespace AssemblyTests.Editor;
             public static class EditorProbe
@@ -174,7 +210,7 @@ internal static class Program
     private static void VerifyDefineConstraintsAndUnsafeCode(ICollection<string> roots)
     {
         var workspace = CreateWorkspace(roots, "DefinesAndUnsafe");
-        var settings = Document.Load<ProjectSettingsDocument>(workspace.ProjectSettingsFilePath);
+        var settings = BEngine.YamlUtility.Load<ProjectSettingsData>(workspace.ProjectSettingsFilePath);
         settings.ScriptingDefineSymbols = ["ASSEMBLY_TEST_FEATURE"];
         settings.Save(workspace.ProjectSettingsFilePath);
 
@@ -189,6 +225,19 @@ internal static class Program
             defineConstraints: ["ASSEMBLY_TEST_FEATURE", "!ASSEMBLY_TEST_DISABLED"],
             allowUnsafeCode: true);
         WriteSource(activeDirectory, "UnsafeDefineProbe.cs", """
+            #if !BENGINE || BENGINE_EDITOR
+            #error Runtime project scripts did not receive the BEngine runtime symbols.
+            #endif
+            #if !BENGINE_1_0 || !BENGINE_1_0_OR_NEWER
+            #error Runtime project scripts did not receive BEngine 1.0 version symbols.
+            #endif
+            #if !DEBUG || RELEASE
+            #error Runtime project scripts received invalid build configuration symbols.
+            #endif
+            #if !BENGINE_WINDOWS && !BENGINE_LINUX && !BENGINE_OSX
+            #error Runtime project scripts did not receive a supported platform symbol.
+            #endif
+
             namespace AssemblyTests.Defines;
             public static class UnsafeDefineProbe
             {

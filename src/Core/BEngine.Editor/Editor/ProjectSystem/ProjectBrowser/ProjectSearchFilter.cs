@@ -38,8 +38,8 @@ internal sealed class ProjectSearchFilter
         if (type.Equals("GameObject", StringComparison.OrdinalIgnoreCase) ||
             type.Equals("PrefabAsset", StringComparison.OrdinalIgnoreCase))
             return item.AssetType.Equals("Prefab", StringComparison.OrdinalIgnoreCase);
-        if (type.Equals("MonoScript", StringComparison.OrdinalIgnoreCase)) type = "Script";
-        if (type.Equals("SceneAsset", StringComparison.OrdinalIgnoreCase)) type = "Scene";
+        if (type.Equals(nameof(MonoScript), StringComparison.OrdinalIgnoreCase)) type = nameof(Script);
+        if (type.Equals(nameof(Scene) + "Asset", StringComparison.OrdinalIgnoreCase)) type = nameof(Scene);
         if (type.Equals("Texture", StringComparison.OrdinalIgnoreCase) ||
             type.Equals("Texture2D", StringComparison.OrdinalIgnoreCase) ||
             type.Equals("Image", StringComparison.OrdinalIgnoreCase))

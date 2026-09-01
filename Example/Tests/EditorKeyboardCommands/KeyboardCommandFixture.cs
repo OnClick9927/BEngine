@@ -1,6 +1,6 @@
-using BEngine.Documents;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
+using BEngine.Serialization;
 
 namespace BEngine.ExampleTests.EditorKeyboardCommands;
 
@@ -32,7 +32,7 @@ internal sealed class KeyboardCommandFixture : IDisposable
         root.transform.localPosition = new Vector2(2, 3);
         var child = scene.CreateGameObject("Keyboard Child");
         child.transform.SetParent(root.transform, false);
-        Document.SaveBObject<SceneDocument>(scene, ScenePath);
+        SceneAssetSerialization.Save(scene, ScenePath);
         scene.Dispose();
     }
 

@@ -13,18 +13,32 @@ internal static class EditorPlayModeAssetWriteTests
         var createdFolderPath = Path.Combine(fixture.Workspace.AssetsPath, "PlayWriteBarrierFolder");
         var prefabPath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrier.prefab.yaml");
         var atlasSourcePath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrierSource.png");
-        var spritePath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrier.sprite.yaml");
         var atlasPath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrier.atlas.yaml");
         var atlasOutputPath = Path.Combine(fixture.Workspace.AssetsPath, "Scenes", "PlayWriteBarrier.png");
         File.WriteAllText(seedPath, "Play Mode project write barrier seed");
         File.WriteAllBytes(atlasSourcePath, Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+AvzZVwAAAABJRU5ErkJggg=="));
-        new Sprite { name = "PlayWriteBarrier", Texture = "Assets/Scenes/PlayWriteBarrierSource.png" }
-            .Save(spritePath);
+            "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAErSURBVFhH7ZbNSsNAEMdz9izqO/guIvVUta/ipSDizdL6IDkZyGaS/Ui1SaxtwI+K0DcZd8Kcag4B0z3tDwYyf4bJ7EwybODxeP6DUOpU6ucbADhkyS1JZiaf31sUYIYsuUXIfFq8rjHJ9BVLbqEOUAEiVZcsucUX4AtIpLkvl7UtQJ+x1B+0ZESmH6zN6KR/LFUT++KVygu0zxH5rXGZeUxSPY4ic8Spu5FIffv1s8ViuUZq864tqhVKU2AMGvNF1fhtceVbjfX7BgHMOafuRhzPj2nBkNGMdw2kGdpF9JS/VDSCaeO3xunrVM0HYVgecOr+2Os30AWaMbWZTsqSW3wBvgBQ+az5C0COWHILZPqu/tigEGrAklvsXfDELqqLMAz7XzIejxuC4BeQX1VtPm/zcgAAAABJRU5ErkJggg=="));
+        File.WriteAllText(atlasSourcePath + ".meta", """
+            format: BEngine.AssetMeta
+            version: 1
+            guid: e612a4689d7441aa86b0544b36533bc3
+            importer: TextureImporter
+            assetType: Texture
+            sourceHash: ''
+            settings:
+              textureType: Sprite
+              spritePivotX: '0.5'
+              spritePivotY: '0.5'
+            """);
+        BAsset.Invalidate(atlasSourcePath);
+        var sourceTexture = BAsset.Load<Texture>(atlasSourcePath) ??
+                            throw new InvalidOperationException("The play-mode Atlas source did not load.");
+        var sourceSprite = sourceTexture.CreateSprite(new Vector2(Fix64.Half, Fix64.Half));
+        sourceSprite.name = "PlayWriteBarrier";
         var atlas = new TextureAtlas
         {
-            MaxSize = 32,
-            SpriteReferences = ["Assets/Scenes/PlayWriteBarrier.sprite.yaml"]
+            MaxSize = 64,
+            Sources = [sourceSprite]
         };
         atlas.Save(atlasPath);
 
@@ -80,7 +94,6 @@ internal static class EditorPlayModeAssetWriteTests
             DeleteFileAndMeta(createdAssetPath);
             DeleteFileAndMeta(prefabPath);
             DeleteFileAndMeta(atlasSourcePath);
-            DeleteFileAndMeta(spritePath);
             DeleteFileAndMeta(atlasPath);
             DeleteFileAndMeta(atlasOutputPath);
             DeleteDirectoryAndMeta(createdFolderPath);
@@ -132,9 +145,12 @@ internal static class EditorPlayModeAssetWriteTests
         {
             var current = Capture(root);
             TestAssert.Require(Directories.SequenceEqual(current.Directories, StringComparer.Ordinal),
-                $"{operation} changed the Assets directory layout.");
+                $"{operation} changed the Assets directory layout. " +
+                $"Expected [{string.Join(", ", Directories)}], actual [{string.Join(", ", current.Directories)}].");
             TestAssert.Require(Files.Keys.SequenceEqual(current.Files.Keys, StringComparer.Ordinal),
-                $"{operation} changed the Assets file layout.");
+                $"{operation} changed the Assets file layout. Added " +
+                $"[{string.Join(", ", current.Files.Keys.Except(Files.Keys, StringComparer.Ordinal))}], removed " +
+                $"[{string.Join(", ", Files.Keys.Except(current.Files.Keys, StringComparer.Ordinal))}].");
             foreach (var (path, expectedBytes) in Files)
             {
                 TestAssert.Require(expectedBytes.SequenceEqual(current.Files[path]),

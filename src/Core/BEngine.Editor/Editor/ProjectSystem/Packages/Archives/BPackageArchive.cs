@@ -113,7 +113,7 @@ public static class BPackageArchive
         var normalizedId = NormalizeInstallationId(installationId);
         var path = GetReceiptPath(workspace, normalizedId);
         if (!File.Exists(path)) return null;
-        var receipt = Document.Load<BPackageImportReceipt>(path);
+        var receipt = YamlUtility.Load<BPackageImportReceipt>(path);
         ValidateReceipt(receipt, normalizedId);
         return receipt;
     }
@@ -760,7 +760,7 @@ public static class BPackageArchive
     private static BEngine.ProjectSystem.Editor.AssetMetaDocument LoadAssetMetadata(string path)
     {
         BEngine.ProjectSystem.Editor.AssetMetaDocument metadata;
-        try { metadata = Document.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(path); }
+        try { metadata = YamlUtility.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(path); }
         catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException)
         {
             throw new InvalidDataException($"Invalid asset metadata '{path}'.", exception);
@@ -929,7 +929,7 @@ public static class BPackageArchive
         using var stream = entries[0].Open();
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
             bufferSize: 4096, leaveOpen: false);
-        var manifest = BPackageManifest.FromYaml<BPackageManifest>(reader.ReadToEnd());
+        var manifest = YamlUtility.Deserialize<BPackageManifest>(reader.ReadToEnd());
         ValidateManifest(manifest);
         return manifest;
     }

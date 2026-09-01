@@ -11,6 +11,15 @@ public abstract class BAsset : BObject
     public string guid { get; internal set; } = string.Empty;
 
     [YamlIgnore, HideInInspector]
+    public string sourcePath { get; internal set; } = string.Empty;
+
+    [YamlIgnore, HideInInspector]
+    public string artifactPath { get; internal set; } = string.Empty;
+
+    [YamlIgnore, HideInInspector]
+    public string assetType { get; internal set; } = string.Empty;
+
+    [YamlIgnore, HideInInspector]
     internal Guid? parentAssetGuid { get; private set; }
 
     [YamlIgnore, HideInInspector]
@@ -50,6 +59,22 @@ public abstract class BAsset : BObject
         guid = value.ToString("N");
     }
 
+    internal void BindAssetFile(
+        string projectPath,
+        string sourcePhysicalPath,
+        string artifactPhysicalPath,
+        Guid id,
+        string type)
+    {
+        BindAssetReference(projectPath, id);
+        sourcePath = sourcePhysicalPath ?? string.Empty;
+        artifactPath = artifactPhysicalPath ?? string.Empty;
+        assetType = type ?? string.Empty;
+    }
+
+    internal void BindAssetFile(string projectPath, string physicalPath, Guid id, string type) =>
+        BindAssetFile(projectPath, physicalPath, physicalPath, id, type);
+
     internal void BindSubAssetReference(
         string projectPath,
         Guid parentGuid,
@@ -64,22 +89,5 @@ public abstract class BAsset : BObject
         localIdentifier = localId;
         if (objectId is { } value) Id = value;
         guid = parentGuid.ToString("N");
-    }
-}
-
-/// <summary>Base class for assets backed by a project or package file.</summary>
-public abstract class FileAsset : BAsset
-{
-    [YamlIgnore, HideInInspector]
-    public string sourcePath { get; internal set; } = string.Empty;
-
-    [YamlIgnore, HideInInspector]
-    public string assetType { get; internal set; } = string.Empty;
-
-    internal void BindAssetFile(string projectPath, string physicalPath, Guid id, string type)
-    {
-        BindAssetReference(projectPath, id);
-        sourcePath = physicalPath ?? string.Empty;
-        assetType = type ?? string.Empty;
     }
 }

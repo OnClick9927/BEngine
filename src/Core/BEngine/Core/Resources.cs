@@ -1,4 +1,4 @@
-using BEngine.Documents;
+using BEngine.Serialization;
 
 namespace BEngine;
 /// <summary>Supplies logical resource content without exposing its storage implementation.</summary>
@@ -8,6 +8,16 @@ public interface IResourceProvider
 
     IEnumerable<string> Enumerate(string path, string folderName);
 }
+
+/// <summary>
+/// Optionally supplies fully constructed assets when raw resource bytes are not enough to preserve
+/// importer settings or object identity.
+/// </summary>
+public interface IResourceAssetProvider
+{
+    bool TryLoadAsset(string path, string folderName, Type assetType, out BAsset asset);
+}
+
 public sealed record ResourceContent(string Path, byte[] Bytes);
 internal static class ResourceLoader
 {
@@ -20,6 +30,8 @@ internal static class ResourceLoader
     internal static object? Load(string path, Type type, string folderName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (typeof(BAsset).IsAssignableFrom(type) && ResolveProviderAsset(path, folderName, type) is { } asset)
+            return asset;
         var providerContent = ResolveProvider(path, folderName);
         if (providerContent is not null)
             return Decode(providerContent.Bytes, providerContent.Path, type);
@@ -28,13 +40,22 @@ internal static class ResourceLoader
         return Decode(File.ReadAllBytes(file), file, type);
     }
 
+    internal static BAsset? LoadAsset(string path, Type assetType, string folderName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(assetType);
+        if (!typeof(BAsset).IsAssignableFrom(assetType))
+            throw new ArgumentException($"{assetType.FullName} is not a BAsset type.", nameof(assetType));
+        return ResolveProviderAsset(path, folderName, assetType);
+    }
+
     private static object Decode(byte[] bytes, string sourcePath, Type type)
     {
         if (type == typeof(byte[])) return (byte[])bytes.Clone();
         var text = System.Text.Encoding.UTF8.GetString(bytes);
         if (type == typeof(string)) return text;
         if (type == typeof(PrefabAsset))
-            return Document.FromYaml<PrefabDocument>(text).ToBObject(new DocumentConversionContext(sourcePath));
+            return PrefabAssetSerialization.Deserialize(text, sourcePath);
         if (type == typeof(TextAsset) || type == typeof(BObject)) return new TextAsset(text, sourcePath);
         throw new NotSupportedException(
             $"Resource type '{type.FullName}' is not supported. Use TextAsset, string or byte[].");
@@ -115,6 +136,25 @@ internal static class ResourceLoader
         var normalized = NormalizeResourcePath(path);
         foreach (var provider in RegisteredProviders.ToArray())
             if (provider.TryLoad(normalized, folderName, out var content)) return content;
+        return null;
+    }
+
+    private static BAsset? ResolveProviderAsset(string path, string folderName, Type assetType)
+    {
+        var normalized = NormalizeResourcePath(path);
+        foreach (var provider in RegisteredProviders.ToArray())
+        {
+            if (provider is not IResourceAssetProvider assetProvider ||
+                !assetProvider.TryLoadAsset(normalized, folderName, assetType, out var asset)) continue;
+            if (asset is null)
+                throw new InvalidDataException(
+                    $"Resource asset provider '{provider.GetType().FullName}' returned a null asset.");
+            if (!assetType.IsInstanceOfType(asset))
+                throw new InvalidDataException(
+                    $"Resource asset provider '{provider.GetType().FullName}' returned " +
+                    $"{asset.GetType().FullName}, expected {assetType.FullName}.");
+            return asset;
+        }
         return null;
     }
 

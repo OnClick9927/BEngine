@@ -7,6 +7,7 @@ public class GameObject : BObject
     private readonly List<Component> _components = [];
     private readonly IReadOnlyList<Component> _componentsView;
     private bool _activeSelf = true;
+    private bool _activeInHierarchy = true;
     private bool _dontDestroyOnLoad;
     private string _tag = "Untagged";
     private ulong _layer = SortingLayer.Default;
@@ -77,8 +78,7 @@ public class GameObject : BObject
         get { return _componentsView; }
     }
 
-    internal bool ActiveInHierarchyUnchecked => _activeSelf &&
-        (_transform.ParentUnchecked is null || _transform.ParentUnchecked.GameObjectUnchecked.ActiveInHierarchyUnchecked);
+    internal bool ActiveInHierarchyUnchecked => _activeInHierarchy;
     internal Transform TransformUnchecked => _transform;
     internal Scene? SceneUnchecked => _scene;
     internal IReadOnlyList<Component> ComponentsUnchecked => _components;
@@ -340,6 +340,11 @@ public class GameObject : BObject
 
     internal void SynchronizeActiveStateHierarchy()
     {
+        var parent = _transform.ParentUnchecked;
+        var activeInHierarchy = _activeSelf &&
+                                (parent is null || parent.GameObjectUnchecked._activeInHierarchy);
+        if (_activeInHierarchy == activeInHierarchy) return;
+        _activeInHierarchy = activeInHierarchy;
         foreach (var child in _transform.ChildrenUnchecked)
             child.GameObjectUnchecked.SynchronizeActiveStateHierarchy();
     }

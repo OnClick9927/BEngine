@@ -1,7 +1,7 @@
 namespace BEngine.AssetBundles;
 
 /// <summary>Exposes an active asset bundle catalog through the Resources API.</summary>
-public sealed class AssetBundleResourceProvider : IResourceProvider
+public sealed class AssetBundleResourceProvider : IResourceProvider, IResourceAssetProvider
 {
     internal const string VirtualPathPrefix = "@bundle/";
     private readonly IAssetBundleManager _manager;
@@ -17,6 +17,17 @@ public sealed class AssetBundleResourceProvider : IResourceProvider
         if (address is null || !_manager.TryLoadBytes(address, out var bytes)) return false;
         content = new ResourceContent(address, bytes);
         return true;
+    }
+
+    public bool TryLoadAsset(string path, string folderName, Type assetType, out BAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(assetType);
+        asset = null!;
+        if (!_manager.IsInitialized || assetType != typeof(Texture)) return false;
+        var address = ResolveAddress(path, folderName);
+        if (address is null) return false;
+        asset = AssetBundleAssetLoader.LoadTexture(_manager, address)!;
+        return asset is not null;
     }
 
     public IEnumerable<string> Enumerate(string path, string folderName)
@@ -38,6 +49,20 @@ public sealed class AssetBundleResourceProvider : IResourceProvider
         var requested = Normalize(path);
         if (requested.StartsWith(VirtualPathPrefix, StringComparison.OrdinalIgnoreCase))
             requested = requested[VirtualPathPrefix.Length..];
+        if (AssetBundleValidation.TryParseSubAssetAddress(requested, out var ownerGuid, out var localIdentifier))
+        {
+            var matches = _manager.ActiveCatalog?.Assets.Where(asset =>
+                    asset.OwnerGuid == ownerGuid && asset.LocalIdentifier == localIdentifier)
+                .Take(2)
+                .ToArray() ?? [];
+            return matches.Length switch
+            {
+                0 => null,
+                1 => matches[0].Address,
+                _ => throw new InvalidDataException(
+                    $"Sub-asset identity '{ownerGuid:N}/{localIdentifier}' is duplicated in the active catalog.")
+            };
+        }
         if (requested.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
         {
             var direct = AssetBundleValidation.NormalizeAddress(requested);

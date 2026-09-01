@@ -5,7 +5,7 @@ using BEngine.Documents;
 
 namespace BEngine.Player;
 
-internal sealed class PlayerPackageReference : Document
+internal sealed class PlayerPackageReference
 {
     public string Id { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;

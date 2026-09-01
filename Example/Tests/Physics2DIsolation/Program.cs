@@ -1,5 +1,5 @@
-using BEngine.Documents;
 using BEngine.Physics2D;
+using BEngine.Serialization;
 using Physics = BEngine.Physics2D.Physics2D;
 
 namespace BEngine.ExampleTests.Physics2DIsolation;
@@ -40,9 +40,9 @@ internal static class Program
         var sourcePair = GetPair(source);
         Physics.IgnoreCollision(sourcePair.Left, sourcePair.Right);
 
-        var document = Document.FromBObject<SceneDocument>(source);
-        using var sceneA = (Scene)document.ToBObject();
-        using var sceneB = (Scene)document.ToBObject();
+        var sceneSnapshot = SceneAssetSerialization.Serialize(source);
+        using var sceneA = SceneAssetSerialization.Deserialize(sceneSnapshot);
+        using var sceneB = SceneAssetSerialization.Deserialize(sceneSnapshot);
         var pairA = GetPair(sceneA);
         var pairB = GetPair(sceneB);
 

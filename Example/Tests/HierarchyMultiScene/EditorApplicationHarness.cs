@@ -2,13 +2,13 @@ using System.Collections;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using BEngine.DependencyInjection;
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Editor.Documents;
 using BEngine.Editor.Rendering;
 using BEngine.ProjectSystem;
 using BEngine.Rendering;
 using BEngine.SceneManagement;
+using BEngine.Serialization;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
 
 namespace BEngine.ExampleTests.HierarchyMultiScene;
@@ -20,6 +20,7 @@ internal sealed class EditorApplicationHarness : IDisposable
     private readonly object _nativeWindow;
     private readonly List<object> _windows;
     private readonly BPackageManager _packages;
+    private readonly string _previousDataPath;
     private bool _disposed;
 
     public object Application { get; }
@@ -46,6 +47,8 @@ internal sealed class EditorApplicationHarness : IDisposable
 
     public EditorApplicationHarness(SceneFixture fixture)
     {
+        _previousDataPath = BEngine.Application.dataPath;
+        BEngine.Application.dataPath = fixture.Workspace.AssetsPath;
         _applicationType = TestAssert.RequireType(_editorAssembly, "BEngine.Editor.GpuEditorApplication");
         Application = RuntimeHelpers.GetUninitializedObject(_applicationType);
         var services = new RuntimeSceneServiceProvider();
@@ -55,7 +58,7 @@ internal sealed class EditorApplicationHarness : IDisposable
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null, [fixture.Workspace, null, false], culture: null) ??
                                      throw new InvalidOperationException("Could not create Package Manager."));
-        InitialScene = Document.LoadBObject<SceneDocument, Scene>(fixture.FirstScenePath, services);
+        InitialScene = SceneAssetSerialization.Load(fixture.FirstScenePath, services);
         SetProperty(InitialScene, "path", fixture.FirstScenePath);
 
         var openSceneType = TestAssert.RequireType(_editorAssembly, "BEngine.Editor.EditorOpenScene");
@@ -93,6 +96,7 @@ internal sealed class EditorApplicationHarness : IDisposable
         SetField("_scene", InitialScene);
         SetField("_scenePath", fixture.FirstScenePath);
         SetField("_openScenes", openScenes);
+        SetField("_openSceneSnapshot", new[] { InitialScene });
         SetField("_loadedSceneSnapshot", new[] { InitialScene });
         SetField("_dock", DockWorkspace);
         SetField("_mainWindow", _nativeWindow);
@@ -540,6 +544,7 @@ internal sealed class EditorApplicationHarness : IDisposable
         foreach (var scene in scenes)
             if (scene.isCreated) scene.Dispose();
         _packages.Dispose();
+        BEngine.Application.dataPath = _previousDataPath;
         try { ((IDisposable)_nativeWindow).Dispose(); }
         catch (InvalidOperationException) { }
     }

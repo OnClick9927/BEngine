@@ -4,7 +4,7 @@ internal static class CodexProtocolSettings
 {
     public const string DefaultApprovalPolicy = "untrusted";
 
-    public static bool Normalize(CodexProjectSettingsDocument settings)
+    public static bool Normalize(CodexProjectSettingsData settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
         var approvalPolicy = NormalizeApprovalPolicy(settings.ApprovalPolicy);

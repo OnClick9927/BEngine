@@ -120,6 +120,6 @@ internal sealed class TestEditorHost : IEditorHost, IDisposable
     }
 
     private static EditorAssetRecord ToRecord(AssetRecord record) => new(
-        record.Guid, record.AssetPath, record.SourcePath, record.AssetType, record.IsDirectory,
-        record.ParentGuid, record.LocalIdentifier);
+        record.Guid, record.AssetPath, record.SourcePath, record.ArtifactPath, record.AssetType,
+        record.IsDirectory, record.ParentGuid, record.LocalIdentifier);
 }

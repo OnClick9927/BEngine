@@ -37,6 +37,7 @@ public static class EditorStyles
     public static GUIStyle toggle => GUI.skin.toggle;
     public static GUIStyle toggleMixed => GUI.skin.toggleMixed;
     public static GUIStyle helpBox => GUI.skin.helpBox;
+    public static GUIStyle helpBoxLabel => GUI.skin.helpBoxLabel;
     public static GUIStyle toolbar => GUI.skin.toolbar;
     public static GUIStyle contentToolbar => GUI.skin.contentToolbar;
     public static GUIStyle toolbarToggle => GUI.skin.toolbarToggle;
@@ -269,10 +270,10 @@ public static class EditorStyles
         ApplySurface(treeViewRowSelected, palette.Selection, palette.Selection, palette.Selection,
             palette.Selection, Transparent, palette.FocusBorder, palette.Text, palette.DisabledText, false);
 
-        ApplySurface(hierarchySceneHeader, Transparent, Transparent, Transparent,
-            Transparent, Transparent, Transparent, palette.Text, palette.DisabledText, false);
-        ApplySurface(hierarchySceneHeaderActive, Transparent, Transparent, Transparent,
-            Transparent, Transparent, Transparent, palette.Text, palette.DisabledText, false);
+        ApplySurface(hierarchySceneHeader, palette.TitleBar, palette.Hover, palette.ButtonPressed,
+            palette.TitleBar, palette.Border, palette.FocusBorder, palette.Text, palette.DisabledText, false);
+        ApplySurface(hierarchySceneHeaderActive, palette.PanelRaised, palette.Hover, palette.ButtonPressed,
+            palette.PanelRaised, palette.Border, palette.FocusBorder, palette.Text, palette.DisabledText, false);
         ApplySurface(hierarchyRow, Transparent, Transparent, Transparent,
             Transparent, Transparent, Transparent, palette.Text, palette.DisabledText, false);
         ApplySurface(hierarchyRowSelected, Transparent, Transparent, Transparent,
@@ -319,8 +320,10 @@ public static class EditorStyles
         CopyStyle(GUI.skin.toggle, radioButton, toggleMixed);
         CopyStyle(foldout, titlebarFoldout, foldoutPreDrop, foldoutHeader, foldoutHeaderIcon,
             foldoutSelected);
-        CopyStyle(helpBox, toggleGroup, frameBox, tooltip, notificationBackground, dropDownList,
-            progressBarBack);
+        CopyStyle(helpBox, toggleGroup, frameBox, helpBoxLabel, tooltip, notificationBackground,
+            dropDownList, progressBarBack);
+        ApplyTransparent(helpBoxLabel, palette.Text, palette.DisabledText);
+        helpBoxLabel.wordWrap = true;
         CopyStyle(colorPickerSwatch, objectFieldThumb, objectFieldMiniThumb, colorPickerBox);
         CopyStyle(dropDownButton, objectFieldButton, optionsButtonStyle, dropDownToggleButton);
 

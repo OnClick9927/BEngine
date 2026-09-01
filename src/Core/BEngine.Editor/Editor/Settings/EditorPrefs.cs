@@ -40,7 +40,7 @@ public static class EditorPrefs
                 try
                 {
                     _values = File.Exists(FilePath)
-                        ? Document.Load<EditorPrefsDocument>(FilePath).Values
+                        ? YamlUtility.Load<EditorPrefsDocument>(FilePath).Values
                         : new Dictionary<string, string>(StringComparer.Ordinal);
                 }
                 catch (Exception exception) when (exception is IOException or InvalidDataException)

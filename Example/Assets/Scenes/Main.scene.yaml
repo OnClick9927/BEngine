@@ -154,7 +154,7 @@ gameObjects:
       sortingLayer: 1
       useSpritePivot: true
 - id: 8f55da12-d071-40a0-8645-28c5942a72f9
-  name: Showcase
+  name: Atlas Showcase
   active: true
   tag: Untagged
   layer: 2
@@ -171,6 +171,138 @@ gameObjects:
       y: 1
     fields: {}
   components: []
+- id: 9010f350-8c6d-45cd-bf19-933979521989
+  name: Animation Card
+  active: true
+  tag: Untagged
+  layer: 2
+  isStatic: true
+  parent: 8f55da12-d071-40a0-8645-28c5942a72f9
+  transform:
+    id: 6be5ba4f-1896-4d04-8710-af732c380df7
+    type: BEngine.Transform
+    localPosition:
+      x: -4.8999999999068677425384521484375
+      y: 1.799999999813735485076904296875
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components:
+  - id: bb710239-2148-40f4-b12a-8075b386b849
+    type: BEngine.SpriteRenderer
+    enabled: true
+    fields:
+      color: 0.05499999993480741977691650390625,0.14499999978579580783843994140625,0.16999999992549419403076171875,0.9399999999441206455230712890625
+      flipX: false
+      flipY: false
+      opacity: 1
+      orderInLayer: -5
+      pivot: 0.5,0.5
+      runInEditMode: false
+      size: 2.799999999813735485076904296875,2.1499999999068677425384521484375
+      sortingLayer: 2
+      useSpritePivot: true
+- id: 0ade6cf0-62a2-4ebc-9378-b756f07d45f2
+  name: Physics Card
+  active: true
+  tag: Untagged
+  layer: 2
+  isStatic: true
+  parent: 8f55da12-d071-40a0-8645-28c5942a72f9
+  transform:
+    id: a1f79713-bd3b-4b84-8b6e-f6e297bc3e07
+    type: BEngine.Transform
+    localPosition:
+      x: 4.8999999999068677425384521484375
+      y: 1.799999999813735485076904296875
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components:
+  - id: 3702c79f-c0d7-4f7c-a100-863261ab5181
+    type: BEngine.SpriteRenderer
+    enabled: true
+    fields:
+      color: 0.16999999992549419403076171875,0.11999999987892806529998779296875,0.05499999993480741977691650390625,0.9399999999441206455230712890625
+      flipX: false
+      flipY: false
+      opacity: 1
+      orderInLayer: -5
+      pivot: 0.5,0.5
+      runInEditMode: false
+      size: 2.799999999813735485076904296875,2.1499999999068677425384521484375
+      sortingLayer: 2
+      useSpritePivot: true
+- id: 2f550d74-2ef5-45bc-9bb5-5802a204c008
+  name: Navigation Card
+  active: true
+  tag: Untagged
+  layer: 2
+  isStatic: true
+  parent: 8f55da12-d071-40a0-8645-28c5942a72f9
+  transform:
+    id: 07dd94ab-563d-4625-9508-b977366196c1
+    type: BEngine.Transform
+    localPosition:
+      x: -4.8999999999068677425384521484375
+      y: -1.799999999813735485076904296875
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components:
+  - id: 5984d719-1e86-47e7-8bdf-b80de4b960ea
+    type: BEngine.SpriteRenderer
+    enabled: true
+    fields:
+      color: 0.05499999993480741977691650390625,0.0899999998509883880615234375,0.16999999992549419403076171875,0.9399999999441206455230712890625
+      flipX: false
+      flipY: false
+      opacity: 1
+      orderInLayer: -5
+      pivot: 0.5,0.5
+      runInEditMode: false
+      size: 2.799999999813735485076904296875,2.1499999999068677425384521484375
+      sortingLayer: 2
+      useSpritePivot: true
+- id: 7a484c2a-705a-4db2-8b34-7dca5ac93b27
+  name: Input Card
+  active: true
+  tag: Untagged
+  layer: 2
+  isStatic: true
+  parent: 8f55da12-d071-40a0-8645-28c5942a72f9
+  transform:
+    id: da509f13-bfe5-465d-a985-ee304c21e4fb
+    type: BEngine.Transform
+    localPosition:
+      x: 4.8999999999068677425384521484375
+      y: -1.799999999813735485076904296875
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components:
+  - id: b062f492-42e8-4404-9129-87e209900cf4
+    type: BEngine.SpriteRenderer
+    enabled: true
+    fields:
+      color: 0.07999999984167516231536865234375,0.129999999888241291046142578125,0.1099999998696148395538330078125,0.9399999999441206455230712890625
+      flipX: false
+      flipY: false
+      opacity: 1
+      orderInLayer: -5
+      pivot: 0.5,0.5
+      runInEditMode: false
+      size: 2.799999999813735485076904296875,2.1499999999068677425384521484375
+      sortingLayer: 2
+      useSpritePivot: true
 - id: 07ddad15-805e-4dea-a24d-684d8ab6ec46
   name: BEngine Logo
   active: true
@@ -203,7 +335,7 @@ gameObjects:
       runInEditMode: false
       size: 3.25,3.25
       sortingLayer: 2
-      sprite: Assets/Art/Sources/BEngine.png
+      sprite: guid:ff11351b2c3044aa8c77107eb2f6b942#subasset=21300000
       useSpritePivot: true
   - id: d10e21c5-e811-44ef-90fe-9c7b170ea38d
     type: Game.ShowcaseMotion
@@ -215,7 +347,7 @@ gameObjects:
       rotationSpeed: 4
       runInEditMode: false
 - id: c696fb78-05de-4582-a0ef-6100b6324627
-  name: Animation Feature
+  name: Animation Sprite
   active: true
   tag: Untagged
   layer: 2
@@ -246,7 +378,7 @@ gameObjects:
       runInEditMode: false
       size: 1.049999999813735485076904296875,1.049999999813735485076904296875
       sortingLayer: 2
-      sprite: Assets/Art/Sources/Animation.png
+      sprite: guid:d3b57829c75d4c96a4f77fc4c1354df3#subasset=21300000
       useSpritePivot: true
   - id: d160dec8-0146-477a-a64e-998b6a01effb
     type: Game.ShowcaseMotion
@@ -258,7 +390,7 @@ gameObjects:
       rotationSpeed: -12
       runInEditMode: false
 - id: 981497b6-ed19-4738-b55c-3e959d3a58ee
-  name: Physics2D Feature
+  name: Physics 2D Sprite
   active: true
   tag: Untagged
   layer: 2
@@ -289,7 +421,7 @@ gameObjects:
       runInEditMode: false
       size: 1.19999999995343387126922607421875,1.19999999995343387126922607421875
       sortingLayer: 2
-      sprite: Assets/Art/Sources/Physics2D.png
+      sprite: guid:fdc19827d60047d8b0f65705212e92e1#subasset=21300000
       useSpritePivot: true
   - id: 867de2eb-8ac6-4430-bae2-062800861933
     type: Game.ShowcaseMotion
@@ -301,7 +433,7 @@ gameObjects:
       rotationSpeed: 30
       runInEditMode: false
 - id: f44cc949-140d-42fd-a65a-9325f1ae6340
-  name: Navigation2D Feature
+  name: Navigation 2D Sprite
   active: true
   tag: Untagged
   layer: 2
@@ -326,13 +458,13 @@ gameObjects:
       color: 1,1,1,1
       flipX: false
       flipY: false
-      opacity: 0.0934999999590218067169189453125
+      opacity: 1
       orderInLayer: 15
       pivot: 0.5,0.5
       runInEditMode: false
       size: 0.94999999995343387126922607421875,0.94999999995343387126922607421875
       sortingLayer: 2
-      sprite: Assets/Art/Sources/Navigation2D.png
+      sprite: guid:f0ebeda551aa44e491ba3274b564e4ce#subasset=21300000
       useSpritePivot: true
   - id: 8236caa2-b6a5-4658-bec0-2c888f037ee2
     type: Game.ShowcaseMotion
@@ -344,7 +476,7 @@ gameObjects:
       rotationSpeed: -12
       runInEditMode: false
 - id: fb626c7b-f223-431b-942f-6cd86ae49094
-  name: Playable Navigation Icon
+  name: Player (WASD or Arrow Keys)
   active: true
   tag: Player
   layer: 2
@@ -375,13 +507,14 @@ gameObjects:
       runInEditMode: false
       size: 1.25,1.25
       sortingLayer: 2
-      sprite: Assets/Art/Sources/Navigation2D.png
+      sprite: guid:f0ebeda551aa44e491ba3274b564e4ce#subasset=21300000
       useSpritePivot: true
   - id: 24168131-df7d-4eb4-b80d-75e499f7b0ee
     type: Game.PlayerMover
     enabled: true
     fields:
-      runInEditMode: true
+      moveBounds: 7.19999999995343387126922607421875,3.59999999986030161380767822265625
+      runInEditMode: false
       speed: 3.19999999995343387126922607421875
 - id: 98c3037f-c4b4-48a5-95d0-39f1488a954c
   name: Foreground Effects
@@ -402,7 +535,7 @@ gameObjects:
     fields: {}
   components: []
 - id: f48883de-451b-42fe-b1bf-094f694d9913
-  name: Teal Sparks
+  name: Teal Spark Emitter
   active: true
   tag: Untagged
   layer: 3
@@ -443,7 +576,7 @@ gameObjects:
       startSize: 0.21999999997206032276153564453125,0.21999999997206032276153564453125
       startSpeed: 1.69999999995343387126922607421875
 - id: a9d41e8a-6662-4c0a-896a-5886ac74e42d
-  name: Gold Sparks
+  name: Gold Spark Emitter
   active: true
   tag: Untagged
   layer: 3
@@ -614,7 +747,7 @@ gameObjects:
       runInEditMode: false
       size: 2.19999999995343387126922607421875,2.19999999995343387126922607421875
       sortingLayer: 4
-      sprite: Assets/Art/Sources/BEngine.png
+      sprite: guid:ff11351b2c3044aa8c77107eb2f6b942#subasset=21300000
       useSpritePivot: true
   - id: 6ace5840-2b1b-4d3f-a1f4-d6d3bb3f9790
     type: Game.ShowcaseMotion
@@ -626,7 +759,7 @@ gameObjects:
       rotationSpeed: -18
       runInEditMode: false
 - id: 45ed0c79-9365-4621-b0f4-74e76c3119de
-  name: Inset Camera Layer
+  name: Inset Camera Content
   active: true
   tag: Untagged
   layer: 4
@@ -694,7 +827,7 @@ gameObjects:
     type: BEngine.Camera2D
     enabled: true
     fields:
-      backgroundColor: 0.0249999999068677425384521484375,0.03499999991618096828460693359375,0.049999999813735485076904296875,1
+      backgroundColor: 1,0,0,1
       clearMode: Color
       cullingMask: 8
       isMain: false

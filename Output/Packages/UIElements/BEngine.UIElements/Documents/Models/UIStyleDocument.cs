@@ -1,10 +1,6 @@
-using System.Globalization;
-using BEngine.Serialization;
-using BEngine.Documents;
-
 namespace BEngine.UIElements;
 
-public sealed class UIStyleDocument : Document
+internal sealed class UIStyleDocument
 {
     public FlexDirection FlexDirection { get; set; }
     public DisplayStyle Display { get; set; }

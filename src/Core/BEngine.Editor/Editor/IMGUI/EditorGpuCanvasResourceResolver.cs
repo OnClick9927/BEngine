@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using BEngine.Editor.Diagnostics;
 using BEngine.Editor.Rendering;
 using BEngine.Rendering;
 using BEngine.Rendering.Rhi;
@@ -11,6 +12,7 @@ internal sealed class EditorGpuCanvasResourceResolver : IGpuCanvasResourceResolv
     public static EditorGpuCanvasResourceResolver Shared { get; } = new();
 
     public bool TryResolveTexture(string source, out GpuCanvasTextureData texture) =>
+        FrameDebuggerPreviewRegistry.TryResolve(source, out texture) ||
         FileGpuCanvasResourceResolver.Shared.TryResolveTexture(source, out texture);
 
     public bool TryMeasureText(string text, float fontSize, string fontFamily, out int width)

@@ -93,9 +93,9 @@ internal static class CatalogSerializationTests
 
     private static void LegacyCatalogWithoutImporterDescriptionsStillLoads()
     {
-        var json = Encoding.UTF8.GetString(
-                AssetBundleCatalogSerializer.SerializeCatalog(CatalogValidationTests.CreateCatalog()))
-            .Replace("\"schemaVersion\":2", "\"schemaVersion\":1", StringComparison.Ordinal)
+        var legacySource = CatalogValidationTests.CreateCatalog();
+        legacySource.SchemaVersion = 1;
+        var json = Encoding.UTF8.GetString(AssetBundleCatalogSerializer.SerializeCatalog(legacySource))
             .Replace(",\"importer\":\"\",\"importerSettings\":{}", string.Empty,
                 StringComparison.Ordinal);
         var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(json);

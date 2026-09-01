@@ -22,7 +22,7 @@ public static class AssetTypeRegistry
         string displayName,
         Func<AssetLoadContext, TAsset> loader,
         string? iconResourcePath = null,
-        Type? importerType = null) where TAsset : BObject
+        Type? importerType = null) where TAsset : BAsset
     {
         ArgumentNullException.ThrowIfNull(loader);
         Register(fileSuffix, displayName, iconResourcePath, typeof(TAsset), importerType,
@@ -34,7 +34,7 @@ public static class AssetTypeRegistry
         string fileSuffix,
         string displayName,
         string? iconResourcePath = null,
-        Type? importerType = null) where TAsset : BObject =>
+        Type? importerType = null) where TAsset : BAsset =>
         Register(fileSuffix, displayName, iconResourcePath, typeof(TAsset), importerType, null,
             System.Reflection.Assembly.GetCallingAssembly());
 
@@ -49,8 +49,8 @@ public static class AssetTypeRegistry
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fileSuffix);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
-        if (assetType is not null && !typeof(BObject).IsAssignableFrom(assetType))
-            throw new ArgumentException($"{assetType.FullName} is not a BObject type.", nameof(assetType));
+        if (assetType is not null && !typeof(BAsset).IsAssignableFrom(assetType))
+            throw new ArgumentException($"{assetType.FullName} is not a BAsset type.", nameof(assetType));
         if (importerType is not null && !typeof(AssetImporter).IsAssignableFrom(importerType))
             throw new ArgumentException($"{importerType.FullName} is not an AssetImporter type.",
                 nameof(importerType));
@@ -88,7 +88,7 @@ public static class AssetTypeRegistry
         if (registration is null) return null;
         var asset = registration.Loader?.Invoke(context) ??
                     (registration.AssetType is { } assetType && typeof(BAsset).IsAssignableFrom(assetType)
-                        ? BAsset.Load(context.SourcePath, assetType)
+                        ? BAsset.Load(context.ImportedPath, assetType)
                         : null);
         if (asset is null) return null;
         if (registration.AssetType is { } expected && !expected.IsInstanceOfType(asset))

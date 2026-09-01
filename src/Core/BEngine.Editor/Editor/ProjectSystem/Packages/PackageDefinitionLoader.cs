@@ -11,7 +11,7 @@ public static class PackageDefinitionLoader
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var fullPath = Path.GetFullPath(path);
-        return Normalize(Document.Load<PackageDefinitionDocument>(fullPath), fullPath);
+        return Normalize(YamlUtility.Load<PackageDefinitionDocument>(fullPath), fullPath);
     }
 
     public static PackageDefinitionDocument Normalize(

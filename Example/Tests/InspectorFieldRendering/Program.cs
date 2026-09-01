@@ -785,6 +785,25 @@ internal static class Program
             }
 
             BObject? dragged = null;
+            DragAndDrop.PrepareStartDrag();
+            DragAndDrop.objectReferences = [compatible];
+            DragAndDrop.StartDrag("ObjectField cursor boundary");
+            Dispatch(new Event(EventType.MouseMove) { mousePosition = new Vector2(10, 30) }, 320, 40,
+                () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));
+            var requestedCursor = typeof(GUI).GetProperty("requestedMouseCursor",
+                BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null);
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Rejected &&
+                    Equals(requestedCursor, MouseCursor.ArrowMinus),
+                "A BObject drag outside ObjectField advertised an assignable cursor.");
+            Dispatch(new Event(EventType.MouseMove) { mousePosition = new Vector2(210, 9) }, 320, 40,
+                () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));
+            requestedCursor = typeof(GUI).GetProperty("requestedMouseCursor",
+                BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null);
+            Require(DragAndDrop.visualMode == DragAndDropVisualMode.Link &&
+                    Equals(requestedCursor, MouseCursor.Link),
+                "A compatible BObject drag inside ObjectField did not advertise the assignable cursor.");
+            DragAndDrop.PrepareStartDrag();
+
             DragAndDrop.objectReferences = [compatible];
             Dispatch(new Event(EventType.DragUpdated) { mousePosition = new Vector2(210, 9) }, 320, 40,
                 () => dragged = EditorGUI.ObjectField(rect, "Target", dragged, typeof(GameObject), true));

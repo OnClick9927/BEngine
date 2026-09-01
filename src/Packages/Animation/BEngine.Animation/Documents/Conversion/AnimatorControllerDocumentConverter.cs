@@ -2,9 +2,9 @@ using BEngine.Documents;
 
 namespace BEngine.Animation;
 
-internal sealed class AnimatorControllerDocumentConverter : DocumentConverter<AnimatorControllerDocument, AnimatorController>
+internal static class AnimatorControllerSerialization
 {
-    protected override AnimatorController ToBObject(AnimatorControllerDocument document, DocumentConversionContext context)
+    internal static AnimatorController Restore(AnimatorControllerData document)
     {
         Validate(document);
         return new AnimatorController
@@ -42,12 +42,11 @@ internal sealed class AnimatorControllerDocumentConverter : DocumentConverter<An
         };
     }
 
-    protected override AnimatorControllerDocument FromBObject(AnimatorController controller,
-        DocumentConversionContext context) => new()
+    internal static AnimatorControllerData Capture(AnimatorController controller) => new()
     {
         Name = controller.name,
         DefaultState = controller.defaultState,
-        Parameters = [.. controller.parameters.Select(item => new AnimatorParameterDocument
+        Parameters = [.. controller.parameters.Select(item => new AnimatorParameterData
         {
             Name = item.name,
             Type = item.type,
@@ -55,19 +54,19 @@ internal sealed class AnimatorControllerDocumentConverter : DocumentConverter<An
             DefaultInt = item.defaultInt,
             DefaultBool = item.defaultBool
         })],
-        States = [.. controller.states.Select(state => new AnimatorStateDocument
+        States = [.. controller.states.Select(state => new AnimatorStateData
         {
             Name = state.name,
             ClipPath = state.clipPath,
             Speed = state.speed.RawValue,
             Loop = state.loop,
-            Transitions = [.. state.transitions.Select(transition => new AnimatorTransitionDocument
+            Transitions = [.. state.transitions.Select(transition => new AnimatorTransitionData
             {
                 DestinationState = transition.destinationState,
                 HasExitTime = transition.hasExitTime,
                 ExitTime = transition.exitTime.RawValue,
                 Duration = transition.duration.RawValue,
-                Conditions = [.. transition.conditions.Select(condition => new AnimatorConditionDocument
+                Conditions = [.. transition.conditions.Select(condition => new AnimatorConditionData
                 {
                     Parameter = condition.parameter,
                     Mode = condition.mode,
@@ -77,9 +76,16 @@ internal sealed class AnimatorControllerDocumentConverter : DocumentConverter<An
         })]
     };
 
-    internal static void Validate(AnimatorControllerDocument document)
+    internal static void Validate(AnimatorControllerData document)
     {
         if (document.Format != "BEngine.AnimatorController" || document.Version != 1)
             throw new InvalidDataException("Unsupported animator controller.");
     }
+
+    internal static AnimatorController Load(string path) => Document<AnimatorController>
+        .Read(path, sourcePath => Restore(YamlUtility.Load<AnimatorControllerData>(sourcePath))).ToAsset();
+
+    internal static void Save(AnimatorController controller, string path) =>
+        Document<AnimatorController>.FromAsset(controller)
+            .Write(path, static (asset, destination) => YamlUtility.Save(Capture(asset), destination));
 }

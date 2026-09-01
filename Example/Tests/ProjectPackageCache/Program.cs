@@ -1,4 +1,3 @@
-using BEngine.Documents;
 using BEngine.Editor.Documents;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
@@ -19,7 +18,7 @@ internal static class Program
             Environment.SetEnvironmentVariable("BENGINE_PACKAGES_PATH", brokenRepository);
             var emptyWorkspace = ProjectWorkspaceFactory.Create(
                 Path.Combine(temporaryRoot, "Empty"), "Empty");
-            var emptyManifest = Document.Load<PackageManifestDocument>(emptyWorkspace.PackageManifestPath);
+            var emptyManifest = BEngine.YamlUtility.Load<PackageManifestDocument>(emptyWorkspace.PackageManifestPath);
             Require(emptyManifest.Packages.Count == 0,
                 "A default project manifest contains extension packages.");
             Require(!Directory.EnumerateDirectories(emptyWorkspace.PackagesPath).Any(),
@@ -29,7 +28,7 @@ internal static class Program
             Environment.SetEnvironmentVariable("BENGINE_PACKAGES_PATH", repository);
             var selectedWorkspace = ProjectWorkspaceFactory.Create(
                 Path.Combine(temporaryRoot, "Selected"), "Selected", ["com.bengine.navigation2d"]);
-            var selectedManifest = Document.Load<PackageManifestDocument>(selectedWorkspace.PackageManifestPath);
+            var selectedManifest = BEngine.YamlUtility.Load<PackageManifestDocument>(selectedWorkspace.PackageManifestPath);
             var enabled = selectedManifest.Packages.Where(package => package.Enabled)
                 .Select(package => package.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
             Require(enabled.IsSupersetOf(["com.bengine.navigation2d", "com.bengine.physics2d"]),

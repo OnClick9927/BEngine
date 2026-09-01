@@ -1,22 +1,8 @@
-using System.Runtime.CompilerServices;
-using BEngine.Documents;
-
 namespace BEngine.Editor.Documents;
 
-internal static class EditorDocumentRegistration
+internal static class EditorDataValidation
 {
-    [ModuleInitializer]
-    internal static void Register()
-    {
-        DocumentConversionRegistry.Register(AssemblyDefinitionDocumentConverter.Shared);
-        DocumentValidationRegistry.Register<EditorSettingsDocument>(ValidateEditorSettings);
-        DocumentValidationRegistry.Register<EditorLayoutDocument>(ValidateEditorLayout);
-        DocumentValidationRegistry.Register<EditorPreferencesDocument>(ValidateEditorPreferences);
-        DocumentValidationRegistry.Register<LauncherSettingsDocument>(ValidateLauncherSettings);
-        DocumentValidationRegistry.Register<AssemblyDefinitionDocument>(ValidateAssemblyDefinition);
-    }
-
-    private static void ValidateAssemblyDefinition(AssemblyDefinitionDocument document)
+    internal static void ValidateAssemblyDefinition(AssemblyDefinitionDocument document)
     {
         if (document.Format != "BEngine.AssemblyDefinition" || document.Version != 1)
             throw new InvalidDataException(
@@ -65,14 +51,14 @@ internal static class EditorDocumentRegistration
         (char.IsLetter(value[0]) || value[0] == '_') &&
         value.Skip(1).All(character => char.IsLetterOrDigit(character) || character == '_');
 
-    private static void ValidateEditorSettings(EditorSettingsDocument document)
+    internal static void ValidateEditorSettings(EditorSettingsDocument document)
     {
         if (document.Format != "BEngine.EditorSettings" || document.Version != 1)
             throw new InvalidDataException(
                 $"Unsupported editor settings '{document.Format}' v{document.Version}.");
     }
 
-    private static void ValidateEditorPreferences(EditorPreferencesDocument document)
+    internal static void ValidateEditorPreferences(EditorPreferencesDocument document)
     {
         if (document.Format != "BEngine.Preferences" || document.Version != 1)
             throw new InvalidDataException(
@@ -92,7 +78,7 @@ internal static class EditorDocumentRegistration
             throw new InvalidDataException("Editor locale, font, and theme cannot be empty.");
     }
 
-    private static void ValidateLauncherSettings(LauncherSettingsDocument document)
+    internal static void ValidateLauncherSettings(LauncherSettingsDocument document)
     {
         if (document.Format != "BEngine.LauncherSettings" || document.Version != 1)
             throw new InvalidDataException(
@@ -102,7 +88,7 @@ internal static class EditorDocumentRegistration
             throw new InvalidDataException("The last project directory must be an absolute path.");
     }
 
-    private static void ValidateEditorLayout(EditorLayoutDocument document)
+    internal static void ValidateEditorLayout(EditorLayoutDocument document)
     {
         if (document.Format != "BEngine.EditorLayout" || document.Version is < 1 or > 2)
             throw new InvalidDataException(

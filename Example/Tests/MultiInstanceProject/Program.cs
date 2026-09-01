@@ -1,5 +1,4 @@
 using BEngine.Editor;
-using BEngine.Documents;
 using BEngine.ProjectSystem;
 
 namespace BEngine.ExampleTests.MultiInstanceProject;
@@ -12,7 +11,7 @@ internal static class Program
         try
         {
             Directory.CreateDirectory(root);
-            new ProjectDocument { Name = "MultiInstance" }.Save(
+            new ProjectData { Name = "MultiInstance" }.Save(
                 Path.Combine(root, ProjectWorkspace.ProjectFileName));
             var workspace = ProjectWorkspace.Open(root);
             using var first = EditorInstanceContext.Create(workspace.RootPath, makeCurrent: false);

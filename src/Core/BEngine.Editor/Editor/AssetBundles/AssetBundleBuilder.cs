@@ -98,8 +98,11 @@ public static class AssetBundleBuilder
         ValidateDependencyGraph(normalizedDefinitions);
 
         var assetsRoot = Path.GetFullPath(workspace.AssetsPath);
+        var artifactsRoot = Path.GetFullPath(workspace.AssetArtifactsPath);
         var eligible = assetDatabase.assets.Where(IsRuntimeAsset)
             .OrderBy(record => record.AssetPath, StringComparer.Ordinal)
+            .ThenBy(record => record.ParentGuid.HasValue ? 1 : 0)
+            .ThenBy(record => record.LocalIdentifier)
             .ToArray();
         var assignedAssets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var capturedAssets = new Dictionary<string, AssetBundleBuildAsset>(StringComparer.OrdinalIgnoreCase);
@@ -112,25 +115,30 @@ public static class AssetBundleBuilder
                 throw new InvalidDataException($"Bundle '{definition.Name}' does not select any asset paths.");
             var selected = eligible.Where(record => definition.AssetPaths.Any(selection =>
                     IsSelected(record.AssetPath, selection)))
-                .DistinctBy(record => record.AssetPath, StringComparer.OrdinalIgnoreCase)
+                .DistinctBy(AssetIdentityKey, StringComparer.OrdinalIgnoreCase)
                 .OrderBy(record => record.AssetPath, StringComparer.Ordinal)
+                .ThenBy(record => record.ParentGuid.HasValue ? 1 : 0)
+                .ThenBy(record => record.LocalIdentifier)
                 .ToArray();
             if (selected.Length == 0)
                 throw new InvalidDataException(
                     $"Bundle '{definition.Name}' does not contain any runtime-compatible assets.");
 
+            var definitionAssets = new List<AssetBundleBuildAsset>(selected.Length);
             foreach (var record in selected)
             {
-                if (assignedAssets.TryGetValue(record.AssetPath, out var owner))
+                var asset = CaptureAsset(record, artifactsRoot);
+                if (assignedAssets.TryGetValue(asset.Address, out var owner))
                     throw new InvalidDataException(
-                        $"Asset '{record.AssetPath}' is assigned to both '{owner}' and '{definition.Name}'.");
-                assignedAssets.Add(record.AssetPath, definition.Name);
-                capturedAssets.Add(record.AssetPath, CaptureAsset(record, assetsRoot));
+                        $"Asset '{asset.Address}' is assigned to both '{owner}' and '{definition.Name}'.");
+                assignedAssets.Add(asset.Address, definition.Name);
+                capturedAssets.Add(asset.Address, asset);
+                definitionAssets.Add(asset);
             }
             expandedDefinitions.Add(new AssetBundleBuildDefinition
             {
                 Name = definition.Name,
-                AssetPaths = selected.Select(record => NormalizeAssetAddress(record.AssetPath)).ToArray(),
+                AssetPaths = definitionAssets.Select(asset => asset.Address).ToArray(),
                 Dependencies = definition.Dependencies.ToArray()
             });
         }
@@ -149,35 +157,84 @@ public static class AssetBundleBuilder
         return (workspace, expandedDefinitions.ToArray(), capturedAssets.Values.ToArray(), capturedOptions);
     }
 
-    private static AssetBundleBuildAsset CaptureAsset(ProjectAssetRecord record, string assetsRoot)
+    private static AssetBundleBuildAsset CaptureAsset(ProjectAssetRecord record, string artifactsRoot)
     {
-        var sourcePath = Path.GetFullPath(record.SourcePath);
-        if (!IsSameOrChildPath(sourcePath, assetsRoot) || sourcePath.Equals(assetsRoot,
+        var artifactPath = Path.GetFullPath(record.ArtifactPath);
+        if (!IsSameOrChildPath(artifactPath, artifactsRoot) || artifactPath.Equals(artifactsRoot,
                 StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"Asset source escapes the project Assets directory: {record.AssetPath}");
-        if (!File.Exists(sourcePath))
-            throw new FileNotFoundException($"Asset source does not exist: {record.AssetPath}", sourcePath);
+            throw new InvalidDataException(
+                $"Asset artifact escapes the AssetDatabase artifact directory: {record.AssetPath}");
+        if (!File.Exists(artifactPath))
+            throw new FileNotFoundException($"Asset artifact does not exist: {record.AssetPath}", artifactPath);
         if (record.Guid == Guid.Empty)
             throw new InvalidDataException($"Asset '{record.AssetPath}' has an empty GUID.");
-        ValidateSha256(record.SourceHash, $"source hash of '{record.AssetPath}'");
+        ValidateSha256(record.ArtifactHash, $"artifact hash of '{record.AssetPath}'");
+        if (record.ArtifactSize < 0)
+            throw new InvalidDataException($"Artifact size of '{record.AssetPath}' cannot be negative.");
         if (string.IsNullOrWhiteSpace(record.AssetType))
             throw new InvalidDataException($"Asset '{record.AssetPath}' has no asset type.");
         if (!File.Exists(record.MetaPath))
             throw new FileNotFoundException($"Asset metadata does not exist: {record.AssetPath}", record.MetaPath);
-        var meta = Document.Load<ProjectAssetMetaDocument>(record.MetaPath);
+        var meta = YamlUtility.Load<ProjectAssetMetaDocument>(record.MetaPath);
         if (!Guid.TryParse(meta.Guid, out var metaGuid) || metaGuid != record.Guid)
             throw new InvalidDataException($"Asset metadata GUID changed after the AssetDatabase snapshot: {record.AssetPath}");
+        var ownerGuid = record.ParentGuid ?? record.Guid;
+        var localIdentifier = record.ParentGuid.HasValue ? record.LocalIdentifier : 0;
+        if (record.ParentGuid.HasValue &&
+            (!Guid.TryParse(meta.ParentGuid, out var metaOwnerGuid) || metaOwnerGuid != ownerGuid ||
+             localIdentifier <= 0 || meta.LocalIdentifier != localIdentifier))
+            throw new InvalidDataException(
+                $"Sub-asset identity changed after the AssetDatabase snapshot: {record.AssetPath}");
+        if (!record.ParentGuid.HasValue && record.LocalIdentifier != 0)
+            throw new InvalidDataException(
+                $"Main asset '{record.AssetPath}' cannot have a local identifier.");
+        VerifyArtifactSnapshot(record, artifactPath);
+        var projectAddress = NormalizeAssetAddress(record.AssetPath);
+        var address = localIdentifier > 0
+            ? AssetBundleValidation.CreateSubAssetAddress(ownerGuid, localIdentifier)
+            : projectAddress;
+        var entry = localIdentifier > 0
+            ? AssetBundleValidation.CreateSubAssetEntry(ownerGuid, localIdentifier,
+                Path.GetExtension(artifactPath))
+            : projectAddress;
         return new AssetBundleBuildAsset
         {
             Guid = record.Guid,
-            AssetPath = NormalizeAssetAddress(record.AssetPath),
-            SourcePath = sourcePath,
+            OwnerGuid = ownerGuid,
+            LocalIdentifier = localIdentifier,
+            Address = address,
+            Entry = entry,
+            ArtifactPath = artifactPath,
             AssetType = record.AssetType,
             Importer = meta.Importer?.Trim() ?? string.Empty,
             ImporterSettings = new Dictionary<string, string>(meta.Settings ?? [], StringComparer.Ordinal),
-            SourceHash = record.SourceHash.ToLowerInvariant(),
-            Size = new FileInfo(sourcePath).Length
+            ArtifactHash = record.ArtifactHash.ToLowerInvariant(),
+            Size = record.ArtifactSize
         };
+    }
+
+    private static string AssetIdentityKey(ProjectAssetRecord record)
+    {
+        var ownerGuid = record.ParentGuid ?? record.Guid;
+        var localIdentifier = record.ParentGuid.HasValue ? record.LocalIdentifier : 0;
+        return localIdentifier > 0
+            ? AssetBundleValidation.CreateSubAssetAddress(ownerGuid, localIdentifier)
+            : $"guid:{ownerGuid:N}";
+    }
+
+    private static void VerifyArtifactSnapshot(ProjectAssetRecord record, string artifactPath)
+    {
+        var info = new FileInfo(artifactPath);
+        if (info.Length != record.ArtifactSize)
+            throw new InvalidDataException(
+                $"Artifact '{record.AssetPath}' size differs from the AssetDatabase snapshot. " +
+                "Refresh assets and rebuild.");
+        using var stream = File.OpenRead(artifactPath);
+        var hash = AssetBundleCatalogSerializer.ComputeSha256(stream);
+        if (!hash.Equals(record.ArtifactHash, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException(
+                $"Artifact '{record.AssetPath}' hash differs from the AssetDatabase snapshot. " +
+                "Refresh assets and rebuild.");
     }
 
     private static AssetBundleBuildResult BuildCore(
@@ -201,7 +258,7 @@ public static class AssetBundleBuilder
         try
         {
             Directory.CreateDirectory(stagingBundles);
-            var assetsByPath = assets.ToDictionary(asset => asset.AssetPath, StringComparer.OrdinalIgnoreCase);
+            var assetsByAddress = assets.ToDictionary(asset => asset.Address, StringComparer.OrdinalIgnoreCase);
             var catalog = new AssetBundleCatalog
             {
                 PackageName = options.PackageName,
@@ -213,21 +270,23 @@ public static class AssetBundleBuilder
                 var definition = definitions[index];
                 progress?.Report(new AssetBundleBuildProgress(AssetBundleBuildPhase.BuildingBundles, index,
                     definitions.Count, definition.Name));
-                var bundleAssets = definition.AssetPaths.Select(path => assetsByPath[path])
-                    .OrderBy(asset => asset.AssetPath, StringComparer.Ordinal).ToArray();
+                var bundleAssets = definition.AssetPaths.Select(address => assetsByAddress[address])
+                    .OrderBy(asset => asset.Address, StringComparer.Ordinal).ToArray();
                 var descriptor = WriteBundle(stagingBundles, index, definition, bundleAssets, cancellationToken);
                 catalog.Bundles.Add(descriptor);
                 catalog.Assets.AddRange(bundleAssets.Select(asset => new AssetBundleAsset
                 {
-                    Address = asset.AssetPath,
+                    Address = asset.Address,
                     Guid = asset.Guid,
+                    OwnerGuid = asset.OwnerGuid,
+                    LocalIdentifier = asset.LocalIdentifier,
                     Bundle = definition.Name,
-                    Entry = asset.AssetPath,
+                    Entry = asset.Entry,
                     AssetType = asset.AssetType,
                     Importer = asset.Importer,
                     ImporterSettings = new Dictionary<string, string>(asset.ImporterSettings,
                         StringComparer.Ordinal),
-                    Sha256 = asset.SourceHash,
+                    Sha256 = asset.ArtifactHash,
                     Size = asset.Size
                 }));
             }
@@ -290,10 +349,10 @@ public static class AssetBundleBuilder
             foreach (var asset in assets)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var entry = archive.CreateEntry(asset.AssetPath, CompressionLevel.NoCompression);
+                var entry = archive.CreateEntry(asset.Entry, CompressionLevel.NoCompression);
                 entry.LastWriteTime = StableArchiveTimestamp;
                 entry.ExternalAttributes = 0;
-                using var source = new FileStream(asset.SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                using var source = new FileStream(asset.ArtifactPath, FileMode.Open, FileAccess.Read, FileShare.Read,
                     64 * 1024, FileOptions.SequentialScan);
                 using var destination = entry.Open();
                 CopyAndVerifyAsset(source, destination, asset, cancellationToken);
@@ -354,9 +413,9 @@ public static class AssetBundleBuilder
             ArrayPool<byte>.Shared.Return(buffer);
         }
         var actualHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
-        if (total != asset.Size || !string.Equals(actualHash, asset.SourceHash, StringComparison.Ordinal))
+        if (total != asset.Size || !string.Equals(actualHash, asset.ArtifactHash, StringComparison.Ordinal))
             throw new InvalidDataException(
-                $"Asset '{asset.AssetPath}' changed after the AssetDatabase snapshot. Refresh assets and rebuild.");
+                $"Artifact '{asset.Address}' changed after the AssetDatabase snapshot. Refresh assets and rebuild.");
     }
 
     private static bool PublishVersion(

@@ -1,6 +1,6 @@
 using BEngine;
-using BEngine.Documents;
 using BEngine.Editor;
+using BEngine.Serialization;
 
 namespace BEngine.ExampleTests.PrefabWorkflow;
 
@@ -25,18 +25,18 @@ internal static class Program
             child.AddComponent<SpriteRenderer>().opacity = Fix64.Parse("0.5");
 
             var path = Path.Combine(testDirectory, "Robot.prefab.yaml");
-            Document.SaveBObject<PrefabDocument>(root, path);
-            var prefab = Document.LoadBObject<PrefabDocument, PrefabAsset>(path);
+            _ = PrefabAssetSerialization.Save(root, path);
+            var prefab = PrefabAssetSerialization.Load(path);
             Require(File.Exists(path), "Prefab YAML was not created.");
             var yaml = File.ReadAllText(path);
             Require(yaml.Contains("BEngine.Prefab", StringComparison.Ordinal), "Prefab format marker is missing.");
             Require(prefab.objectCount == 2 && prefab.componentCount == 4, "Prefab hierarchy statistics are wrong.");
 
-            var loaded = Document.LoadBObject<PrefabDocument, PrefabAsset>(path);
+            var loaded = PrefabAssetSerialization.Load(path);
             Require(loaded.assetId == prefab.assetId, "Prefab asset ID was not preserved.");
             var destination = new Scene("Instances");
-            var first = PrefabDocumentOperations.Instantiate(loaded, destination);
-            var second = PrefabDocumentOperations.Instantiate(loaded, destination);
+            var first = PrefabAssetOperations.Instantiate(loaded, destination);
+            var second = PrefabAssetOperations.Instantiate(loaded, destination);
             Require(first.Id != second.Id, "Prefab instances reused a GameObject ID.");
             Require(first.transform.Id != second.transform.Id, "Prefab instances reused a Transform ID.");
             Require(first.name == "Robot" && first.tag == "Player" && first.layer == 4 && first.isStatic,
@@ -48,11 +48,11 @@ internal static class Program
             Require(PrefabUtility.IsPartOfPrefabInstance(first), "Instantiated root is not connected to its prefab.");
             Require(PrefabUtility.IsAnyPrefabInstanceRoot(first), "Prefab root was not recognized.");
 
-            var sceneYaml = Document.FromBObject<SceneDocument>(destination).ToYaml();
+            var sceneYaml = SceneAssetSerialization.Serialize(destination);
             Require(sceneYaml.Contains("prefabAsset", StringComparison.OrdinalIgnoreCase) &&
                     sceneYaml.Contains("prefabSource", StringComparison.OrdinalIgnoreCase),
                 "Scene YAML did not retain prefab linkage.");
-            var restoredScene = (Scene)Document.FromYaml<SceneDocument>(sceneYaml).ToBObject();
+            var restoredScene = SceneAssetSerialization.Deserialize(sceneYaml);
             var restored = restoredScene.rootGameObjects.First(item => item.name == "Robot");
             Require(PrefabUtility.IsPartOfPrefabInstance(restored), "Scene reload lost prefab linkage.");
 

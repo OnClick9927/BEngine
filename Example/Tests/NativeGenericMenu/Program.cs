@@ -138,11 +138,14 @@ internal static partial class Program
     private static void VerifyNativeMenuModel()
     {
         var invoked = false;
+        var repeatedInvocations = new List<int>();
         var menu = new GenericMenu();
         menu.AddItem(new GUIContent("Parent/Checked"), true, () => invoked = true);
         menu.AddDisabledItem(new GUIContent("Parent/Disabled"));
         menu.AddSeparator("Parent/");
         menu.AddItem(new GUIContent("Standalone"), false, () => { });
+        menu.AddItem(new GUIContent("Repeated/Action"), false, () => repeatedInvocations.Add(1));
+        menu.AddItem(new GUIContent("Repeated/Action"), false, () => repeatedInvocations.Add(2));
 
         var presenterType = typeof(EditorWindow).Assembly.GetType(
             "BEngine.Editor.Win32GenericMenuPresenter", true)!;
@@ -155,8 +158,9 @@ internal static partial class Program
         Require(!(bool)tryShow.Invoke(null, [IntPtr.Zero, Vector2.zero, items, null])!,
             "The native menu did not fall back when no native owner window was available.");
         var roots = ((IEnumerable)buildNodes.Invoke(null, [items])!).Cast<object>().ToArray();
-        Require(roots.Length == 2 && Get<string>(roots[0], "Name") == "Parent" &&
-                Get<string>(roots[1], "Name") == "Standalone",
+        Require(roots.Length == 3 && Get<string>(roots[0], "Name") == "Parent" &&
+                Get<string>(roots[1], "Name") == "Standalone" &&
+                Get<string>(roots[2], "Name") == "Repeated",
             "The native menu did not preserve root order or slash hierarchy.");
 
         var children = ((IEnumerable)Get<object>(roots[0], "Children")).Cast<object>().ToArray();
@@ -170,6 +174,13 @@ internal static partial class Program
             "The native menu did not place a path-scoped separator in its submenu.");
         Require(Get<bool>(roots[0], "IsEnabled"),
             "A native submenu with an enabled command was incorrectly disabled.");
+        var repeated = ((IEnumerable)Get<object>(roots[2], "Children")).Cast<object>().ToArray();
+        Require(repeated.Length == 2 && repeated.All(node => Get<string>(node, "Name") == "Action") &&
+                repeated.All(node => Get<Action?>(node, "Action") is not null),
+            "The native menu collapsed repeated labels and lost a command callback.");
+        foreach (var node in repeated) Get<Action>(node, "Action")();
+        Require(repeatedInvocations.SequenceEqual([1, 2]),
+            "The native menu routed repeated labels to the same callback.");
 
         Get<Action>(children[0], "Action")();
         Require(invoked, "The native menu did not retain its callback.");

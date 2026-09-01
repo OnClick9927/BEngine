@@ -183,11 +183,12 @@ public static class ProjectScriptCompiler
         ProjectWorkspace workspace,
         bool editor)
     {
-        var symbols = new HashSet<string>(StringComparer.Ordinal);
+        var symbols = BEngineCompilationSymbols.Create(
+            editor, BEngineCompilationSymbols.DebugConfiguration).ToHashSet(StringComparer.Ordinal);
         var settingsPath = workspace.ProjectSettingsFilePath;
         if (File.Exists(settingsPath))
         {
-            var settings = Document.Load<ProjectSettingsDocument>(settingsPath);
+            var settings = YamlUtility.Load<ProjectSettingsData>(settingsPath);
             foreach (var symbol in settings.ScriptingDefineSymbols ?? [])
             {
                 var normalized = symbol?.Trim();
@@ -196,10 +197,9 @@ public static class ProjectScriptCompiler
                 symbols.Add(normalized);
             }
         }
-        AddBuiltInSymbols(symbols, editor);
         return new ScriptBuildConfiguration(
             editor ? "net10.0-windows" : "net10.0",
-            ResolvePlatform(editor),
+            BEngineCompilationSymbols.ResolvePlatform(editor),
             symbols.OrderBy(symbol => symbol, StringComparer.Ordinal).ToArray(),
             editor);
     }
@@ -536,9 +536,9 @@ public static class ProjectScriptCompiler
         string scriptAssembliesRoot)
     {
         var root = Path.GetFullPath(scriptAssembliesRoot);
-        var manifest = new ProjectScriptAssemblyManifestDocument
+        var manifest = new ProjectScriptAssemblyManifestData
         {
-            Assemblies = compiled.Select(artifact => new ProjectScriptAssemblyDocument
+            Assemblies = compiled.Select(artifact => new ProjectScriptAssemblyData
             {
                 Assembly = artifact.Node.Name,
                 BuildId = artifact.BuildId,
@@ -651,31 +651,11 @@ public static class ProjectScriptCompiler
 
     internal static ScriptBuildConfiguration CreateBuildConfigurationDefaults(bool editor)
     {
-        var symbols = new HashSet<string>(StringComparer.Ordinal);
-        AddBuiltInSymbols(symbols, editor);
+        var symbols = BEngineCompilationSymbols.Create(
+            editor, BEngineCompilationSymbols.DebugConfiguration);
         return new ScriptBuildConfiguration(
-            editor ? "net10.0-windows" : "net10.0", ResolvePlatform(editor),
-            symbols.OrderBy(symbol => symbol, StringComparer.Ordinal).ToArray(), editor);
-    }
-
-    private static void AddBuiltInSymbols(ISet<string> symbols, bool editor)
-    {
-        symbols.Add("BENGINE");
-        symbols.Add(editor ? "BENGINE_EDITOR" : "BENGINE_RUNTIME");
-        var platform = ResolvePlatform(editor);
-        var family = platform.ToString().Replace(editor ? "Editor" : "Player", string.Empty,
-            StringComparison.Ordinal).ToUpperInvariant();
-        symbols.Add($"BENGINE_{family}");
-        symbols.Add($"BENGINE_{platform.ToString().ToUpperInvariant()}");
-    }
-
-    private static RuntimePlatform ResolvePlatform(bool editor)
-    {
-        if (OperatingSystem.IsWindows())
-            return editor ? RuntimePlatform.WindowsEditor : RuntimePlatform.WindowsPlayer;
-        if (OperatingSystem.IsMacOS())
-            return editor ? RuntimePlatform.OSXEditor : RuntimePlatform.OSXPlayer;
-        return editor ? RuntimePlatform.LinuxEditor : RuntimePlatform.LinuxPlayer;
+            editor ? "net10.0-windows" : "net10.0",
+            BEngineCompilationSymbols.ResolvePlatform(editor), symbols, editor);
     }
 
     private static void ValidateDefineSymbol(string symbol, string source)

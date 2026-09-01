@@ -1,8 +1,10 @@
 using BEngine.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
+using System.Runtime.InteropServices;
 
 namespace BEngine;
 
+[EditorIcon("Icons/Assets/AssetScene.png")]
 public sealed class Scene : BAsset, IDisposable
 {
     private readonly List<GameObject> _gameObjects = [];
@@ -37,6 +39,7 @@ public sealed class Scene : BAsset, IDisposable
     public bool isCreated => !_disposed;
 
     internal IServiceProvider Services { get; }
+    internal ReadOnlySpan<GameObject> GameObjectsSpanUnchecked => CollectionsMarshal.AsSpan(_gameObjects);
 
     public Scene(string name = "Untitled", IServiceProvider? services = null)
     {
@@ -173,6 +176,15 @@ public sealed class Scene : BAsset, IDisposable
             foreach (var component in gameObject.ComponentsSpanUnchecked)
                 if (component is T typed) result.Add(typed);
         return result.Count == 0 ? [] : [.. result];
+    }
+
+    internal void FillComponents<T>(List<T> result) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        result.Clear();
+        foreach (var gameObject in _gameObjects)
+            foreach (var component in gameObject.ComponentsSpanUnchecked)
+                if (component is T typed) result.Add(typed);
     }
 
     internal bool Contains(GameObject gameObject) => _gameObjects.Contains(gameObject);

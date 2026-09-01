@@ -60,11 +60,30 @@ internal static class InspectorSelectorTests
         var cameraCommands = cameraInspector.Render(new Event(EventType.Repaint));
         GenericMenuCapture.Reset();
         cameraInspector.Click(Center(Text(cameraCommands, "Everything").Rect));
-        TestAssert.Require(GenericMenuCapture.IsAdvanced &&
+        TestAssert.Require(!GenericMenuCapture.IsAdvanced &&
+                           GenericMenuCapture.PresentationKind == "DropDown" &&
                            GenericMenuCapture.Items.Any(item => item.Path == "Nothing") &&
                            GenericMenuCapture.Items.Any(item => item.Path.StartsWith(
                                "World/", StringComparison.Ordinal)),
-            "Camera Culling Mask did not open as a searchable AdvancedDropdown with project Layers.");
+            "Camera Culling Mask did not open as a non-searchable native GenericMenu with project Layers.");
+
+        var probeOwner = new GameObject("Layer Mask Inspector Target");
+        var probe = probeOwner.AddComponent<LayerMaskInspectorProbe>();
+        probe.queryLayerMask = LayerMask.GetMask("Default", "Gameplay");
+        using var probeInspector = new InspectorHarness(probeOwner);
+        probeInspector.Render(new Event(EventType.Layout));
+        var probeCommands = probeInspector.Render(new Event(EventType.Repaint));
+        GenericMenuCapture.Reset();
+        probeInspector.Click(Center(Text(probeCommands, "2 Layers").Rect));
+        TestAssert.Require(!GenericMenuCapture.IsAdvanced &&
+                           GenericMenuCapture.PresentationKind == "DropDown" &&
+                           GenericMenuCapture.Items.Any(item => item.Path == "Everything") &&
+                           GenericMenuCapture.Items.Any(item => item.Path == "Nothing"),
+            "A component LayerMask field did not use the native non-searchable GenericMenu.");
+        GenericMenuCapture.Invoke("Nothing");
+        probeInspector.Render(new Event(EventType.Repaint));
+        TestAssert.Require(probe.queryLayerMask == 0,
+            "Selecting a native LayerMask menu item did not update the serialized component field.");
     }
 
     private static GpuCanvasCommand Text(IEnumerable<GpuCanvasCommand> commands, string content) =>
@@ -75,4 +94,11 @@ internal static class InspectorSelectorTests
 
     private static Vector2 Center(GpuCanvasRect rect) =>
         new((Fix64)(rect.X + rect.Width / 2), (Fix64)(rect.Y + rect.Height / 2));
+
+    private sealed class LayerMaskInspectorProbe : Component
+    {
+        public LayerMaskInspectorProbe() { }
+
+        public ulong queryLayerMask { get; set; }
+    }
 }

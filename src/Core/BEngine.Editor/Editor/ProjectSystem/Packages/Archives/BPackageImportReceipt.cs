@@ -2,7 +2,7 @@ using BEngine.Documents;
 
 namespace BEngine.Editor;
 
-public sealed class BPackageImportReceipt : Document
+public sealed class BPackageImportReceipt
 {
     public string Format { get; set; } = "BEngine.BPackageImportReceipt";
     public int Version { get; set; } = 1;

@@ -5,6 +5,7 @@ internal readonly record struct EditorAssetRecord(
     Guid Guid,
     string AssetPath,
     string SourcePath,
+    string ArtifactPath,
     string AssetType,
     bool IsDirectory,
     Guid? ParentGuid,

@@ -6,110 +6,51 @@ namespace BEngine.Editor;
 [CustomEditor(typeof(TextureAtlas))]
 public sealed class TextureAtlasEditor : BAssetEditor
 {
-    private readonly List<AtlasSpriteEntry> _sprites = [];
-    private ReorderableList? _spriteList;
+    private readonly List<Sprite?> _sources = [];
+    private ReorderableList? _list;
 
     protected override void OnEnable()
     {
-        base.OnEnable();
-        ReloadReferences();
-        _spriteList = new ReorderableList((IList)_sprites, typeof(AtlasSpriteEntry),
-            draggable: true, displayHeader: true, displayAddButton: true, displayRemoveButton: true)
+        base.OnEnable(); Reload();
+        _list = new ReorderableList((IList)_sources, typeof(Sprite), true, true, true, true)
         {
-            drawHeaderCallback = rect => EditorGUI.LabelField(rect, "Sprites"),
-            drawElementCallback = DrawSprite,
+            drawHeaderCallback = rect => EditorGUI.LabelField(rect, "Sources"),
+            drawElementCallback = DrawSource,
             elementHeight = (float)EditorGUIUtility.singleLineHeight + 4,
-            onAddCallback = list =>
-            {
-                _sprites.Add(new AtlasSpriteEntry());
-                list.index = _sprites.Count - 1;
-                MarkChanged();
-            },
-            onChangedCallback = _ => MarkChanged()
+            onAddCallback = list => { _sources.Add(null); list.index = _sources.Count - 1; Changed(); },
+            onChangedCallback = _ => Changed()
         };
     }
 
     public override void OnInspectorGUI()
     {
         if (DrawDefaultInspector()) hasUnsavedChanges = true;
-        GUILayout.Space(6);
-        _spriteList?.DoLayoutList();
-        DrawApplyBar();
+        GUILayout.Space(6); _list?.DoLayoutList(); DrawApplyBar();
     }
+    public override void SaveChanges() { Synchronize(); base.SaveChanges(); }
+    public override void DiscardChanges() { base.DiscardChanges(); Reload(); if (_list is not null) _list.list = _sources; }
 
-    public override void SaveChanges()
+    private void DrawSource(Rect rect, int index, bool active, bool focused)
     {
-        SynchronizeReferences();
-        base.SaveChanges();
+        if ((uint)index >= (uint)_sources.Count) return;
+        var value = EditorGUI.ObjectField(new Rect(rect.x, rect.y + 1, rect.width, Fix64.Max(1, rect.height - 2)),
+            _sources[index], typeof(Sprite), false) as Sprite;
+        if (ReferenceEquals(value, _sources[index])) return;
+        if (value is not null && _sources.Where((_, candidate) => candidate != index).Any(item =>
+                item is not null && TextureAtlas.SourceIdentity(item).Equals(TextureAtlas.SourceIdentity(value),
+                    StringComparison.OrdinalIgnoreCase))) return;
+        _sources[index] = value; Changed();
     }
-
-    public override void DiscardChanges()
+    private void Reload()
     {
-        base.DiscardChanges();
-        ReloadReferences();
-        _spriteList!.list = _sprites;
+        _sources.Clear(); if (target is TextureAtlas atlas) _sources.AddRange(atlas.Sources);
     }
-
-    private void DrawSprite(Rect rect, int index, bool isActive, bool isFocused)
+    private void Changed()
     {
-        if ((uint)index >= (uint)_sprites.Count) return;
-        var entry = _sprites[index];
-        var current = EditorGUI.ObjectField(
-            new Rect(rect.x, rect.y + 1, rect.width, Fix64.Max(1, rect.height - 2)),
-            entry.Sprite, typeof(Sprite), allowSceneObjects: false) as Sprite;
-        if (ReferenceEquals(current, entry.Sprite)) return;
-        var reference = current is not null &&
-                        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(current, out var guid, out _)
-            ? guid
-            : string.Empty;
-        if (reference.Length > 0 && _sprites.Where((_, candidate) => candidate != index)
-                .Any(candidate => candidate.Reference.Equals(reference, StringComparison.OrdinalIgnoreCase)))
-            return;
-        entry.Sprite = current;
-        entry.Reference = reference;
-        MarkChanged();
+        Synchronize(); hasUnsavedChanges = true; if (target is BAsset asset) EditorUtility.SetDirty(asset);
     }
-
-    private void ReloadReferences()
+    private void Synchronize()
     {
-        _sprites.Clear();
-        if (target is not TextureAtlas atlas) return;
-        foreach (var reference in atlas.SpriteReferences)
-        {
-            var path = Guid.TryParse(reference, out _)
-                ? AssetDatabase.GUIDToAssetPath(reference)
-                : reference;
-            var sprite = path.Length == 0 ? null : AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            var migratedReference = sprite is not null &&
-                                    AssetDatabase.TryGetGUIDAndLocalFileIdentifier(sprite, out var guid, out _)
-                ? guid
-                : reference;
-            _sprites.Add(new AtlasSpriteEntry
-            {
-                Reference = migratedReference,
-                Sprite = sprite
-            });
-        }
-    }
-
-    private void MarkChanged()
-    {
-        SynchronizeReferences();
-        hasUnsavedChanges = true;
-        if (target is BAsset asset) EditorUtility.SetDirty(asset);
-    }
-
-    private void SynchronizeReferences()
-    {
-        if (target is not TextureAtlas atlas) return;
-        atlas.SpriteReferences = _sprites.Where(entry => entry.Reference.Length > 0)
-            .Select(entry => entry.Reference).ToList();
-        atlas.Version = atlas.SpriteReferences.All(reference => Guid.TryParse(reference, out _)) ? 3 : 2;
-    }
-
-    private sealed class AtlasSpriteEntry
-    {
-        internal string Reference { get; set; } = string.Empty;
-        internal Sprite? Sprite { get; set; }
+        if (target is TextureAtlas atlas) atlas.Sources = _sources.Where(item => item is not null).Cast<Sprite>().ToArray();
     }
 }

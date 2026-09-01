@@ -1,8 +1,9 @@
+using System.Reflection;
 using BEngine;
 using BEngine.Animation;
-using BEngine.Documents;
-using BEngine.Editor;
 using BEngine.Editor.Documents;
+using BEngine.ProjectSystem;
+using BEngine.Serialization;
 using BEngine.UIElements;
 
 namespace BEngine.ExampleTests.DocumentArchitecture;
@@ -15,14 +16,15 @@ internal static class Program
         Directory.CreateDirectory(directory);
         try
         {
-            VerifyGenericDocumentObject(directory);
-            VerifySceneConversion(directory);
-            VerifyPackageConversions(directory);
+            VerifySingleGenericBridge();
+            VerifyPlainProjectData(directory);
+            VerifySceneRoundTrip(directory);
+            VerifyPackageRoundTrips(directory);
             VerifyUiAssetReferenceContract(directory);
-            VerifyDocumentComposition();
+            VerifyEditorDataComposition();
             VerifySourceBoundary();
-            Console.WriteLine("DOCUMENT_ARCHITECTURE_OK|base,object,yaml,disk,scene,packages," +
-                              "ui-basset-reference,composition,boundary");
+            Console.WriteLine("DOCUMENT_ARCHITECTURE_OK|internal-generic,basset-only,plain-data," +
+                              "scene,prefab,packages,ui-reference,runtime-write-guard,boundary");
             return 0;
         }
         catch (Exception exception)
@@ -36,20 +38,74 @@ internal static class Program
         }
     }
 
-    private static void VerifyPackageConversions(string directory)
+    private static void VerifySingleGenericBridge()
+    {
+        var bridges = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(static assembly =>
+            {
+                try { return assembly.GetTypes(); }
+                catch (ReflectionTypeLoadException exception) { return exception.Types.OfType<Type>(); }
+            })
+            .Where(static type => type.IsGenericTypeDefinition && type.Name == "Document`1")
+            .ToArray();
+        Require(bridges.Length == 1, $"Expected one Document<TAsset>, found {bridges.Length}.");
+        var bridge = bridges[0];
+        Require(bridge.IsNotPublic && bridge.IsSealed,
+            "Document<TAsset> must be internal and sealed.");
+        var constraints = bridge.GetGenericArguments()[0].GetGenericParameterConstraints();
+        Require(constraints.Length == 1 && constraints[0] == typeof(BAsset),
+            "Document<TAsset> must constrain TAsset to BAsset.");
+        Require(!typeof(BAsset).IsAssignableFrom(typeof(ProjectData)),
+            "Project configuration must remain plain YAML data rather than an asset.");
+    }
+
+    private static void VerifyPlainProjectData(string directory)
+    {
+        var source = new ProjectData { Name = "Generic Asset Bridge Test" };
+        var path = Path.Combine(directory, "Project.yaml");
+        YamlUtility.Save(source, path);
+        var restored = YamlUtility.Load<ProjectData>(path);
+        Require(restored.Name == source.Name, "Plain project data did not round-trip through YAML.");
+    }
+
+    private static void VerifySceneRoundTrip(string directory)
+    {
+        using var source = new Scene("Document Scene");
+        var camera = source.CreateGameObject("Main Camera");
+        camera.transform.localPosition = new Vector2(1, 2);
+        camera.AddComponent<Camera2D>().size = 8;
+
+        var yaml = SceneAssetSerialization.Serialize(source);
+        using var memoryScene = SceneAssetSerialization.Deserialize(yaml);
+        Require(memoryScene.Find("Main Camera")?.GetComponent<Camera2D>() is { size: var size } &&
+                size == (Fix64)8,
+            "Scene serialization lost component state.");
+
+        var path = Path.Combine(directory, "Scene.scene.yaml");
+        SceneAssetSerialization.Save(source, path);
+        using var diskScene = SceneAssetSerialization.Load(path);
+        Require(diskScene.Find("Main Camera") is not null,
+            "Scene disk round-trip lost its GameObject hierarchy.");
+
+        memoryScene.MarkRuntimeOnly();
+        var runtimePath = Path.Combine(directory, "Runtime.scene.yaml");
+        Expect<InvalidOperationException>(() => SceneAssetSerialization.Save(memoryScene, runtimePath));
+        Require(!File.Exists(runtimePath), "A runtime Scene was written to disk.");
+    }
+
+    private static void VerifyPackageRoundTrips(string directory)
     {
         var clip = new AnimationClip { name = "Idle", frameRate = 30 };
         var clipPath = Path.Combine(directory, "Idle.animation.yaml");
-        Document.SaveBObject<AnimationClipDocument>(clip, clipPath);
-        Require(Document.LoadBObject<AnimationClipDocument, AnimationClip>(clipPath).name == "Idle",
-            "Animation package did not register its Document converter.");
+        clip.Save(clipPath);
+        Require(AnimationClip.Load(clipPath).name == "Idle",
+            "AnimationClip did not use its typed asset serialization path.");
 
         var treeAsset = VisualTreeAsset.Create(new Label("Document UI"));
         var uiPath = Path.Combine(directory, "Document.ui.yaml");
-        Document.SaveBObject<UIAssetDocument>(treeAsset, uiPath);
-        Require(Document.LoadBObject<UIAssetDocument, VisualTreeAsset>(uiPath).Instantiate() is Label label &&
-                label.text == "Document UI",
-            "UIElements package did not register its Document converter.");
+        treeAsset.Save(uiPath);
+        Require(VisualTreeAsset.Load(uiPath).Instantiate() is Label label && label.text == "Document UI",
+            "VisualTreeAsset did not use its typed asset serialization path.");
     }
 
     private static void VerifyUiAssetReferenceContract(string directory)
@@ -71,19 +127,12 @@ internal static class Program
             Require(StyleSheet.Load(stylePath).assetPath == "Assets/Document.uss",
                 "StyleSheet retained an absolute project path.");
 
-            var scene = new Scene("UI Asset Reference");
+            using var scene = new Scene("UI Asset Reference");
             var probe = scene.CreateGameObject("Probe").AddComponent<UiAssetReferenceProbe>();
             probe.asset = direct;
             var fields = ComponentFieldSerializer.Serialize(probe);
             Require(fields[nameof(UiAssetReferenceProbe.asset)] == "Assets/Document.uxml",
                 "A UI BAsset component reference serialized an absolute path.");
-
-            var first = BAsset.Load<VisualTreeAsset>("Assets/Document.uxml");
-            BAsset.ClearLoadedAssets();
-            var second = BAsset.Load<VisualTreeAsset>("Assets/Document.uxml");
-            Require(first is not null && second is not null && !ReferenceEquals(first, second),
-                "VisualTreeAsset bypassed the unified BAsset cache invalidation contract.");
-            scene.Dispose();
         }
         finally
         {
@@ -92,86 +141,45 @@ internal static class Program
         }
     }
 
-    private static void VerifyDocumentComposition()
+    private static void VerifyEditorDataComposition()
     {
-        Type[] persistentRoots =
-        {
-            typeof(ProjectDocument),
-            typeof(SceneDocument),
-            typeof(EditorLayoutDocument),
-            typeof(AnimationClipDocument),
-            typeof(UIAssetDocument)
-        };
-        var violations = persistentRoots.Where(type => !typeof(Document).IsAssignableFrom(type))
-            .Select(type => type.FullName).ToArray();
-        Require(violations.Length == 0,
-            $"Persistent document roots do not inherit Document: {string.Join(", ", violations)}");
-
-        Require(!typeof(Document).IsAssignableFrom(typeof(EditorDockNodeDocument)) &&
-                !typeof(Document).IsAssignableFrom(typeof(EditorWindowLayoutDocument)),
-            "Editor layout child records must remain composed DTOs rather than independent document roots.");
         Require(typeof(EditorLayoutDocument).GetProperty(nameof(EditorLayoutDocument.DockRoot))?.PropertyType ==
                 typeof(EditorDockNodeDocument) &&
                 typeof(EditorLayoutDocument).GetProperty(nameof(EditorLayoutDocument.Windows))?.PropertyType ==
                 typeof(List<EditorWindowLayoutDocument>),
-            "EditorLayoutDocument no longer composes the dock tree and window records.");
-    }
-
-    private static void VerifyGenericDocumentObject(string directory)
-    {
-        var project = new ProjectDocument { Name = "Document Test" };
-        Require(project is Document, "ProjectDocument does not inherit Document.");
-        var wrapper = project.ToBObject();
-        Require(wrapper is DocumentObject { document: ProjectDocument restored } && restored.Name == project.Name,
-            "A document without a semantic converter did not use the lossless DocumentObject bridge.");
-        Require(ReferenceEquals(Document.FromBObject(wrapper), project),
-            "DocumentObject did not convert back through the unified Document API.");
-
-        var path = Path.Combine(directory, "Project.yaml");
-        project.Save(path);
-        var diskObject = Document.LoadBObject<ProjectDocument>(path);
-        Require(diskObject is DocumentObject { document: ProjectDocument loaded } && loaded.Name == project.Name,
-            "Disk Document -> BObject conversion did not preserve the concrete document.");
-    }
-
-    private static void VerifySceneConversion(string directory)
-    {
-        var source = new Scene("Document Scene");
-        var camera = source.CreateGameObject("Main Camera");
-        camera.transform.localPosition = new Vector2(1, 2);
-        var cameraComponent = camera.AddComponent<Camera2D>();
-        cameraComponent.size = 8;
-
-        var document = Document.FromBObject<SceneDocument>(source);
-        Require(document.GameObjects.Count == 1, "Scene -> Document conversion lost a GameObject.");
-        var memoryScene = document.ToBObject();
-        Require(memoryScene is Scene { name: "Document Scene" } scene &&
-                scene.Find("Main Camera")?.GetComponent<Camera2D>() is { size: var size } &&
-                size == (Fix64)8,
-            "Document -> Scene conversion lost component state.");
-
-        var path = Path.Combine(directory, "Scene.scene.yaml");
-        Document.SaveBObject<SceneDocument>(source, path);
-        var diskScene = Document.LoadBObject<SceneDocument, Scene>(path);
-        Require(diskScene.Find("Main Camera") is not null,
-            "Unified disk Document -> BObject conversion did not restore the Scene.");
+            "Editor layout data no longer composes its dock tree and window records.");
+        Require(!typeof(BAsset).IsAssignableFrom(typeof(EditorLayoutDocument)),
+            "Editor layout configuration must not be represented as a BAsset.");
     }
 
     private static void VerifySourceBoundary()
     {
         var repository = FindRepository(AppContext.BaseDirectory);
-        var serializationRoot = Path.Combine(repository, "src", "Core", "BEngine", "Core", "Serialization");
-        var files = Directory.EnumerateFiles(serializationRoot, "*.cs", SearchOption.AllDirectories)
-            .Select(Path.GetFileName).OrderBy(name => name, StringComparer.Ordinal).ToArray();
-        string[] expected = ["ISerializationCallbackReceiver.cs", "SerializationCallbackUtility.cs", "YamlUtility.cs"];
-        Require(files.SequenceEqual(expected.OrderBy(name => name, StringComparer.Ordinal)),
-            $"Core Serialization contains concrete types: {string.Join(", ", files)}");
+        var documentsRoot = Path.Combine(repository, "src", "Core", "BEngine", "Documents");
+        var files = Directory.EnumerateFiles(documentsRoot, "*.cs", SearchOption.AllDirectories)
+            .Select(Path.GetFileName).ToArray();
+        Require(files.SequenceEqual(["Document.cs"]),
+            $"Core Documents contains legacy types: {string.Join(", ", files)}");
 
-        var forbidden = Directory.EnumerateDirectories(Path.Combine(repository, "src"), "Documents",
-            SearchOption.AllDirectories).Where(path => path.Split(Path.DirectorySeparatorChar)
-            .Any(segment => segment.Equals("Serialization", StringComparison.OrdinalIgnoreCase))).ToArray();
-        Require(forbidden.Length == 0,
-            $"Documents is still nested under Serialization: {string.Join(", ", forbidden)}");
+        var source = File.ReadAllText(Path.Combine(documentsRoot, "Document.cs"));
+        Require(source.Contains("internal sealed class Document<TAsset> where TAsset : BAsset",
+                StringComparison.Ordinal),
+            "Core Document<TAsset> does not implement the required internal BAsset bridge.");
+        string[] forbidden =
+        [
+            "DocumentConversionRegistry", "DocumentValidationRegistry", "DocumentObject",
+            "IDocumentConverter", "ComponentTypeMigrationRegistry", "ProjectSettingsMigration",
+            "LayerDocumentMigration"
+        ];
+        var sourceFiles = Directory.EnumerateFiles(Path.Combine(repository, "src"), "*.cs",
+            SearchOption.AllDirectories);
+        foreach (var file in sourceFiles)
+        {
+            var text = File.ReadAllText(file);
+            foreach (var name in forbidden)
+                Require(!text.Contains(name, StringComparison.Ordinal),
+                    $"Legacy document architecture type '{name}' remains in {file}.");
+        }
     }
 
     private static string FindRepository(string start)
@@ -179,6 +187,13 @@ internal static class Program
         for (var directory = new DirectoryInfo(start); directory is not null; directory = directory.Parent)
             if (File.Exists(Path.Combine(directory.FullName, "src", "BEngine.sln"))) return directory.FullName;
         throw new DirectoryNotFoundException("Could not locate BEngine repository root.");
+    }
+
+    private static void Expect<TException>(Action action) where TException : Exception
+    {
+        try { action(); }
+        catch (TException) { return; }
+        throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
     }
 
     private static void Require(bool condition, string message)

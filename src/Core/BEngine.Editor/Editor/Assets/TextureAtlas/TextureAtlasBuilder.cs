@@ -1,14 +1,9 @@
-using System.Globalization;
-using BEngine.Documents;
-using BEngine.ProjectSystem.Editor;
 using BEngine.Rendering;
 
 namespace BEngine.Editor;
 
 public static class TextureAtlasBuilder
 {
-    private const string Suffix = ".atlas.yaml";
-
     public static TextureAtlasBuildResult Build(string atlasAssetPath)
     {
         EditorAssetWritePolicy.EnsureCanWrite("Building texture atlases");
@@ -19,17 +14,24 @@ public static class TextureAtlasBuilder
     }
 
     public static TextureAtlasBuildResult Build(TextureAtlas atlas, string manifestPath)
+        => Build(atlas, manifestPath, refreshAssets: true);
+
+    internal static TextureAtlasBuildResult Build(
+        TextureAtlas atlas,
+        string manifestPath,
+        bool refreshAssets)
     {
         EditorAssetWritePolicy.EnsureCanWrite("Building texture atlases");
         ArgumentNullException.ThrowIfNull(atlas);
         ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);
         manifestPath = Path.GetFullPath(manifestPath);
-        if (atlas.SpriteReferences.Count == 0 && atlas.Sources.Count == 0)
-            throw new InvalidDataException("Add at least one Sprite before building a texture atlas.");
+        var sources = atlas.Sources.OfType<Sprite>().ToArray();
+        if (sources.Length != atlas.Sources.Length) atlas.Sources = sources;
+        if (sources.Length == 0)
+            return ClearGeneratedTexture(atlas, manifestPath, refreshAssets);
 
-        var spriteInputs = ResolveSpriteInputs(atlas.SpriteReferences, manifestPath);
-        var images = spriteInputs.Select(input => LoadSprite(input.AssetPath, input.Guid, manifestPath))
-            .Concat(atlas.Sources.Select(source => LoadLegacySource(source, manifestPath)))
+        var images = sources
+            .Select(sprite => LoadSprite(sprite, manifestPath))
             .OrderByDescending(image => Math.Max(image.Width, image.Height))
             .ThenByDescending(image => image.Width * (long)image.Height)
             .ThenBy(image => image.Source.Name, StringComparer.Ordinal)
@@ -38,27 +40,21 @@ public static class TextureAtlasBuilder
         RejectDuplicateInputs(images, static image => image.Source.Reference, "Sprite reference",
             StringComparer.OrdinalIgnoreCase);
         var packed = Pack(images, atlas.Padding, atlas.MaxSize);
-        var texturePath = OutputTexturePath(manifestPath);
-        if (images.Any(image => image.FullPath.Equals(texturePath, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidDataException(
-                $"Generated atlas texture '{texturePath}' would overwrite one of its source images.");
         var pixels = new byte[checked(packed.Width * packed.Height * 4)];
         foreach (var placement in packed.Placements)
             CopyWithExtrusion(pixels, packed.Width, packed.Height, placement,
                 Math.Min(atlas.Extrude, atlas.Padding));
 
-        Directory.CreateDirectory(Path.GetDirectoryName(texturePath)!);
-        File.WriteAllBytes(texturePath, PngImageCodec.EncodeRgba(packed.Width, packed.Height, pixels));
+        var generated = GeneratedAssetArtifacts.Write(manifestPath, 2800000, ".png",
+            PngImageCodec.EncodeRgba(packed.Width, packed.Height, pixels));
         atlas.Width = packed.Width;
         atlas.Height = packed.Height;
-        atlas.Texture = ToPortableAssetPath(texturePath, manifestPath);
+        atlas.Texture = generated.Reference;
         atlas.Sprites = packed.Placements.OrderBy(item => item.Image.Source.Name, StringComparer.Ordinal)
             .Select(item => new TextureAtlasSprite
             {
                 Name = item.Image.Source.Name,
-                Source = item.Image.Source.Guid.Length > 0
-                    ? item.Image.Source.Guid
-                    : item.Image.Source.Reference,
+                Source = item.Image.Source.Reference,
                 X = item.X,
                 Y = item.Y,
                 Width = item.Image.Width,
@@ -66,144 +62,68 @@ public static class TextureAtlasBuilder
                 PivotX = item.Image.Source.PivotX,
                 PivotY = item.Image.Source.PivotY
             }).ToList();
-        if (spriteInputs.Count > 0)
-        {
-            atlas.SpriteReferences = spriteInputs.Select(input => input.Guid).ToList();
-            atlas.Version = 3;
-        }
         atlas.Validate();
         atlas.Save(manifestPath);
-        AssetDatabase.RegisterFileSubAsset(texturePath, manifestPath, 2800000);
         TextureAtlasResolver.Clear();
 
         var atlasPath = ToPortableAssetPath(manifestPath, manifestPath);
-        var outputPath = ToPortableAssetPath(texturePath, manifestPath);
-        if (EditorBridge.Host is not null)
-        {
-            AssetDatabase.ImportAsset(outputPath, ImportAssetOptions.ForceUpdate);
-            AssetDatabase.ImportAsset(atlasPath, ImportAssetOptions.ForceUpdate);
-        }
-        return new TextureAtlasBuildResult(atlasPath, outputPath,
+        if (refreshAssets && EditorBridge.Host is not null)
+            EditorBridge.Host.RefreshAssets();
+        return new TextureAtlasBuildResult(atlasPath, generated.Reference,
             packed.Width, packed.Height, atlas.Sprites.Count);
     }
 
-    private static SourceImage LoadSprite(string reference, string guid, string manifestPath)
+    private static TextureAtlasBuildResult ClearGeneratedTexture(
+        TextureAtlas atlas,
+        string manifestPath,
+        bool refreshAssets)
     {
-        var spritePath = ResolveSourcePath(reference, manifestPath);
-        if (!File.Exists(spritePath)) throw new FileNotFoundException(
-            $"Texture atlas Sprite '{reference}' does not exist.", spritePath);
-        if (!spritePath.EndsWith(".sprite.yaml", StringComparison.OrdinalIgnoreCase))
-            return LoadImportedSprite(reference, guid, spritePath);
-
-        var sprite = Sprite.Load(spritePath);
-        var source = new AtlasSource(
-            string.IsNullOrWhiteSpace(sprite.name)
-                ? Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(spritePath))
-                : sprite.name,
-            reference.Replace('\\', '/').Trim(), sprite.Texture, sprite.PivotX, sprite.PivotY, guid);
-        return LoadSource(source, spritePath);
-    }
-
-    private static SourceImage LoadImportedSprite(string reference, string guid, string texturePath)
-    {
-        if (!Path.GetExtension(texturePath).Equals(".png", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException(
-                $"Texture atlas Sprite reference '{reference}' must be a PNG imported as Sprite or a legacy .sprite.yaml asset.");
-
-        var metaPath = texturePath + ".meta";
-        if (!File.Exists(metaPath))
-            throw new InvalidDataException(
-                $"Texture atlas image '{reference}' has no importer metadata and is not imported as Sprite.");
-
-        AssetMetaDocument meta;
+        var previousTexture = atlas.Texture;
+        var previousSprites = atlas.Sprites;
+        var previousWidth = atlas.Width;
+        var previousHeight = atlas.Height;
+        atlas.Texture = string.Empty;
+        atlas.Sprites = [];
+        atlas.Width = 0;
+        atlas.Height = 0;
         try
         {
-            meta = Document.Load<AssetMetaDocument>(metaPath);
+            atlas.Validate();
+            atlas.Save(manifestPath);
+            GeneratedAssetArtifacts.Delete(manifestPath, 2800000);
         }
-        catch (Exception exception) when (exception is IOException or InvalidDataException or FormatException or
-                                          YamlDotNet.Core.YamlException)
+        catch (Exception exception)
         {
-            throw new InvalidDataException(
-                $"Texture atlas image '{reference}' has invalid importer metadata.", exception);
+            atlas.Texture = previousTexture;
+            atlas.Sprites = previousSprites;
+            atlas.Width = previousWidth;
+            atlas.Height = previousHeight;
+            try { atlas.Save(manifestPath); }
+            catch (Exception rollbackException)
+            {
+                throw new AggregateException(
+                    "Clearing the generated TextureAtlas artifact failed and its manifest could not be restored.",
+                    exception,
+                    rollbackException);
+            }
+            throw;
         }
-
-        var settings = meta.Settings ?? [];
-        if (!string.Equals(meta.Importer, nameof(TextureImporter), StringComparison.OrdinalIgnoreCase) ||
-            !settings.TryGetValue(nameof(TextureImporter.textureType), out var textureType) ||
-            !string.Equals(textureType, nameof(TextureImporterType.Sprite), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException(
-                $"Texture atlas image '{reference}' must use TextureImporter with Texture Type set to Sprite.");
-
-        var normalizedReference = reference.Replace('\\', '/').Trim();
-        var source = new AtlasSource(Path.GetFileNameWithoutExtension(texturePath), normalizedReference,
-            normalizedReference,
-            ReadPivot(settings, nameof(TextureImporter.spritePivotX)),
-            ReadPivot(settings, nameof(TextureImporter.spritePivotY)), guid);
-        return LoadSource(source, texturePath);
+        TextureAtlasResolver.Clear();
+        var atlasPath = ToPortableAssetPath(manifestPath, manifestPath);
+        if (refreshAssets && EditorBridge.Host is not null)
+            EditorBridge.Host.RefreshAssets();
+        return new TextureAtlasBuildResult(atlasPath, string.Empty, 0, 0, 0);
     }
 
-    private static float ReadPivot(IReadOnlyDictionary<string, string> settings, string key) =>
-        settings.TryGetValue(key, out var value) &&
-        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var pivot) &&
-        float.IsFinite(pivot)
-            ? Math.Clamp(pivot, 0, 1)
-            : 0.5f;
-
-    private static SourceImage LoadLegacySource(TextureAtlasSource legacy, string manifestPath) =>
-        LoadSource(new AtlasSource(legacy.Name, legacy.Path, legacy.Path,
-            legacy.PivotX, legacy.PivotY, string.Empty), manifestPath);
-
-    private static IReadOnlyList<SpriteInput> ResolveSpriteInputs(
-        IEnumerable<string> references,
-        string manifestPath)
+    private static SourceImage LoadSprite(Sprite sprite, string manifestPath)
     {
-        var result = new List<SpriteInput>();
-        foreach (var rawReference in references)
-        {
-            var reference = rawReference?.Replace('\\', '/').Trim() ?? string.Empty;
-            if (reference.Length == 0)
-                throw new InvalidDataException("Texture atlas Sprite references cannot be empty.");
-            string fullPath;
-            string guid;
-            if (Guid.TryParse(reference, out var parsedGuid))
-            {
-                fullPath = ResolveGuidSourcePath(parsedGuid, manifestPath) ?? throw new InvalidDataException(
-                    $"Texture atlas Sprite GUID '{reference}' does not resolve to an imported asset.");
-                guid = parsedGuid.ToString("N");
-            }
-            else
-            {
-                fullPath = ResolveSourcePath(reference, manifestPath);
-                if (!File.Exists(fullPath))
-                    throw new FileNotFoundException($"Texture atlas Sprite '{reference}' does not exist.", fullPath);
-                guid = AssetDatabase.LoadOrCreateMeta(fullPath).Guid;
-            }
-            result.Add(new SpriteInput(ToPortableAssetPath(fullPath, manifestPath), guid));
-        }
-        return result;
-    }
-
-    private static string? ResolveGuidSourcePath(Guid guid, string manifestPath)
-    {
-        var projectPath = AssetDatabase.GUIDToAssetPath(guid.ToString("N"));
-        if (projectPath.Length > 0) return ResolveSourcePath(projectPath, manifestPath);
-        var projectRoot = FindProjectRoot(manifestPath);
-        foreach (var root in new[] { Path.Combine(projectRoot, "Assets"), Path.Combine(projectRoot, "Packages") })
-        {
-            if (!Directory.Exists(root)) continue;
-            foreach (var metaPath in Directory.EnumerateFiles(root, "*.meta", SearchOption.AllDirectories))
-            {
-                try
-                {
-                    var meta = Document.Load<AssetMetaDocument>(metaPath);
-                    if (Guid.TryParse(meta.Guid, out var candidate) && candidate == guid)
-                        return metaPath[..^".meta".Length];
-                }
-                catch (Exception exception) when (exception is IOException or InvalidDataException or
-                                                  FormatException or YamlDotNet.Core.YamlException) { }
-            }
-        }
-        return null;
+        var texturePath = ResolveSourcePath(sprite.Texture, manifestPath);
+        if (!File.Exists(texturePath))
+            throw new FileNotFoundException($"Texture atlas Sprite '{sprite.name}' source Texture does not exist.", texturePath);
+        var identity = TextureAtlas.SourceIdentity(sprite);
+        var source = new AtlasSource(sprite.name, identity, sprite.Texture,
+            sprite.PivotX, sprite.PivotY, sprite.OwnerGuid);
+        return LoadSource(source, manifestPath);
     }
 
     private static SourceImage LoadSource(AtlasSource source, string ownerPath)
@@ -360,7 +280,8 @@ public static class TextureAtlasBuilder
     {
         for (var directory = new DirectoryInfo(Path.GetDirectoryName(path)!); directory is not null;
              directory = directory.Parent)
-            if (directory.Name.Equals("Assets", StringComparison.OrdinalIgnoreCase))
+            if (directory.Name.Equals("Assets", StringComparison.OrdinalIgnoreCase) ||
+                directory.Name.Equals("Packages", StringComparison.OrdinalIgnoreCase))
                 return directory.Parent?.FullName ?? directory.FullName;
         return EditorBridge.Host?.ProjectRootPath ?? Path.GetDirectoryName(path)!;
     }
@@ -373,17 +294,8 @@ public static class TextureAtlasBuilder
         return Path.GetFullPath(path).Replace('\\', '/');
     }
 
-    private static string OutputTexturePath(string manifestPath)
-    {
-        var path = manifestPath.EndsWith(Suffix, StringComparison.OrdinalIgnoreCase)
-            ? manifestPath[..^Suffix.Length]
-            : Path.Combine(Path.GetDirectoryName(manifestPath)!, Path.GetFileNameWithoutExtension(manifestPath));
-        return path + ".png";
-    }
-
     private sealed record AtlasSource(
         string Name, string Reference, string Texture, float PivotX, float PivotY, string Guid);
-    private sealed record SpriteInput(string AssetPath, string Guid);
     private sealed record SourceImage(
         AtlasSource Source, string FullPath, int Width, int Height, byte[] Pixels);
     private sealed record Placement(SourceImage Image, int X, int Y);

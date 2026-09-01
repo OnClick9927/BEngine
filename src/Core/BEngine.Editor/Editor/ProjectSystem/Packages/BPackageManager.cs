@@ -212,7 +212,7 @@ public sealed class BPackageManager : IDisposable
     {
         if (File.Exists(_workspace.PackageManifestPath))
         {
-            var document = Document.Load<PackageManifestDocument>(_workspace.PackageManifestPath);
+            var document = YamlUtility.Load<PackageManifestDocument>(_workspace.PackageManifestPath);
             if (document.Format == "BEngine.Packages" && document.Version == 1) return document;
             throw new InvalidDataException($"Unsupported package manifest '{document.Format}' v{document.Version}.");
         }

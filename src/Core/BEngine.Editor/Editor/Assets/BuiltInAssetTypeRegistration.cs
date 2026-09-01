@@ -27,7 +27,7 @@ internal static class BuiltInAssetTypeRegistration
         AssetTypeRegistry.Register<Material>(".material.yaml", "Material",
             EditorBuiltinIcons.Assets.Material);
         AssetTypeRegistry.Register<GUISkin>(GUISkin.FileExtension, nameof(GUISkin),
-            context => GUISkin.Load(context.SourcePath), EditorBuiltinIcons.Assets.Style);
+            context => GUISkin.Load(context.ImportedPath), EditorBuiltinIcons.Assets.Skin);
     }
 
     private static void RegisterTexture(string suffix) =>
@@ -45,7 +45,7 @@ internal static class BuiltInAssetTypeRegistration
     private static BEngine.Texture LoadTexture(AssetLoadContext context)
     {
         var texture = new BEngine.Texture { name = Path.GetFileName(context.SourcePath) };
-        if (TryReadPngSize(context.SourcePath, out var width, out var height))
+        if (TryReadPngSize(context.ImportedPath, out var width, out var height))
         {
             texture.width = width;
             texture.height = height;
@@ -64,17 +64,17 @@ internal static class BuiltInAssetTypeRegistration
     private static MonoScript LoadScript(AssetLoadContext context)
     {
         var script = new MonoScript { name = Path.GetFileName(context.SourcePath) };
-        script.SetImportedContents(File.ReadAllText(context.SourcePath),
+        script.SetImportedContents(File.ReadAllText(context.ImportedPath),
             FindScriptClass(Path.GetFileNameWithoutExtension(context.SourcePath)));
         return script;
     }
 
     private static Shader LoadShader(AssetLoadContext context) => new(
-        Path.GetFileNameWithoutExtension(context.SourcePath), File.ReadAllText(context.SourcePath));
+        Path.GetFileNameWithoutExtension(context.SourcePath), File.ReadAllText(context.ImportedPath));
 
     private static Scene LoadScene(AssetLoadContext context)
     {
-        var scene = Document.LoadBObject<SceneDocument, Scene>(context.SourcePath);
+        var scene = SceneAssetSerialization.Load(context.ImportedPath);
         scene.path = context.AssetPath;
         return scene;
     }

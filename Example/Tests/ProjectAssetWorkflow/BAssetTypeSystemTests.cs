@@ -1,13 +1,13 @@
 using System.Collections;
 using System.Linq.Expressions;
 using BEngine.Animation;
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.ProjectSystem;
 using BEngine.Rendering;
 using BEngine.Serialization;
 using System.Reflection;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
+using ProjectAssetChange = BEngine.ProjectSystem.Editor.AssetChange;
 using InspectorEditor = BEngine.Editor.Editor;
 
 namespace BEngine.ExampleTests.ProjectAssetWorkflow;
@@ -29,7 +29,7 @@ internal static class BAssetTypeSystemTests
         TestEditorHost? host = null;
         try
         {
-            new ProjectDocument { Name = "BAsset Type Test" }.Save(Path.Combine(root, "Project.yaml"));
+            new ProjectData { Name = "BAsset Type Test" }.Save(Path.Combine(root, "Project.yaml"));
             var workspace = ProjectWorkspace.Open(root);
             var animationEditor = Assembly.LoadFrom(
                 Path.Combine(AppContext.BaseDirectory, "BEngine.Animation.Editor.dll"));
@@ -58,8 +58,9 @@ internal static class BAssetTypeSystemTests
             Console.WriteLine("BASSET_TYPE_SYSTEM_OK|typed-files,png-only-texture-import," +
                               "texture-meta-roundtrip,importer-revert," +
                               "managed-save-reload,subasset-guid-localid,file-subasset-reference," +
-                              "atlas-guid-sources,atlas-png-subasset," +
-                              "subasset-cache-invalidation,subasset-identity-collision,atlas-move-rollback," +
+                              "atlas-guid-sources,atlas-library-artifact,atlas-importer,atlas-png-subasset," +
+                              "atlas-incremental-subasset,atlas-stable-import,atlas-empty-sources-cleanup," +
+                              "subasset-cache-invalidation,subasset-identity-collision,atlas-stable-move," +
                               "subasset-delete-guard," +
                               "basset-reference-roundtrip,package-reference," +
                               "no-loader-registry,editor-icon-inheritance,registry-unload");
@@ -88,12 +89,14 @@ internal static class BAssetTypeSystemTests
     {
         Type[] types =
         [
-            typeof(BEngine.Font), typeof(BEngine.Texture), typeof(BEngine.Script), typeof(Sprite),
+            typeof(BEngine.Font), typeof(BEngine.Texture), typeof(BEngine.Script),
             typeof(Shader), typeof(Material), typeof(PrefabAsset), typeof(Scene), typeof(BEngine.TextAsset),
             typeof(ScriptableObject), typeof(TextureAtlas), typeof(AnimationClip), typeof(AnimatorController)
         ];
-        Require(types.All(type => typeof(BAsset).IsAssignableFrom(type)),
-            "A required runtime asset type does not inherit BAsset.");
+        Require(types.All(type => typeof(BAsset).IsAssignableFrom(type)) &&
+                typeof(BObject).IsAssignableFrom(typeof(Sprite)) &&
+                !typeof(BAsset).IsAssignableFrom(typeof(Sprite)),
+            "The unified BAsset hierarchy or Texture-created Sprite object classification is incorrect.");
     }
 
     private static void VerifyTypedLoads()
@@ -114,8 +117,9 @@ internal static class BAssetTypeSystemTests
         Require(AssetDatabase.LoadAssetAtPath<Material>("Assets/Test.material.yaml") is
                 { renderQueue: 2450 } material && material.color.Equals(new Color(1, 0, 0, 1)),
             "Material did not round-trip through its typed loader.");
-        var sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Spark.sprite.yaml");
-        Require(sprite is { Texture: "Assets/Spark.png" }, "Sprite did not use the registered typed loader.");
+        var sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Spark.png");
+        Require(sprite is { Texture: "Assets/Spark.png", LocalIdentifier: 21300000 },
+            "A Sprite-mode Texture did not expose its imported Sprite representation.");
         Require(AssetDatabase.LoadAssetAtPath<TextureAtlas>("Assets/Test.atlas.yaml") is not null,
             "TextureAtlas did not use the registered typed loader.");
         Require(AssetDatabase.LoadAssetAtPath<AnimationClip>("Assets/Test.anim.yaml") is not null &&
@@ -125,13 +129,11 @@ internal static class BAssetTypeSystemTests
                 { strength: 9, assetPath: "Assets/Test.external.yaml" },
             "A dynamically registered BAsset without an explicit loader did not use the generic loader.");
         using var textureEditor = InspectorEditor.CreateEditor(texture!);
-        Require(textureEditor is FileAssetEditor, "Texture did not resolve the importer-backed FileAssetEditor.");
+        Require(textureEditor.GetType() == typeof(BAssetEditor),
+            "Texture did not resolve the importer-backed BAssetEditor.");
 
-        sprite!.PivotX = 0.25f;
-        EditorUtility.SetDirty(sprite);
-        Require(AssetDatabase.SaveAsset(sprite) &&
-                AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Spark.sprite.yaml")?.PivotX == 0.25f,
-            "Authored FileAsset fields did not persist through SaveAsset/reload.");
+        Require(!typeof(BAsset).IsAssignableFrom(sprite!.GetType()),
+            "An imported Sprite representation was incorrectly exposed as a standalone BAsset.");
     }
 
     private static void VerifyDynamicTypeRegistration()
@@ -148,7 +150,7 @@ internal static class BAssetTypeSystemTests
         ProjectAssetDatabase projectAssets)
     {
         var unsupported = projectAssets.GetRecord("Assets/Unsupported.jpg");
-        var meta = Document.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(
+        var meta = BEngine.YamlUtility.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(
             Path.Combine(workspace.AssetsPath, "Unsupported.jpg.meta"));
         Require(unsupported is { AssetType: "DefaultAsset" } &&
                 meta.Importer == nameof(DefaultImporter) &&
@@ -229,7 +231,7 @@ internal static class BAssetTypeSystemTests
         Require(allAssets is [BEngine.Texture, Sprite] &&
                 AssetDatabase.GetMainAssetTypeAtPath("Assets/Spark.png") == typeof(BEngine.Texture),
             "Texture main-asset identity or imported Sprite sub-asset enumeration is incorrect.");
-        var meta = Document.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(
+        var meta = BEngine.YamlUtility.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(
             Path.Combine(workspace.AssetsPath, "Spark.png.meta"));
         Require(meta.Settings["compressionFormat"] == "Bc7" &&
                 meta.Settings["textureType"] == "Sprite" &&
@@ -250,16 +252,9 @@ internal static class BAssetTypeSystemTests
 
         importedSprite.PivotX = 0.9f;
         EditorUtility.SetDirty(importedSprite);
-        Require(!AssetDatabase.SaveAsset(importedSprite),
-            "SaveAsset accepted an imported Sprite and could overwrite its source image.");
         Require(File.ReadAllBytes(sourcePath).SequenceEqual(originalBytes) &&
                 System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(sourcePath)).SequenceEqual(originalHash),
-            "SaveAsset changed the source PNG bytes for an imported Sprite.");
-
-        Require(!AssetDatabase.RevertAsset(importedSprite),
-            "RevertAsset treated an imported Sprite view as an authored Sprite asset.");
-        Require(File.ReadAllBytes(sourcePath).SequenceEqual(originalBytes),
-            "RevertAsset changed the source PNG bytes for an imported Sprite.");
+            "Editing a transient Sprite representation changed the source PNG bytes.");
 
         using var editor = InspectorEditor.CreateEditor(importedSprite);
         Require(editor is SpriteEditor, "An imported Sprite did not resolve the Sprite Inspector.");
@@ -493,7 +488,6 @@ internal static class BAssetTypeSystemTests
         TestEditorHost host)
     {
         const string atlasPath = "Assets/Test.atlas.yaml";
-        const string outputPath = "Assets/Test.png";
         var sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Spark.png") ??
                      throw new InvalidOperationException("The Sprite-mode texture fixture did not load.");
         Require(AssetDatabase.TryGetGUIDAndLocalFileIdentifier(sprite, out var spriteGuid, out var spriteLocalId) &&
@@ -504,32 +498,56 @@ internal static class BAssetTypeSystemTests
             new AssetReferenceProbe { sprite = sprite }));
         Require(spriteOwner.sprite is { Texture: "Assets/Spark.png" },
             "An imported Sprite sub-asset did not round-trip through ComponentFieldSerializer.");
-        Require(BAsset.LoadSubAsset<Sprite>($"guid:{spriteGuid}", spriteLocalId + 1) is null,
-            "An unknown imported-representation local identifier resolved to the main file's Sprite.");
+        Require(AssetDatabase.LoadAllAssetRepresentationsAtPath("Assets/Spark.png") is [Sprite] &&
+                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
+                    AssetDatabase.LoadAllAssetRepresentationsAtPath("Assets/Spark.png").Single(),
+                    out _, out var representedLocalId) && representedLocalId == spriteLocalId,
+            "The Texture exposed an unexpected imported Sprite local identifier.");
         var atlas = AssetDatabase.LoadAssetAtPath<TextureAtlas>(atlasPath)!;
-        atlas.SpriteReferences = [spriteGuid];
-        atlas.Version = 3;
-        var result = TextureAtlasBuilder.Build(atlas, Path.Combine(workspace.AssetsPath, "Test.atlas.yaml"));
-        Require(result.TextureAssetPath == outputPath && File.Exists(Path.Combine(workspace.AssetsPath, "Test.png")),
-            "TextureAtlasBuilder did not generate its PNG output.");
-
+        atlas.Sources = [sprite];
+        atlas.Save(Path.Combine(workspace.AssetsPath, "Test.atlas.yaml"));
+        AssetDatabase.ImportAsset(atlasPath, ImportAssetOptions.ForceUpdate);
         var reloaded = AssetDatabase.LoadAssetAtPath<TextureAtlas>(atlasPath)!;
-        Require(reloaded.Version == 3 && reloaded.SpriteReferences.SequenceEqual([spriteGuid]) &&
+        var textureReference = reloaded.Texture;
+        Require(AssetTypeRegistry.ResolveImporterType(atlasPath) == typeof(TextureAtlasImporter) &&
+                textureReference.StartsWith("guid:", StringComparison.OrdinalIgnoreCase) &&
+                textureReference.EndsWith("#subasset=2800000", StringComparison.OrdinalIgnoreCase) &&
+                !File.Exists(Path.Combine(workspace.AssetsPath, "Test.png")),
+            "TextureAtlasImporter did not store a GUID-referenced PNG under Library.");
+
+        Require(reloaded.Sources is
+                [{ Texture: "Assets/Spark.png", LocalIdentifier: 21300000 } persisted] &&
+                persisted.OwnerGuid.Equals(spriteGuid, StringComparison.OrdinalIgnoreCase) &&
                 reloaded.LoadReferencedSprites() is [{ Texture: "Assets/Spark.png" }],
-            "TextureAtlas did not persist and resolve Sprite GUID references.");
+            "TextureAtlas did not persist its Sprite owner GUID/local identifier reference.");
         var yaml = File.ReadAllText(Path.Combine(workspace.AssetsPath, "Test.atlas.yaml"));
         Require(yaml.Contains(spriteGuid, StringComparison.OrdinalIgnoreCase) &&
-                !yaml.Contains("spriteReferences:\n- Assets/Spark.png", StringComparison.OrdinalIgnoreCase),
-            "TextureAtlas YAML still persisted Sprite source paths instead of GUIDs.");
+                yaml.Contains("localIdentifier: 21300000", StringComparison.OrdinalIgnoreCase) &&
+                !yaml.Contains("spriteReferences:", StringComparison.OrdinalIgnoreCase) &&
+                !yaml.Contains("version:", StringComparison.OrdinalIgnoreCase),
+            "TextureAtlas YAML did not persist Sources as versionless Sprite references.");
 
-        var outputRecord = projectAssets.GetRecord(outputPath);
         var atlasRecord = projectAssets.GetRecord(atlasPath);
-        Require(outputRecord is { IsSubAsset: true, LocalIdentifier: 2800000 } &&
-                outputRecord.ParentGuid == atlasRecord?.Guid,
+        var outputRecord = projectAssets.assets.SingleOrDefault(record =>
+            record.ParentGuid == atlasRecord?.Guid && record.LocalIdentifier == 2800000);
+        Require(outputRecord is { IsSubAsset: true, AssetType: nameof(BEngine.Texture) } &&
+                outputRecord.AssetPath == atlasPath &&
+                outputRecord.SourcePath.StartsWith(workspace.AssetArtifactsPath + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase) &&
+                outputRecord.SourcePath == outputRecord.ArtifactPath &&
+                File.Exists(outputRecord.ArtifactPath) && File.Exists(outputRecord.MetaPath),
             "The generated atlas PNG was not registered as a file-backed TextureAtlas sub-asset.");
 
+        var repeatedImportChanges = new List<ProjectAssetChange>();
+        void CaptureRepeatedImport(IReadOnlyList<ProjectAssetChange> changes) => repeatedImportChanges.AddRange(changes);
+        projectAssets.assetsChanged += CaptureRepeatedImport;
+        try { AssetDatabase.ImportAsset(atlasPath, ImportAssetOptions.ForceUpdate); }
+        finally { projectAssets.assetsChanged -= CaptureRepeatedImport; }
+        Require(repeatedImportChanges.Count == 0,
+            "A stable TextureAtlas import emitted a false update after its importer normalized the source.");
+
         var atlasFullPath = Path.Combine(workspace.AssetsPath, "Test.atlas.yaml");
-        var outputFullPath = Path.Combine(workspace.AssetsPath, "Test.png");
+        var outputFullPath = outputRecord!.ArtifactPath;
         var atlasGuid = atlasRecord!.Guid.ToString("N");
         var firstCachedTexture = BAsset.LoadSubAsset<BEngine.Texture>($"guid:{atlasGuid}", 2800000)!;
         File.WriteAllBytes(outputFullPath, PngImageCodec.EncodeRgba(2, 1,
@@ -548,6 +566,11 @@ internal static class BAssetTypeSystemTests
                 !ReferenceEquals(childInvalidatedTexture, parentInvalidatedTexture),
             "Invalidating a file-backed sub-asset left its owner-based lookup cache stale.");
         TextureAtlasBuilder.Build(reloaded, atlasFullPath);
+        projectAssets.Refresh();
+        outputRecord = projectAssets.assets.Single(record =>
+            record.ParentGuid == atlasRecord.Guid && record.LocalIdentifier == 2800000);
+        Require(outputRecord.ArtifactPath == outputFullPath && File.Exists(outputFullPath),
+            "Rebuilding a TextureAtlas did not retain its deterministic Library artifact path.");
 
         var duplicateFullPath = Path.Combine(workspace.AssetsPath, "DuplicateAtlasTexture.png");
         File.Copy(outputFullPath, duplicateFullPath);
@@ -556,33 +579,35 @@ internal static class BAssetTypeSystemTests
         catch (InvalidOperationException) { duplicateRejected = true; }
         Require(duplicateRejected && !File.Exists(duplicateFullPath + ".meta"),
             "RegisterFileSubAsset allowed two files to claim the same parent GUID/local identifier.");
+        VerifyFileSubAssetCollisionRoots(workspace, outputFullPath, atlasFullPath, atlasGuid);
+        VerifyGeneratedArtifactTransactions(workspace, outputFullPath, atlasFullPath, atlasGuid);
 
         const string movedAtlasPath = "Assets/TestMoved.atlas.yaml";
-        const string movedOutputPath = "Assets/TestMoved.png";
         host.MoveAssetFailure = (oldAssetPath, newAssetPath) =>
-            oldAssetPath.Equals(outputPath, StringComparison.OrdinalIgnoreCase) &&
-            newAssetPath.Equals(movedOutputPath, StringComparison.OrdinalIgnoreCase)
-                ? "Injected generated Texture move failure."
+            oldAssetPath.Equals(atlasPath, StringComparison.OrdinalIgnoreCase) &&
+            newAssetPath.Equals(movedAtlasPath, StringComparison.OrdinalIgnoreCase)
+                ? "Injected TextureAtlas move failure."
                 : null;
         var failedMove = AssetDatabase.MoveAsset(atlasPath, movedAtlasPath);
         host.MoveAssetFailure = null;
         Require(failedMove.Length > 0 && File.Exists(atlasFullPath) && File.Exists(outputFullPath) &&
-                !File.Exists(Path.Combine(workspace.AssetsPath, "TestMoved.atlas.yaml")) &&
-                !File.Exists(Path.Combine(workspace.AssetsPath, "TestMoved.png")),
-            "A failed generated Texture move did not roll the TextureAtlas main asset back.");
+                !File.Exists(Path.Combine(workspace.AssetsPath, "TestMoved.atlas.yaml")),
+            "A failed TextureAtlas move changed its source or Library artifact.");
 
         Require(AssetDatabase.MoveAsset(atlasPath, movedAtlasPath).Length == 0 &&
-                AssetDatabase.LoadAssetAtPath<TextureAtlas>(movedAtlasPath) is { Texture: movedOutputPath },
-            "A successful TextureAtlas move did not update its generated Texture reference.");
+                AssetDatabase.LoadAssetAtPath<TextureAtlas>(movedAtlasPath) is { } movedAtlas &&
+                movedAtlas.Texture == textureReference && File.Exists(outputFullPath),
+            "A successful TextureAtlas move did not preserve its generated Texture reference.");
         Require(AssetDatabase.MoveAsset(movedAtlasPath, atlasPath).Length == 0 &&
-                AssetDatabase.LoadAssetAtPath<TextureAtlas>(atlasPath) is { Texture: outputPath },
-            "Moving a TextureAtlas back to its original path did not restore its generated Texture reference.");
+                AssetDatabase.LoadAssetAtPath<TextureAtlas>(atlasPath) is { } restoredAtlas &&
+                restoredAtlas.Texture == textureReference && File.Exists(outputFullPath),
+            "Moving a TextureAtlas back changed its stable generated Texture reference.");
 
-        host.DeleteAssetFailure = assetPath => assetPath.Equals(outputPath, StringComparison.OrdinalIgnoreCase);
+        host.DeleteAssetFailure = assetPath => assetPath.Equals(atlasPath, StringComparison.OrdinalIgnoreCase);
         var deleteRejected = !AssetDatabase.DeleteAsset(atlasPath);
         host.DeleteAssetFailure = null;
         Require(deleteRejected && File.Exists(atlasFullPath) && File.Exists(outputFullPath),
-            "DeleteAsset ignored a file-backed sub-asset deletion failure and deleted its main asset.");
+            "A rejected TextureAtlas deletion removed its Library artifact.");
 
         var representations = AssetDatabase.LoadAllAssetRepresentationsAtPath(atlasPath);
         var generatedTexture = representations.OfType<BEngine.Texture>().Single();
@@ -607,19 +632,143 @@ internal static class BAssetTypeSystemTests
             "Moving the Atlas back after restoring its Texture sub-asset failed.");
 
         BAsset.ClearLoadedAssets();
-        var directTexture = BAsset.Load<BEngine.Texture>(outputPath);
-        Require(directTexture is not null && directTexture.assetPath == outputPath &&
-                directTexture.guid == outputRecord!.Guid.ToString("N"),
-            "Loading a file-backed sub-asset by its physical path reused its owner-bound cache identity.");
+        var directTexture = BAsset.Load<BEngine.Texture>(textureReference);
+        Require(directTexture is not null && directTexture.assetPath == atlasPath &&
+                directTexture.parentAssetGuid == atlasRecord.Guid &&
+                directTexture.localIdentifier == 2800000 &&
+                directTexture.artifactPath == outputFullPath,
+            "Loading a generated Texture reference did not retain its owner/localId and Library artifact.");
 
         using var packages = new BPackageManager(workspace, catalog: null, loadAssemblies: false);
         var visibleItems = ProjectBrowserTreeBuilder.Build(workspace.AssetsPath, projectAssets.assets.ToArray(), packages);
-        Require(visibleItems.All(item => !item.VirtualPath.Equals(outputPath,
-                    StringComparison.OrdinalIgnoreCase)),
-            "ProjectBrowserTreeBuilder displayed the generated atlas PNG as a main asset.");
+        var atlasItem = visibleItems.Single(item => item.NormalizedPath.Equals(atlasPath,
+            StringComparison.OrdinalIgnoreCase) && !item.IsSubAsset);
+        var generatedItems = visibleItems.Where(item => item.IsSubAsset &&
+            item.NormalizedPath.Equals(atlasPath, StringComparison.OrdinalIgnoreCase)).ToArray();
+        Require(generatedItems is [{ IsSubAsset: true } generated] &&
+                generated.BrowserParentKey == atlasItem.BrowserKey &&
+                generated.SubAssetObject is BEngine.Texture &&
+                generated.BrowserKey != generated.NormalizedPath,
+            "ProjectBrowserTreeBuilder did not expose the generated Texture as one child of its atlas owner.");
         using var editor = InspectorEditor.CreateEditor(reloaded);
         Require(editor is TextureAtlasEditor,
             "TextureAtlas did not resolve the Sprite ObjectField-based custom Inspector.");
+
+        var cleanupAtlas = AssetDatabase.LoadAssetAtPath<TextureAtlas>(atlasPath)!;
+        cleanupAtlas.Sources = [];
+        cleanupAtlas.Save(atlasFullPath);
+        AssetDatabase.ImportAsset(atlasPath, ImportAssetOptions.ForceUpdate);
+        var clearedAtlas = AssetDatabase.LoadAssetAtPath<TextureAtlas>(atlasPath)!;
+        Require(clearedAtlas.Texture.Length == 0 && clearedAtlas.Sprites.Count == 0 &&
+                clearedAtlas.Width == 0 && clearedAtlas.Height == 0 &&
+                !File.Exists(outputFullPath) && !File.Exists(outputFullPath + ".meta") &&
+                !projectAssets.assets.Any(record => record.ParentGuid == atlasRecord.Guid &&
+                                                    record.LocalIdentifier == 2800000),
+            "TextureAtlasImporter left a stale Library sub-asset after Sources became empty.");
+    }
+
+    private static void VerifyFileSubAssetCollisionRoots(
+        ProjectWorkspace workspace,
+        string sourceTexturePath,
+        string ownerPath,
+        string ownerGuid)
+    {
+        var fixtures = new[]
+        {
+            (Existing: Path.Combine(workspace.AssetsPath, "CollisionInAssets.png"),
+                Candidate: Path.Combine(workspace.PackagesPath, "com.test.collision", "Candidate.png"),
+                LocalIdentifier: 2800101L),
+            (Existing: Path.Combine(workspace.PackagesPath, "com.test.collision", "CollisionInPackages.png"),
+                Candidate: Path.Combine(workspace.LibraryPath, "CollisionFixtures", "Candidate.png"),
+                LocalIdentifier: 2800102L),
+            (Existing: Path.Combine(workspace.LibraryPath, "CollisionFixtures", "CollisionInLibrary.png"),
+                Candidate: Path.Combine(workspace.AssetsPath, "CandidateForLibraryCollision.png"),
+                LocalIdentifier: 2800103L)
+        };
+        try
+        {
+            foreach (var fixture in fixtures)
+            {
+                WriteFileSubAssetFixture(fixture.Existing, sourceTexturePath, ownerGuid,
+                    fixture.LocalIdentifier);
+                Directory.CreateDirectory(Path.GetDirectoryName(fixture.Candidate)!);
+                File.Copy(sourceTexturePath, fixture.Candidate, overwrite: true);
+                var rejected = false;
+                try { AssetDatabase.RegisterFileSubAsset(fixture.Candidate, ownerPath, fixture.LocalIdentifier); }
+                catch (InvalidOperationException) { rejected = true; }
+                Require(rejected && !File.Exists(fixture.Candidate + ".meta"),
+                    $"File sub-asset collision scanning missed '{fixture.Existing}'.");
+            }
+        }
+        finally
+        {
+            foreach (var fixture in fixtures)
+                foreach (var path in new[] { fixture.Existing, fixture.Existing + ".meta",
+                             fixture.Candidate, fixture.Candidate + ".meta" })
+                    if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    private static void VerifyGeneratedArtifactTransactions(
+        ProjectWorkspace workspace,
+        string artifactPath,
+        string ownerPath,
+        string ownerGuid)
+    {
+        var collisionPath = Path.Combine(workspace.PackagesPath, "com.test.collision",
+            "GeneratedTransactionCollision.png");
+        var originalArtifact = File.ReadAllBytes(artifactPath);
+        var originalMetadata = File.ReadAllBytes(artifactPath + ".meta");
+        try
+        {
+            WriteFileSubAssetFixture(collisionPath, artifactPath, ownerGuid, 2800000);
+            var rejected = false;
+            try
+            {
+                GeneratedAssetArtifacts.Write(ownerPath, 2800000, ".png",
+                    PngImageCodec.EncodeRgba(1, 1, [255, 0, 255, 255]));
+            }
+            catch (InvalidOperationException) { rejected = true; }
+            Require(rejected && File.ReadAllBytes(artifactPath).SequenceEqual(originalArtifact) &&
+                    File.ReadAllBytes(artifactPath + ".meta").SequenceEqual(originalMetadata),
+                "A failed generated artifact registration did not restore its previous file pair.");
+        }
+        finally
+        {
+            if (File.Exists(collisionPath)) File.Delete(collisionPath);
+            if (File.Exists(collisionPath + ".meta")) File.Delete(collisionPath + ".meta");
+        }
+
+        var deleteRejected = false;
+        using (new FileStream(artifactPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            try { GeneratedAssetArtifacts.Delete(ownerPath, 2800000); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                deleteRejected = true;
+            }
+        }
+        Require(deleteRejected && File.ReadAllBytes(artifactPath).SequenceEqual(originalArtifact) &&
+                File.ReadAllBytes(artifactPath + ".meta").SequenceEqual(originalMetadata),
+            "A partially staged generated artifact deletion did not restore both files.");
+    }
+
+    private static void WriteFileSubAssetFixture(
+        string path,
+        string sourceTexturePath,
+        string ownerGuid,
+        long localIdentifier)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.Copy(sourceTexturePath, path, overwrite: true);
+        new BEngine.ProjectSystem.Editor.AssetMetaDocument
+        {
+            Guid = Guid.NewGuid().ToString("N"),
+            Importer = nameof(TextureImporter),
+            AssetType = nameof(BEngine.Texture),
+            ParentGuid = ownerGuid,
+            LocalIdentifier = localIdentifier
+        }.Save(path + ".meta");
     }
 
     private static void VerifyBAssetReferenceRoundTrip()
@@ -651,8 +800,7 @@ internal static class BAssetTypeSystemTests
                 !secondFields.ContainsKey(nameof(AssetReferenceProbe.scriptableAsset)),
             "Null BAsset references should not emit empty serialized fields.");
 
-        var restored = Document.FromBObject<SceneDocument>(scene).ToBObject() as Scene ??
-                       throw new InvalidOperationException("Scene reference round-trip failed.");
+        var restored = SceneAssetSerialization.Deserialize(SceneAssetSerialization.Serialize(scene));
         var probes = restored.QueryComponents<AssetReferenceProbe>();
         Require(probes.Count == 2 && probes[0].material is not null &&
                 ReferenceEquals(probes[0].material, probes[1].material) &&
@@ -726,8 +874,9 @@ internal static class BAssetTypeSystemTests
         Require(EditorIconRegistry.GetIconPath(typeof(DerivedExplicitIconAsset)) == explicitIcon,
             "Explicit EditorIconRegistry child registration was not resolved.");
         EditorIconRegistry.UnregisterAssembly(typeof(ExplicitIconAsset).Assembly);
-        Require(EditorIconRegistry.GetIconPath(typeof(DerivedExplicitIconAsset)) is null,
-            "Assembly unload did not clear explicit editor icon registrations.");
+        Require(EditorIconRegistry.GetIconPath(typeof(DerivedExplicitIconAsset)) is { } fallbackIcon &&
+                fallbackIcon.EndsWith("AssetData.png", StringComparison.OrdinalIgnoreCase),
+            "Assembly unload did not restore the inherited ScriptableObject Data icon.");
         Require(EditorIconRegistry.GetIconPath(typeof(DerivedProbeAsset)) == inheritedIcon,
             "Attribute icon did not recover after the dynamic cache was cleared.");
     }
@@ -743,16 +892,27 @@ internal static class BAssetTypeSystemTests
             "using BEngine; public sealed class Probe : MonoBehaviour { }");
         File.WriteAllText(Path.Combine(workspace.AssetsPath, "Test.shader"),
             "#pragma stage fragment\nvoid main() {}\n");
-        Document.SaveBObject<SceneDocument>(new Scene("Asset Scene"),
-            Path.Combine(workspace.AssetsPath, "Test.scene.yaml"));
+        using (var assetScene = new Scene("Asset Scene"))
+            SceneAssetSerialization.Save(assetScene,
+                Path.Combine(workspace.AssetsPath, "Test.scene.yaml"));
         new Material(Shader.Find("BEngine/Sprite"))
         {
             name = "Test Material",
             color = new Color(1, 0, 0, 1),
             renderQueue = 2450
         }.Save(Path.Combine(workspace.AssetsPath, "Test.material.yaml"));
-        new Sprite { name = "Spark", Texture = "Assets/Spark.png" }
-            .Save(Path.Combine(workspace.AssetsPath, "Spark.sprite.yaml"));
+        File.WriteAllText(Path.Combine(workspace.AssetsPath, "Spark.png.meta"), """
+            format: BEngine.AssetMeta
+            version: 1
+            guid: 2aac6de523664701b4988048243887bd
+            importer: TextureImporter
+            assetType: Texture
+            sourceHash: ''
+            settings:
+              textureType: Sprite
+              spritePivotX: '0.5'
+              spritePivotY: '0.5'
+            """);
         new TextureAtlas { name = "Test Atlas" }
             .Save(Path.Combine(workspace.AssetsPath, "Test.atlas.yaml"));
         new AnimationClip { name = "Test Clip" }

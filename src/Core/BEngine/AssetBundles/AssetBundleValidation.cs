@@ -58,6 +58,7 @@ internal static class AssetBundleValidation
         var addresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var entries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var guids = new HashSet<Guid>();
+        var identities = new Dictionary<AssetIdentity, AssetBundleAsset>();
         foreach (var asset in catalog.Assets)
         {
             if (asset is null) throw new InvalidDataException("Catalog assets cannot contain null entries.");
@@ -65,13 +66,46 @@ internal static class AssetBundleValidation
             if (!string.Equals(address, asset.Address, StringComparison.Ordinal))
                 throw new InvalidDataException(
                     $"Asset address '{asset.Address}' is not canonical; expected '{address}'.");
-            var entry = NormalizeAddress(asset.Entry);
-            if (!string.Equals(entry, asset.Entry, StringComparison.Ordinal) ||
-                !string.Equals(entry, address, StringComparison.Ordinal))
+            var entry = NormalizePayloadEntry(asset.Entry);
+            if (!string.Equals(entry, asset.Entry, StringComparison.Ordinal))
                 throw new InvalidDataException(
-                    $"Asset '{asset.Address}' entry must be the canonical payload path '{address}'.");
+                    $"Asset '{asset.Address}' entry is not a canonical payload path.");
             if (asset.Guid == Guid.Empty)
                 throw new InvalidDataException($"Asset '{asset.Address}' has an empty GUID.");
+            if (asset.LocalIdentifier < 0)
+                throw new InvalidDataException(
+                    $"Asset '{asset.Address}' has a negative local identifier.");
+            var ownerGuid = asset.OwnerGuid == Guid.Empty ? asset.Guid : asset.OwnerGuid;
+            if (asset.LocalIdentifier == 0)
+            {
+                if (ownerGuid != asset.Guid)
+                    throw new InvalidDataException(
+                        $"Main asset '{asset.Address}' owner GUID must match its asset GUID.");
+                if (IsSubAssetAddress(address) || !string.Equals(entry, address, StringComparison.Ordinal))
+                    throw new InvalidDataException(
+                        $"Main asset '{asset.Address}' entry must be its canonical Assets path.");
+            }
+            else
+            {
+                if (asset.OwnerGuid == Guid.Empty)
+                    throw new InvalidDataException(
+                        $"Sub-asset '{asset.Address}' has an empty owner GUID.");
+                var expectedAddress = CreateSubAssetAddress(ownerGuid, asset.LocalIdentifier);
+                if (!string.Equals(address, expectedAddress, StringComparison.Ordinal))
+                    throw new InvalidDataException(
+                        $"Sub-asset address '{asset.Address}' must be '{expectedAddress}'.");
+                var extension = Path.GetExtension(entry);
+                string expectedEntry;
+                try { expectedEntry = CreateSubAssetEntry(ownerGuid, asset.LocalIdentifier, extension); }
+                catch (ArgumentException exception)
+                {
+                    throw new InvalidDataException(
+                        $"Sub-asset '{asset.Address}' has an invalid payload extension.", exception);
+                }
+                if (!string.Equals(entry, expectedEntry, StringComparison.Ordinal))
+                    throw new InvalidDataException(
+                        $"Sub-asset '{asset.Address}' entry must be '{expectedEntry}'.");
+            }
             ValidateIdentifier(asset.Bundle, $"bundle of '{asset.Address}'");
             if (!bundles.ContainsKey(asset.Bundle))
                 throw new InvalidDataException(
@@ -86,6 +120,21 @@ internal static class AssetBundleValidation
                 throw new InvalidDataException($"Duplicate asset payload entry '{asset.Entry}'.");
             if (!guids.Add(asset.Guid))
                 throw new InvalidDataException($"Duplicate asset GUID '{asset.Guid:D}'.");
+            var identity = new AssetIdentity(ownerGuid, asset.LocalIdentifier);
+            if (!identities.TryAdd(identity, asset))
+                throw new InvalidDataException(
+                    $"Duplicate asset identity '{CreateIdentityReference(identity)}'.");
+        }
+
+        foreach (var (identity, asset) in identities)
+        {
+            if (identity.LocalIdentifier == 0) continue;
+            if (!identities.TryGetValue(new AssetIdentity(identity.OwnerGuid, 0), out var owner))
+                throw new InvalidDataException(
+                    $"Sub-asset '{asset.Address}' references missing owner GUID '{identity.OwnerGuid:D}'.");
+            if (!owner.Bundle.Equals(asset.Bundle, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(
+                    $"Sub-asset '{asset.Address}' must be stored in the same bundle as its owner.");
         }
     }
 
@@ -111,12 +160,83 @@ internal static class AssetBundleValidation
     internal static string NormalizeAddress(string address)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
+        if (address.StartsWith("guid:", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryParseSubAssetAddress(address, out var ownerGuid, out var localIdentifier))
+                throw new InvalidDataException($"Invalid sub-asset address '{address}'.");
+            return CreateSubAssetAddress(ownerGuid, localIdentifier);
+        }
         var normalized = address.Replace('\\', '/').Trim('/');
         if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
             normalized = normalized["Assets/".Length..];
         normalized = NormalizeRelativePath(normalized, "asset address");
         return $"Assets/{normalized}";
     }
+
+    internal static string CreateSubAssetAddress(Guid ownerGuid, long localIdentifier)
+    {
+        if (ownerGuid == Guid.Empty) throw new ArgumentException("An owner GUID is required.", nameof(ownerGuid));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(localIdentifier);
+        return $"guid:{ownerGuid:N}#subasset={localIdentifier.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+    }
+
+    internal static string CreateSubAssetEntry(Guid ownerGuid, long localIdentifier, string extension)
+    {
+        if (ownerGuid == Guid.Empty) throw new ArgumentException("An owner GUID is required.", nameof(ownerGuid));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(localIdentifier);
+        extension = NormalizeArtifactExtension(extension);
+        return $"Assets/__BEngineSubAssets/{ownerGuid:N}/" +
+               $"{localIdentifier.ToString(System.Globalization.CultureInfo.InvariantCulture)}{extension}";
+    }
+
+    internal static bool TryParseSubAssetAddress(
+        string address,
+        out Guid ownerGuid,
+        out long localIdentifier)
+    {
+        const string prefix = "guid:";
+        const string separator = "#subasset=";
+        ownerGuid = Guid.Empty;
+        localIdentifier = 0;
+        if (string.IsNullOrWhiteSpace(address) ||
+            !address.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+        var separatorIndex = address.IndexOf(separator, prefix.Length, StringComparison.OrdinalIgnoreCase);
+        return separatorIndex > prefix.Length &&
+               Guid.TryParse(address.AsSpan(prefix.Length, separatorIndex - prefix.Length), out ownerGuid) &&
+               long.TryParse(address.AsSpan(separatorIndex + separator.Length),
+                   System.Globalization.NumberStyles.None,
+                   System.Globalization.CultureInfo.InvariantCulture, out localIdentifier) &&
+               localIdentifier > 0;
+    }
+
+    private static string NormalizePayloadEntry(string entry)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entry);
+        if (entry.StartsWith("guid:", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Asset payload entries must be canonical Assets paths.");
+        var normalized = entry.Replace('\\', '/').Trim('/');
+        if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized["Assets/".Length..];
+        return $"Assets/{NormalizeRelativePath(normalized, "asset payload entry")}";
+    }
+
+    private static bool IsSubAssetAddress(string address) =>
+        address.StartsWith("guid:", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeArtifactExtension(string extension)
+    {
+        extension = extension?.Trim() ?? string.Empty;
+        if (!extension.StartsWith('.'))
+            throw new ArgumentException("A payload file extension is required.", nameof(extension));
+        if (extension.Length < 2 || extension.Skip(1).Any(character => !char.IsAsciiLetterOrDigit(character)))
+            throw new ArgumentException($"Invalid payload file extension '{extension}'.", nameof(extension));
+        return extension.ToLowerInvariant();
+    }
+
+    private static string CreateIdentityReference(AssetIdentity identity) =>
+        identity.LocalIdentifier == 0
+            ? $"guid:{identity.OwnerGuid:N}"
+            : CreateSubAssetAddress(identity.OwnerGuid, identity.LocalIdentifier);
 
     internal static string NormalizeRelativePath(string path, string fieldName)
     {
@@ -224,4 +344,6 @@ internal static class AssetBundleValidation
         path.RemoveAt(path.Count - 1);
         states[name] = 2;
     }
+
+    private readonly record struct AssetIdentity(Guid OwnerGuid, long LocalIdentifier);
 }

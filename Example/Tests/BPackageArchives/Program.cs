@@ -2,7 +2,6 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
@@ -219,7 +218,7 @@ static void RepackPublishedExamples(string repositoryRoot, string authoringRoot)
         var original = BPackageArchive.ReadManifest(destination);
         var projectPath = Path.Combine(exampleRoot, ProjectWorkspace.ProjectFileName);
         if (!File.Exists(projectPath))
-            new ProjectDocument { Name = original.Name }.Save(projectPath);
+            new ProjectData { Name = original.Name }.Save(projectPath);
         var workspace = ProjectWorkspace.Open(exampleRoot);
         new BEngine.ProjectSystem.Editor.AssetDatabase(workspace).Refresh();
         _ = BPackageArchive.ExportPackage(workspace, selections, destination,

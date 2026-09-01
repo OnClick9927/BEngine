@@ -32,7 +32,7 @@ public sealed class CodexAppServerClient : IDisposable
 
     public event Action? changed;
 
-    public CodexProjectSettingsDocument Settings { get; }
+    public CodexProjectSettingsData Settings { get; }
     public string ProjectRoot => _store.ProjectRoot;
 
     public CodexAppServerClient(string projectRoot)

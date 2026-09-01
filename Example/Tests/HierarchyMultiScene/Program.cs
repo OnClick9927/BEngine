@@ -9,8 +9,17 @@ internal static class Program
     {
         try
         {
+            Resources.RegisterResourceRoot(FindRepositoryRoot());
             EditorAppearance.Apply(new EditorPreferencesDocument());
             using var fixture = new SceneFixture();
+            if (args.Contains("--play-asset-write-only", StringComparer.Ordinal))
+            {
+                // Match the full-suite state: earlier lifecycle tests have already imported fixture metadata.
+                using (new EditorApplicationHarness(fixture)) { }
+                EditorPlayModeAssetWriteTests.Run(fixture);
+                Console.WriteLine("HIERARCHY_MULTI_SCENE_OK|play-project-write-guards,play-atlas-build-guard");
+                return 0;
+            }
             if (args.Contains("--window-locking-only", StringComparer.Ordinal))
             {
                 WindowLockingTests.Run(fixture);
@@ -77,5 +86,16 @@ internal static class Program
         {
             GenericMenuCapture.Clear();
         }
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+             directory is not null; directory = directory.Parent)
+        {
+            var core = Path.Combine(directory.FullName, "src", "Core");
+            if (File.Exists(Path.Combine(directory.FullName, "src", "BEngine.sln"))) return core;
+        }
+        throw new DirectoryNotFoundException("Could not locate the Core resource root.");
     }
 }

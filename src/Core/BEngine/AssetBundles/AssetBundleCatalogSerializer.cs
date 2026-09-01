@@ -103,6 +103,10 @@ public static class AssetBundleCatalogSerializer
             {
                 Address = item.Address,
                 Guid = item.Guid,
+                OwnerGuid = source.SchemaVersion >= 3 && item.OwnerGuid == Guid.Empty
+                    ? item.Guid
+                    : item.OwnerGuid,
+                LocalIdentifier = item.LocalIdentifier,
                 Bundle = item.Bundle,
                 Entry = item.Entry,
                 AssetType = item.AssetType,

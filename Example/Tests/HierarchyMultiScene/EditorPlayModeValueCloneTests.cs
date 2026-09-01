@@ -1,4 +1,3 @@
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Serialization;
 
@@ -23,10 +22,9 @@ internal static class EditorPlayModeValueCloneTests
             name = "Edit Value Clone Text",
             hideFlags = HideFlags.DontSaveInBuild
         };
-        var prefabDocument = Document.FromBObject<PrefabDocument>(editRoot);
-        var editPrefab = prefabDocument.ToBObject(
-            new DocumentConversionContext("Assets/PlayModeValueClone.prefab.yaml")) as PrefabAsset ??
-                         throw new InvalidOperationException("The value-clone fixture Prefab could not be created.");
+        var editPrefab = PrefabAssetSerialization.Deserialize(
+            PrefabAssetSerialization.Serialize(editRoot),
+            "Assets/PlayModeValueClone.prefab.yaml");
         editPrefab.name = "Edit Value Clone Prefab";
         editPrefab.hideFlags = HideFlags.NotEditable;
         var editMaterial = new Material(editShader)

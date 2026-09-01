@@ -1,4 +1,3 @@
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Editor.Documents;
 using BEngine.ProjectSystem;
@@ -16,7 +15,7 @@ internal static class Program
             var projectRoot = Path.Combine(root, "Project");
             var assetsRoot = Path.Combine(projectRoot, "Assets");
             Directory.CreateDirectory(projectRoot);
-            new ProjectDocument { Name = "Package Tree Test" }.Save(Path.Combine(projectRoot, "Project.yaml"));
+            new ProjectData { Name = "Package Tree Test" }.Save(Path.Combine(projectRoot, "Project.yaml"));
             var workspace = ProjectWorkspace.Open(projectRoot);
 
             var enabledRoot = CreatePackage(root, "Enabled", "com.test.enabled", "Enabled Package");

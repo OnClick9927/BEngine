@@ -37,7 +37,6 @@ public sealed class AnimationClip : ScriptableObject
     public void AddEvent(AnimationEvent animationEvent) { ArgumentNullException.ThrowIfNull(animationEvent); events.Add(animationEvent); events.Sort((a, b) => a.time.CompareTo(b.time)); }
     public void ClearCurves() => bindings.Clear();
     public void SampleAnimation(GameObject gameObject, Fix64 time) => AnimationSampler.Sample(this, gameObject, time);
-    public void Save(string path) => Document.SaveBObject<AnimationClipDocument>(this, path);
-    public static AnimationClip Load(string path) =>
-        Document.LoadBObject<AnimationClipDocument, AnimationClip>(path);
+    public void Save(string path) => AnimationClipSerialization.Save(this, path);
+    public static AnimationClip Load(string path) => AnimationClipSerialization.Load(path);
 }

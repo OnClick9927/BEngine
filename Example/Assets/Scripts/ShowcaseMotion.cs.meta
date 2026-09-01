@@ -3,5 +3,10 @@ version: 1
 guid: 67de1cc01e6d47c693d93f06ebe44026
 importer: ScriptImporter
 assetType: Script
-sourceHash: 7bb45472b874d9acc6f5398024e3f30e3dc5943736cf58134249c9c3df45dead
+sourceHash: 504c19b1afe46ec850e0fcadae5fcb8e7917dae0ce552428f605763885536af1
+importFingerprint: 8154424530779292a1426b9beda60b9989feb2d15d7bbbb77e9b987e4d711fe5
 settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

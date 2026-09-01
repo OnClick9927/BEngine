@@ -188,7 +188,7 @@ internal static class Program
         Require(target.Equals(Path.Combine(root, "Clean Project"), StringComparison.OrdinalIgnoreCase),
             "The Hub did not combine Location and Project name into a dedicated project folder.");
         var workspace = projectService.Create(root, "Core Only");
-        var manifest = BEngine.Documents.Document.Load<BEngine.Editor.Documents.PackageManifestDocument>(
+        var manifest = BEngine.YamlUtility.Load<BEngine.Editor.Documents.PackageManifestDocument>(
             workspace.PackageManifestPath);
         Require(manifest.Packages.Count == 0,
             "A project created by the Hub must contain no extension packages.");

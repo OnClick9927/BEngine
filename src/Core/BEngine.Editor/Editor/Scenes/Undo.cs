@@ -382,6 +382,36 @@ public static class Undo
         redoRecords.AddRange(RedoStack.Select(static operation => operation.Name));
     }
 
+    internal static IReadOnlyList<UndoHistoryEntry> GetHistory(out int cursor)
+    {
+        var undo = GroupHistory(UndoStack.Reverse(), takeLastName: true, isRedo: false);
+        var redo = GroupHistory(RedoStack, takeLastName: false, isRedo: true);
+        cursor = undo.Count;
+        return [.. undo, .. redo];
+    }
+
+    internal static bool MoveToHistoryCursor(int targetCursor)
+    {
+        var history = GetHistory(out var cursor);
+        if (targetCursor < 0 || targetCursor > history.Count)
+            throw new ArgumentOutOfRangeException(nameof(targetCursor));
+        if (targetCursor == cursor) return false;
+
+        while (cursor > targetCursor)
+        {
+            if (!canUndo) return false;
+            PerformUndo();
+            cursor--;
+        }
+        while (cursor < targetCursor)
+        {
+            if (!canRedo) return false;
+            PerformRedo();
+            cursor++;
+        }
+        return true;
+    }
+
     internal static HistorySnapshot CaptureAndClear()
     {
         var snapshot = new HistorySnapshot(
@@ -643,6 +673,24 @@ public static class Undo
     private static bool TargetsAffectScene(IEnumerable<BObject> targets) =>
         targets.Any(static target => target is Scene or GameObject or Component);
 
+    private static List<UndoHistoryEntry> GroupHistory(
+        IEnumerable<UndoOperation> operations,
+        bool takeLastName,
+        bool isRedo)
+    {
+        var result = new List<UndoHistoryEntry>();
+        foreach (var operation in operations)
+        {
+            if (result.Count == 0 || result[^1].Group != operation.Group)
+            {
+                result.Add(new UndoHistoryEntry(operation.Name, operation.Group, isRedo));
+                continue;
+            }
+            if (takeLastName) result[^1] = new UndoHistoryEntry(operation.Name, operation.Group, isRedo);
+        }
+        return result;
+    }
+
     internal sealed record UndoOperation(
         int Group,
         string Name,
@@ -676,3 +724,5 @@ public static class Undo
         }
     }
 }
+
+internal readonly record struct UndoHistoryEntry(string Name, int Group, bool IsRedo);

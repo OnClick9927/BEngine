@@ -1,5 +1,5 @@
-using BEngine.Documents;
 using BEngine.Editor;
+using BEngine.Serialization;
 
 namespace BEngine.ExampleTests.HierarchyMultiScene;
 
@@ -302,27 +302,28 @@ internal static class EditorPlayModeIsolationTests
             var directSaveBlocked = false;
             try
             {
-                Document.SaveBObject<SceneDocument>(playScene, fixture.FirstScenePath);
+                SceneAssetSerialization.Save(playScene, fixture.FirstScenePath);
             }
             catch (InvalidOperationException)
             {
                 directSaveBlocked = true;
             }
             TestAssert.Require(directSaveBlocked,
-                "Document.SaveBObject bypassed the Play Mode Scene persistence barrier.");
+                "SceneAssetSerialization.Save bypassed the Play Mode Scene persistence barrier.");
 
-            var runtimeDocument = Document.FromBObject<SceneDocument>(playScene);
-            var documentSaveBlocked = false;
+            using var runtimeSnapshot = SceneAssetSerialization.Restore(
+                SceneAssetSerialization.Capture(playScene));
+            var snapshotSaveBlocked = false;
             try
             {
-                runtimeDocument.Save(fixture.FirstScenePath);
+                SceneAssetSerialization.Save(runtimeSnapshot, fixture.FirstScenePath);
             }
             catch (InvalidOperationException)
             {
-                documentSaveBlocked = true;
+                snapshotSaveBlocked = true;
             }
-            TestAssert.Require(documentSaveBlocked,
-                "A SceneDocument created from the runtime mirror bypassed the persistence barrier.");
+            TestAssert.Require(snapshotSaveBlocked,
+                "A restored runtime Scene snapshot bypassed the persistence barrier.");
 
             TestAssert.Require(EditorSceneManager.SetActiveScene(playSecondScene) &&
                                ReferenceEquals(harness.ActiveScene, playSecondScene),

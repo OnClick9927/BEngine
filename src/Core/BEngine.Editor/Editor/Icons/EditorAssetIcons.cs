@@ -27,6 +27,8 @@ public static class EditorAssetIcons
             var path when path.EndsWith(".material.yaml") || path.EndsWith(".physics-material.yaml") =>
                 EditorBuiltinIcons.Assets.Material,
             var path when path.EndsWith(".asmdef.yaml") => EditorBuiltinIcons.Assets.Assembly,
+            var path when path.EndsWith(".atlas.yaml") => EditorBuiltinIcons.Assets.Atlas,
+            var path when path.EndsWith(".guiskin.yaml") => EditorBuiltinIcons.Assets.Skin,
             var path when path.EndsWith(".bpackage") => "Icons/Windows/PackageManager.png",
             var path when path.EndsWith(".controller.yaml") || path.EndsWith(".anim.yaml") =>
                 EditorBuiltinIcons.Assets.Animation,
@@ -61,7 +63,7 @@ public static class EditorAssetIcons
                 ? assetPath
                 : AssetDatabase.ResolveAssetPath(assetPath);
             if (!File.Exists(fullPath)) return null;
-            var document = BEngine.Documents.Document.Load<BEngine.Documents.ManagedAssetDocument>(fullPath);
+            var document = YamlUtility.Load<ManagedAssetData>(fullPath);
             var typeName = document.TypeName.Split(',')[0];
             var type = Type.GetType(document.TypeName, throwOnError: false) ?? TypeCache.GetAllTypes()
                 .FirstOrDefault(candidate => string.Equals(candidate.FullName, typeName, StringComparison.Ordinal));

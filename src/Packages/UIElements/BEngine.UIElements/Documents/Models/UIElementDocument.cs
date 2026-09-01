@@ -1,10 +1,6 @@
-using System.Globalization;
-using BEngine.Serialization;
-using BEngine.Documents;
-
 namespace BEngine.UIElements;
 
-public sealed class UIElementDocument : Document
+internal sealed class UIElementDocument
 {
     public string Type { get; set; } = nameof(VisualElement);
     public string Name { get; set; } = string.Empty;

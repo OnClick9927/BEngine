@@ -48,10 +48,10 @@ description: "Develop and use the optional BEngine UIElements retained-mode UI p
 
 - Keep retained-mode runtime types in `BEngine.UIElements` and UI Builder/HTML conversion in `BEngine.UIElements.Editor`. Core editor windows remain GPU IMGUI and Core must not reference this optional package.
 - Register the runtime UI renderer through the actual `SceneRenderContributor2DRegistry` API, as `UIElementsPackageRegistration` does. There is no `SceneOverlayRendererRegistry`; do not use or document that nonexistent name.
-- A new code-only control derives `VisualElement` or an existing field/control. To load a new control name from UXML, extend the serializer's explicit element factory and save logic plus document conversion; there is currently no public UXML factory registry for external types.
+- A new code-only control derives `VisualElement` or an existing field/control. To load a new control name from UXML, extend the serializer's explicit element factory, save logic, and package-internal DTO mapping; there is currently no public UXML factory registry for external types.
 - Extend UI Builder only in the editor assembly, use real `Window/...` or `Tools/UIElements/...` `[MenuItem]` paths, Undo/dirty/write policy for project files, and accurate runtime preview claims.
 - Extend HTML conversion through `HtmlConversionOptions`, diagnostics/report models, DOM/CSS mappings, and round-trip/runtime-load validation. Keep AngleSharp out of runtime.
-- Persist package UI asset models through `DocumentConversionRegistry` and `DocumentValidationRegistry`. Store shaders below `Resources/Shaders/UIElements` for the supported backends and render only through RHI/resource resolver abstractions.
+- Keep UI YAML payloads as package-internal DTOs and persist them through `YamlUtility`; `VisualTreeAsset` is the public `BAsset` boundary and playback assets are read-only. Store shaders below `Resources/Shaders/UIElements` for the supported backends and render only through RHI/resource resolver abstractions.
 - Keep TreeView selection, expansion, rename, drag/drop and drop-marker code deterministic. Those APIs are usable programmatically even where runtime pointer dispatch is not yet wired.
 
 ## Validate and troubleshoot

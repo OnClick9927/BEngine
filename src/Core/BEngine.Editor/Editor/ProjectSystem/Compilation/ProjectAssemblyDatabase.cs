@@ -103,7 +103,7 @@ public sealed class ProjectAssemblyDatabase
 
     private static AssemblyDefinitionDocument Load(string path)
     {
-        var document = Document.Load<AssemblyDefinitionDocument>(path);
+        var document = YamlUtility.Load<AssemblyDefinitionDocument>(path);
         if (document.Format != "BEngine.AssemblyDefinition" || document.Version != 1 ||
             string.IsNullOrWhiteSpace(document.Name) || string.IsNullOrWhiteSpace(document.RootNamespace))
         {

@@ -1,5 +1,4 @@
 using BEngine.ProjectSystem;
-using BEngine.Documents;
 using BEngine.Editor.Documents;
 using System.Runtime.Loader;
 
@@ -19,7 +18,7 @@ internal static class Program
             File.Copy(Path.Combine(example, "Packages", "manifest.yaml"),
                 Path.Combine(root, "Packages", "manifest.yaml"), true);
             var workspace = ProjectWorkspace.Open(root);
-            var legacyManifest = Document.Load<PackageManifestDocument>(workspace.PackageManifestPath);
+            var legacyManifest = BEngine.YamlUtility.Load<PackageManifestDocument>(workspace.PackageManifestPath);
             legacyManifest.Packages.Add(new PackageReferenceDocument
             {
                 Id = "com.bengine.codex",
@@ -55,7 +54,7 @@ internal static class Program
                     "The legacy Codex package cache was not removed.");
                 Assert(!Directory.Exists(legacyLibraryCache),
                     "The legacy Library/Packages Codex cache was not removed.");
-                var normalizedManifest = Document.Load<PackageManifestDocument>(workspace.PackageManifestPath);
+                var normalizedManifest = BEngine.YamlUtility.Load<PackageManifestDocument>(workspace.PackageManifestPath);
                 Assert(!normalizedManifest.Packages.Any(package => package.Id.Equals(
                            "com.bengine.codex", StringComparison.OrdinalIgnoreCase)),
                     "The legacy Codex package remained in the persisted manifest.");

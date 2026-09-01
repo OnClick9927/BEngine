@@ -5,7 +5,7 @@ using BEngine.Documents;
 
 namespace BEngine.Player;
 
-internal sealed class PlayerPackageManifest : Document
+internal sealed class PlayerPackageManifest
 {
     public List<PlayerPackageReference> Packages { get; set; } = [];
 }

@@ -1,7 +1,7 @@
 namespace BEngine;
 
 [EditorIcon("Icons/Assets/AssetFont.png")]
-public sealed class Font : FileAsset
+public sealed class Font : BAsset
 {
     public int defaultSize { get; internal set; } = 16;
     public bool includeKerning { get; internal set; } = true;

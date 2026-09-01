@@ -1,4 +1,6 @@
 <Project>
+  <Import Project="$(MSBuildThisFileDirectory)BEngine.Defines.targets" />
+
   <PropertyGroup Condition="'$(BEnginePackageExportOwner)' == 'true'">
     <_BEnginePackageRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..'))</_BEnginePackageRoot>
     <_BEnginePackageName>$([System.IO.Path]::GetFileName('$(_BEnginePackageRoot)'))</_BEnginePackageName>

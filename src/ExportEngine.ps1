@@ -14,6 +14,7 @@ $launcherProject = Join-Path $PSScriptRoot 'Hub\BEngine.Launcher\BEngine.Launche
 $playerProject = Join-Path $PSScriptRoot 'Core\BEngine.Player\BEngine.Player.csproj'
 $coreResources = Join-Path $PSScriptRoot 'Core\Resources'
 $coreEditor = Join-Path $PSScriptRoot 'Core\Editor'
+$engineDefines = Join-Path $PSScriptRoot 'BEngine.Defines.targets'
 
 function Remove-DirectoryWithRetry {
     param(
@@ -105,8 +106,10 @@ if ($LASTEXITCODE -ne 0) { throw "Player publish failed with exit code $LASTEXIT
 
 Copy-Item -LiteralPath $coreResources -Destination (Join-Path $stageOutput 'Resources') -Recurse
 Copy-Item -LiteralPath $coreEditor -Destination (Join-Path $stageOutput 'Editor') -Recurse
+Copy-Item -LiteralPath $engineDefines -Destination (Join-Path $stageOutput 'BEngine.Defines.targets')
 
-foreach ($required in @('BEngine.Launcher.exe', 'BEngine.Editor.exe', 'BEngine.Player.exe')) {
+foreach ($required in @('BEngine.Launcher.exe', 'BEngine.Editor.exe', 'BEngine.Player.exe',
+        'BEngine.Defines.targets')) {
     if (-not (Test-Path -LiteralPath (Join-Path $stageOutput $required))) {
         throw "Engine export is missing $required."
     }

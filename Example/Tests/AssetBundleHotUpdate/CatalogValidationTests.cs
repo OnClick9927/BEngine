@@ -18,6 +18,7 @@ internal static class CatalogValidationTests
         ValidCatalogAndVersionAreAccepted();
         DependenciesMustExistAndRemainAcyclic();
         IdentityAndContentMetadataMustBeUniqueAndValid();
+        FileSubAssetIdentityMustResolveToItsOwner();
         BundleFilesMustBeContentAddressedLeafNames();
         AssetPayloadPathsMustBeCanonicalAndContained();
         VersionCatalogPathsMustBeCanonicalAndContained();
@@ -73,6 +74,43 @@ internal static class CatalogValidationTests
         TestAssert.Throws<InvalidDataException>(missingAssetBundle.Validate, "missing bundle");
     }
 
+    private static void FileSubAssetIdentityMustResolveToItsOwner()
+    {
+        var valid = CreateCatalog();
+        var owner = valid.Assets[0];
+        valid.Assets.Add(CreateFileSubAsset(owner.Guid, owner.Bundle));
+        valid.Validate();
+
+        var orphan = CreateCatalog();
+        var missingOwner = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        orphan.Assets.Add(CreateFileSubAsset(missingOwner, owner.Bundle));
+        TestAssert.Throws<InvalidDataException>(orphan.Validate, "missing owner GUID");
+
+        var wrongEntry = CreateCatalog();
+        var childWithWrongEntry = CreateFileSubAsset(wrongEntry.Assets[0].Guid,
+            wrongEntry.Assets[0].Bundle);
+        childWithWrongEntry.Entry = "Assets/__BEngineSubAssets/wrong/2800000.png";
+        wrongEntry.Assets.Add(childWithWrongEntry);
+        TestAssert.Throws<InvalidDataException>(wrongEntry.Validate, "entry must be");
+
+        var wrongBundle = CreateCatalog();
+        wrongBundle.Assets.Add(CreateFileSubAsset(wrongBundle.Assets[0].Guid, "main"));
+        TestAssert.Throws<InvalidDataException>(wrongBundle.Validate, "same bundle as its owner");
+    }
+
+    private static AssetBundleAsset CreateFileSubAsset(Guid ownerGuid, string bundle) => new()
+    {
+        Address = $"guid:{ownerGuid:N}#subasset=2800000",
+        Guid = Guid.Parse("99999999-9999-9999-9999-999999999999"),
+        OwnerGuid = ownerGuid,
+        LocalIdentifier = 2800000,
+        Bundle = bundle,
+        Entry = $"Assets/__BEngineSubAssets/{ownerGuid:N}/2800000.png",
+        AssetType = nameof(Texture),
+        Sha256 = "9999999999999999999999999999999999999999999999999999999999999999",
+        Size = 24
+    };
+
     private static void BundleFilesMustBeContentAddressedLeafNames()
     {
         foreach (var fileName in new[]
@@ -114,7 +152,7 @@ internal static class CatalogValidationTests
 
         var mismatchedEntry = CreateCatalog();
         mismatchedEntry.Assets[0].Entry = "Assets/Data/other.txt";
-        TestAssert.Throws<InvalidDataException>(mismatchedEntry.Validate, "canonical payload path");
+        TestAssert.Throws<InvalidDataException>(mismatchedEntry.Validate, "canonical Assets path");
     }
 
     private static void VersionCatalogPathsMustBeCanonicalAndContained()

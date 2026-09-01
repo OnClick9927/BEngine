@@ -21,9 +21,9 @@ public static class PlayerServiceCollectionExtensions
         var assetBundleSettingsPath = Path.Combine(
             workspace.ProjectSettingsPath, AssetBundleSettingsDocument.FileName);
         var assetBundleSettings = File.Exists(assetBundleSettingsPath)
-            ? Document.Load<AssetBundleSettingsDocument>(assetBundleSettingsPath)
+            ? YamlUtility.Load<AssetBundleSettingsDocument>(assetBundleSettingsPath)
             : new AssetBundleSettingsDocument();
-        DocumentValidationRegistry.Validate(assetBundleSettings);
+        AssetDataValidation.ValidateAssetBundleSettings(assetBundleSettings);
         PlayerPackageLoader.Load(workspace);
         RuntimeTypeCache.Warmup();
         services.AddBEngine(new EngineServiceContext(
@@ -51,7 +51,7 @@ public static class PlayerServiceCollectionExtensions
             provider.GetService<IAssetBundleManager>()));
         services.TryAddSingleton(provider => new PlayerApplication(
             provider.GetRequiredService<ProjectWorkspace>(),
-            provider.GetRequiredService<ProjectSettingsDocument>(),
+            provider.GetRequiredService<ProjectSettingsData>(),
             provider,
             provider.GetRequiredService<ISceneRuntimeFactory>(),
             provider.GetRequiredService<IRuntimeSceneManager>(),

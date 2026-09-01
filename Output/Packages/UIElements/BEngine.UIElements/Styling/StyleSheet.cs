@@ -2,14 +2,19 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using BEngine.Documents;
 
 namespace BEngine.UIElements;
 
+[EditorIcon("Icons/Assets/AssetStyle.png")]
 public sealed class StyleSheet : ScriptableObject
 {
     private readonly List<StyleRule> _rules = [];
 
-    public static StyleSheet Load(string path)
+    public static StyleSheet Load(string path) =>
+        Document<StyleSheet>.Read(path, LoadAsset).ToAsset();
+
+    private static StyleSheet LoadAsset(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var fullPath = Path.GetFullPath(path);

@@ -92,7 +92,7 @@ internal static class PackageSourceCompiler
                 $"Package '{definition.Document.Id}' {kind} assembly '{assembly.Assembly}' must contain exactly " +
                 $"one assembly definition named '{Path.GetFileName(expectedPath)}' in '{sourceRoot}'.");
 
-        var assemblyDefinition = Document.Load<AssemblyDefinitionDocument>(expectedPath);
+        var assemblyDefinition = YamlUtility.Load<AssemblyDefinitionDocument>(expectedPath);
         if (!assemblyDefinition.Name.Equals(assembly.Assembly, StringComparison.Ordinal) ||
             !assemblyDefinition.RootNamespace.Equals(assembly.RootNamespace, StringComparison.Ordinal) ||
             assemblyDefinition.EditorOnly != kind.Equals("editor", StringComparison.Ordinal))
@@ -198,7 +198,9 @@ internal static class PackageSourceCompiler
                 $"Package '{node.Definition.Document.Id}' {node.Kind} assembly " +
                 $"'{node.Assembly.Assembly}' contains no C# source files.");
 
-        var buildId = ComputeBuildId(node, sourceRoot, sources, references);
+        var configuration = ProjectScriptCompiler.CreateBuildConfiguration(
+            workspace, node.Kind.Equals("editor", StringComparison.Ordinal));
+        var buildId = ComputeBuildId(node, sourceRoot, sources, references, configuration);
         var instance = EditorInstanceContext.current;
         var scriptAssembliesRoot = instance?.scriptAssembliesPath ?? workspace.ScriptAssembliesPath;
         var outputDirectory = Path.Combine(
@@ -216,7 +218,7 @@ internal static class PackageSourceCompiler
         }
 
         if (!File.Exists(assemblyPath))
-            Build(workspace, node, sources, references, outputDirectory, buildId);
+            Build(workspace, node, sources, references, configuration, outputDirectory, buildId);
 
         ScriptAssemblyStore.Publish(
             workspace, node.Assembly.Assembly, buildId, assemblyPath, scriptAssembliesRoot);
@@ -229,6 +231,7 @@ internal static class PackageSourceCompiler
         CompilationNode node,
         IReadOnlyList<string> sources,
         IReadOnlyDictionary<string, string> references,
+        ScriptBuildConfiguration configuration,
         string outputDirectory,
         string buildId)
     {
@@ -245,7 +248,7 @@ internal static class PackageSourceCompiler
         var succeeded = false;
         try
         {
-            WriteProject(projectPath, node, sources, references);
+            WriteProject(projectPath, node, sources, references, configuration);
             var startInfo = new ProcessStartInfo("dotnet")
             {
                 WorkingDirectory = workspace.RootPath,
@@ -276,7 +279,7 @@ internal static class PackageSourceCompiler
                     $"'{node.Assembly.Assembly}' failed to compile. See '{logPath}'." +
                     Environment.NewLine + DiagnosticTail(diagnostics));
 
-            CopyIntermediateAssembly(buildDirectory, node, outputDirectory);
+            CopyIntermediateAssembly(buildDirectory, node, configuration.TargetFramework, outputDirectory);
             CopyExternalDependencies(buildDirectory, node, outputDirectory);
             var assemblyPath = Path.Combine(outputDirectory, $"{node.Assembly.Assembly}.dll");
             if (!File.Exists(assemblyPath))
@@ -299,10 +302,11 @@ internal static class PackageSourceCompiler
         string path,
         CompilationNode node,
         IEnumerable<string> sources,
-        IReadOnlyDictionary<string, string> references)
+        IReadOnlyDictionary<string, string> references,
+        ScriptBuildConfiguration configuration)
     {
         var propertyGroup = new XElement("PropertyGroup",
-            new XElement("TargetFramework", node.Kind == "editor" ? "net10.0-windows" : "net10.0"),
+            new XElement("TargetFramework", configuration.TargetFramework),
             new XElement("LangVersion", "14.0"),
             new XElement("Nullable", "enable"),
             new XElement("ImplicitUsings", "enable"),
@@ -310,6 +314,7 @@ internal static class PackageSourceCompiler
             new XElement("AssemblyName", node.AssemblyDefinition.Name),
             new XElement("RootNamespace", node.AssemblyDefinition.RootNamespace),
             new XElement("AllowUnsafeBlocks", node.AssemblyDefinition.AllowUnsafeCode),
+            new XElement("DefineConstants", string.Join(';', configuration.DefineSymbols)),
             new XElement("Deterministic", "true"),
             new XElement("UseSharedCompilation", "false"),
             new XElement("CopyBuildOutputToOutputDirectory", "false"),
@@ -338,15 +343,19 @@ internal static class PackageSourceCompiler
         CompilationNode node,
         string sourceRoot,
         IEnumerable<string> sources,
-        IReadOnlyDictionary<string, string> references)
+        IReadOnlyDictionary<string, string> references,
+        ScriptBuildConfiguration configuration)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Append(hash, "BEngine.PackageSource.v8");
+        Append(hash, "BEngine.PackageSource.v9");
         Append(hash, node.Definition.Document.Id);
         Append(hash, node.Definition.Document.PackageVersion);
         Append(hash, node.Kind);
         Append(hash, node.Assembly.Assembly);
         Append(hash, node.Assembly.RootNamespace);
+        Append(hash, configuration.TargetFramework);
+        Append(hash, configuration.Platform.ToString());
+        foreach (var symbol in configuration.DefineSymbols) Append(hash, symbol);
         hash.AppendData(File.ReadAllBytes(node.AssemblyDefinitionPath));
         foreach (var source in sources)
         {
@@ -412,9 +421,9 @@ internal static class PackageSourceCompiler
     private static void CopyIntermediateAssembly(
         string buildDirectory,
         CompilationNode node,
+        string targetFramework,
         string outputDirectory)
     {
-        var targetFramework = node.Kind == "editor" ? "net10.0-windows" : "net10.0";
         var intermediateRoot = Path.Combine(buildDirectory, "obj", "Debug", targetFramework);
         var intermediateAssembly = Path.Combine(intermediateRoot, $"{node.Assembly.Assembly}.dll");
         var deadline = Environment.TickCount64 + 5_000;

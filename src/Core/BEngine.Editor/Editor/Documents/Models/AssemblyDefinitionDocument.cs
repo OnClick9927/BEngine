@@ -2,7 +2,7 @@ using BEngine.Documents;
 
 namespace BEngine.Editor.Documents;
 
-public sealed class AssemblyDefinitionDocument : Document
+public sealed class AssemblyDefinitionDocument
 {
     public string Format { get; set; } = "BEngine.AssemblyDefinition";
     public int Version { get; set; } = 1;

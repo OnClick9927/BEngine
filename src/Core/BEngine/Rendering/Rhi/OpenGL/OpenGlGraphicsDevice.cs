@@ -4,7 +4,7 @@ using NumericsVector4 = System.Numerics.Vector4;
 
 namespace BEngine.Rendering.Rhi.OpenGL;
 
-public sealed class OpenGlGraphicsDevice : IGraphicsDevice, IGraphicsDeviceStatistics
+public sealed class OpenGlGraphicsDevice : IGraphicsDevice, IGraphicsDeviceStatistics, IGraphicsColorReadback
 {
     private const GraphicsDeviceFeatures SupportedFeatures =
         GraphicsDeviceFeatures.Rasterization |
@@ -34,6 +34,9 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice, IGraphicsDeviceStati
         get { return _capabilities; }
     }
     public GraphicsDrawStatistics DrawStatistics => _drawStatistics;
+    public GraphicsColorReadbackCapabilities ColorReadbackCapabilities => new(
+        true,
+        GraphicsColorReadbackValidation.DefaultMaximumBytes);
 
     internal GL Api => _api;
 
@@ -98,6 +101,65 @@ public sealed class OpenGlGraphicsDevice : IGraphicsDevice, IGraphicsDeviceStati
         _api.GetInteger(GetPName.DrawFramebufferBinding, out var previousFramebuffer);
         _api.BindFramebuffer(FramebufferTarget.Framebuffer, target.Handle);
         return new RenderTargetScope(this, (uint)previousFramebuffer);
+    }
+
+    public unsafe GraphicsColorReadbackRequest RequestColorReadback(
+        GraphicsRect region,
+        int surfaceWidth,
+        int surfaceHeight)
+    {
+        ThrowIfDisposed();
+        GraphicsColorReadbackValidation.ValidateRegion(
+            region,
+            surfaceWidth,
+            surfaceHeight,
+            GraphicsColorReadbackValidation.DefaultMaximumBytes);
+
+        var pixels = new byte[checked(region.Width * region.Height * 4)];
+        _api.GetInteger(GetPName.PackAlignment, out var previousAlignment);
+        try
+        {
+            _api.PixelStore(PixelStoreParameter.PackAlignment, 1);
+            var framebufferRegion = ToFramebufferReadRegion(region, surfaceHeight);
+            fixed (byte* pointer = pixels)
+                _api.ReadPixels(framebufferRegion.X, framebufferRegion.Y,
+                    (uint)framebufferRegion.Width, (uint)framebufferRegion.Height,
+                    PixelFormat.Rgba, PixelType.UnsignedByte, pointer);
+            FlipRowsInPlace(pixels, region.Width, region.Height);
+            return GraphicsColorReadbackRequest.Ready(
+                region,
+                GraphicsColorReadbackImage.FromOwnedRgba8(region.Width, region.Height, pixels));
+        }
+        catch (Exception exception)
+        {
+            return GraphicsColorReadbackRequest.Failed(region, exception.Message);
+        }
+        finally
+        {
+            _api.PixelStore(PixelStoreParameter.PackAlignment, previousAlignment);
+        }
+    }
+
+    internal static GraphicsRect ToFramebufferReadRegion(GraphicsRect region, int surfaceHeight) =>
+        new(
+            region.X,
+            surfaceHeight - region.Y - region.Height,
+            region.Width,
+            region.Height);
+
+    internal static void FlipRowsInPlace(byte[] pixels, int width, int height)
+    {
+        var rowBytes = checked(width * 4);
+        var temporary = new byte[rowBytes];
+        for (var top = 0; top < height / 2; top++)
+        {
+            var bottom = height - top - 1;
+            var topRow = pixels.AsSpan(top * rowBytes, rowBytes);
+            var bottomRow = pixels.AsSpan(bottom * rowBytes, rowBytes);
+            topRow.CopyTo(temporary);
+            bottomRow.CopyTo(topRow);
+            temporary.CopyTo(bottomRow);
+        }
     }
 
     public void SetViewport(GraphicsRect viewport)

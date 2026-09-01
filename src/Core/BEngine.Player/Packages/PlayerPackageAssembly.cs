@@ -5,7 +5,7 @@ using BEngine.Documents;
 
 namespace BEngine.Player;
 
-internal sealed class PlayerPackageAssembly : Document
+internal sealed class PlayerPackageAssembly
 {
     public string Assembly { get; set; } = string.Empty;
     public List<PlayerPackageDependency> Dependencies { get; set; } = [];

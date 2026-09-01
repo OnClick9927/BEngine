@@ -1,5 +1,4 @@
 using System.Reflection;
-using BEngine.Documents;
 using BEngine.Editor.Documents;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
@@ -170,7 +169,7 @@ internal static class Program
                 TestAssert.That(assemblyDefinitionFiles.Length == 1 &&
                                 PathsEqual(assemblyDefinitionFiles[0], expectedDefinitionPath),
                     $"Package assembly '{assembly.Assembly}' does not contain exactly one matching asmdef.");
-                var assemblyDefinition = Document.Load<AssemblyDefinitionDocument>(expectedDefinitionPath);
+                var assemblyDefinition = BEngine.YamlUtility.Load<AssemblyDefinitionDocument>(expectedDefinitionPath);
                 TestAssert.That(assemblyDefinition.Name == assembly.Assembly &&
                                 assemblyDefinition.RootNamespace == assembly.RootNamespace &&
                                 assemblyDefinition.EditorOnly == (entry.Kind == "editor"),

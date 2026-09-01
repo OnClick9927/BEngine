@@ -1,10 +1,10 @@
 using System.Collections;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using BEngine.Documents;
 using BEngine.Editor;
 using BEngine.Editor.Rendering;
 using BEngine.ProjectSystem;
+using BEngine.Serialization;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
 
 namespace BEngine.ExampleTests.EditorKeyboardCommands;
@@ -36,7 +36,7 @@ internal sealed class EditorKeyboardHarness : IDisposable
         _packages = (BPackageManager)(Activator.CreateInstance(typeof(BPackageManager), InstanceMembers,
             binder: null, [fixture.Workspace, null, false], culture: null) ??
                                       throw new InvalidOperationException("Could not create the Package Manager."));
-        Scene = Document.LoadBObject<SceneDocument, Scene>(fixture.ScenePath, new EmptyServiceProvider());
+        Scene = SceneAssetSerialization.Load(fixture.ScenePath, new EmptyServiceProvider());
         SetProperty(Scene, "path", fixture.ScenePath);
 
         var openSceneType = TestAssert.RequireType(editorAssembly, "BEngine.Editor.EditorOpenScene");
@@ -75,6 +75,7 @@ internal sealed class EditorKeyboardHarness : IDisposable
         SetField("_inspector", _inspectorWindow);
         InitializeField("_editorPanels");
         InitializeField("_windowLayer");
+        InitializeField("_nativeFloatingWindows");
         InitializeField("_builtInWindows");
         InitializeField("_runtimes");
         AddBuiltIn(HierarchyWindow, "Left", true);

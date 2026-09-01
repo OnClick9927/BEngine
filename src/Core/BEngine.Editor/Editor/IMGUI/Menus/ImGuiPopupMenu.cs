@@ -171,13 +171,11 @@ internal sealed class ImGuiPopupMenu
             return;
         }
         if (segments.Length == 0) return;
-        PopupNode? leaf = null;
-        foreach (var segment in segments)
-        {
-            leaf = FindOrAdd(level, segment);
-            level = leaf.Children;
-        }
-        leaf!.On = item.On;
+        for (var index = 0; index < segments.Length - 1; index++)
+            level = FindOrAdd(level, segments[index]).Children;
+        var leaf = new PopupNode(segments[^1]);
+        level.Add(leaf);
+        leaf.On = item.On;
         leaf.Enabled = item.Enabled;
         leaf.Action = item.Action;
     }

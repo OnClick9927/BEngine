@@ -1,5 +1,6 @@
 namespace BEngine;
 
+[EditorIcon("Icons/Assets/AssetData.png")]
 public abstract class ScriptableObject : BAsset
 {
     protected ScriptableObject() => name = GetType().Name;

@@ -57,11 +57,7 @@ internal sealed class AssetPreviewFixture : IDisposable
             MaxSize = 64,
             Padding = 1,
             Extrude = 1,
-            Sources =
-            [
-                new TextureAtlasSource { Name = "red", Path = first },
-                new TextureAtlasSource { Name = "blue", Path = second }
-            ]
+            Sources = [CreateSprite(first, "red"), CreateSprite(second, "blue")]
         };
         atlas.Save(manifest);
         TextureAtlasBuilder.Build(atlas, manifest);
@@ -115,6 +111,16 @@ internal sealed class AssetPreviewFixture : IDisposable
         Set(asset, nameof(DefaultAsset.sourcePath), path);
         Set(asset, nameof(DefaultAsset.assetType), type);
         return asset;
+    }
+
+    private static Sprite CreateSprite(string texturePath, string name)
+    {
+        BAsset.Invalidate(texturePath);
+        var texture = BAsset.Load<Texture>(texturePath) ??
+                      throw new InvalidOperationException($"Texture '{texturePath}' could not be loaded.");
+        var sprite = texture.CreateSprite(new Vector2(Fix64.Half, Fix64.Half));
+        sprite.name = name;
+        return sprite;
     }
 
     private DefaultAsset CreateWindowsRaster(string name, string extension, int width, int height,

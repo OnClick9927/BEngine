@@ -18,6 +18,7 @@ internal static class Program
             VerifyNativeCrossMonitorDockTracking();
             Win32NativeMoveScopeTests.Run();
             VerifyNativeGeometryRecovery();
+            VerifyUndockedWindowSizing();
             VerifyNativeWindowFrameScheduling();
             VerifyDockHostHoverIsolation();
             VerifyTitleContextMenu();
@@ -25,7 +26,7 @@ internal static class Program
             VerifyWindowLockChrome();
             VerifyNarrowTitleStability();
             Console.WriteLine(
-                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,native-float,native-move-loop,cross-monitor,dpi-coordinates,cross-dpi-caption,resize-not-dock,offscreen-recovery,negative-monitor,inactive-render-throttle,repaint-wakeup,restore-wakeup,focus-wakeup,dock-host-hover-isolation,host-transfer-input,in-process-transients,in-process-dock-preview,in-process-drag-dock,z-order,input-gating,popup-dismiss,drag-out-immediate,splitter-not-float,dock-back,dock-float-lock-roundtrip,three-dot-first-click,three-dot-window-actions,add-tab-source-group,lock-menu-only,title-context-menu,window-lock,narrow-title-stability,narrow-title-ellipsis");
+                "GPU_DOCK_WINDOW_STATES_OK|normal,pop,modal,aux,native-float,native-move-loop,cross-monitor,dpi-coordinates,cross-dpi-caption,resize-not-dock,offscreen-recovery,negative-monitor,undock-double-size,restore-float-size,inactive-render-throttle,repaint-wakeup,restore-wakeup,focus-wakeup,dock-host-hover-isolation,host-transfer-input,in-process-transients,in-process-dock-preview,in-process-drag-dock,float-center-dead-zone,title-tab-dock,z-order,input-gating,popup-dismiss,drag-out-immediate,splitter-not-float,dock-back,dock-float-lock-roundtrip,three-dot-first-click,three-dot-window-actions,add-tab-source-group,lock-menu-only,title-context-menu,window-lock,narrow-title-stability,narrow-title-ellipsis");
             return 0;
         }
         catch (Exception exception)
@@ -43,6 +44,7 @@ internal static class Program
 
         window.Show();
         Require(window.ConsumeRequestedState() == EditorWindowState.Normal, "Show did not request Normal.");
+        Require(window.ConsumeRequestedFocus(), "Show did not request one initial window focus.");
         window.ShowPopup();
         Require(window.ConsumeRequestedState() == EditorWindowState.Pop, "ShowPopup did not request Pop.");
         window.ShowModal();
@@ -141,10 +143,13 @@ internal static class Program
         var layer = new EditorWindowLayer();
         layer.Show(floating, EditorWindowState.Normal);
         RenderDock(dock, new Event(EventType.Layout));
-        var target = anchorPanel.Group?.Bounds.center ??
-                     throw new InvalidOperationException("The in-process dock target has no bounds.");
+        var targetBounds = anchorPanel.Group?.Bounds ??
+                           throw new InvalidOperationException("The in-process dock target has no bounds.");
+        var target = new Vector2(targetBounds.center.x, targetBounds.y + 2);
+        Require(!dock.CanDockAt(targetBounds.center),
+            "The center of a target window did not preserve the Float dock dead zone.");
         Require(dock.CanDockAt(target),
-            "The in-process Float regression did not resolve a dock target.");
+            "The target title row did not resolve a same-size tab dock target.");
 
         layer.DockDragUpdated += (_, point) => dock.SetExternalDragPoint(
             point is { } candidate && dock.CanDockAt(candidate) ? candidate : null);
@@ -308,6 +313,28 @@ internal static class Program
             new Rect(50, 60, 1200, 90), new Vector2(300, 180), new Vector2(900, 700));
         Require(constrained.Equals(new Rect(50, 60, 900, 180)),
             "Native float geometry did not enforce EditorWindow minSize/maxSize.");
+    }
+
+    private static void VerifyUndockedWindowSizing()
+    {
+        var workAreas = new[] { new Rect(0, 0, 1920, 1040) };
+        var expanded = NativeFloatingWindowGeometry.CreateUndockedBounds(
+            new Vector2(100, 80), new Vector2(360, 240), null,
+            new Vector2(200, 160), new Vector2(4096, 4096), workAreas);
+        Require(expanded.Equals(new Rect(100, 80, 720, 480)),
+            "Dock-to-Float did not default to twice the docked client size.");
+
+        var restored = NativeFloatingWindowGeometry.CreateUndockedBounds(
+            new Vector2(100, 80), new Vector2(360, 240), new Vector2(880, 620),
+            new Vector2(200, 160), new Vector2(4096, 4096), workAreas);
+        Require(restored.Equals(new Rect(100, 80, 880, 620)),
+            "Dock-to-Float did not restore the window's last floating size.");
+
+        var constrained = NativeFloatingWindowGeometry.CreateUndockedBounds(
+            new Vector2(1500, 700), new Vector2(1300, 800), null,
+            new Vector2(200, 160), new Vector2(4096, 4096), workAreas);
+        Require(constrained.Equals(new Rect(0, 0, 1920, 1040)),
+            "An expanded floating window was not constrained to its monitor work area.");
     }
 
     private static void VerifyNativeWindowFrameScheduling()

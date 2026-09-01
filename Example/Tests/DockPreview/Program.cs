@@ -22,7 +22,7 @@ internal static class Program
         {
             VerifyGpuDockPreview();
             Console.WriteLine(
-                "DOCK_PREVIEW_OK|gpu-imgui,four-areas,five-drop-targets,accent-overlay,preview-change-signal,split-region,empty-collapse");
+                "DOCK_PREVIEW_OK|gpu-imgui,four-areas,five-drop-targets,external-edge-targets,title-tab-target,center-dead-zone,accent-overlay,preview-change-signal,split-region,empty-collapse");
             return 0;
         }
         catch (Exception exception)
@@ -44,6 +44,15 @@ internal static class Program
         var captureLayout = workspaceType.GetMethod("CaptureLayout", InstanceMembers)!;
         var setExternalDragPoint = workspaceType.GetMethod("SetExternalDragPoint", InstanceMembers)!;
         var tryGetDrop = workspaceType.GetMethod("TryGetDrop", InstanceMembers)!;
+        var canDockAt = workspaceType.GetMethod("CanDockAt", InstanceMembers)!;
+        var tryGetExternalDockPreview = workspaceType.GetMethod(
+            "TryGetExternalDockPreview", InstanceMembers)!;
+        var dockEdgeExtent = workspaceType.GetMethod("DockEdgeExtent",
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        Require((Fix64)dockEdgeExtent.Invoke(null, [(Fix64)200])! == 40 &&
+                (Fix64)dockEdgeExtent.Invoke(null, [(Fix64)400])! == 50 &&
+                (Fix64)dockEdgeExtent.Invoke(null, [(Fix64)800])! == 75,
+            "Dock edge targets do not scale dynamically between 40 and 75 pixels.");
 
         foreach (var areaName in new[] { "Left", "Center", "Right", "Bottom" })
             add.Invoke(workspace,
@@ -85,22 +94,51 @@ internal static class Program
                 $"The {name} point produced the wrong preview rectangle.");
         }
 
-        Require((bool)setExternalDragPoint.Invoke(workspace, [cases[0].Item2])!,
+        var externalCases = new[]
+        {
+            ("Title", new Vector2(bounds.center.x, bounds.y + 2), bounds),
+            ("Left", new Vector2(bounds.x + 2, bounds.center.y),
+                new Rect(bounds.x, bounds.y, bounds.width / 2, bounds.height)),
+            ("Right", new Vector2(bounds.xMax - 2, bounds.center.y),
+                new Rect(bounds.x + bounds.width / 2, bounds.y, bounds.width / 2, bounds.height)),
+            ("Top", new Vector2(bounds.center.x, bounds.y + 40),
+                new Rect(bounds.x, bounds.y, bounds.width, bounds.height / 2)),
+            ("Bottom", new Vector2(bounds.center.x, bounds.yMax - 2),
+                new Rect(bounds.x, bounds.y + bounds.height / 2, bounds.width, bounds.height / 2))
+        };
+        foreach (var (name, point, expectedPreview) in externalCases)
+        {
+            Require((bool)canDockAt.Invoke(workspace, [point])!,
+                $"The external {name} point did not resolve a dock target.");
+            var arguments = new object?[] { point, null };
+            Require((bool)tryGetExternalDockPreview.Invoke(workspace, arguments)! &&
+                    ((Rect)arguments[1]!).Equals(expectedPreview),
+                $"The external {name} point produced the wrong preview rectangle.");
+        }
+        Require(!(bool)canDockAt.Invoke(workspace, [bounds.center])!,
+            "The center of a docked window still accepts an immediate Float dock.");
+        var deadZoneArguments = new object?[] { bounds.center, null };
+        Require(!(bool)tryGetExternalDockPreview.Invoke(workspace, deadZoneArguments)!,
+            "The center dead zone still emits an external dock preview.");
+
+        var leftExternal = externalCases.Single(item => item.Item1 == "Left");
+        Require((bool)setExternalDragPoint.Invoke(workspace, [leftExternal.Item2])!,
             "Setting a new external dock point did not signal that the host needs repainting.");
-        Require(!(bool)setExternalDragPoint.Invoke(workspace, [cases[0].Item2])!,
+        Require(!(bool)setExternalDragPoint.Invoke(workspace, [leftExternal.Item2])!,
             "Setting an unchanged external dock point requested a redundant host repaint.");
         var commands = new List<GpuCanvasCommand>();
         Render(workspaceType, workspace, new Event(EventType.Repaint), commands);
         Require(commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
-                                        SameRect(command.Rect, cases[0].Item3) &&
+                                        SameRect(command.Rect, leftExternal.Item3) &&
                                         command.Color.A is > 0 and < 255),
             "External docking did not emit its translucent GPU accent preview.");
         Require((bool)setExternalDragPoint.Invoke(workspace, [null])!,
             "Clearing the external dock point did not signal that the preview needs repainting.");
 
         var beforeSplit = (EditorDockNodeDocument)captureLayout.Invoke(workspace, null)!;
+        var rightExternal = externalCases.Single(item => item.Item1 == "Right");
         var splitPanel = dockExternal.Invoke(workspace,
-            ["Split", new ProbeWindow("Split"), cases[1].Item2])!;
+            ["Split", new ProbeWindow("Split"), rightExternal.Item2])!;
         var splitGroup = splitPanel.GetType().GetProperty("Group", InstanceMembers)!.GetValue(splitPanel);
         Require(splitGroup is not null && !ReferenceEquals(splitGroup, centerGroup),
             "Right-side docking joined the center tab group instead of creating a split region.");

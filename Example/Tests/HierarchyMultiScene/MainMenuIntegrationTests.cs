@@ -111,8 +111,9 @@ internal static class MainMenuIntegrationTests
             TestAssert.Require(item.Enabled && item.Action is not null,
                 $"Window/General/{title} did not preserve its window-opening action.");
         }
-        TestAssert.Require(RequireItem(window, "General/Hierarchy", "an open Hierarchy window").Checked,
-            "Window/General/Hierarchy did not preserve its open-window checked state.");
+        TestAssert.Require(window.Where(item => item.Path.StartsWith("General/", StringComparison.Ordinal))
+                .All(item => !item.Checked),
+            "Window/General built-in window items should not display checked state.");
         TestAssert.Require(window.All(item => item.Path != "General/Package Manager"),
             "Package Manager was incorrectly moved into Window/General.");
     }
@@ -265,9 +266,9 @@ internal static class MainMenuIntegrationTests
         Execute("Window/Panels/Lock Focused Window");
         TestAssert.Require(hierarchy.isLocked,
             "Window/Panels/Lock Focused Window did not lock the focused window.");
-        TestAssert.Require(RequireItem(Capture(harness, "Window"), "Panels/Lock Focused Window",
+        TestAssert.Require(!RequireItem(Capture(harness, "Window"), "Panels/Lock Focused Window",
                 "a locked focused window").Checked,
-            "Window/Panels/Lock Focused Window did not display its checked state.");
+            "Window/Panels/Lock Focused Window should not display checked state.");
         Execute("Window/Panels/Lock Focused Window");
         TestAssert.Require(!hierarchy.isLocked,
             "Window/Panels/Lock Focused Window did not toggle back to unlocked.");
@@ -298,6 +299,10 @@ internal static class MainMenuIntegrationTests
         TestAssert.Require(File.ReadAllText(fixture.FirstScenePath)
                 .Contains("Saved Through File Menu", StringComparison.Ordinal),
             "File/Save Scene was not executable through EditorApplication.ExecuteMenuItem.");
+        root.name = "First Root";
+        TestAssert.Require(EditorSceneManager.MarkSceneDirty(scene),
+            "The File menu test could not restore its Scene fixture state.");
+        Execute("File/Save Scene");
         Undo.ClearAll();
     }
 

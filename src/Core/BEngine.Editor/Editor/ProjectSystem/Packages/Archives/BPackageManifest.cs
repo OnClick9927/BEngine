@@ -3,7 +3,7 @@ using YamlDotNet.Serialization;
 
 namespace BEngine.Editor;
 
-public sealed class BPackageManifest : Document
+public sealed class BPackageManifest
 {
     public string Format { get; set; } = "BEngine.BPackage";
     public int Version { get; set; } = 1;

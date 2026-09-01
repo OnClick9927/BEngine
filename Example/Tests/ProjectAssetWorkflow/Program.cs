@@ -17,8 +17,14 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--unified-asset-only", StringComparer.Ordinal))
+            {
+                UnifiedBAssetArchitectureTests.Run();
+                return 0;
+            }
             if (args.Contains("--basset-only", StringComparer.Ordinal))
             {
+                UnifiedBAssetArchitectureTests.Run();
                 BAssetTypeSystemTests.Run();
                 return 0;
             }
@@ -31,6 +37,7 @@ internal static class Program
             AssetMenuIntegrationTests.Run(editorAssembly, applicationType, projectWindowType, itemType);
             VerifyProjectSelectionsFeedInspector(editorAssembly, itemType);
             VerifyItemContextMenuHasVisibleText(editorAssembly, applicationType, projectWindowType, itemType);
+            UnifiedBAssetArchitectureTests.Run();
             BAssetTypeSystemTests.Run();
 
             Console.WriteLine(

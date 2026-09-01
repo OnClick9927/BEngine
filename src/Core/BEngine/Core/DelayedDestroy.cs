@@ -11,10 +11,20 @@ internal static class DelayedDestroy
 
     private static void Flush()
     {
-        foreach (var item in Pending.Where(item => item.Time <= Time.time).ToArray())
+        var initialCount = Pending.Count;
+        var writeIndex = 0;
+        for (var readIndex = 0; readIndex < initialCount; readIndex++)
         {
+            var item = Pending[readIndex];
+            if (item.Time > Time.time)
+            {
+                if (writeIndex != readIndex) Pending[writeIndex] = item;
+                writeIndex++;
+                continue;
+            }
+
             BObject.Destroy(item.Target);
-            Pending.Remove(item);
         }
+        if (writeIndex < initialCount) Pending.RemoveRange(writeIndex, initialCount - writeIndex);
     }
 }

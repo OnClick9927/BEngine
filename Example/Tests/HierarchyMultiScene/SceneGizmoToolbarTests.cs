@@ -48,6 +48,36 @@ internal static class SceneGizmoToolbarTests
                            q.type == EventType.Used && t.type == EventType.KeyDown,
             "Q did not select View/Pan, or removed T still selected a Scene tool.");
 
+        harness.RenderScene(new Event(EventType.MouseMove)
+        {
+            mousePosition = new Vector2(320, 240)
+        }, WideWidth);
+        TestAssert.Require(RequestedMouseCursor() == MouseCursor.Pan,
+            "Q/View did not show the Pan hand over the Scene content.");
+        harness.RenderScene(new Event(EventType.MouseMove)
+        {
+            mousePosition = new Vector2(320, 8)
+        }, WideWidth);
+        TestAssert.Require(RequestedMouseCursor() == MouseCursor.Arrow,
+            "Q/View showed the Pan hand over the Scene toolbar.");
+        harness.HandleGlobalKeyboard(new Event(EventType.KeyDown) { keyCode = KeyCode.W });
+        harness.RenderScene(new Event(EventType.MouseMove)
+        {
+            mousePosition = new Vector2(320, 240)
+        }, WideWidth);
+        TestAssert.Require(RequestedMouseCursor() == MouseCursor.Arrow,
+            "A non-View Scene tool showed the Pan hand.");
+        harness.HandleGlobalKeyboard(new Event(EventType.KeyDown) { keyCode = KeyCode.Q });
+
+        var resolveStandardCursor = typeof(EditorWindow).Assembly
+            .GetType("BEngine.Editor.ImGuiNativeWindow", true)!
+            .GetMethod("ResolveStandardCursor", BindingFlags.Static | BindingFlags.NonPublic) ??
+            throw new MissingMethodException("ImGuiNativeWindow", "ResolveStandardCursor");
+        TestAssert.Require(string.Equals(
+                resolveStandardCursor.Invoke(null, [MouseCursor.Pan])?.ToString(),
+                "Hand", StringComparison.Ordinal),
+            "The native editor mapped the Scene Pan cursor to a non-hand cursor.");
+
         harness.SetCameraSize(5);
         var beforePan = harness.CameraPosition;
         harness.RenderScene(new Event(EventType.MouseDown)
@@ -55,8 +85,9 @@ internal static class SceneGizmoToolbarTests
             mousePosition = new Vector2(320, 240),
             button = 0
         }, WideWidth);
-        TestAssert.Require(GUIUtility.hotControl != 0 && harness.SceneNavigationButton == 0,
-            "Q/View did not capture its left-button pan.");
+        TestAssert.Require(GUIUtility.hotControl != 0 && harness.SceneNavigationButton == 0 &&
+                           RequestedMouseCursor() == MouseCursor.Pan,
+            "Q/View did not capture its left-button pan while retaining the hand cursor.");
         var panDrag = new Event(EventType.MouseDrag)
         {
             mousePosition = new Vector2(340, 250),
@@ -64,7 +95,7 @@ internal static class SceneGizmoToolbarTests
             button = 0
         };
         harness.RenderScene(panDrag, WideWidth);
-        TestAssert.Require(panDrag.type == EventType.Used,
+        TestAssert.Require(panDrag.type == EventType.Used && RequestedMouseCursor() == MouseCursor.Pan,
             $"Q/View did not consume its captured drag (hot={GUIUtility.hotControl}, " +
             $"navigationButton={harness.SceneNavigationButton}).");
         harness.RenderScene(new Event(EventType.MouseUp)
@@ -165,6 +196,14 @@ internal static class SceneGizmoToolbarTests
                            icon.ClipRect.Right >= icon.Rect.Right - 0.01f,
             $"The Scene Gizmos button escaped its window or clip at {width}px width.");
         return icon;
+    }
+
+    private static MouseCursor RequestedMouseCursor()
+    {
+        var property = typeof(GUI).GetProperty("requestedMouseCursor",
+            BindingFlags.Static | BindingFlags.NonPublic) ??
+                       throw new MissingMemberException(typeof(GUI).FullName, "requestedMouseCursor");
+        return (MouseCursor)(property.GetValue(null) ?? MouseCursor.Arrow);
     }
 
 }

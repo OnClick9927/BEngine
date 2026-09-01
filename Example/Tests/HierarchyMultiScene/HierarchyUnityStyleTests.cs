@@ -198,7 +198,9 @@ internal static class HierarchyUnityStyleTests
             {
                 var text = Text(commands, label);
                 TestAssert.Require(text.Rect.Width > 0 && text.ClipRect.Width > 0 && TextFitsClip(text),
-                    $"Hierarchy text '{label}' disappeared or escaped its clip at {width}px width.");
+                    $"Hierarchy text '{label}' disappeared or escaped its clip at {width}px width. " +
+                    $"Text={text.Rect.X},{text.Rect.Y},{text.Rect.Width},{text.Rect.Height}; " +
+                    $"Clip={text.ClipRect.X},{text.ClipRect.Y},{text.ClipRect.Width},{text.ClipRect.Height}.");
             }
         }
         harness.RenderHierarchy(new Event(EventType.Layout), WideWidth);
@@ -236,8 +238,8 @@ internal static class HierarchyUnityStyleTests
             "Starting a Hierarchy ObjectField drag changed Selection and would invalidate an unlocked Inspector.");
         var requestedCursor = typeof(GUI).GetProperty("requestedMouseCursor",
             System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null);
-        TestAssert.Require(Equals(requestedCursor, MouseCursor.MoveArrow),
-            "Dragging a Hierarchy BObject did not request a distinct drag mouse cursor.");
+        TestAssert.Require(Equals(requestedCursor, MouseCursor.ArrowMinus),
+            "Dragging a Hierarchy BObject without a valid target did not request the rejected cursor.");
         harness.RenderHierarchy(new Event(EventType.MouseDrag)
         {
             mousePosition = scenePoint, button = 0
@@ -296,11 +298,20 @@ internal static class HierarchyUnityStyleTests
     }
 
     private static GpuCanvasCommand ToolbarImage(IEnumerable<GpuCanvasCommand> commands, string suffix,
-        GpuCanvasCommand firstRow) => commands.SingleOrDefault(command =>
-        command.Type == GpuCanvasCommandType.Image && command.Content.EndsWith(suffix, StringComparison.Ordinal) &&
-        command.Rect.Bottom <= firstRow.Rect.Y + 0.5f) is { Type: GpuCanvasCommandType.Image } match
-            ? match
-            : throw new InvalidOperationException($"Hierarchy toolbar did not draw '{suffix}'.");
+        GpuCanvasCommand firstRow)
+    {
+        var commandArray = commands.ToArray();
+        if (commandArray.SingleOrDefault(command =>
+                command.Type == GpuCanvasCommandType.Image &&
+                command.Content.EndsWith(suffix, StringComparison.Ordinal) &&
+                command.Rect.Bottom <= firstRow.Rect.Y + 0.5f) is { Type: GpuCanvasCommandType.Image } match)
+            return match;
+        var images = string.Join(", ", commandArray.Where(command => command.Type == GpuCanvasCommandType.Image)
+            .Select(command => $"{command.Content}@{command.Rect.X},{command.Rect.Y},{command.Rect.Width}," +
+                               $"{command.Rect.Height}"));
+        throw new InvalidOperationException(
+            $"Hierarchy toolbar did not draw '{suffix}'. Images: [{images}]. First row Y: {firstRow.Rect.Y}.");
+    }
 
     private static GpuCanvasCommand RowImage(IEnumerable<GpuCanvasCommand> commands, string suffix,
         GpuCanvasCommand row) => commands.SingleOrDefault(command =>

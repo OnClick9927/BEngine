@@ -1,4 +1,3 @@
-using BEngine.Documents;
 using BEngine.ProjectSystem;
 
 namespace BEngine.ExampleTests.InspectorComponentActions;
@@ -14,7 +13,7 @@ internal sealed class InspectorWorkspaceFixture : IDisposable
     {
         _root = Path.Combine(Path.GetTempPath(), "BEngineInspectorActions", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        new ProjectDocument { Name = "Inspector Component Actions" }
+        new ProjectData { Name = "Inspector Component Actions" }
             .Save(Path.Combine(_root, ProjectWorkspace.ProjectFileName));
         Workspace = ProjectWorkspace.Open(_root);
         ScriptPath = Path.Combine(Workspace.AssetsPath, nameof(InspectorActionProbe) + ".cs");

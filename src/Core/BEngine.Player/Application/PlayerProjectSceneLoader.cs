@@ -1,4 +1,3 @@
-using BEngine.Documents;
 using BEngine.ProjectSystem;
 using BEngine.SceneManagement;
 using BEngine.AssetBundles;
@@ -13,7 +12,7 @@ internal sealed class PlayerProjectSceneLoader(
     {
         if (TryLoadBundledScene(sceneNameOrPath, services, out var bundledScene)) return bundledScene;
         var sourcePath = ResolveScenePath(sceneNameOrPath);
-        var scene = Document.LoadBObject<SceneDocument, Scene>(sourcePath, services);
+        var scene = SceneAssetSerialization.Load(sourcePath, services);
         scene.path = sourcePath;
         return scene;
     }
@@ -40,9 +39,8 @@ internal sealed class PlayerProjectSceneLoader(
             throw new InvalidOperationException(
                 $"Scene name '{sceneNameOrPath}' is ambiguous in the active AssetBundle catalog.");
         using var handle = assetBundles.LoadTextAsync(matches[0]).ConfigureAwait(false).GetAwaiter().GetResult();
-        var document = Document.FromYaml<SceneDocument>(handle.Value);
-        scene = document.ToBObject(new DocumentConversionContext(matches[0], services)) as Scene ??
-                throw new InvalidDataException($"AssetBundle scene '{matches[0]}' could not be deserialized.");
+        var document = YamlUtility.Deserialize<SceneAssetData>(handle.Value);
+        scene = SceneAssetSerialization.Restore(document, services);
         try { RestoreBundledSprites(document, scene); }
         catch
         {
@@ -53,7 +51,7 @@ internal sealed class PlayerProjectSceneLoader(
         return true;
     }
 
-    private void RestoreBundledSprites(SceneDocument document, Scene scene)
+    private void RestoreBundledSprites(SceneAssetData document, Scene scene)
     {
         var renderers = scene.QueryComponents<SpriteRenderer>()
             .ToDictionary(renderer => renderer.Id);

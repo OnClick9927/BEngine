@@ -1,3 +1,5 @@
+using BEngine.Documents;
+
 namespace BEngine;
 
 [EditorIcon("Icons/Assets/AssetMaterial.png")]
@@ -94,9 +96,15 @@ public sealed class Material : BAsset
     internal Fix64 GetFloatUnchecked(string propertyName, Fix64 defaultValue = default) =>
         _properties.TryGetValue(propertyName, out var value) && value is Fix64 number ? number : defaultValue;
 
-    public static Material Load(string path)
+    public static Material Load(string path) => Document<Material>
+        .Read(path, static sourcePath => FromFile(YamlUtility.Load<MaterialFile>(sourcePath)))
+        .ToAsset();
+
+    public void Save(string path) => Document<Material>.FromAsset(this)
+        .Write(path, static (material, destination) => YamlUtility.Save(material.ToFile(), destination));
+
+    private static Material FromFile(MaterialFile document)
     {
-        var document = YamlUtility.Load<MaterialFile>(path);
         if (document.Format != "BEngine.Material" || document.Version != 1)
             throw new InvalidDataException("Unsupported material asset.");
         var material = new Material(Shader.Find(document.Shader))
@@ -120,7 +128,7 @@ public sealed class Material : BAsset
         return material;
     }
 
-    public void Save(string path)
+    private MaterialFile ToFile()
     {
         var properties = new List<MaterialPropertyFile>(_properties.Count);
         foreach (var (propertyName, value) in _properties)
@@ -148,13 +156,13 @@ public sealed class Material : BAsset
             };
             if (entry is not null) properties.Add(entry);
         }
-        YamlUtility.Save(new MaterialFile
+        return new MaterialFile
         {
             Name = name,
             Shader = shader.shaderName,
             RenderQueue = renderQueue,
             Properties = properties
-        }, path);
+        };
     }
 
     private sealed class MaterialFile

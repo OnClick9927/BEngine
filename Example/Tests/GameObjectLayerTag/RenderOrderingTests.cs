@@ -31,6 +31,20 @@ internal static class RenderOrderingTests
             "Render sorting did not apply layer/order/hierarchy/transparency/submission precedence.");
         TestAssert.Require(batches.Count == 5 && batches[0].Submissions.Count == 3,
             "Batching did not merge only adjacent Material/Shader/Atlas-compatible submissions.");
+
+        var tiedKey = new RenderSortKey2D(
+            SortingLayer.Default, 7, 11, RenderTransparency.Transparent, 13);
+        var tied = Enumerable.Range(0, 32)
+            .Select(index => new RenderSubmission2D(
+                tiedKey, index % 2 == 0 ? sharedBatch : splitByAtlas, index))
+            .ToArray();
+        var tiedOrder = RenderBatchBuilder2D.Build(tied)
+            .SelectMany(batch => batch.Submissions)
+            .Select(submission => (int)submission.Payload)
+            .ToArray();
+        TestAssert.Require(tiedOrder.SequenceEqual(Enumerable.Range(0, tied.Length)),
+            "Render sorting did not preserve submission order for equal sort keys.");
+
         TestAssert.Throws<ArgumentOutOfRangeException>(
             () => new RenderSortKey2D(64, 0, 0, RenderTransparency.Opaque, 0),
             "RenderSortKey2D accepted an out-of-range layer index.");

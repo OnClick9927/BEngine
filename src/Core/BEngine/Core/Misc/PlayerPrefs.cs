@@ -1,5 +1,3 @@
-using BEngine.Documents;
-
 namespace BEngine;
 
 public static class PlayerPrefs
@@ -16,14 +14,14 @@ public static class PlayerPrefs
     public static void SetString(string key, string value) => Values[key] = value ?? string.Empty;
     public static void SetInt(string key, int value) => SetString(key, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
     public static void SetFloat(string key, Fix64 value) => SetString(key, value.ToString());
-    public static void Save() => new PlayerPrefsDocument { Values = Values }.Save(FilePath);
+    public static void Save() => YamlUtility.Save(new PlayerPrefsData { Values = Values }, FilePath);
 
     private static Dictionary<string, string> Values
     {
         get
         {
             if (_values is not null) return _values;
-            try { _values = File.Exists(FilePath) ? Document.Load<PlayerPrefsDocument>(FilePath).Values : []; }
+            try { _values = File.Exists(FilePath) ? YamlUtility.Load<PlayerPrefsData>(FilePath).Values : []; }
             catch (Exception exception) when (exception is IOException or InvalidDataException)
             {
                 Debug.LogWarning($"Could not load PlayerPrefs: {exception.Message}");

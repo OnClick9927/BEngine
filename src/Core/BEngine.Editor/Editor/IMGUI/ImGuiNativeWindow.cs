@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using BEngine.Editor.Diagnostics;
 using BEngine.Editor.Rendering;
 using BEngine.Rendering;
 using BEngine.Rendering.Rhi;
@@ -14,6 +15,16 @@ using BEvent = BEngine.Editor.Event;
 using BVector2 = BEngine.Vector2;
 
 namespace BEngine.Editor;
+
+internal readonly record struct ImGuiNativeFrameProfile(
+    double DeltaSeconds,
+    double BackgroundMilliseconds,
+    double LayoutMilliseconds,
+    double InputMilliseconds,
+    double RepaintMilliseconds,
+    double CanvasMilliseconds,
+    double PresentMilliseconds,
+    double TotalMilliseconds);
 
 /// <summary>Native window that executes Unity-style immediate GUI and submits it through the BEngine RHI.</summary>
 internal sealed class ImGuiNativeWindow : IDisposable
@@ -50,6 +61,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
     public event Action? firstFrameRendered;
     public event Action? gui;
     public event Action<bool>? focusChanged;
+    internal event Action<ImGuiNativeFrameProfile>? frameProfiled;
     public Action<IGraphicsDevice, int, int>? renderBackground { get; set; }
     public bool isClosing => _window.IsClosing;
     public GraphicsBackend backend => _device?.Backend ?? _requestedBackend;
@@ -290,8 +302,9 @@ internal sealed class ImGuiNativeWindow : IDisposable
                 var factory = new GraphicsDeviceFactory();
                 factory.RegisterProvider(new VulkanGraphicsDeviceProvider(native.Hwnd, native.HInstance,
                     width, height, _vsync));
-                _device = factory.CreateDevice(GraphicsBackend.Vulkan);
-                _presentation = (IGraphicsPresentationDevice)_device;
+                var nativeDevice = factory.CreateDevice(GraphicsBackend.Vulkan);
+                _presentation = (IGraphicsPresentationDevice)nativeDevice;
+                _device = new FrameDebugGraphicsDevice(nativeDevice, ownsDevice: true);
                 return;
             }
             catch (Exception exception)
@@ -301,7 +314,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
             }
         }
         _gl = GL.GetApi(_window);
-        _device = new OpenGlGraphicsDevice(_gl);
+        _device = new FrameDebugGraphicsDevice(new OpenGlGraphicsDevice(_gl), ownsDevice: true);
     }
 
     private static GraphicsBackend ResolveWindowBackend(GraphicsBackend preferred)
@@ -343,6 +356,8 @@ internal sealed class ImGuiNativeWindow : IDisposable
     private void OnRender(double deltaSeconds)
     {
         if (_device is null || _canvas is null) return;
+        var profileFrame = EditorProfiler.Recording ? frameProfiled : null;
+        var frameStarted = profileFrame is null ? 0 : Stopwatch.GetTimestamp();
         _frameTiming.RecordSample(deltaSeconds);
         var framebufferSize = _window.FramebufferSize;
         var frameWidth = Math.Max(1, framebufferSize.X);
@@ -359,6 +374,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
         _device.Clear(GraphicsClearFlags.Color | GraphicsClearFlags.Depth,
             new System.Numerics.Vector4((float)background.r, (float)background.g,
                 (float)background.b, (float)background.a));
+        var backgroundStarted = profileFrame is null ? 0 : Stopwatch.GetTimestamp();
         if (renderBackground is not null)
         {
             foreach (Action<IGraphicsDevice, int, int> backgroundCallback in renderBackground.GetInvocationList())
@@ -367,17 +383,36 @@ internal sealed class ImGuiNativeWindow : IDisposable
                     backgroundCallback.Method.Name,
                     () => backgroundCallback(_device, frameWidth, frameHeight));
         }
+        var backgroundEnded = profileFrame is null ? 0 : Stopwatch.GetTimestamp();
 
         Dispatch(new BEvent(EventType.Layout) { mousePosition = _mousePosition, modifiers = _modifiers },
-            false, frameWidth, frameHeight, frameScale);
+            frameWidth, frameHeight, frameScale);
+        var layoutEnded = profileFrame is null ? 0 : Stopwatch.GetTimestamp();
         while (_events.TryDequeue(out var inputEvent))
-            Dispatch(inputEvent, false, frameWidth, frameHeight, frameScale);
+            Dispatch(inputEvent, frameWidth, frameHeight, frameScale);
+        var inputEnded = profileFrame is null ? 0 : Stopwatch.GetTimestamp();
         _commands.Clear();
         Dispatch(new BEvent(EventType.Repaint) { mousePosition = _mousePosition, modifiers = _modifiers },
-            true, frameWidth, frameHeight, frameScale);
+            frameWidth, frameHeight, frameScale);
+        var repaintEnded = profileFrame is null ? 0 : Stopwatch.GetTimestamp();
         _canvas.Render(_commands, frameWidth, frameHeight);
+        var canvasEnded = profileFrame is null ? 0 : Stopwatch.GetTimestamp();
 
         if (_presentation is not null) _presentation.Present(); else _window.SwapBuffers();
+        if (profileFrame is not null)
+        {
+            var frameEnded = Stopwatch.GetTimestamp();
+            var sample = new ImGuiNativeFrameProfile(
+                deltaSeconds,
+                ElapsedMilliseconds(backgroundStarted, backgroundEnded),
+                ElapsedMilliseconds(backgroundEnded, layoutEnded),
+                ElapsedMilliseconds(layoutEnded, inputEnded),
+                ElapsedMilliseconds(inputEnded, repaintEnded),
+                ElapsedMilliseconds(repaintEnded, canvasEnded),
+                ElapsedMilliseconds(canvasEnded, frameEnded),
+                ElapsedMilliseconds(frameStarted, frameEnded));
+            EditorCallbackDispatcher.Invoke(profileFrame, sample, nameof(frameProfiled));
+        }
         if (_firstFrame) return;
         _firstFrame = true;
         var callback = firstFrameRendered;
@@ -385,12 +420,15 @@ internal sealed class ImGuiNativeWindow : IDisposable
         EditorCallbackDispatcher.Invoke(callback, nameof(firstFrameRendered));
     }
 
-    private void Dispatch(BEvent evt, bool collectCommands, int frameWidth, int frameHeight, Fix64 frameScale)
+    private static double ElapsedMilliseconds(long started, long ended) =>
+        (ended - started) * 1000d / Stopwatch.Frequency;
+
+    private void Dispatch(BEvent evt, int frameWidth, int frameHeight, Fix64 frameScale)
     {
         try
         {
             GUIUtility.devicePixelsPerPoint = frameScale;
-            GUI.BeginFrame(evt, frameWidth, frameHeight, collectCommands ? _commands : []);
+            GUI.BeginFrame(evt, frameWidth, frameHeight, _commands);
             BEvent.BindQueue(PopQueuedEvent, () => _events.Count);
             EditorCallbackDispatcher.Invoke(gui, nameof(gui));
         }
@@ -414,17 +452,7 @@ internal sealed class ImGuiNativeWindow : IDisposable
     private void ApplyMouseCursor(MouseCursor cursor)
     {
         if (_primaryMouse is not { } mouse || _appliedMouseCursor == cursor) return;
-        var standard = cursor switch
-        {
-            MouseCursor.Text => StandardCursor.IBeam,
-            MouseCursor.ResizeVertical or MouseCursor.SplitResizeUpDown => StandardCursor.VResize,
-            MouseCursor.ResizeHorizontal or MouseCursor.SplitResizeLeftRight => StandardCursor.HResize,
-            MouseCursor.ResizeUpRight => StandardCursor.NeswResize,
-            MouseCursor.ResizeUpLeft => StandardCursor.NwseResize,
-            MouseCursor.Link => StandardCursor.Hand,
-            MouseCursor.MoveArrow or MouseCursor.Pan => StandardCursor.ResizeAll,
-            _ => StandardCursor.Arrow
-        };
+        var standard = ResolveStandardCursor(cursor);
         try
         {
             if (!mouse.Cursor.IsSupported(standard)) standard = StandardCursor.Arrow;
@@ -437,6 +465,18 @@ internal sealed class ImGuiNativeWindow : IDisposable
             _appliedMouseCursor = null;
         }
     }
+
+    private static StandardCursor ResolveStandardCursor(MouseCursor cursor) => cursor switch
+    {
+        MouseCursor.Text => StandardCursor.IBeam,
+        MouseCursor.ResizeVertical or MouseCursor.SplitResizeUpDown => StandardCursor.VResize,
+        MouseCursor.ResizeHorizontal or MouseCursor.SplitResizeLeftRight => StandardCursor.HResize,
+        MouseCursor.ResizeUpRight => StandardCursor.NeswResize,
+        MouseCursor.ResizeUpLeft => StandardCursor.NwseResize,
+        MouseCursor.Link or MouseCursor.Pan => StandardCursor.Hand,
+        MouseCursor.MoveArrow => StandardCursor.ResizeAll,
+        _ => StandardCursor.Arrow
+    };
 
     private BEvent? PopQueuedEvent() => _events.TryDequeue(out var queued) ? queued : null;
 

@@ -231,10 +231,7 @@ internal sealed class EditorPlayModeSession
     {
         if (!source.isCreated)
             throw new ObjectDisposedException(nameof(source), "An unloaded editor Scene cannot enter Play Mode.");
-        var context = new DocumentConversionContext(source.path, services);
-        var document = Document.FromBObject<SceneDocument>(source, context);
-        var clone = document.ToBObject(context) as Scene ??
-                    throw new InvalidDataException("The in-memory Scene snapshot did not produce a Scene.");
+        var clone = SceneAssetSerialization.Clone(source, services);
         clone.path = source.path;
         clone.isLoaded = source.isLoaded;
         clone.MarkRuntimeOnly();
@@ -325,8 +322,8 @@ internal sealed class EditorPlayModeSession
             return new BEngine.TextAsset(textAsset.text, textAsset.path);
         if (source is PrefabAsset prefab)
         {
-            var document = Document.FromYaml<PrefabDocument>(prefab.Document.ToYaml());
-            return new PrefabAsset(document, prefab.assetPath);
+            return PrefabAssetSerialization.Deserialize(PrefabAssetSerialization.Serialize(prefab),
+                prefab.assetPath);
         }
         if (source is ScriptableObject scriptable)
             return ScriptableObject.CreateInstance(scriptable.GetType());

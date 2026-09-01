@@ -1,5 +1,6 @@
 namespace BEngine;
 
+[EditorIcon("Icons/Assets/AssetText.png")]
 public sealed class TextAsset : BAsset
 {
     private readonly string _text;

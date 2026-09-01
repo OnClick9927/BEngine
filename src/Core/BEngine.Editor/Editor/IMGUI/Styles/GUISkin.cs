@@ -1,83 +1,84 @@
 using System.Collections;
+using BEngine.Documents;
 using BEngine.Rendering;
 using BEngine.Serialization;
 using YamlDotNet.Serialization;
 
 namespace BEngine.Editor;
 
-[EditorIcon("Icons/Assets/AssetStyle.png")]
+[EditorIcon("Icons/Assets/AssetSkin.png")]
 [CreateAssetMenu(fileName = "New GUI Skin", menuName = "GUI/GUISkin", order = 210)]
 public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
 {
     public const string FileExtension = ".guiskin.yaml";
 
-    public GUIStyle label { get; set; } = Style("label", C(0, 0, 0, 0));
-    public GUIStyle box { get; set; } = Style("box", C(0.17f, 0.17f, 0.17f, 1));
-    public GUIStyle button { get; set; } = Style("button", C(0.27f, 0.27f, 0.27f, 1));
-    public GUIStyle toggle { get; set; } = Style("toggle", C(0, 0, 0, 0));
-    public GUIStyle textField { get; set; } = Style("textField", C(0.16f, 0.16f, 0.16f, 1));
-    public GUIStyle textArea { get; set; } = Style("textArea", C(0.16f, 0.16f, 0.16f, 1));
-    public GUIStyle window { get; set; } = Style("window", C(0.20f, 0.20f, 0.20f, 1));
-    public GUIStyle horizontalSlider { get; set; } = Style("horizontalSlider", C(0.12f, 0.12f, 0.12f, 1));
-    public GUIStyle horizontalSliderThumb { get; set; } = Style("horizontalSliderThumb", C(0.28f, 0.55f, 0.78f, 1));
-    public GUIStyle verticalSlider { get; set; } = Style("verticalSlider", C(0.12f, 0.12f, 0.12f, 1));
-    public GUIStyle verticalSliderThumb { get; set; } = Style("verticalSliderThumb", C(0.28f, 0.55f, 0.78f, 1));
-    public GUIStyle horizontalScrollbar { get; set; } = Style("horizontalScrollbar", C(0.12f, 0.12f, 0.12f, 1));
-    public GUIStyle horizontalScrollbarThumb { get; set; } = Style("horizontalScrollbarThumb", C(0.36f, 0.36f, 0.36f, 1));
-    public GUIStyle horizontalScrollbarLeftButton { get; set; } = Style("horizontalScrollbarLeftButton", C(0.27f, 0.27f, 0.27f, 1));
-    public GUIStyle horizontalScrollbarRightButton { get; set; } = Style("horizontalScrollbarRightButton", C(0.27f, 0.27f, 0.27f, 1));
-    public GUIStyle verticalScrollbar { get; set; } = Style("verticalScrollbar", C(0.12f, 0.12f, 0.12f, 1));
-    public GUIStyle verticalScrollbarThumb { get; set; } = Style("verticalScrollbarThumb", C(0.36f, 0.36f, 0.36f, 1));
-    public GUIStyle verticalScrollbarUpButton { get; set; } = Style("verticalScrollbarUpButton", C(0.27f, 0.27f, 0.27f, 1));
-    public GUIStyle verticalScrollbarDownButton { get; set; } = Style("verticalScrollbarDownButton", C(0.27f, 0.27f, 0.27f, 1));
-    public GUIStyle scrollView { get; set; } = Style("scrollView", C(0, 0, 0, 0));
+    public GUIStyle label { get; set; } = Style(nameof(label), C(0, 0, 0, 0));
+    public GUIStyle box { get; set; } = Style(nameof(box), C(0.17f, 0.17f, 0.17f, 1));
+    public GUIStyle button { get; set; } = Style(nameof(button), C(0.27f, 0.27f, 0.27f, 1));
+    public GUIStyle toggle { get; set; } = Style(nameof(toggle), C(0, 0, 0, 0));
+    public GUIStyle textField { get; set; } = Style(nameof(textField), C(0.16f, 0.16f, 0.16f, 1));
+    public GUIStyle textArea { get; set; } = Style(nameof(textArea), C(0.16f, 0.16f, 0.16f, 1));
+    public GUIStyle window { get; set; } = Style(nameof(window), C(0.20f, 0.20f, 0.20f, 1));
+    public GUIStyle horizontalSlider { get; set; } = Style(nameof(horizontalSlider), C(0.12f, 0.12f, 0.12f, 1));
+    public GUIStyle horizontalSliderThumb { get; set; } = Style(nameof(horizontalSliderThumb), C(0.28f, 0.55f, 0.78f, 1));
+    public GUIStyle verticalSlider { get; set; } = Style(nameof(verticalSlider), C(0.12f, 0.12f, 0.12f, 1));
+    public GUIStyle verticalSliderThumb { get; set; } = Style(nameof(verticalSliderThumb), C(0.28f, 0.55f, 0.78f, 1));
+    public GUIStyle horizontalScrollbar { get; set; } = Style(nameof(horizontalScrollbar), C(0.12f, 0.12f, 0.12f, 1));
+    public GUIStyle horizontalScrollbarThumb { get; set; } = Style(nameof(horizontalScrollbarThumb), C(0.36f, 0.36f, 0.36f, 1));
+    public GUIStyle horizontalScrollbarLeftButton { get; set; } = Style(nameof(horizontalScrollbarLeftButton), C(0.27f, 0.27f, 0.27f, 1));
+    public GUIStyle horizontalScrollbarRightButton { get; set; } = Style(nameof(horizontalScrollbarRightButton), C(0.27f, 0.27f, 0.27f, 1));
+    public GUIStyle verticalScrollbar { get; set; } = Style(nameof(verticalScrollbar), C(0.12f, 0.12f, 0.12f, 1));
+    public GUIStyle verticalScrollbarThumb { get; set; } = Style(nameof(verticalScrollbarThumb), C(0.36f, 0.36f, 0.36f, 1));
+    public GUIStyle verticalScrollbarUpButton { get; set; } = Style(nameof(verticalScrollbarUpButton), C(0.27f, 0.27f, 0.27f, 1));
+    public GUIStyle verticalScrollbarDownButton { get; set; } = Style(nameof(verticalScrollbarDownButton), C(0.27f, 0.27f, 0.27f, 1));
+    public GUIStyle scrollView { get; set; } = Style(nameof(scrollView), C(0, 0, 0, 0));
 
     // Editor-only named slots. EditorStyles resolves these from the active skin so a
     // single GUISkin asset owns the complete editor appearance.
-    public GUIStyle vectorAxisLabel { get; set; } = Style("vectorAxisLabel");
-    public GUIStyle boldLabel { get; set; } = Style("boldLabel");
-    public GUIStyle centeredBoldLabel { get; set; } = new("centeredBoldLabel")
+    public GUIStyle vectorAxisLabel { get; set; } = Style(nameof(vectorAxisLabel));
+    public GUIStyle boldLabel { get; set; } = Style(nameof(boldLabel));
+    public GUIStyle centeredBoldLabel { get; set; } = new(nameof(centeredBoldLabel))
     {
         alignment = TextAnchor.MiddleCenter
     };
-    public GUIStyle miniLabel { get; set; } = new("miniLabel") { fontSize = 11 };
-    public GUIStyle centeredMiniLabel { get; set; } = new("centeredMiniLabel")
+    public GUIStyle miniLabel { get; set; } = new(nameof(miniLabel)) { fontSize = 11 };
+    public GUIStyle centeredMiniLabel { get; set; } = new(nameof(centeredMiniLabel))
     {
         fontSize = 11,
         alignment = TextAnchor.MiddleCenter
     };
-    public GUIStyle largeLabel { get; set; } = new("largeLabel") { fontSize = 16 };
-    public GUIStyle numberField { get; set; } = Style("numberField");
-    public GUIStyle popup { get; set; } = Style("popup");
-    public GUIStyle dropDownButton { get; set; } = new("dropDownButton") { alignment = TextAnchor.MiddleLeft };
-    public GUIStyle colorField { get; set; } = Style("colorField");
-    public GUIStyle colorPickerSwatch { get; set; } = Style("colorPickerSwatch");
-    public GUIStyle helpBox { get; set; } = new("helpBox") { wordWrap = true, fixedHeight = 38 };
-    public GUIStyle toolbar { get; set; } = new("toolbar") { fixedHeight = 24 };
-    public GUIStyle toolbarButton { get; set; } = new("toolbarButton") { fixedHeight = 22 };
-    public GUIStyle toolbarIconButton { get; set; } = IconButton("toolbarIconButton");
-    public GUIStyle toolbarIconButtonSelected { get; set; } = IconButton("toolbarIconButtonSelected");
-    public GUIStyle toolbarSearchField { get; set; } = new("toolbarSearchField") { fixedHeight = 20 };
-    public GUIStyle dockTab { get; set; } = new("dockTab") { fixedHeight = 24 };
-    public GUIStyle dockTabActive { get; set; } = new("dockTabActive") { fixedHeight = 24 };
-    public GUIStyle windowTitle { get; set; } = new("windowTitle") { fixedHeight = 24 };
-    public GUIStyle inspectorTitlebar { get; set; } = new("inspectorTitlebar") { fixedHeight = 22 };
-    public GUIStyle menuItem { get; set; } = new("menuItem") { fixedHeight = 22 };
-    public GUIStyle menuItemDisabled { get; set; } = new("menuItemDisabled") { fixedHeight = 22 };
-    public GUIStyle miniButton { get; set; } = new("miniButton") { fixedHeight = 20 };
-    public GUIStyle treeViewRow { get; set; } = new("treeViewRow") { fixedHeight = 22 };
-    public GUIStyle treeViewRowSelected { get; set; } = new("treeViewRowSelected") { fixedHeight = 22 };
-    public GUIStyle hierarchySceneHeader { get; set; } = new("hierarchySceneHeader") { fixedHeight = 22 };
-    public GUIStyle hierarchySceneHeaderActive { get; set; } = new("hierarchySceneHeaderActive") { fixedHeight = 22 };
-    public GUIStyle hierarchyRow { get; set; } = new("hierarchyRow") { fixedHeight = 22 };
-    public GUIStyle hierarchyRowSelected { get; set; } = new("hierarchyRowSelected") { fixedHeight = 22 };
-    public GUIStyle hierarchyRowInactive { get; set; } = new("hierarchyRowInactive") { fixedHeight = 22 };
-    public GUIStyle hierarchyAction { get; set; } = IconButton("hierarchyAction");
-    public GUIStyle statusBar { get; set; } = new("statusBar") { fixedHeight = 20 };
-    public GUIStyle foldout { get; set; } = Style("foldout");
-    public GUIStyle linkLabel { get; set; } = Style("linkLabel");
-    public GUIStyle inspectorDefaultMargins { get; set; } = Style("inspectorDefaultMargins");
-    public GUIStyle separator { get; set; } = new("separator") { fixedHeight = 1 };
+    public GUIStyle largeLabel { get; set; } = new(nameof(largeLabel)) { fontSize = 16 };
+    public GUIStyle numberField { get; set; } = Style(nameof(numberField));
+    public GUIStyle popup { get; set; } = Style(nameof(popup));
+    public GUIStyle dropDownButton { get; set; } = new(nameof(dropDownButton)) { alignment = TextAnchor.MiddleLeft };
+    public GUIStyle colorField { get; set; } = Style(nameof(colorField));
+    public GUIStyle colorPickerSwatch { get; set; } = Style(nameof(colorPickerSwatch));
+    public GUIStyle helpBox { get; set; } = new(nameof(helpBox)) { wordWrap = true, fixedHeight = 38 };
+    public GUIStyle toolbar { get; set; } = new(nameof(toolbar)) { fixedHeight = 24 };
+    public GUIStyle toolbarButton { get; set; } = new(nameof(toolbarButton)) { fixedHeight = 22 };
+    public GUIStyle toolbarIconButton { get; set; } = IconButton(nameof(toolbarIconButton));
+    public GUIStyle toolbarIconButtonSelected { get; set; } = IconButton(nameof(toolbarIconButtonSelected));
+    public GUIStyle toolbarSearchField { get; set; } = new(nameof(toolbarSearchField)) { fixedHeight = 20 };
+    public GUIStyle dockTab { get; set; } = new(nameof(dockTab)) { fixedHeight = 24 };
+    public GUIStyle dockTabActive { get; set; } = new(nameof(dockTabActive)) { fixedHeight = 24 };
+    public GUIStyle windowTitle { get; set; } = new(nameof(windowTitle)) { fixedHeight = 24 };
+    public GUIStyle inspectorTitlebar { get; set; } = new(nameof(inspectorTitlebar)) { fixedHeight = 22 };
+    public GUIStyle menuItem { get; set; } = new(nameof(menuItem)) { fixedHeight = 22 };
+    public GUIStyle menuItemDisabled { get; set; } = new(nameof(menuItemDisabled)) { fixedHeight = 22 };
+    public GUIStyle miniButton { get; set; } = new(nameof(miniButton)) { fixedHeight = 20 };
+    public GUIStyle treeViewRow { get; set; } = new(nameof(treeViewRow)) { fixedHeight = 22 };
+    public GUIStyle treeViewRowSelected { get; set; } = new(nameof(treeViewRowSelected)) { fixedHeight = 22 };
+    public GUIStyle hierarchySceneHeader { get; set; } = new(nameof(hierarchySceneHeader)) { fixedHeight = 22 };
+    public GUIStyle hierarchySceneHeaderActive { get; set; } = new(nameof(hierarchySceneHeaderActive)) { fixedHeight = 22 };
+    public GUIStyle hierarchyRow { get; set; } = new(nameof(hierarchyRow)) { fixedHeight = 22 };
+    public GUIStyle hierarchyRowSelected { get; set; } = new(nameof(hierarchyRowSelected)) { fixedHeight = 22 };
+    public GUIStyle hierarchyRowInactive { get; set; } = new(nameof(hierarchyRowInactive)) { fixedHeight = 22 };
+    public GUIStyle hierarchyAction { get; set; } = IconButton(nameof(hierarchyAction));
+    public GUIStyle statusBar { get; set; } = new(nameof(statusBar)) { fixedHeight = 20 };
+    public GUIStyle foldout { get; set; } = Style(nameof(foldout));
+    public GUIStyle linkLabel { get; set; } = Style(nameof(linkLabel));
+    public GUIStyle inspectorDefaultMargins { get; set; } = Style(nameof(inspectorDefaultMargins));
+    public GUIStyle separator { get; set; } = new(nameof(separator)) { fixedHeight = 1 };
 
     public GUIStyle[] customStyles { get; set; } = [];
 
@@ -230,7 +231,10 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
 
     public void MakeCurrent() => EditorAppearance.SetSkin(this);
 
-    public static GUISkin Load(string path)
+    public static GUISkin Load(string path) =>
+        Document<GUISkin>.Read(path, LoadAsset).ToAsset();
+
+    private static GUISkin LoadAsset(string path)
     {
         var document = YamlUtility.Load<GUISkinFile>(path);
         if (document.Format != "BEngine.GUISkin" || document.Version != 1)
@@ -262,6 +266,12 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
 
     public void Save(string path)
     {
+        Document<GUISkin>.FromAsset(this).Write(path,
+            static (skin, destination) => skin.SaveAsset(destination));
+    }
+
+    private void SaveAsset(string path)
+    {
         if (isReadOnly) throw new InvalidOperationException("Built-in GUI skins are read-only.");
         Apply();
         YamlUtility.Save(new GUISkinFile
@@ -286,63 +296,63 @@ public sealed partial class GUISkin : BAsset, IEnumerable<GUIStyle>
 
     internal IEnumerable<(string Name, GUIStyle Style)> EnumerateBuiltInStyles()
     {
-        yield return ("label", label);
-        yield return ("box", box);
-        yield return ("button", button);
-        yield return ("toggle", toggle);
-        yield return ("textField", textField);
-        yield return ("textArea", textArea);
-        yield return ("window", window);
-        yield return ("horizontalSlider", horizontalSlider);
-        yield return ("horizontalSliderThumb", horizontalSliderThumb);
-        yield return ("verticalSlider", verticalSlider);
-        yield return ("verticalSliderThumb", verticalSliderThumb);
-        yield return ("horizontalScrollbar", horizontalScrollbar);
-        yield return ("horizontalScrollbarThumb", horizontalScrollbarThumb);
-        yield return ("horizontalScrollbarLeftButton", horizontalScrollbarLeftButton);
-        yield return ("horizontalScrollbarRightButton", horizontalScrollbarRightButton);
-        yield return ("verticalScrollbar", verticalScrollbar);
-        yield return ("verticalScrollbarThumb", verticalScrollbarThumb);
-        yield return ("verticalScrollbarUpButton", verticalScrollbarUpButton);
-        yield return ("verticalScrollbarDownButton", verticalScrollbarDownButton);
-        yield return ("scrollView", scrollView);
-        yield return ("vectorAxisLabel", vectorAxisLabel);
-        yield return ("boldLabel", boldLabel);
-        yield return ("centeredBoldLabel", centeredBoldLabel);
-        yield return ("miniLabel", miniLabel);
-        yield return ("centeredMiniLabel", centeredMiniLabel);
-        yield return ("largeLabel", largeLabel);
-        yield return ("numberField", numberField);
-        yield return ("popup", popup);
-        yield return ("dropDownButton", dropDownButton);
-        yield return ("colorField", colorField);
-        yield return ("colorPickerSwatch", colorPickerSwatch);
-        yield return ("helpBox", helpBox);
-        yield return ("toolbar", toolbar);
-        yield return ("toolbarButton", toolbarButton);
-        yield return ("toolbarIconButton", toolbarIconButton);
-        yield return ("toolbarIconButtonSelected", toolbarIconButtonSelected);
-        yield return ("toolbarSearchField", toolbarSearchField);
-        yield return ("dockTab", dockTab);
-        yield return ("dockTabActive", dockTabActive);
-        yield return ("windowTitle", windowTitle);
-        yield return ("inspectorTitlebar", inspectorTitlebar);
-        yield return ("menuItem", menuItem);
-        yield return ("menuItemDisabled", menuItemDisabled);
-        yield return ("miniButton", miniButton);
-        yield return ("treeViewRow", treeViewRow);
-        yield return ("treeViewRowSelected", treeViewRowSelected);
-        yield return ("hierarchySceneHeader", hierarchySceneHeader);
-        yield return ("hierarchySceneHeaderActive", hierarchySceneHeaderActive);
-        yield return ("hierarchyRow", hierarchyRow);
-        yield return ("hierarchyRowSelected", hierarchyRowSelected);
-        yield return ("hierarchyRowInactive", hierarchyRowInactive);
-        yield return ("hierarchyAction", hierarchyAction);
-        yield return ("statusBar", statusBar);
-        yield return ("foldout", foldout);
-        yield return ("linkLabel", linkLabel);
-        yield return ("inspectorDefaultMargins", inspectorDefaultMargins);
-        yield return ("separator", separator);
+        yield return (nameof(label), label);
+        yield return (nameof(box), box);
+        yield return (nameof(button), button);
+        yield return (nameof(toggle), toggle);
+        yield return (nameof(textField), textField);
+        yield return (nameof(textArea), textArea);
+        yield return (nameof(window), window);
+        yield return (nameof(horizontalSlider), horizontalSlider);
+        yield return (nameof(horizontalSliderThumb), horizontalSliderThumb);
+        yield return (nameof(verticalSlider), verticalSlider);
+        yield return (nameof(verticalSliderThumb), verticalSliderThumb);
+        yield return (nameof(horizontalScrollbar), horizontalScrollbar);
+        yield return (nameof(horizontalScrollbarThumb), horizontalScrollbarThumb);
+        yield return (nameof(horizontalScrollbarLeftButton), horizontalScrollbarLeftButton);
+        yield return (nameof(horizontalScrollbarRightButton), horizontalScrollbarRightButton);
+        yield return (nameof(verticalScrollbar), verticalScrollbar);
+        yield return (nameof(verticalScrollbarThumb), verticalScrollbarThumb);
+        yield return (nameof(verticalScrollbarUpButton), verticalScrollbarUpButton);
+        yield return (nameof(verticalScrollbarDownButton), verticalScrollbarDownButton);
+        yield return (nameof(scrollView), scrollView);
+        yield return (nameof(vectorAxisLabel), vectorAxisLabel);
+        yield return (nameof(boldLabel), boldLabel);
+        yield return (nameof(centeredBoldLabel), centeredBoldLabel);
+        yield return (nameof(miniLabel), miniLabel);
+        yield return (nameof(centeredMiniLabel), centeredMiniLabel);
+        yield return (nameof(largeLabel), largeLabel);
+        yield return (nameof(numberField), numberField);
+        yield return (nameof(popup), popup);
+        yield return (nameof(dropDownButton), dropDownButton);
+        yield return (nameof(colorField), colorField);
+        yield return (nameof(colorPickerSwatch), colorPickerSwatch);
+        yield return (nameof(helpBox), helpBox);
+        yield return (nameof(toolbar), toolbar);
+        yield return (nameof(toolbarButton), toolbarButton);
+        yield return (nameof(toolbarIconButton), toolbarIconButton);
+        yield return (nameof(toolbarIconButtonSelected), toolbarIconButtonSelected);
+        yield return (nameof(toolbarSearchField), toolbarSearchField);
+        yield return (nameof(dockTab), dockTab);
+        yield return (nameof(dockTabActive), dockTabActive);
+        yield return (nameof(windowTitle), windowTitle);
+        yield return (nameof(inspectorTitlebar), inspectorTitlebar);
+        yield return (nameof(menuItem), menuItem);
+        yield return (nameof(menuItemDisabled), menuItemDisabled);
+        yield return (nameof(miniButton), miniButton);
+        yield return (nameof(treeViewRow), treeViewRow);
+        yield return (nameof(treeViewRowSelected), treeViewRowSelected);
+        yield return (nameof(hierarchySceneHeader), hierarchySceneHeader);
+        yield return (nameof(hierarchySceneHeaderActive), hierarchySceneHeaderActive);
+        yield return (nameof(hierarchyRow), hierarchyRow);
+        yield return (nameof(hierarchyRowSelected), hierarchyRowSelected);
+        yield return (nameof(hierarchyRowInactive), hierarchyRowInactive);
+        yield return (nameof(hierarchyAction), hierarchyAction);
+        yield return (nameof(statusBar), statusBar);
+        yield return (nameof(foldout), foldout);
+        yield return (nameof(linkLabel), linkLabel);
+        yield return (nameof(inspectorDefaultMargins), inspectorDefaultMargins);
+        yield return (nameof(separator), separator);
         foreach (var style in EnumerateExtendedEditorStyles()) yield return style;
     }
 

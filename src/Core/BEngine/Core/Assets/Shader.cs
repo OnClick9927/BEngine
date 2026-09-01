@@ -1,7 +1,7 @@
 namespace BEngine;
 
 [EditorIcon("Icons/Assets/AssetShader.png")]
-public sealed class Shader : FileAsset
+public sealed class Shader : BAsset
 {
     private static readonly Dictionary<string, Shader> Shaders =
         new(StringComparer.Ordinal);

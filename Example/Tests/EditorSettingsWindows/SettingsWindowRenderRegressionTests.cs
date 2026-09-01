@@ -3,7 +3,7 @@ using BEngine;
 using BEngine.Editor;
 using BEngine.Editor.Documents;
 using BEngine.Editor.Rendering;
-using BEngine.Documents;
+using BEngine.ProjectSystem;
 
 namespace BEngine.ExampleTests.EditorSettingsWindows;
 
@@ -137,7 +137,7 @@ internal static class SettingsWindowRenderRegressionTests
             Require(EditorPreferences.current.EditorSkin == "builtin:Light" &&
                     EditorAppearance.activeSkin.name == nameof(EditorTheme.Light),
                 "Clicking the Light GUISkin Set button did not apply it globally.");
-            Require(Document.Load<EditorPreferencesDocument>(EditorDataPaths.preferencesPath).EditorSkin ==
+            Require(YamlUtility.Load<EditorPreferencesDocument>(EditorDataPaths.preferencesPath).EditorSkin ==
                     "builtin:Light",
                 "The selected GUISkin was not persisted to Preferences.");
 
@@ -191,7 +191,7 @@ internal static class SettingsWindowRenderRegressionTests
             Click(window, WideWidth, WideHeight, togglePoint);
             Require(!EditorPreferences.current.AutoRefreshAssets,
                 "Preferences toggle did not apply through the real IMGUI event path.");
-            var persisted = Document.Load<EditorPreferencesDocument>(EditorDataPaths.preferencesPath);
+            var persisted = YamlUtility.Load<EditorPreferencesDocument>(EditorDataPaths.preferencesPath);
             Require(!persisted.AutoRefreshAssets && persisted.Locale == "en-US" &&
                     Path.GetFullPath(EditorDataPaths.preferencesPath).StartsWith(
                         Path.GetFullPath(testDirectory), StringComparison.OrdinalIgnoreCase),
@@ -234,7 +234,7 @@ internal static class SettingsWindowRenderRegressionTests
             Require(HasVisibleText(edited, "RENDER_REGRESSION"),
                 "Scripting symbols text field did not retain typed input.");
             ClickText(window, WideWidth, WideHeight, edited, "Apply");
-            var persisted = Document.Load<ProjectSettingsDocument>(projectSettingsPath);
+            var persisted = YamlUtility.Load<ProjectSettingsData>(projectSettingsPath);
             Require(persisted.ScriptingDefineSymbols.SequenceEqual(["RENDER_REGRESSION"]),
                 "Project Settings Apply did not persist scripting symbols.");
         }

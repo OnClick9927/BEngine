@@ -5,7 +5,7 @@ using BEngine.Documents;
 
 namespace BEngine.Player;
 
-internal sealed class PlayerPackageDefinition : Document
+internal sealed class PlayerPackageDefinition
 {
     public string Id { get; set; } = string.Empty;
     public PlayerPackageAssembly? Runtime { get; set; }

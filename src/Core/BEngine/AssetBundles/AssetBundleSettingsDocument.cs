@@ -2,7 +2,7 @@ using BEngine.Documents;
 
 namespace BEngine.AssetBundles;
 
-public sealed class AssetBundleSettingsDocument : Document
+public sealed class AssetBundleSettingsDocument
 {
     public const string FileName = "AssetBundles.yaml";
 

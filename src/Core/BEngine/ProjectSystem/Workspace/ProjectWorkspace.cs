@@ -1,4 +1,4 @@
-using BEngine.Documents;
+using BEngine.Serialization;
 
 namespace BEngine.ProjectSystem;
 
@@ -25,9 +25,9 @@ public sealed class ProjectWorkspace
     public string LogsPath => Path.Combine(RootPath, "Logs");
     public string TempPath => Path.Combine(RootPath, "Temp");
     public string StartupScenePath => ResolveInside(Project.StartupScene);
-    public ProjectDocument Project { get; }
+    public ProjectData Project { get; }
 
-    internal ProjectWorkspace(string rootPath, ProjectDocument project)
+    internal ProjectWorkspace(string rootPath, ProjectData project)
     {
         RootPath = Path.GetFullPath(rootPath);
         Project = project;
@@ -44,7 +44,8 @@ public sealed class ProjectWorkspace
             throw new FileNotFoundException($"The selected directory does not contain {ProjectFileName}.", projectPath);
         }
 
-        var project = Document.Load<ProjectDocument>(projectPath);
+        var project = YamlUtility.Load<ProjectData>(projectPath);
+        AssetDataValidation.ValidateProject(project);
         var root = Path.GetDirectoryName(projectPath) ?? throw new InvalidDataException("Project root is invalid.");
         return new ProjectWorkspace(root, project);
     }

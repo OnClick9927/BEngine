@@ -67,7 +67,8 @@ public class SearchField
         }
 
         var hasText = next.Length > 0;
-        if (GUI.Button(cancelRect, EditorGUIUtility.IconContent(hasText ? "Close" : string.Empty),
+        var cancelContent = hasText ? EditorGUIUtility.IconContent("Close") : GUIContent.none;
+        if (GUI.Button(cancelRect, cancelContent,
                 hasText ? cancelStyle : emptyCancelStyle) && hasText)
         {
             next = string.Empty;

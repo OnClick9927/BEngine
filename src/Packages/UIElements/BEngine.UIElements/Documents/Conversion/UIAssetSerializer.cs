@@ -9,6 +9,16 @@ internal static class UIAssetSerializer
 
     internal static UIAssetDocument ToDocument(VisualElement root) => new() { Root = ToElementDocument(root) };
 
+    internal static void Validate(UIAssetDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        if (!document.Format.Equals("BEngine.UI", StringComparison.Ordinal))
+            throw new InvalidDataException($"Unsupported UI asset format '{document.Format}'.");
+        if (document.Version != 1)
+            throw new InvalidDataException($"Unsupported UI asset version {document.Version}.");
+        if (document.Root is null) throw new InvalidDataException("UI asset has no root element.");
+    }
+
     internal static VisualElement CreateElement(UIElementDocument document)
     {
         var element = document.Type switch

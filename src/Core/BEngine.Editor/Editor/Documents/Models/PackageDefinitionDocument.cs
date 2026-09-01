@@ -2,7 +2,7 @@ using BEngine.Documents;
 
 namespace BEngine.Editor.Documents;
 
-public sealed class PackageDefinitionDocument : Document
+public sealed class PackageDefinitionDocument
 {
     public string Format { get; set; } = "BEngine.Package";
     public int Version { get; set; } = 2;

@@ -9,12 +9,15 @@ internal static class Program
         {
             CatalogValidationTests.Run();
             CatalogSerializationTests.Run();
+            ArtifactBundleBoundaryTests.Run(workspace);
             var builds = DeterministicBundleBuildTests.Run(workspace);
             await RuntimeAssetBundleTests.RunAsync(workspace, builds.VersionOne).ConfigureAwait(false);
             await ArchiveTraversalTests.RunAsync(workspace).ConfigureAwait(false);
             await RemoteUpdateTests.RunAsync(workspace, builds).ConfigureAwait(false);
             Console.WriteLine(
                 "ASSET_BUNDLE_HOT_UPDATE_OK|catalog,deterministic-manifest,deterministic-bundle,strict-json," +
+                "artifact-input,artifact-snapshot,artifact-catalog-integrity," +
+                "library-file-subasset,subasset-owner-localid,guid-subasset-runtime," +
                 "dependencies,cycles,content-addressing,path-traversal,archive-entry-safety,async-load,cache,refcount,unload," +
                 "remote-version,retry,hash-verification,atomic-activation,rollback,offline-cache,staging-cleanup," +
                 "resources-provider,player-scene-priority,bundled-sprite-import,bundled-sprite-render");

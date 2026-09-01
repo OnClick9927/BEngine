@@ -46,6 +46,11 @@ internal sealed class NativeFloatingEditorWindow : IDisposable
     internal event Action<NativeFloatingEditorWindow, EditorWindow>? TransientClosed;
     internal event Action<NativeFloatingEditorWindow, Vector2>? NativeMoveUpdated;
     internal event Action<NativeFloatingEditorWindow, Vector2?>? NativeMoveCompleted;
+    internal event Action<ImGuiNativeFrameProfile>? FrameProfiled
+    {
+        add => _nativeWindow.frameProfiled += value;
+        remove => _nativeWindow.frameProfiled -= value;
+    }
 
     internal EditorWindow Window { get; }
     internal EditorWindowState State { get; }

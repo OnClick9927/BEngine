@@ -1,3 +1,5 @@
+using BEngine.Rendering;
+
 namespace BEngine.Editor;
 
 public sealed class TextureImporter : AssetImporter
@@ -14,6 +16,15 @@ public sealed class TextureImporter : AssetImporter
     public int pixelsPerUnit { get; set; } = 100;
     public float spritePivotX { get; set; } = 0.5f;
     public float spritePivotY { get; set; } = 0.5f;
+
+    public override void Import(AssetImportContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var source = File.ReadAllBytes(context.sourcePath);
+        if (!PngImageCodec.TryDecode(source, out var width, out var height, out var pixels))
+            throw new InvalidDataException($"Texture '{context.assetPath}' is not a supported PNG image.");
+        context.WriteArtifact(PngImageCodec.EncodeRgba(width, height, pixels));
+    }
 
     protected override void ReadSettings(IReadOnlyDictionary<string, string> settings)
     {

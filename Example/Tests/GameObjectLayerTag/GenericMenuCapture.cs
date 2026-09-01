@@ -15,13 +15,16 @@ internal static class GenericMenuCapture
         "CurrentPresentation", BindingFlags.Static | BindingFlags.NonPublic)!;
     private static object? _items;
     private static bool _isAdvanced;
+    private static string _presentationKind = string.Empty;
 
     public static bool IsAdvanced => _isAdvanced;
+    public static string PresentationKind => _presentationKind;
 
     public static void Install()
     {
         _items = null;
         _isAdvanced = false;
+        _presentationKind = string.Empty;
         var handlerType = HandlerProperty.PropertyType;
         var parameterType = handlerType.GetMethod("Invoke")!.GetParameters()[0].ParameterType;
         var parameter = Expression.Parameter(parameterType, "items");
@@ -35,6 +38,7 @@ internal static class GenericMenuCapture
     {
         _items = null;
         _isAdvanced = false;
+        _presentationKind = string.Empty;
     }
 
     public static void Clear()
@@ -42,6 +46,7 @@ internal static class GenericMenuCapture
         HandlerProperty.SetValue(null, null);
         _items = null;
         _isAdvanced = false;
+        _presentationKind = string.Empty;
     }
 
     public static IReadOnlyList<MenuItemSnapshot> Items => RawItems().Select(item => new MenuItemSnapshot(
@@ -70,5 +75,8 @@ internal static class GenericMenuCapture
                            throw new InvalidOperationException("GenericMenu presentation was unavailable.");
         _isAdvanced = (bool)(presentation.GetType().GetProperty(
             "IsAdvanced", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(presentation) ?? false);
+        _presentationKind = presentation.GetType().GetProperty(
+            "Kind", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
+            .GetValue(presentation)?.ToString() ?? string.Empty;
     }
 }

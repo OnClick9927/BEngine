@@ -1,4 +1,3 @@
-using BEngine.Documents;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -73,11 +72,13 @@ public static class YamlUtility
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .DisableAliases()
         .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
+        .WithTypeConverter(new TextureAtlasYamlConverter())
         .Build();
 
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .IgnoreUnmatchedProperties()
+        .WithTypeConverter(new TextureAtlasYamlConverter())
         .Build();
 
     public static string Serialize(object value)
@@ -122,8 +123,6 @@ public static class YamlUtility
     {
         ArgumentNullException.ThrowIfNull(value);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (value is Document { IsRuntimeSnapshot: true })
-            throw new InvalidOperationException("Runtime snapshots are transient and cannot be saved.");
         if (value is BObject { IsRuntimeOnly: true })
             throw new InvalidOperationException("Runtime objects are transient and cannot be saved.");
 

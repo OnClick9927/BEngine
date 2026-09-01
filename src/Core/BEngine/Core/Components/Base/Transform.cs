@@ -35,6 +35,8 @@ public class Transform : Component
     internal Vector2 LocalPositionUnchecked => _localPosition;
     internal Fix64 LocalRotationUnchecked => _localRotation;
     internal Vector2 LocalScaleUnchecked => _localScale;
+    internal void GetWorldPoseUnchecked(out Vector2 worldPosition, out Fix64 worldRotation,
+        out Vector2 worldScale) => GetWorldPoseCore(out worldPosition, out worldRotation, out worldScale);
 
     public Vector2 localPosition
     {
@@ -195,6 +197,22 @@ public class Transform : Component
     private Vector2 GetLossyScaleCore() => _parent is null
         ? GetLocalScaleCore()
         : Vector2.Scale(_parent.GetLossyScaleCore(), GetLocalScaleCore());
+    private void GetWorldPoseCore(out Vector2 worldPosition, out Fix64 worldRotation, out Vector2 worldScale)
+    {
+        if (_parent is null)
+        {
+            worldPosition = _localPosition;
+            worldRotation = _localRotation;
+            worldScale = _localScale;
+            return;
+        }
+
+        _parent.GetWorldPoseCore(out var parentPosition, out var parentRotation, out var parentScale);
+        worldPosition = parentPosition + RotateVector(
+            Vector2.Scale(parentScale, _localPosition), parentRotation);
+        worldRotation = NormalizeDegrees(parentRotation + _localRotation);
+        worldScale = Vector2.Scale(parentScale, _localScale);
+    }
     private void SetParentCore(Transform? newParent, bool worldPositionStays)
     {
         if (ReferenceEquals(newParent, this) || IsDescendantOf(newParent))

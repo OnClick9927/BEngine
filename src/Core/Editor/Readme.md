@@ -68,7 +68,7 @@ Sorting Layer 的值是连续自然编号 `1..63`，不是位值。工程默认�
 | `Scene` | `*.scene.yaml` | 保存 GameObject、Transform 和 Component 数据 |
 | `PrefabAsset` | `*.prefab.yaml` | 可实例化并 Apply/Revert 的对象层级 |
 | `Sprite` | `.png` + `.meta`: `textureType`, `spritePivotX/Y` | 将 PNG 的 Texture Type 设为 Sprite；同一图片可赋给 SpriteRenderer 或加入 Atlas |
-| `TextureAtlas` | `*.atlas.yaml`: `MaxSize`, `Padding`, `Extrude`, `SpriteReferences` | `SpriteReferences` 保存 Sprite GUID；在 `Window > 2D > Texture Atlas` 构建 |
+| `TextureAtlas` | `*.atlas.yaml`: `MaxSize`, `Padding`, `Extrude`, `Sources` | `Sources` 是 Sprite 数组，以 `ownerGuid + localIdentifier` 保存稳定引用；在 `Window > 2D > Texture Atlas` 构建 |
 | `Material` | `*.material.yaml`: `shader`, `color`, `renderQueue` | 可保存 Color、Fix64、Vector4 和 Int 属性 |
 | `GUISkin` | `*.guiskin.yaml`: 全部 `EditorStyles` 样式槽, `customStyles` | 编辑器主题资产；继承 `BAsset`，仅存在于 `BEngine.Editor` 程序集 |
 | `Texture` | `.png` | Inspector Import Settings 写入相邻 `.meta`；当前运行时解码器仅支持 PNG |
@@ -77,6 +77,14 @@ Sorting Layer 的值是连续自然编号 `1..63`，不是位值。工程默认�
 | `Font`, `Shader`, `Script`, `TextAsset` | 对应源文件 | 均遵循 BAsset 的稳定路径和 GUID 契约 |
 
 Inspector 中修改 Texture 导入参数后必须点击 `Apply`；`Revert` 会重新读取 `.meta`。压缩格式是导入请求，当前后端不支持的 GPU 转码不会伪装为已完成，但请求会稳定保留。
+
+### 统一 BAsset 与导入链路
+
+工程资源不再区分两套资产基类：Scene、Texture、Font、Shader、Material、TextureAtlas、ScriptableObject 资产等都直接或间接继承统一的 `BAsset`。Sprite 是 TextureImporter 从 Texture 创建的 `BObject` SubAsset，以主 Texture 的 GUID 和非零 `localIdentifier` 标识，不是第二种资产基类。
+
+编辑器读取链路是 `Source -> AssetDatabase -> AssetImporter -> Artifact -> BAsset`。Source 是用户磁盘中的原始文件；AssetDatabase 管理工程路径、GUID、Source/Artifact 地址、哈希与 SubAsset 身份；AssetImporter 把源数据转换到 Artifact；AssetDatabase 再从 Artifact 创建并缓存 BAsset。Assets 面板展示 AssetDatabase 的资源记录，而不是直接枚举磁盘文件。重新导入、刷新、移动或删除资源时必须使相关缓存失效。
+
+需要把可序列化资源写回源文件时，编辑器内部通过泛型 `Document<TAsset>` 在 BAsset 与磁盘文档之间转换；该桥梁不公开，也不形成新的资产类型层级。运行时只允许从 AssetBundle 读取 BAsset，并由渲染后端按需创建 GPU 对象；运行时及 Play 镜像都不能把资源保存回工程文件。
 
 ## 运行时 API
 
@@ -152,7 +160,7 @@ Project 与 Hierarchy 的 TreeView 只有在鼠标于同一行按下并抬起时
 
 SubAsset 不拥有独立的顶层资源身份，而由“主资源 GUID + 非零 `localIdentifier`”唯一标识；主资源自身的 `localIdentifier` 为 `0`。序列化 BAsset 子资源引用时使用 `guid:<主资源 GUID>#subasset=<localIdentifier>`，资源移动或重命名后引用仍然稳定。`AssetDatabase.TryGetGUIDAndLocalFileIdentifier` 返回同一组身份，`LoadAllAssetsAtPath` 返回主资源和所有表示，`LoadAllAssetRepresentationsAtPath` 只返回其 SubAsset。
 
-使用 `AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)` 创建内嵌 SubAsset，完成字段修改后按常规调用 `EditorUtility.SetDirty`/保存；使用 `RemoveObjectFromAsset` 将其移出主资源。不能让 SubAsset 再拥有子资源，也不能手动移除由 Importer 管理的 Sprite 等导入表示。Project 默认只显示主资源；隐藏的 SubAsset 通过 ObjectField、Inspector 或上述枚举 API 访问。
+使用 `AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)` 创建内嵌 SubAsset，完成字段修改后按常规调用 `EditorUtility.SetDirty`/保存；使用 `RemoveObjectFromAsset` 将其移出主资源。不能让 SubAsset 再拥有子资源，也不能手动移除由 Importer 管理的 Sprite 等导入表示。Project 把 SubAsset 显示为主资源节点的子项；展开主资源即可查看、选择和拖拽，ObjectField、Inspector 与枚举 API 使用同一对象身份。
 
 ### 自定义编辑器主题
 
@@ -186,7 +194,7 @@ GUILayout.Button("Build", accent);
 1. 从 `File > New Scene` 创建场景，并立刻保存到 `Assets/Scenes`。
 2. 使用 `GameObject > Camera 2D` 创建相机；在 Inspector 设置 size、priority、clearMode、cullingMask 和 viewportRect。
 3. 在 Project 选中 PNG，在 Inspector 将 `Texture Type` 设为 `Sprite`，按需调整 Pivot/PPU，然后点击 `Apply`；使用 `GameObject > 2D Object > Sprite` 创建对象并把这张图片赋给 SpriteRenderer。
-4. 需要 Atlas 时，从 `Assets > Create > 2D > Texture Atlas` 创建 Atlas，在 Atlas Inspector 或 `Window > 2D > Texture Atlas` 通过 Sprite ObjectField 添加图片并 Build。清单保存 Sprite GUID；生成的 PNG 以 Atlas GUID 和保留 localIdentifier 注册为隐藏 SubAsset，不作为 Project 中的独立资源显示。同一图片仍直接用于 SpriteRenderer，无需创建第二份资源。
+4. 需要 Atlas 时，从 `Assets > Create > 2D > Texture Atlas` 创建 Atlas，在 Atlas Inspector 或 `Window > 2D > Texture Atlas` 通过 Sprite ObjectField 添加图片并 Build。清单保存 Sprite 的 ownerGuid 与 localIdentifier；生成的 PNG 以 Atlas GUID 和保留 localIdentifier 注册为 SubAsset，在 Project 展开 Atlas 节点后显示，而不成为独立顶层资源。同一图片仍直接用于 SpriteRenderer，无需创建第二份资源。
 5. 在 `Edit > Project Settings > Tags and Layers` 管理 Tag 与全部 Sorting Layer。Layer 使用连续自然编号 `1..63`；五个内建层可重命名和排序但不可删除，自定义层可增删、重命名和排序。
 6. 用 W/E/R 切换移动、旋转、缩放 Handle；Scene 点击对象会同步 Hierarchy 选择。
 7. 进入 Play 验证运行时行为。Play 期间不要尝试保存 Scene 或组件变更；停止后原数据会恢复。

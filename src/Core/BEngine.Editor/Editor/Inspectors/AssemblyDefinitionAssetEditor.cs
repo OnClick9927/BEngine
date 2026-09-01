@@ -77,7 +77,7 @@ public sealed class AssemblyDefinitionAssetEditor : Editor
         var asset = (AssemblyDefinitionAsset)target;
         try
         {
-            _document = Document.Load<AssemblyDefinitionDocument>(AssetDatabase.ResolveAssetPath(asset.assetPath));
+            _document = YamlUtility.Load<AssemblyDefinitionDocument>(AssetDatabase.ResolveAssetPath(asset.assetPath));
             asset.definition = Clone(_document);
             asset.importError = string.Empty;
             _error = string.Empty;

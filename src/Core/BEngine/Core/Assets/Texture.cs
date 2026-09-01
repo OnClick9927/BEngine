@@ -1,7 +1,7 @@
 namespace BEngine;
 
 [EditorIcon("Icons/Assets/AssetImage.png")]
-public sealed class Texture : FileAsset
+public sealed class Texture : BAsset
 {
     public int width { get; internal set; }
     public int height { get; internal set; }
@@ -16,6 +16,9 @@ public sealed class Texture : FileAsset
     public int pixelsPerUnit { get; internal set; } = 100;
 
     internal Texture() { }
+
+    public Sprite CreateSprite(Vector2 pivot, long localIdentifier = 21300000) =>
+        Sprite.Create(this, pivot, localIdentifier);
 
     internal static bool IsSupportedSourcePath(string path) =>
         Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase);

@@ -122,7 +122,7 @@ internal sealed class CodexAppServerConversationTests(string hostExecutable)
     private static void WriteLegacySettings(string projectRoot, string approvalPolicy)
     {
         var store = new CodexProjectStore(projectRoot);
-        new CodexProjectSettingsDocument { ApprovalPolicy = approvalPolicy }.Save(store.SettingsPath);
+        new CodexProjectSettingsData { ApprovalPolicy = approvalPolicy }.Save(store.SettingsPath);
     }
 
     private static async Task<CodexClientSnapshot> WaitForAsync(

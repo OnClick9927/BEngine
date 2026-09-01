@@ -182,9 +182,14 @@ internal static class EditorObjectPicker
     internal static BObject? ResolveDraggedObject(Type objectType, bool allowSceneObjects)
     {
         ValidateObjectType(objectType);
-        foreach (var reference in DragAndDrop.objectReferences)
+        var references = DragAndDrop.objectReferences;
+        foreach (var reference in references)
             if (Coerce(reference, objectType, allowSceneObjects) is { } candidate)
                 return candidate;
+
+        // References are authoritative. Falling through to a shared asset path can turn a
+        // mismatched sub-asset into its owner or a sibling of a different identity.
+        if (references.Length > 0) return null;
 
         foreach (var path in DragAndDrop.paths)
         {
@@ -316,11 +321,12 @@ internal static class EditorObjectPicker
                 gameObject.components.FirstOrDefault(objectType.IsInstanceOfType),
             _ => null
         };
-        if (candidate is null && AssetDatabase.GetAssetPath(source) is { Length: > 0 } assetPath)
+        if (candidate is null && source is Texture && objectType == typeof(Sprite) &&
+            AssetDatabase.GetAssetPath(source) is { Length: > 0 } assetPath)
         {
             try
             {
-                candidate = AssetDatabase.LoadAssetAtPath(assetPath, objectType);
+                candidate = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
             }
             catch (Exception exception)
             {

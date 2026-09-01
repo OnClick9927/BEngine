@@ -16,4 +16,10 @@ public sealed record AssetRecord(
     long LocalIdentifier = 0)
 {
     public bool IsSubAsset => ParentGuid.HasValue;
+
+    /// <summary>SHA-256 of the imported artifact represented by <see cref="ArtifactPath"/>.</summary>
+    public string ArtifactHash { get; init; } = string.Empty;
+
+    /// <summary>Byte length of the imported artifact represented by <see cref="ArtifactPath"/>.</summary>
+    public long ArtifactSize { get; init; }
 }

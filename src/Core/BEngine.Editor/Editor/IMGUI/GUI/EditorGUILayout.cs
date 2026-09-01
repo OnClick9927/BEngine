@@ -217,6 +217,22 @@ public static class EditorGUILayout
         GUILayoutUtility.GetControlRect(StyleHeight(style, EditorStyles.popup,
             EditorGUIUtility.singleLineHeight), options), label, selectedIndex, displayedOptions, style);
 
+    public static ulong LayerMaskField(string label, ulong value, params GUILayoutOption[] options) =>
+        LayerMaskField(label, value, null, options);
+
+    public static ulong LayerMaskField(string label, ulong value, GUIStyle? style,
+        params GUILayoutOption[] options) => EditorGUI.LayerMaskField(
+        GUILayoutUtility.GetControlRect(StyleHeight(style, EditorStyles.layerMaskField,
+            EditorGUIUtility.singleLineHeight), options), label, value, style);
+
+    public static LayerMask LayerMaskField(string label, LayerMask value,
+        params GUILayoutOption[] options) => LayerMaskField(label, value, null, options);
+
+    public static LayerMask LayerMaskField(string label, LayerMask value, GUIStyle? style,
+        params GUILayoutOption[] options) => EditorGUI.LayerMaskField(
+        GUILayoutUtility.GetControlRect(StyleHeight(style, EditorStyles.layerMaskField,
+            EditorGUIUtility.singleLineHeight), options), label, value, style);
+
     public static bool DropDownButton(string text, FocusType focusType,
         params GUILayoutOption[] options) => DropDownButton(text, focusType, null, options);
 

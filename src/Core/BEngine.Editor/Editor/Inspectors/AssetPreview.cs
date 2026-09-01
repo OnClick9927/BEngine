@@ -51,10 +51,10 @@ public static class AssetPreview
             Font => EditorBuiltinIcons.Assets.Font,
             Script => EditorBuiltinIcons.Assets.Script,
             RuntimeTextAsset => EditorBuiltinIcons.Assets.Text,
-            TextureAtlas => EditorBuiltinIcons.Assets.Image,
+            TextureAtlas => EditorBuiltinIcons.Assets.Atlas,
             ScriptableObject scriptable => EditorIconRegistry.GetIconPath(scriptable.GetType()) ??
                                            EditorBuiltinIcons.Assets.Default,
-            _ => EditorBuiltinIcons.Assets.Default
+            _ => IconForType(asset)
         };
     }
 
@@ -136,7 +136,7 @@ public static class AssetPreview
                     ObjectNames.NicifyVariableName(scriptable.GetType().Name));
                 break;
             default:
-                DrawIconSummary(previewArea, EditorBuiltinIcons.Assets.Default, asset.name,
+                DrawIconSummary(previewArea, IconForType(asset), asset.name,
                     ObjectNames.NicifyVariableName(asset.GetType().Name));
                 break;
         }
@@ -199,7 +199,7 @@ public static class AssetPreview
         if (asset is TextAsset text)
         {
             var previewText = GetTextPreview(text);
-            if (asset.assetType.Equals("Shader", StringComparison.OrdinalIgnoreCase))
+            if (asset.assetType.Equals(nameof(Shader), StringComparison.OrdinalIgnoreCase))
                 DrawShaderSource(previewText, area);
             else
                 DrawText(previewText, area);
@@ -500,7 +500,7 @@ public static class AssetPreview
 
     private static bool IsTexture(DefaultAsset asset)
     {
-        if (asset.assetType.Equals("Texture", StringComparison.OrdinalIgnoreCase) ||
+        if (asset.assetType.Equals(nameof(Texture), StringComparison.OrdinalIgnoreCase) ||
             asset.assetType.Equals("Image", StringComparison.OrdinalIgnoreCase)) return true;
         return Path.GetExtension(SourcePath(asset)).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".bmp";
     }
@@ -517,6 +517,9 @@ public static class AssetPreview
         catch (ArgumentException) { return EditorBuiltinIcons.Assets.Default; }
     }
 
+    private static string IconForType(BObject asset) =>
+        EditorIconRegistry.GetIconPath(asset.GetType()) ?? EditorBuiltinIcons.Assets.Default;
+
     private static string DisplayName(DefaultAsset asset) =>
         ProjectBrowserPath.DisplayName(asset.name, asset.assetPath, SourcePath(asset));
 
@@ -525,6 +528,14 @@ public static class AssetPreview
 
     private static string ResolveReference(string reference, string contextPath)
     {
+        if (reference.StartsWith("guid:", StringComparison.OrdinalIgnoreCase) &&
+            BAsset.Load<Texture>(reference) is { } texture)
+        {
+            var importedPath = string.IsNullOrWhiteSpace(texture.artifactPath)
+                ? texture.sourcePath
+                : texture.artifactPath;
+            if (File.Exists(importedPath)) return importedPath;
+        }
         if (Path.IsPathRooted(reference)) return ResolvePath(reference);
         try
         {

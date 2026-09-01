@@ -26,15 +26,20 @@ internal static class Program
         Directory.CreateDirectory(Path.Combine(icons, "Windows"));
 
         foreach (var name in new[] { "Default", "Text", "Script", "Data", "Assembly", "Markup", "Style",
-                     "Shader", "Image", "Audio", "Model", "Material", "Scene", "Prefab", "Animation", "Font" })
+                     "Shader", "Image", "Audio", "Model", "Material", "Scene", "Prefab", "Animation", "Font",
+                     "Atlas", "Skin" })
             Save(Path.Combine(icons, "Assets", $"Asset{name}.png"), g => DrawAsset(g, name));
         Save(Path.Combine(icons, "Assets", "FolderClosed.png"), g => DrawFolder(g, false, false));
         Save(Path.Combine(icons, "Assets", "FolderOpen.png"), g => DrawFolder(g, true, false));
         Save(Path.Combine(icons, "Assets", "FolderEmpty.png"), g => DrawFolder(g, false, true));
 
-        foreach (var name in new[] { "Component", "GameObject", "Transform", "Camera", "Script" })
+        foreach (var name in new[] { "Component", "GameObject", "Transform", "Camera", "Script",
+                     "SpriteRenderer", "ParticleSystem2D", "Rigidbody2D", "Collider2D", "Animator", "Tilemap",
+                     "UIDocument", "Navigation" })
             Save(Path.Combine(icons, "Components", $"{name}.png"), g => DrawComponent(g, name));
-        foreach (var name in new[] { "Add", "New", "Save", "Delete", "Search", "Clear", "Refresh", "Browse",
+        foreach (var name in new[] { "Add", "AddDropdown", "Minus", "New", "Save", "Delete", "Search", "Clear",
+                     "Close", "Undo", "Redo", "UndoHistory", "Layout", "Dropdown", "Filter", "Import", "Export",
+                     "Duplicate", "Refresh", "Browse",
                      "OpenFolder", "Settings", "Lock", "Unlock", "Visible", "Hidden", "Info", "Warning", "Error",
                      "Check", "Send", "Html", "Container", "Label", "Button", "Field", "Up", "View", "Move",
                      "Rotate", "Scale", "Rect", "Play", "Stop", "Pause", "Step", "FoldoutClosed", "FoldoutOpen",
@@ -51,7 +56,7 @@ internal static class Program
         DrawPackageIcon(Path.Combine(root, "src", "Packages", "Physics2D", "Editor", "Physics2D.png"), "Physics2D");
 
         var expected = Directory.EnumerateFiles(icons, "*.png", SearchOption.AllDirectories).ToArray();
-        if (expected.Length < 70) throw new InvalidOperationException($"Only {expected.Length} built-in icons were generated.");
+        if (expected.Length < 100) throw new InvalidOperationException($"Only {expected.Length} built-in icons were generated.");
         foreach (var path in expected)
         {
             using var image = new Bitmap(path);
@@ -91,13 +96,22 @@ internal static class Program
 
     private static void DrawAsset(Graphics g, string kind)
     {
+        switch (kind)
+        {
+            case "Image": DrawTextureAsset(g); return;
+            case "Material": DrawMaterialAsset(g); return;
+            case "Model": DrawModelAsset(g); return;
+            case "Prefab": DrawPrefabAsset(g); return;
+            case "Scene": DrawSceneAsset(g); return;
+            case "Atlas": DrawAtlasAsset(g); return;
+            case "Skin": DrawSkinAsset(g); return;
+        }
+
         var accent = kind switch
         {
             "Script" or "Markup" or "Style" => Cyan,
-            "Image" or "Scene" or "Prefab" => Blue,
             "Audio" or "Animation" => Orange,
-            "Material" or "Shader" => Purple,
-            "Model" => Green,
+            "Shader" => Purple,
             "Assembly" => Red,
             _ => Line
         };
@@ -122,20 +136,98 @@ internal static class Program
                 g.DrawLines(glyph, [new(21, 14), new(25, 18), new(21, 22)]); break;
             case "Style": g.DrawString("#", new Font("Segoe UI", 10, FontStyle.Bold), Brush(accent), 11, 11); break;
             case "Shader": g.DrawLine(glyph, 11, 23, 22, 12); g.DrawLine(glyph, 12, 15, 20, 23); break;
-            case "Image":
-                g.DrawEllipse(glyph, 11, 13, 3, 3); g.DrawLines(glyph, [new(10, 24), new(16, 18), new(19, 21), new(23, 17)]); break;
             case "Audio":
                 g.DrawLine(glyph, 14, 15, 14, 23); g.DrawLine(glyph, 14, 15, 22, 13); g.DrawLine(glyph, 22, 13, 22, 21);
                 g.DrawEllipse(glyph, 10, 21, 4, 3); g.DrawEllipse(glyph, 18, 19, 4, 3); break;
-            case "Model": DrawCube(g, new RectangleF(10, 12, 14, 13), accent); break;
-            case "Material": g.FillEllipse(Brush(accent), 11, 13, 12, 12); g.DrawArc(Pen(Line, 1), 12, 14, 9, 6, 190, 145); break;
-            case "Scene": DrawCube(g, new RectangleF(10, 13, 13, 12), accent); g.DrawLine(glyph, 23, 12, 23, 22); break;
-            case "Prefab": DrawCube(g, new RectangleF(10, 12, 14, 13), accent); g.DrawLine(glyph, 10, 18, 24, 18); break;
             case "Animation":
                 g.DrawLine(glyph, 11, 14, 11, 24); g.DrawEllipse(glyph, 9, 12, 4, 4); g.DrawEllipse(glyph, 9, 22, 4, 4);
                 g.FillPolygon(Brush(accent), [new(17, 13), new(24, 18), new(17, 23)]); break;
             case "Font": g.DrawString("T", new Font("Segoe UI", 11, FontStyle.Bold), Brush(accent), 11, 10); break;
         }
+    }
+
+    private static void DrawTextureAsset(Graphics g)
+    {
+        using var frame = Pen(Line, 1.5f);
+        using var sky = Brush(Color.FromArgb(190, 75, 126, 164));
+        using var ground = Brush(Color.FromArgb(235, 82, 151, 112));
+        using var sun = Brush(Color.FromArgb(255, 240, 194, 92));
+        g.FillRectangle(sky, 4, 5, 24, 22);
+        g.FillPolygon(ground, [new PointF(4, 25), new PointF(11, 16), new PointF(16, 21),
+            new PointF(21, 13), new PointF(28, 21), new PointF(28, 27), new PointF(4, 27)]);
+        g.FillEllipse(sun, 20, 8, 4, 4);
+        g.DrawRectangle(frame, 4, 5, 24, 22);
+    }
+
+    private static void DrawMaterialAsset(Graphics g)
+    {
+        using var shadow = Brush(Color.FromArgb(110, 0, 0, 0));
+        using var sphere = Brush(Color.FromArgb(255, 137, 94, 174));
+        using var highlight = Brush(Color.FromArgb(210, 224, 204, 239));
+        using var edge = Pen(Color.FromArgb(245, 201, 171, 224), 1.4f);
+        g.FillEllipse(shadow, 7, 25, 19, 3);
+        g.FillEllipse(sphere, 5, 4, 23, 23);
+        g.FillEllipse(highlight, 9, 8, 6, 5);
+        g.DrawArc(edge, 6, 5, 21, 21, 25, 300);
+    }
+
+    private static void DrawModelAsset(Graphics g)
+    {
+        using var fill = Brush(Color.FromArgb(72, Green));
+        g.FillPolygon(fill, [new PointF(16, 3), new PointF(28, 9), new PointF(16, 16), new PointF(4, 9)]);
+        g.FillPolygon(fill, [new PointF(4, 9), new PointF(16, 16), new PointF(16, 29), new PointF(4, 22)]);
+        DrawCube(g, new RectangleF(4, 3, 24, 26), Green);
+    }
+
+    private static void DrawPrefabAsset(Graphics g)
+    {
+        using var fill = Brush(Color.FromArgb(90, Blue));
+        g.FillPolygon(fill, [new PointF(16, 3), new PointF(28, 9), new PointF(16, 16), new PointF(4, 9)]);
+        g.FillPolygon(fill, [new PointF(16, 16), new PointF(28, 9), new PointF(28, 22), new PointF(16, 29)]);
+        DrawCube(g, new RectangleF(4, 3, 24, 26), Blue);
+    }
+
+    private static void DrawSceneAsset(Graphics g)
+    {
+        using var frame = Pen(Blue, 1.5f);
+        using var horizon = Pen(Color.FromArgb(235, 113, 194, 147), 1.7f);
+        using var sun = Brush(Color.FromArgb(255, 239, 181, 73));
+        using var background = Brush(Color.FromArgb(50, Blue));
+        g.FillRectangle(background, 3, 5, 26, 22);
+        g.DrawRectangle(frame, 3, 5, 26, 22);
+        g.FillEllipse(sun, 21, 8, 4, 4);
+        g.DrawLines(horizon, [new PointF(4, 24), new PointF(11, 16), new PointF(16, 20),
+            new PointF(22, 13), new PointF(28, 20)]);
+        DrawCube(g, new RectangleF(10, 16, 10, 9), Blue);
+    }
+
+    private static void DrawAtlasAsset(Graphics g)
+    {
+        using var frame = Pen(Line, 1.4f);
+        using var blue = Brush(Color.FromArgb(220, Blue));
+        using var green = Brush(Color.FromArgb(220, Green));
+        using var purple = Brush(Color.FromArgb(220, Purple));
+        using var orange = Brush(Color.FromArgb(220, Orange));
+        g.DrawRectangle(frame, 3, 3, 26, 26);
+        g.FillRectangle(blue, 6, 6, 8, 8);
+        g.FillRectangle(green, 18, 6, 8, 8);
+        g.FillRectangle(purple, 6, 18, 8, 8);
+        g.FillRectangle(orange, 18, 18, 8, 8);
+    }
+
+    private static void DrawSkinAsset(Graphics g)
+    {
+        using var frame = Pen(Line, 1.4f);
+        using var panel = Brush(Color.FromArgb(105, Line));
+        using var accent = Brush(Color.FromArgb(230, Blue));
+        using var secondary = Brush(Color.FromArgb(210, Purple));
+        using var muted = Brush(Color.FromArgb(180, Dim));
+        g.DrawRectangle(frame, 3, 4, 26, 24);
+        g.FillRectangle(panel, 4, 5, 24, 5);
+        g.FillEllipse(accent, 6, 6, 3, 3);
+        g.FillRectangle(secondary, 6, 14, 8, 5);
+        g.FillRectangle(accent, 17, 14, 9, 5);
+        g.FillRectangle(muted, 6, 22, 20, 3);
     }
 
     private static void DrawFolder(Graphics g, bool open, bool empty)
@@ -158,6 +250,14 @@ internal static class Program
             case "Camera": DrawCamera(g); break;
             case "Script": DrawScriptBadge(g); break;
             case "GameObject": DrawCube(g, new RectangleF(5, 6, 22, 20), Blue); break;
+            case "SpriteRenderer": DrawTextureAsset(g); break;
+            case "ParticleSystem2D": DrawParticles(g); break;
+            case "Rigidbody2D": DrawRigidbody(g); break;
+            case "Collider2D": DrawCollider(g); break;
+            case "Animator": DrawAnimator(g); break;
+            case "Tilemap": DrawTilemap(g); break;
+            case "UIDocument": DrawUiDocument(g); break;
+            case "Navigation": DrawNavigation(g); break;
             default: DrawComponentBadge(g); break;
         }
     }
@@ -168,11 +268,23 @@ internal static class Program
         switch (kind)
         {
             case "Add": g.DrawLine(line, 16, 7, 16, 25); g.DrawLine(line, 7, 16, 25, 16); break;
+            case "AddDropdown": g.DrawLine(line, 13, 7, 13, 23); g.DrawLine(line, 5, 15, 21, 15); g.FillPolygon(Brush(Line), [new PointF(23, 13), new PointF(30, 13), new PointF(26.5f, 18)]); break;
+            case "Minus": g.DrawLine(line, 7, 16, 25, 16); break;
             case "New": g.DrawRectangle(line, 7, 5, 18, 22); g.DrawLine(Pen(Blue, 2), 16, 11, 16, 22); g.DrawLine(Pen(Blue, 2), 11, 16, 21, 16); break;
             case "Save": g.DrawRectangle(line, 6, 5, 20, 22); g.FillRectangle(Brush(Blue), 10, 6, 12, 7); g.DrawRectangle(line, 10, 18, 12, 9); break;
             case "Delete": g.DrawRectangle(line, 10, 10, 12, 16); g.DrawLine(line, 8, 8, 24, 8); g.DrawLine(line, 13, 5, 19, 5); break;
             case "Search": g.DrawEllipse(line, 6, 6, 14, 14); g.DrawLine(line, 18, 18, 26, 26); break;
             case "Clear": g.DrawLine(Pen(Red, 2.2f), 8, 8, 24, 24); g.DrawLine(Pen(Red, 2.2f), 24, 8, 8, 24); break;
+            case "Close": g.DrawLine(line, 9, 9, 23, 23); g.DrawLine(line, 23, 9, 9, 23); break;
+            case "Undo": DrawUndoArrow(g, false); break;
+            case "Redo": DrawUndoArrow(g, true); break;
+            case "UndoHistory": DrawUndoHistory(g); break;
+            case "Layout": DrawLayout(g); break;
+            case "Dropdown": g.FillPolygon(Brush(Line), [new(8, 12), new(24, 12), new(16, 21)]); break;
+            case "Filter": g.DrawLines(line, [new(5, 7), new(27, 7), new(19, 16), new(19, 25), new(13, 22), new(13, 16), new(5, 7)]); break;
+            case "Import": DrawTransfer(g, false); break;
+            case "Export": DrawTransfer(g, true); break;
+            case "Duplicate": g.DrawRectangle(Pen(Dim, 1.6f), 5, 8, 15, 18); g.DrawRectangle(line, 11, 5, 16, 19); break;
             case "Refresh": g.DrawArc(line, 6, 6, 20, 20, 35, 285); g.FillPolygon(Brush(Line), [new(23, 5), new(28, 8), new(23, 11)]); break;
             case "Browse": DrawFolderMini(g, 5, 10); g.DrawEllipse(Pen(Blue, 1.8f), 17, 17, 8, 8); g.DrawLine(Pen(Blue, 1.8f), 24, 24, 28, 28); break;
             case "OpenFolder": DrawFolderMini(g, 7, 9); g.DrawLine(Pen(Blue, 1.8f), 12, 18, 20, 18); g.DrawLine(Pen(Blue, 1.8f), 16, 14, 16, 22); break;
@@ -192,7 +304,7 @@ internal static class Program
             case "Button": g.DrawRectangle(line, 5, 9, 22, 14); g.DrawLine(Pen(Blue, 1.5f), 11, 16, 21, 16); break;
             case "Field": g.DrawRectangle(line, 4, 9, 24, 14); g.DrawLine(Pen(Blue, 1.5f), 9, 18, 22, 18); g.DrawLine(Pen(Blue, 1.5f), 9, 13, 9, 19); break;
             case "Up": g.DrawLine(line, 16, 26, 16, 7); g.DrawLines(line, [new(8, 15), new(16, 7), new(24, 15)]); break;
-            case "View": g.DrawEllipse(line, 7, 7, 14, 14); g.DrawLine(line, 18, 19, 25, 26); break;
+            case "View": DrawHand(g); break;
             case "Move": DrawAxes(g); break;
             case "Rotate": g.DrawArc(line, 6, 6, 20, 20, 35, 285); g.FillPolygon(Brush(Line), [new(23, 5), new(28, 8), new(23, 11)]); break;
             case "Scale": g.DrawLine(line, 8, 24, 24, 8); g.DrawRectangle(line, 20, 5, 7, 7); g.DrawRectangle(line, 5, 20, 7, 7); break;
@@ -205,6 +317,128 @@ internal static class Program
             case "FoldoutOpen": g.FillPolygon(Brush(Line), [new(7, 11), new(25, 11), new(16, 22)]); break;
             case "More": g.FillEllipse(Brush(Line), 6, 14, 4, 4); g.FillEllipse(Brush(Line), 14, 14, 4, 4); g.FillEllipse(Brush(Line), 22, 14, 4, 4); break;
         }
+    }
+
+    private static void DrawHand(Graphics g)
+    {
+        using var outline = Pen(Line, 1.7f);
+        using var fill = Brush(Color.FromArgb(52, Line));
+        var hand = new GraphicsPath();
+        hand.AddPolygon([
+            new PointF(9, 16), new PointF(9, 10), new PointF(12, 10), new PointF(12, 15),
+            new PointF(12, 6), new PointF(15, 6), new PointF(15, 14), new PointF(15, 5),
+            new PointF(18, 5), new PointF(18, 14), new PointF(18, 7), new PointF(21, 7),
+            new PointF(21, 16), new PointF(24, 13), new PointF(27, 15), new PointF(23, 25),
+            new PointF(13, 27), new PointF(7, 19)
+        ]);
+        g.FillPath(fill, hand);
+        g.DrawPath(outline, hand);
+    }
+
+    private static void DrawUndoArrow(Graphics g, bool redo)
+    {
+        using var line = Pen(Line, 2f);
+        var direction = redo ? -1 : 1;
+        g.DrawArc(line, 7, 8, 19, 17, redo ? 190 : -10, 220);
+        var tipX = redo ? 26 : 6;
+        g.FillPolygon(Brush(Line),
+        [
+            new PointF(tipX, 8), new PointF(tipX + direction * 7, 5),
+            new PointF(tipX + direction * 5, 13)
+        ]);
+    }
+
+    private static void DrawUndoHistory(Graphics g)
+    {
+        using var line = Pen(Line, 1.8f);
+        g.DrawArc(line, 6, 6, 21, 21, 40, 285);
+        g.FillPolygon(Brush(Line), [new PointF(5, 7), new PointF(11, 5), new PointF(9, 12)]);
+        g.DrawLine(line, 16, 10, 16, 17);
+        g.DrawLine(line, 16, 17, 21, 20);
+    }
+
+    private static void DrawLayout(Graphics g)
+    {
+        using var frame = Pen(Line, 1.5f);
+        using var active = Brush(Color.FromArgb(105, Blue));
+        g.FillRectangle(active, 5, 5, 10, 22);
+        g.DrawRectangle(frame, 5, 5, 22, 22);
+        g.DrawLine(frame, 15, 5, 15, 27);
+        g.DrawLine(frame, 15, 16, 27, 16);
+    }
+
+    private static void DrawTransfer(Graphics g, bool export)
+    {
+        using var line = Pen(Line, 1.8f);
+        g.DrawRectangle(line, 6, 17, 20, 10);
+        var tipY = export ? 5 : 24;
+        var tailY = export ? 21 : 8;
+        g.DrawLine(line, 16, tailY, 16, tipY);
+        g.DrawLines(line, export
+            ? [new PointF(10, 11), new PointF(16, 5), new PointF(22, 11)]
+            : [new PointF(10, 18), new PointF(16, 24), new PointF(22, 18)]);
+    }
+
+    private static void DrawParticles(Graphics g)
+    {
+        using var orbit = Pen(Dim, 1.2f);
+        g.DrawEllipse(orbit, 7, 7, 18, 18);
+        g.FillEllipse(Brush(Blue), 13, 13, 6, 6);
+        g.FillEllipse(Brush(Orange), 5, 13, 4, 4);
+        g.FillEllipse(Brush(Green), 23, 9, 4, 4);
+        g.FillEllipse(Brush(Purple), 20, 23, 3, 3);
+    }
+
+    private static void DrawRigidbody(Graphics g)
+    {
+        using var line = Pen(Line, 1.7f);
+        g.DrawEllipse(line, 7, 7, 18, 18);
+        g.DrawString("R", new Font("Segoe UI", 10, FontStyle.Bold), Brush(Blue), 10, 8);
+    }
+
+    private static void DrawCollider(Graphics g)
+    {
+        g.DrawRectangle(Pen(Blue, 1.8f), 5, 7, 18, 18);
+        g.DrawEllipse(Pen(Green, 1.8f), 11, 10, 16, 16);
+    }
+
+    private static void DrawAnimator(Graphics g)
+    {
+        using var line = Pen(Line, 1.5f);
+        g.DrawLine(line, 9, 10, 22, 16);
+        g.DrawLine(line, 22, 16, 10, 24);
+        g.FillEllipse(Brush(Blue), 5, 6, 8, 8);
+        g.FillEllipse(Brush(Orange), 19, 12, 8, 8);
+        g.FillEllipse(Brush(Green), 6, 20, 8, 8);
+    }
+
+    private static void DrawTilemap(Graphics g)
+    {
+        using var line = Pen(Line, 1.4f);
+        g.DrawRectangle(line, 5, 5, 22, 22);
+        for (var coordinate = 12; coordinate <= 20; coordinate += 8)
+        {
+            g.DrawLine(line, coordinate, 5, coordinate, 27);
+            g.DrawLine(line, 5, coordinate, 27, coordinate);
+        }
+        g.FillRectangle(Brush(Color.FromArgb(110, Green)), 13, 13, 7, 7);
+    }
+
+    private static void DrawUiDocument(Graphics g)
+    {
+        using var line = Pen(Line, 1.5f);
+        g.DrawRectangle(line, 4, 5, 24, 22);
+        g.DrawLine(line, 4, 11, 28, 11);
+        g.DrawLine(line, 11, 11, 11, 27);
+        g.FillRectangle(Brush(Color.FromArgb(100, Blue)), 14, 15, 10, 4);
+    }
+
+    private static void DrawNavigation(Graphics g)
+    {
+        using var route = Pen(Blue, 2.1f);
+        g.DrawBezier(route, 5, 25, 10, 5, 21, 28, 27, 8);
+        g.FillEllipse(Brush(Orange), 3, 23, 5, 5);
+        g.FillEllipse(Brush(Green), 24, 5, 5, 5);
     }
 
     private static void DrawWindow(Graphics g, string kind)

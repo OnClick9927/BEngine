@@ -1,5 +1,4 @@
 using System.Reflection;
-using BEngine.Documents;
 using BEngine.Player;
 using BEngine.ProjectSystem;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,7 +15,7 @@ internal static class PlayerAssetEnvironmentTests
         Directory.CreateDirectory(staleAssets);
         try
         {
-            new ProjectDocument { Name = "Player Asset Environment" }
+            new ProjectData { Name = "Player Asset Environment" }
                 .Save(Path.Combine(root, ProjectWorkspace.ProjectFileName));
             var workspace = ProjectWorkspace.Open(root);
             WriteAssetFixtures(workspace);
@@ -24,19 +23,20 @@ internal static class PlayerAssetEnvironmentTests
             SetDataPath(staleAssets);
             BAsset.ClearLoadedAssets();
             ClearAtlasResolver();
-            var spritePath = Path.Combine(workspace.AssetsPath, "Player.sprite.yaml");
-            var stale = BAsset.Load<Sprite>(spritePath) ??
-                        throw new InvalidOperationException("The stale Sprite cache fixture did not load.");
-            Require(ResolveTexture(stale) == "Assets/Player.png",
+            var texturePath = Path.Combine(workspace.AssetsPath, "Player.png");
+            var stale = CreateSprite(texturePath);
+            var staleTexture = ResolveTexture(stale);
+            Require(Path.GetFileName(staleTexture).Equals("Player.png", StringComparison.OrdinalIgnoreCase) &&
+                    !staleTexture.EndsWith("PlayerPacked.png", StringComparison.OrdinalIgnoreCase),
                 "The stale Atlas resolver fixture was not primed against its original root.");
 
             _ = new ServiceCollection().AddBEnginePlayer(root);
 
             Require(Path.GetFullPath(Application.dataPath) == Path.GetFullPath(workspace.AssetsPath),
                 "Player composition did not set Application.dataPath to the workspace Assets path.");
-            var fresh = BAsset.Load<Sprite>(spritePath) ??
-                        throw new InvalidOperationException("The Player Sprite fixture did not reload.");
-            Require(!ReferenceEquals(stale, fresh) && fresh.assetPath == "Assets/Player.sprite.yaml",
+            var fresh = CreateSprite(texturePath);
+            Require(!ReferenceEquals(stale, fresh) && fresh.assetPath == "Assets/Player.png" &&
+                    fresh.OwnerGuid == stale.OwnerGuid && fresh.LocalIdentifier == stale.LocalIdentifier,
                 "Player composition retained a stale BAsset instance or bound it before dataPath initialization.");
             Require(ResolveTexture(fresh) == "Assets/PlayerPacked.png",
                 "Player composition retained the stale Atlas index instead of discovering the project Atlas.");
@@ -54,25 +54,59 @@ internal static class PlayerAssetEnvironmentTests
 
     private static void WriteAssetFixtures(ProjectWorkspace workspace)
     {
-        File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "Player.png"), [1]);
+        var sourcePath = Path.Combine(workspace.AssetsPath, "Player.png");
+        File.WriteAllBytes(sourcePath, Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+AvzZVwAAAABJRU5ErkJggg=="));
+        File.WriteAllText(sourcePath + ".meta", """
+            format: BEngine.AssetMeta
+            version: 1
+            guid: 7a1fc8e24e4b4188a2612d1c97e71b91
+            importer: TextureImporter
+            assetType: Texture
+            sourceHash: ''
+            settings:
+              textureType: Sprite
+              spritePivotX: '0.5'
+              spritePivotY: '0.5'
+            """);
         File.WriteAllBytes(Path.Combine(workspace.AssetsPath, "PlayerPacked.png"), [2]);
-        new Sprite { name = "Player", Texture = "Assets/Player.png" }
-            .Save(Path.Combine(workspace.AssetsPath, "Player.sprite.yaml"));
-        new TextureAtlas
+        var oldDataPath = Application.dataPath;
+        try
         {
-            name = "Player Atlas",
-            Width = 1,
-            Height = 1,
-            Texture = "Assets/PlayerPacked.png",
-            SpriteReferences = ["Assets/Player.sprite.yaml"],
-            Sprites =
-            [
-                new TextureAtlasSprite
-                {
-                    Name = "Player", Source = "Assets/Player.sprite.yaml", Width = 1, Height = 1
-                }
-            ]
-        }.Save(Path.Combine(workspace.AssetsPath, "Player.atlas.yaml"));
+            SetDataPath(workspace.AssetsPath);
+            BAsset.ClearLoadedAssets();
+            var sprite = CreateSprite(sourcePath);
+            new TextureAtlas
+            {
+                name = "Player Atlas",
+                Width = 1,
+                Height = 1,
+                Texture = "Assets/PlayerPacked.png",
+                Sources = [sprite],
+                Sprites =
+                [
+                    new TextureAtlasSprite
+                    {
+                        Name = "Player", Source = $"{sprite.OwnerGuid}:{sprite.LocalIdentifier}",
+                        Width = 1, Height = 1
+                    }
+                ]
+            }.Save(Path.Combine(workspace.AssetsPath, "Player.atlas.yaml"));
+        }
+        finally
+        {
+            SetDataPath(oldDataPath);
+            BAsset.ClearLoadedAssets();
+        }
+    }
+
+    private static Sprite CreateSprite(string texturePath)
+    {
+        var texture = BAsset.Load<Texture>(texturePath) ??
+                      throw new InvalidOperationException("The Player Texture fixture did not load.");
+        var sprite = texture.CreateSprite(new Vector2(Fix64.Half, Fix64.Half));
+        sprite.name = "Player";
+        return sprite;
     }
 
     private static string ResolveTexture(Sprite sprite)

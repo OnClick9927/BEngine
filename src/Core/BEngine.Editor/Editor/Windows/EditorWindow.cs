@@ -51,6 +51,7 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     internal string PersistentId { get; set; } = string.Empty;
     internal bool IsOpen { get; private set; }
     internal EditorWindowState? RequestedState { get; private set; }
+    internal bool RequestedFocus { get; private set; } = true;
     internal event Action<EditorWindow>? titleContentChanged;
 
     protected EditorWindow()
@@ -69,8 +70,7 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
         var window = EnumerateWindows(openOnly: false).OfType<T>().FirstOrDefault() ?? CreateWindow<T>();
         if (!string.IsNullOrWhiteSpace(title)) window.titleContent = new GUIContent(title,
             window.titleContent.image, window.titleContent.tooltip);
-        window.Show();
-        if (focus) window.Focus();
+        window.RequestState(EditorWindowState.Normal, focus);
         return window;
     }
 
@@ -87,21 +87,19 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
                      (EditorWindow)ScriptableObject.CreateInstance(windowType);
         if (!string.IsNullOrWhiteSpace(title)) window.titleContent = new GUIContent(title,
             window.titleContent.image, window.titleContent.tooltip);
-        if (utility) window.ShowUtility();
-        else window.Show();
-        if (focus) window.Focus();
+        window.RequestState(utility ? EditorWindowState.Aux : EditorWindowState.Normal, focus);
         return window;
     }
 
     public static T CreateWindow<T>() where T : EditorWindow, new() => ScriptableObject.CreateInstance<T>();
     public static bool HasOpenInstances<T>() where T : EditorWindow => EnumerateOpenWindows().OfType<T>().Any();
 
-    public void Show() => RequestState(EditorWindowState.Normal);
-    public void ShowUtility() => RequestState(EditorWindowState.Aux);
-    public void ShowAuxWindow() => RequestState(EditorWindowState.Aux);
-    public void ShowPopup() => RequestState(EditorWindowState.Pop);
-    public void ShowModal() => RequestState(EditorWindowState.Modal);
-    public void ShowModalUtility() => RequestState(EditorWindowState.Modal);
+    public void Show() => RequestState(EditorWindowState.Normal, focus: true);
+    public void ShowUtility() => RequestState(EditorWindowState.Aux, focus: true);
+    public void ShowAuxWindow() => RequestState(EditorWindowState.Aux, focus: true);
+    public void ShowPopup() => RequestState(EditorWindowState.Pop, focus: true);
+    public void ShowModal() => RequestState(EditorWindowState.Modal, focus: true);
+    public void ShowModalUtility() => RequestState(EditorWindowState.Modal, focus: true);
     public void ShowAsDropDown(Rect buttonRect, Vector2 windowSize)
     {
         var root = GUI.GUIToRootPoint(new Vector2(buttonRect.x, buttonRect.y + buttonRect.height));
@@ -112,7 +110,11 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
     public void Repaint() => EditorBridge.Host?.RepaintWindow(this);
     public void Focus()
     {
-        if (!IsOpen) Show();
+        if (!IsOpen)
+        {
+            RequestState(EditorWindowState.Normal, focus: true);
+            return;
+        }
         if (EditorBridge.Host is { } host) host.FocusWindow(this);
         else FocusInternal();
     }
@@ -175,11 +177,15 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
 
     internal void UpdateInternal()
     {
-        InvokeCallback(Update, nameof(Update));
+        using (EditorProfiler.BeginMethodSample(GetType(), nameof(Update),
+                   EditorProfilerDomain.Editor))
+            InvokeCallback(Update, nameof(Update));
         var now = EditorApplication.timeSinceStartup;
         if (now - _lastInspectorUpdate < 0.1) return;
         _lastInspectorUpdate = now;
-        InvokeCallback(OnInspectorUpdate, nameof(OnInspectorUpdate));
+        using (EditorProfiler.BeginMethodSample(GetType(), nameof(OnInspectorUpdate),
+                   EditorProfilerDomain.Editor))
+            InvokeCallback(OnInspectorUpdate, nameof(OnInspectorUpdate));
     }
 
     internal void OnGUIInternal()
@@ -188,7 +194,9 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
         currentDrawingWindow = this;
         try
         {
-            InvokeCallback(OnGUI, nameof(OnGUI));
+            using (EditorProfiler.BeginMethodSample(GetType(), nameof(OnGUI),
+                       EditorProfilerDomain.Editor))
+                InvokeCallback(OnGUI, nameof(OnGUI));
         }
         finally
         {
@@ -244,9 +252,17 @@ public abstract class EditorWindow : ScriptableObject, IHasCustomMenu
         return requested;
     }
 
-    private void RequestState(EditorWindowState state)
+    internal bool ConsumeRequestedFocus()
+    {
+        var requested = RequestedFocus;
+        RequestedFocus = true;
+        return requested;
+    }
+
+    private void RequestState(EditorWindowState state, bool focus)
     {
         RequestedState = state;
+        RequestedFocus = focus;
         EditorBridge.Host?.ShowWindow(this);
     }
 

@@ -31,57 +31,13 @@ public sealed class Camera2DEditor : Editor
             EditorUtility.SetDirty(camera);
         }
 
-        DrawCullingMask(camera);
-    }
-
-    private static void DrawCullingMask(Camera2D camera)
-    {
-        GUILayout.BeginHorizontal();
-        GUILayout.Label("Culling Mask", GUILayout.Width(EditorGUI.labelWidth));
-        if (GUILayout.Button(MaskSummary(camera.cullingMask))) ShowMaskMenu(camera);
-        GUILayout.EndHorizontal();
-    }
-
-    private static void ShowMaskMenu(Camera2D camera)
-    {
-        var menu = new GenericMenu();
-        menu.AddItem(new GUIContent("Everything"), camera.cullingMask == SortingLayer.AllMask,
-            () => SetMask(camera, SortingLayer.AllMask));
-        menu.AddItem(new GUIContent("Nothing"), camera.cullingMask == 0,
-            () => SetMask(camera, 0));
-        menu.AddSeparator(string.Empty);
-        foreach (var layer in SortingLayerRegistry.layers)
+        EditorGUI.BeginChangeCheck();
+        var cullingMask = EditorGUILayout.LayerMaskField("Culling Mask", camera.cullingMask);
+        if (EditorGUI.EndChangeCheck())
         {
-            var value = layer.Value;
-            var bit = SortingLayer.ToMask(value);
-            var group = layer.IsUi ? "UI" : "World";
-            var layerName = layer.Name.Replace('/', '-');
-            var label = $"{group}/{layer.Index} {layerName}";
-            menu.AddItem(new GUIContent(label), (camera.cullingMask & bit) != 0,
-                () => SetMask(camera, camera.cullingMask ^ bit));
+            Undo.RecordObject(camera, "Edit Camera Culling Mask");
+            camera.cullingMask = cullingMask;
+            EditorUtility.SetDirty(camera);
         }
-        menu.ShowAsAdvancedDropdown();
-    }
-
-    private static void SetMask(Camera2D camera, ulong mask)
-    {
-        Undo.RecordObject(camera, "Edit Camera Culling Mask");
-        camera.cullingMask = mask;
-        EditorUtility.SetDirty(camera);
-    }
-
-    private static string MaskSummary(ulong mask)
-    {
-        mask &= SortingLayer.AllMask;
-        if (mask == SortingLayer.AllMask) return "Everything";
-        if (mask == 0) return "Nothing";
-        if ((mask & (mask - 1)) == 0)
-        {
-            var index = System.Numerics.BitOperations.TrailingZeroCount(mask) +
-                        SortingLayer.MinimumIndex;
-            var layer = SortingLayer.FromIndex(index);
-            return $"{index} {SortingLayerRegistry.NameOf(layer)}";
-        }
-        return $"{System.Numerics.BitOperations.PopCount(mask)} Layers";
     }
 }

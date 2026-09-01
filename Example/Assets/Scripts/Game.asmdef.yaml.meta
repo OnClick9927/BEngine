@@ -1,7 +1,12 @@
 format: BEngine.AssetMeta
 version: 1
 guid: 9159d47a6b6d4130ad79fc0c2569d7cb
-importer: YamlImporter
+importer: DefaultImporter
 assetType: AssemblyDefinition
 sourceHash: d3aea8fb3372c1faf9c73bc1293268de341ab70a60cb7e4bd805009d1ddde9bd
+importFingerprint: 2732781ea50bb8b1418fbe5702c87fee63bf2cf54b468ce79a1aecd72ccfe1dd
 settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

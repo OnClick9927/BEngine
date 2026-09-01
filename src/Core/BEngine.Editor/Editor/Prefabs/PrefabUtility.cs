@@ -14,7 +14,7 @@ public static class PrefabUtility
         if (asset is not PrefabAsset prefab)
             throw new ArgumentException("InstantiatePrefab requires a PrefabAsset.", nameof(asset));
         var scene = destinationScene ?? throw new InvalidOperationException("No destination scene is open.");
-        var instance = PrefabDocumentOperations.Instantiate(prefab, scene);
+        var instance = PrefabAssetOperations.Instantiate(prefab, scene);
         EditorSceneManager.MarkSceneDirty(scene);
         Selection.activeGameObject = instance;
         RaiseInstanceUpdated(instance);
@@ -27,7 +27,7 @@ public static class PrefabUtility
     public static GameObject? SaveAsPrefabAsset(GameObject instanceRoot, string assetPath, out bool success)
     {
         var asset = SaveAsset(instanceRoot, assetPath, connect: false, out success);
-        return asset is null ? null : PrefabDocumentOperations.LoadContents(asset);
+        return asset is null ? null : PrefabAssetOperations.LoadContents(asset);
     }
 
     public static GameObject? SaveAsPrefabAssetAndConnect(GameObject instanceRoot, string assetPath,
@@ -74,7 +74,7 @@ public static class PrefabUtility
                      throw new InvalidDataException($"Prefab asset is missing: {path}");
         var scene = root.scene ?? throw new InvalidOperationException("Prefab instance is not in a Scene.");
         var parent = root.transform.parent;
-        var replacement = PrefabDocumentOperations.Instantiate(prefab, scene, parent);
+        var replacement = PrefabAssetOperations.Instantiate(prefab, scene, parent);
         scene.Destroy(root);
         Selection.activeGameObject = replacement;
         EditorSceneManager.MarkSceneDirty(scene);
@@ -85,7 +85,7 @@ public static class PrefabUtility
         InteractionMode action = InteractionMode.UserAction)
     {
         var root = GetOutermostPrefabInstanceRoot(instanceRoot) ?? instanceRoot;
-        PrefabDocumentOperations.DisconnectHierarchy(root);
+        PrefabAssetOperations.DisconnectHierarchy(root);
         EditorSceneManager.MarkSceneDirty(root.scene!);
         RaiseInstanceUpdated(root);
     }
@@ -93,7 +93,7 @@ public static class PrefabUtility
     public static GameObject LoadPrefabContents(string assetPath)
     {
         var prefab = LoadPrefabAsset(assetPath);
-        return PrefabDocumentOperations.LoadContents(prefab);
+        return PrefabAssetOperations.LoadContents(prefab);
     }
 
     public static void UnloadPrefabContents(GameObject contentsRoot)
@@ -156,11 +156,9 @@ public static class PrefabUtility
         if (string.IsNullOrWhiteSpace(path)) return false;
         var prefab = AssetDatabase.LoadAssetAtPath<PrefabAsset>(path);
         if (prefab is null) return false;
-        var currentDocument = Document.FromBObject<PrefabDocument>(
-            GetOutermostPrefabInstanceRoot(instanceRoot) ?? instanceRoot);
-        currentDocument.Id = prefab.assetId;
-        var current = currentDocument.ToYaml();
-        var source = prefab.Document.ToYaml();
+        var current = PrefabAssetSerialization.Serialize(
+            GetOutermostPrefabInstanceRoot(instanceRoot) ?? instanceRoot, prefab.assetId);
+        var source = PrefabAssetSerialization.Serialize(prefab);
         return !string.Equals(current, source, StringComparison.Ordinal);
     }
 
@@ -170,7 +168,7 @@ public static class PrefabUtility
         var path = GetPrefabAssetPathOfNearestInstanceRoot(componentOrGameObject);
         if (!sourceId.HasValue || string.IsNullOrWhiteSpace(path)) return null;
         var root = LoadPrefabContents(path);
-        return PrefabDocumentOperations.Traverse(root).SelectMany(gameObject =>
+        return PrefabAssetOperations.Traverse(root).SelectMany(gameObject =>
                 new BObject[] { gameObject, gameObject.transform }.Concat(gameObject.components))
             .OfType<T>().FirstOrDefault(item => item.Id == sourceId.Value);
     }
@@ -190,7 +188,7 @@ public static class PrefabUtility
             var saved = SaveDocument(root, fullPath, assetId);
             if (EditorBridge.Host is null)
             {
-                if (connect) PrefabDocumentOperations.ConnectHierarchy(root, saved.assetId);
+                if (connect) PrefabAssetOperations.ConnectHierarchy(root, saved.assetId);
                 success = true;
                 return saved;
             }
@@ -201,12 +199,12 @@ public static class PrefabUtility
             {
                 SaveDocument(root, fullPath, assetId);
                 AssetDatabase.ImportAsset(projectPath, ImportAssetOptions.ForceUpdate);
-                if (connect) PrefabDocumentOperations.ConnectHierarchy(root, assetId.Value);
+                if (connect) PrefabAssetOperations.ConnectHierarchy(root, assetId.Value);
             }
             EditorSceneManager.MarkSceneDirty();
             success = true;
             return AssetDatabase.LoadAssetAtPath<PrefabAsset>(projectPath) ??
-                   Document.LoadBObject<PrefabDocument, PrefabAsset>(fullPath);
+                   PrefabAssetSerialization.Load(fullPath);
         }
         catch
         {
@@ -218,15 +216,12 @@ public static class PrefabUtility
     {
         var (projectPath, fullPath) = ResolveAssetPath(assetPath);
         return AssetDatabase.LoadAssetAtPath<PrefabAsset>(projectPath) ??
-               Document.LoadBObject<PrefabDocument, PrefabAsset>(fullPath);
+               PrefabAssetSerialization.Load(fullPath);
     }
 
     private static PrefabAsset SaveDocument(GameObject root, string path, Guid? assetId)
     {
-        var document = Document.FromBObject<PrefabDocument>(root, new DocumentConversionContext(path));
-        if (assetId.HasValue) document.Id = assetId.Value;
-        document.Save(path);
-        return (PrefabAsset)document.ToBObject(new DocumentConversionContext(path));
+        return PrefabAssetSerialization.Save(root, path, assetId);
     }
 
     private static (string ProjectPath, string FullPath) ResolveAssetPath(string path)

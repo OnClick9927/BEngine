@@ -2,7 +2,7 @@ using BEngine.Documents;
 
 namespace BEngine.Editor.Codex;
 
-public sealed class CodexSessionDocument : Document
+public sealed class CodexSessionDocument
 {
     public string Format { get; set; } = "BEngine.CodexSession";
     public int Version { get; set; } = 1;

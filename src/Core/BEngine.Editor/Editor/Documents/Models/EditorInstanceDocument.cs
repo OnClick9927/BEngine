@@ -2,7 +2,7 @@ using BEngine.Documents;
 
 namespace BEngine.Editor.Documents;
 
-internal sealed class EditorInstanceDocument : Document
+internal sealed class EditorInstanceDocument
 {
     public string Format { get; set; } = "BEngine.EditorInstance";
     public int Version { get; set; } = 1;

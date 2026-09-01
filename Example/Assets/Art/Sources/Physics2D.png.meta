@@ -4,7 +4,12 @@ guid: fdc19827d60047d8b0f65705212e92e1
 importer: TextureImporter
 assetType: Texture
 sourceHash: 6e6c4550a0b2c738fccbc21997502530d5f4f894fd5edf5eb987332d762d4ad9
+importFingerprint: 00a924e97383201140359daca5915143f1991bd5d4efcd00a9728b972e43e6e7
 settings:
   textureType: Sprite
-  spritePivotX: '0.5'
-  spritePivotY: '0.5'
+  spritePivotX: 0.5
+  spritePivotY: 0.5
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

@@ -26,16 +26,22 @@ internal static class ProjectBrowserTreeBuilder
         };
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Assets" };
         var assetItems = new List<ProjectBrowserItem>(assets.Count);
-        var mainAssetGuids = assets.Where(asset => !asset.IsSubAsset).Select(asset => asset.Guid).ToHashSet();
-        foreach (var asset in assets)
+        var mainAssets = assets.Where(asset => !asset.IsSubAsset).ToArray();
+        var childrenByParent = assets.Where(asset => asset.ParentGuid.HasValue)
+            .GroupBy(asset => asset.ParentGuid!.Value)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        foreach (var asset in mainAssets)
         {
-            if (asset.ParentGuid is { } parentGuid && mainAssetGuids.Contains(parentGuid)) continue;
             var virtualPath = ProjectBrowserPath.Normalize(asset.AssetPath);
             if (virtualPath.Length == 0 || !seen.Add(virtualPath)) continue;
             var displayName = ProjectBrowserPath.DisplayName(Path.GetFileName(virtualPath), virtualPath,
                 asset.SourcePath);
-            assetItems.Add(new ProjectBrowserItem(virtualPath, displayName, asset.SourcePath,
-                asset.AssetType, asset.IsDirectory, false, asset));
+            var ownerItem = new ProjectBrowserItem(virtualPath, displayName, asset.SourcePath,
+                asset.AssetType, asset.IsDirectory, false, asset);
+            assetItems.Add(ownerItem);
+            if (!asset.IsDirectory)
+                AppendSubAssets(assetItems, ownerItem, asset,
+                    childrenByParent.GetValueOrDefault(asset.Guid) ?? []);
         }
         AppendAssetChildren(result, assetItems, "Assets", new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
@@ -64,12 +70,72 @@ internal static class ProjectBrowserTreeBuilder
         ISet<string> emitted)
     {
         foreach (var item in ProjectBrowserItemOrdering.Sort(assets.Where(asset =>
-                     string.Equals(asset.ParentPath, parentPath, StringComparison.OrdinalIgnoreCase))))
+                     string.Equals(asset.TreeParentKey, parentPath, StringComparison.OrdinalIgnoreCase))))
         {
-            if (!emitted.Add(item.NormalizedPath)) continue;
+            if (!emitted.Add(item.BrowserKey)) continue;
             result.Add(item);
-            if (item.IsDirectory) AppendAssetChildren(result, assets, item.NormalizedPath, emitted);
+            AppendAssetChildren(result, assets, item.BrowserKey, emitted);
         }
+    }
+
+    private static void AppendSubAssets(
+        ICollection<ProjectBrowserItem> items,
+        ProjectBrowserItem ownerItem,
+        AssetRecord owner,
+        IReadOnlyList<AssetRecord> importedChildren)
+    {
+        BObject[] representations;
+        try { representations = AssetDatabase.LoadAllAssetRepresentationsAtPath(owner.AssetPath); }
+        catch (Exception exception)
+        {
+            EditorFeatureGuard.Report($"Project.LoadSubAssets {owner.AssetPath}", exception);
+            representations = [];
+        }
+
+        var represented = new HashSet<long>();
+        foreach (var child in importedChildren.OrderBy(item => item.LocalIdentifier))
+        {
+            var value = representations.FirstOrDefault(item =>
+                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(item, out var guid, out var localId) &&
+                Guid.TryParse(guid, out var parentGuid) && parentGuid == owner.Guid &&
+                localId == child.LocalIdentifier);
+            value ??= AssetDatabase.LoadMainAssetAtPath(child.AssetPath);
+            if (value is null) continue;
+            represented.Add(child.LocalIdentifier);
+            items.Add(CreateSubAssetItem(ownerItem, child.AssetPath, child.SourcePath,
+                child.AssetType, child.LocalIdentifier, value, child));
+        }
+
+        foreach (var value in representations)
+        {
+            if (!AssetDatabase.TryGetGUIDAndLocalFileIdentifier(value, out var guid, out var localId) ||
+                !Guid.TryParse(guid, out var parentGuid) || parentGuid != owner.Guid ||
+                localId <= 0 || !represented.Add(localId)) continue;
+            items.Add(CreateSubAssetItem(ownerItem, owner.AssetPath, owner.SourcePath,
+                ObjectNames.NicifyVariableName(value.GetType().Name), localId, value, null));
+        }
+    }
+
+    private static ProjectBrowserItem CreateSubAssetItem(
+        ProjectBrowserItem owner,
+        string assetPath,
+        string sourcePath,
+        string assetType,
+        long localIdentifier,
+        BObject value,
+        AssetRecord? record)
+    {
+        var displayName = string.IsNullOrWhiteSpace(value.name)
+            ? ObjectNames.NicifyVariableName(value.GetType().Name)
+            : value.name.Trim();
+        return new ProjectBrowserItem(assetPath, displayName, sourcePath, assetType,
+            false, false, record)
+        {
+            BrowserKey = $"{owner.BrowserKey}#subasset={localIdentifier}",
+            BrowserParentKey = owner.BrowserKey,
+            SubAssetObject = value,
+            SubAssetIcon = EditorIconRegistry.GetIconPath(value.GetType())
+        };
     }
 
     private static void AddPackage(

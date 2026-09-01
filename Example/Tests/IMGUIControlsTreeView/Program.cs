@@ -222,8 +222,8 @@ internal static class Program
             "Starting an unselected TreeView row drag changed Selection or published the wrong row.");
         var requestedCursor = typeof(GUI).GetProperty("requestedMouseCursor",
             BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null);
-        Require(Equals(requestedCursor, MouseCursor.MoveArrow),
-            "An active TreeView drag did not request a distinct drag mouse cursor.");
+        Require(Equals(requestedCursor, MouseCursor.ArrowMinus),
+            "A TreeView drag without a valid drop target did not request the rejected cursor.");
         Dispatch(new Event(EventType.MouseUp)
         {
             mousePosition = beta + new Vector2(8, 0),
