@@ -62,7 +62,6 @@ public static class ProjectWorkspaceFactory
         var workspace = new ProjectWorkspace(root, project);
         project.Save(workspace.ProjectFilePath);
         new EditorSettingsDocument().Save(Path.Combine(workspace.ProjectSettingsPath, "EditorSettings.yaml"));
-        new EditorLayoutDocument().Save(workspace.EditorLayoutPath);
         new ProjectSettingsData
         {
             ProductName = project.Name,

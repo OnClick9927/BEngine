@@ -14,7 +14,8 @@
     <nav class="nav" aria-label="章节">
       <a href="#overview">包概览</a><a href="#install">依赖与目录</a><a href="#examples">可导入示例</a>
       <a href="#quickstart">快速开始</a><a href="#components">组件字段</a><a href="#assets">资源字段</a>
-      <a href="#runtime">运行时 API</a><a href="#editor">编辑器 API</a><a href="#themes">GUI 主题</a><a href="#workflow">完整工作流</a>
+      <a href="#shaders">CG Shader</a><a href="#runtime">运行时 API</a><a href="#networking">跨平台网络</a>
+      <a href="#asset-bundles">AssetBundle</a><a href="#editor">编辑器 API</a><a href="#workspace">Layout / Undo / Profiler</a><a href="#themes">GUI 主题</a><a href="#workflow">完整工作流</a>
       <a href="#extend">如何扩展</a><a href="#debug">调试与常见问题</a>
     </nav>
     <main>
@@ -117,6 +118,29 @@
         <div class="warning">Texture 压缩格式是请求值。后端尚未实现的 GPU 转码不会被报告为成功，但设置会稳定 round-trip 到 `.meta`。</div>
       </section>
 
+      <section id="shaders">
+        <h2>CG Shader 编译链、pragma 与阶段</h2>
+        <p><code>Assets</code> 下的 <code>*.cg</code> 与 <code>*.shader</code> 是使用 HLSL 语义的单阶段 CG 源码，不是 Unity ShaderLab 或 <code>CGPROGRAM</code> 容器。阶段由文件名或 BEngine pragma 决定：</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>文件名/pragma</th><th>阶段</th></tr></thead>
+          <tbody>
+            <tr><td><code>*.vert.cg</code>, <code>*.vertex.cg</code>, <code>#pragma stage vertex</code></td><td>Vertex</td></tr>
+            <tr><td><code>*.frag.cg</code>, <code>*.fragment.cg</code>, <code>#pragma stage fragment|pixel</code></td><td>Fragment</td></tr>
+            <tr><td><code>*.comp.cg</code>, <code>*.compute.cg</code>, <code>#pragma stage compute</code></td><td>Compute</td></tr>
+          </tbody>
+        </table></div>
+        <p>普通 <code>*.shader</code> 或没有阶段后缀的 <code>*.cg</code> 必须声明 <code>#pragma stage</code>。入口默认是 <code>main</code>，可通过 <code>#pragma entry MyEntry</code> 修改。两个引擎 pragma 在解析后从编译源码移除，其他预处理指令仍交给 shaderc。</p>
+        <pre><code>#pragma stage fragment
+#pragma entry FragmentMain
+
+float4 FragmentMain() : SV_Target
+{
+    return float4(0.15, 0.75, 0.65, 1.0);
+}</code></pre>
+        <p>链路为 <code>Assets source -&gt; stage/entry -&gt; shaderc(HLSL) -&gt; Vulkan 1.0 SPIR-V -&gt; content-addressed .spv -&gt; current pointer</code>。编译使用 performance optimization、自动 location 和 HLSL IO mapping。构建 ID 覆盖 schema、规范化路径、阶段、入口和完整源码，未变化输入直接复用 Artifact；后台只准备结果，Apply 阶段原子更新指针、处理删除并清理默认 Shader 缓存。</p>
+        <div class="note">错误按 Shader 隔离，不会把失败 Artifact 发布到 current。详细诊断位于 <code>ShaderCompilation.log</code>；修正后 Reimport 或执行 <strong>Edit &gt; Recompile Scripts</strong>。</div>
+      </section>
+
       <section id="runtime">
         <h2>运行时 API</h2>
         <div class="table-wrap"><table>
@@ -149,6 +173,68 @@ public sealed class PlayerMover : MonoBehaviour
     }
 }</code></pre>
         <p>生命周期依次为 Awake、OnEnable、Start、FixedUpdate/Update/LateUpdate、OnDisable、OnDestroy。Runtime System 与脚本均在同一 SceneRuntime 线程串行执行。</p>
+      </section>
+
+      <section id="networking">
+        <h2>跨平台 TCP、UDP、HTTP 与 WebSocket</h2>
+        <p><code>BEngine.Networking</code> 组合 .NET 标准 <code>TcpClient</code>、<code>UdpClient</code>、<code>HttpClient</code> 和 <code>ClientWebSocket</code>，不自行实现协议。所有异步操作接受 <code>CancellationToken</code>；TCP、UDP、WebSocket 暴露 <code>Timeout/LastResult/Error/Exception</code>，HTTP 暴露 <code>Result/Error/ResponseCode/DownloadData/DownloadText</code>。区分 TimedOut、Canceled、ConnectionError、ProtocolError 和 DataProcessingError，并始终释放客户端、请求和句柄。</p>
+        <pre><code>using System.Net;
+using System.Text;
+using BEngine.Networking;
+
+using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+await using var tcp = new TcpNetworkClient { Timeout = TimeSpan.FromSeconds(5) };
+await tcp.ConnectAsync("127.0.0.1", 7000, stop.Token);
+await tcp.SendAsync(Encoding.UTF8.GetBytes("ping"), stop.Token);
+var buffer = new byte[1024];
+var count = await tcp.ReceiveAsync(buffer, stop.Token);
+
+await using var udp = new UdpNetworkClient(new IPEndPoint(IPAddress.Any, 0));
+await udp.SendAsync(Encoding.UTF8.GetBytes("status"),
+    new IPEndPoint(IPAddress.Loopback, 7001), stop.Token);
+NetworkDatagram datagram = await udp.ReceiveAsync(stop.Token);
+
+using var request = HttpNetworkRequest.Get("https://example.test/status");
+request.SetRequestHeader("Accept", "application/json");
+await request.SendAsync(stop.Token);
+
+await using var socket = new WebSocketNetworkClient();
+await socket.ConnectAsync(new Uri("wss://example.test/events"), stop.Token);
+await socket.SendTextAsync("subscribe", stop.Token);
+WebSocketMessage message = await socket.ReceiveAsync(256 * 1024, stop.Token);
+await socket.CloseAsync(cancellationToken: stop.Token);</code></pre>
+        <h3>注入与扩展</h3>
+        <p>HTTP 提供 Get/Delete/Post/Put 工厂，并允许注入共享 <code>HttpClient</code> 或 <code>HttpMessageHandler</code>；外部 HttpClient 默认不由请求释放。大响应使用 <code>SendAsync(responseHandler, token)</code> 流式消费。WebSocket 可注入 <code>IWebSocketTransport</code>；默认 <code>ClientWebSocketTransport</code> 的 <code>Options</code> 可在连接前配置。测试或平台集成应实现 transport 或包装 sealed 客户端，把 TLS、代理、压缩、握手和协议解析继续交给 .NET。</p>
+      </section>
+
+      <section id="asset-bundles">
+        <h2>AssetBundle 索引、并发加载与远程更新</h2>
+        <p><code>InitializeAsync</code> 从内置内容、active/previous 指针和本地 content-addressed cache 选择已验证状态。每个状态只建立一次不可变 <code>AssetBundleCatalogIndex</code>：冻结 address、bundle、每 bundle 资产与预计算 dependency closure。<code>ContainsAddress</code>、<code>GetDependencyClosure</code> 可直接查询，LoadBytes/LoadText 热路径不扫描 catalog；公开索引构造函数会克隆输入，因此调用方之后修改 catalog 不会改变索引。</p>
+        <pre><code>using BEngine.AssetBundles;
+
+await using var bundles = new AssetBundleManager(new AssetBundleRuntimeOptions
+{
+    PackageName = "com.example.game",
+    CacheDirectory = cachePath,
+    BuiltInDirectory = builtInPath,
+    RemoteBaseUri = new Uri("https://cdn.example.test/content/"),
+    RequireHttps = true,
+    MaxRetries = 3
+});
+
+await bundles.InitializeAsync(stop.Token);
+var plan = await bundles.CheckForUpdatesAsync(stop.Token);
+if (plan.HasUpdates)
+    await bundles.ApplyUpdateAsync(plan, progress: null, cancellationToken: stop.Token);
+
+await using var text =
+    await bundles.LoadTextAsync("Assets/Data/config.json", stop.Token);</code></pre>
+        <h3>并发与发布边界</h3>
+        <p>同一 manager 可并发初始化和加载；相同内容 hash 共享一个 bundle task，句柄引用计数决定 <code>UnloadUnused</code> 何时可释放。初始化、Apply、Rollback 与 Cleanup 串行改变状态；加载捕获不可变快照，更新通过发布新状态切换，不原地修改正在读取的 catalog。并发提交相同更新计划只有一次实际激活。</p>
+        <h3>验证、回滚与运行时只读</h3>
+        <p>远程 metadata 与 bundle 均校验大小、SHA-256 和目录边界。bundle 通过 <code>HttpNetworkRequest</code> 流式写 staging 并增量 hash，验证后才移动进 object cache；catalog 和 active/previous 指针使用临时文件原子替换。失败时旧 active 保持可用并清理 <code>.part</code>；Rollback 只切换已验证指针，不重新下载。</p>
+        <div class="warning">运行时是只读消费者：修改 <code>ActiveCatalog</code> 返回值不会改变 manager，不得改写索引、bundle 或 Assets。发布新内容必须经过构建 catalog、Check、下载、验证与原子 Apply。</div>
       </section>
 
       <section id="editor">
@@ -184,6 +270,15 @@ public sealed class PlayerMover : MonoBehaviour
         <h3>SubAsset</h3>
         <p>SubAsset 由“主资源 GUID + 非零 <code>localIdentifier</code>”唯一标识，主资源的 localIdentifier 为 0。BAsset 子资源引用序列化为 <code>guid:&lt;主资源 GUID&gt;#subasset=&lt;localIdentifier&gt;</code>，因此主资源移动或重命名不会破坏引用。<code>TryGetGUIDAndLocalFileIdentifier</code> 返回该身份；<code>LoadAllAssetsAtPath</code> 返回主资源和全部表示，<code>LoadAllAssetRepresentationsAtPath</code> 只返回 SubAsset。</p>
         <p>用 <code>AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)</code> 创建内嵌 SubAsset，用 <code>RemoveObjectFromAsset</code> 移除。SubAsset 不能再拥有子资源，由 Importer 管理的 Sprite 等表示不能手动移除。Project 将 SubAsset 挂在主资源节点下；展开主资源即可查看、选择和拖拽，ObjectField、Inspector 与枚举 API 使用同一对象身份。</p>
+      </section>
+
+      <section id="workspace">
+        <h2>全局 Layout、Undo 与 Profiler</h2>
+        <p>Layout 是编辑器偏好，不属于工程。当前会话和命名布局统一保存在 <code>Output/EditorData/Preferences/Layouts</code>；旧的 <code>ProjectSettings/EditorLayout.yaml</code> 与 <code>ProjectSettings/Layouts</code> 只在首次读取时迁移。工具栏将当前会话显示为 <strong>Layout</strong>，并提供不可删除的 Default、2 by 3、Tall、Wide 预设；自定义布局可保存、切换、重命名和删除。</p>
+        <p>工具栏 Undo History 图标打开 TreeView 历史窗口。记录包含组名、操作数、对象数、对象名称与场景影响；点击记录会把 Undo 游标直接移动到对应状态，并在详情面板显示完整信息。新的编辑动作会截断当前游标之后的 Redo 分支。</p>
+        <p><strong>Window &gt; Analysis &gt; Profiler</strong> 分别展示 CPU、Rendering、Memory 与扩展模块。132 像素高的模块摘要区支持纵向滚动；Rendering 展开 Camera、Batch、Draw、Triangle、Vertex、Render Target、耗时占比和帧间差值，Memory 展开托管堆、存活量、碎片、Working Set、Private Bytes、分配速率、差值及分配站点。CPU 树按 Editor/Runtime、类、方法和调用栈组织。Profiler Modules 菜单控制可见项，外部代码通过 <code>EditorProfilerModuleRegistry</code> 注册模块。</p>
+        <h3>Unity 风格快捷键</h3>
+        <p><kbd>Q</kbd>/<kbd>W</kbd>/<kbd>E</kbd>/<kbd>R</kbd>/<kbd>F</kbd> 对应 View、Move、Rotate、Scale、Frame Selected；<kbd>Ctrl/Cmd+N</kbd>/<kbd>O</kbd>/<kbd>S</kbd> 新建、打开、保存场景；<kbd>Ctrl/Cmd+Z</kbd> 与 <kbd>Ctrl/Cmd+Shift+Z</kbd> Undo/Redo；<kbd>Ctrl/Cmd+P</kbd>、<kbd>Ctrl/Cmd+Shift+P</kbd>、<kbd>Ctrl/Cmd+Alt+P</kbd> 控制 Play/Pause/Step。<kbd>Ctrl/Cmd+1..5</kbd> 聚焦五个主要窗口，<kbd>Ctrl/Cmd+7</kbd> 聚焦 Profiler，<kbd>Ctrl/Cmd+Shift+C</kbd> 聚焦 Console。文本字段聚焦时，复制、粘贴和全选不会泄漏到窗口命令。</p>
       </section>
 
       <section id="themes">

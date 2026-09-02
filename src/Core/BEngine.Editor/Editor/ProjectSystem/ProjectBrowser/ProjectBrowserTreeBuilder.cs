@@ -215,7 +215,7 @@ internal static class ProjectBrowserTreeBuilder
             ".pdb" => "Debug Symbols",
             ".png" => "Texture",
             ".jpg" or ".jpeg" or ".bmp" or ".svg" => "Package File",
-            ".shader" or ".glsl" => "Shader",
+            ".shader" or ".cg" => "Shader",
             ".yaml" or ".yml" or ".json" or ".xml" => "Data",
             ".md" or ".txt" => "Text",
             _ => "Package File"

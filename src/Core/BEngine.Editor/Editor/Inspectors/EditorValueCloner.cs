@@ -150,10 +150,7 @@ internal static class EditorValueCloner
         foreach (var field in current.GetFields(BindingFlags.Instance | BindingFlags.Public |
                                                 BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
         {
-            if (field.IsStatic || field.IsInitOnly || field.IsDefined(typeof(NonSerializedAttribute), true) ||
-                typeof(Delegate).IsAssignableFrom(field.FieldType)) continue;
-            if (field.IsPublic || field.IsDefined(typeof(SerializeFieldAttribute), true) ||
-                field.IsDefined(typeof(SerializeReferenceAttribute), true)) yield return field;
+            if (RuntimeTypeCache.IsSerializableMember(field)) yield return field;
         }
     }
 }

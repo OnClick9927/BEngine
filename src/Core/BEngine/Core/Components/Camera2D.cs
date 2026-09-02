@@ -24,6 +24,8 @@ public sealed class Camera2D : Behaviour
         set => field = value & SortingLayer.AllMask;
     } = SortingLayer.AllMask;
 
+    public RenderTexture? targetTexture { get; set; }
+
     public Rect viewportRect
     {
         get;

@@ -28,27 +28,27 @@ internal static class CoroutineScheduler
     internal static void Stop(MonoBehaviour owner, Coroutine coroutine)
     {
         if (coroutine is null) return;
-        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine, coroutine) &&
-                                   ReferenceEquals(entry.Coroutine.Owner, owner));
+        RemoveEntries(entry => ReferenceEquals(entry.Coroutine, coroutine) &&
+                               ReferenceEquals(entry.Coroutine.Owner, owner));
     }
 
     internal static void Stop(MonoBehaviour owner, IEnumerator routine)
     {
         if (routine is null) return;
-        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner, owner) &&
-                                   ReferenceEquals(entry.Coroutine.Routine, routine));
+        RemoveEntries(entry => ReferenceEquals(entry.Coroutine.Owner, owner) &&
+                               ReferenceEquals(entry.Coroutine.Routine, routine));
     }
 
     internal static void Stop(MonoBehaviour owner, string methodName)
     {
-        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner, owner) &&
-                                   entry.Coroutine.MethodName == methodName);
+        RemoveEntries(entry => ReferenceEquals(entry.Coroutine.Owner, owner) &&
+                               entry.Coroutine.MethodName == methodName);
     }
 
     internal static void StopAll(MonoBehaviour owner)
     {
-        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner, owner));
-        Invocations.RemoveAll(entry => ReferenceEquals(entry.Owner, owner));
+        RemoveEntries(entry => ReferenceEquals(entry.Coroutine.Owner, owner));
+        RemoveInvocations(entry => ReferenceEquals(entry.Owner, owner));
     }
 
     internal static void Invoke(MonoBehaviour owner, string methodName, Fix64 delay, Fix64? repeatRate)
@@ -63,8 +63,8 @@ internal static class CoroutineScheduler
 
     internal static void CancelInvokes(MonoBehaviour owner, string? methodName = null)
     {
-        Invocations.RemoveAll(entry => ReferenceEquals(entry.Owner, owner) &&
-                                       (methodName is null || entry.MethodName == methodName));
+        RemoveInvocations(entry => ReferenceEquals(entry.Owner, owner) &&
+                                   (methodName is null || entry.MethodName == methodName));
     }
 
     internal static bool IsInvoking(MonoBehaviour owner, string? methodName = null)
@@ -84,9 +84,11 @@ internal static class CoroutineScheduler
             if (ReferenceEquals(invocation.Owner.gameObject.scene, scene) && invocation.NextTime <= Time.time)
                 TickInvocations.Add(invocation);
 
-        foreach (var invocation in TickInvocations) RunInvocation(invocation);
+        foreach (var invocation in TickInvocations)
+            if (invocation.IsScheduled) RunInvocation(invocation);
         foreach (var entry in TickEntries)
         {
+            if (!entry.IsScheduled) continue;
             if (!entry.Coroutine.Owner.enabled || !entry.Coroutine.Owner.gameObject.activeInHierarchy) continue;
             try
             {
@@ -104,8 +106,8 @@ internal static class CoroutineScheduler
 
     internal static void StopScene(Scene scene)
     {
-        Entries.RemoveAll(entry => ReferenceEquals(entry.Coroutine.Owner.gameObject.scene, scene));
-        Invocations.RemoveAll(entry => ReferenceEquals(entry.Owner.gameObject.scene, scene));
+        RemoveEntries(entry => ReferenceEquals(entry.Coroutine.Owner.gameObject.scene, scene));
+        RemoveInvocations(entry => ReferenceEquals(entry.Owner.gameObject.scene, scene));
     }
 
     private static void RunInvocation(Invocation invocation)
@@ -116,13 +118,46 @@ internal static class CoroutineScheduler
             Debug.LogError($"Invoke {invocation.Owner.GetType().Name}.{invocation.MethodName} failed: " +
                            exception.Message);
         }
-        if (!Invocations.Remove(invocation) || invocation.RepeatRate is not { } repeatRate) return;
-        Invocations.Add(invocation with { NextTime = Time.time + repeatRate });
+        if (!invocation.IsScheduled) return;
+        RemoveInvocation(invocation);
+        if (invocation.RepeatRate is not { } repeatRate) return;
+        invocation.NextTime = Time.time + repeatRate;
+        invocation.IsScheduled = true;
+        Invocations.Add(invocation);
     }
 
     private static void Remove(Entry entry)
     {
+        entry.IsScheduled = false;
         Entries.Remove(entry);
+    }
+
+    private static void RemoveEntries(Predicate<Entry> predicate)
+    {
+        for (var index = Entries.Count - 1; index >= 0; index--)
+        {
+            var entry = Entries[index];
+            if (!predicate(entry)) continue;
+            entry.IsScheduled = false;
+            Entries.RemoveAt(index);
+        }
+    }
+
+    private static void RemoveInvocation(Invocation invocation)
+    {
+        invocation.IsScheduled = false;
+        Invocations.Remove(invocation);
+    }
+
+    private static void RemoveInvocations(Predicate<Invocation> predicate)
+    {
+        for (var index = Invocations.Count - 1; index >= 0; index--)
+        {
+            var invocation = Invocations[index];
+            if (!predicate(invocation)) continue;
+            invocation.IsScheduled = false;
+            Invocations.RemoveAt(index);
+        }
     }
 
     private sealed class Entry
@@ -133,6 +168,7 @@ internal static class CoroutineScheduler
         private bool _waitOneFrame;
 
         internal Coroutine Coroutine { get; }
+        internal bool IsScheduled { get; set; } = true;
 
         internal Entry(Coroutine coroutine)
         {
@@ -182,9 +218,16 @@ internal static class CoroutineScheduler
         }
     }
 
-    private readonly record struct Invocation(
-        MonoBehaviour Owner,
-        string MethodName,
-        Fix64 NextTime,
-        Fix64? RepeatRate);
+    private sealed class Invocation(
+        MonoBehaviour owner,
+        string methodName,
+        Fix64 nextTime,
+        Fix64? repeatRate)
+    {
+        internal MonoBehaviour Owner { get; } = owner;
+        internal string MethodName { get; } = methodName;
+        internal Fix64 NextTime { get; set; } = nextTime;
+        internal Fix64? RepeatRate { get; } = repeatRate;
+        internal bool IsScheduled { get; set; } = true;
+    }
 }

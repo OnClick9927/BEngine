@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../../src/Packages/Audio/BEngine.Audio/BEngine.Audio.csproj" />
   </ItemGroup>
 </Project>

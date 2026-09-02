@@ -29,7 +29,7 @@ internal static class Program
             VerifySegmentedButtonsAndDropDownApi();
             VerifyTextureStyleBackground();
             VerifyScaledTextCaret();
-            Console.WriteLine("UNITY_EDITOR_THEME_OK|style-only-theme,skin-owned-styles,toggle-states,fixed-14px-font,density,alignment,focus," +
+            Console.WriteLine("UNITY_EDITOR_THEME_OK|style-only-theme,skin-owned-styles,toggle-states,toolbar-toggle-semantics,fixed-14px-font,density,alignment,focus," +
                               "disabled,segmented-button-background,texture-background,dropdown-api,scaled-caret");
             return 0;
         }
@@ -77,6 +77,17 @@ internal static class Program
                         skin.toggle.normal.borderColor.Equals(skin.textField.normal.borderColor) &&
                         skin.toggle.onNormal.textColor.Equals(skin.label.normal.textColor),
                     $"{skin.name} toggle off/on states do not follow its GUIStyles.");
+                Require(skin.toolbarButton.onNormal.backgroundColor.Equals(
+                            skin.toolbarButton.normal.backgroundColor) &&
+                        skin.toolbarButtonLeft.onNormal.backgroundColor.Equals(
+                            skin.toolbarButtonLeft.normal.backgroundColor) &&
+                        skin.toolbarButtonRight.onNormal.backgroundColor.Equals(
+                            skin.toolbarButtonRight.normal.backgroundColor) &&
+                        !skin.toolbarToggle.onNormal.backgroundColor.Equals(
+                            skin.toolbarToggle.normal.backgroundColor) &&
+                        skin.toolbarDropDownToggle.onNormal.backgroundColor.Equals(
+                            skin.toolbarToggle.onNormal.backgroundColor),
+                    $"{skin.name} toolbar button and toggle roles are not visually distinct.");
 
                 foreach (var value in new[] { false, true })
                 {
@@ -143,12 +154,62 @@ internal static class Program
     {
         Require(EditorStyles.toolbarButton.normal.backgroundColor.Equals(
                     EditorStyles.toolbar.normal.backgroundColor) &&
+                EditorStyles.toolbarButton.onNormal.backgroundColor.Equals(
+                    EditorStyles.toolbarButton.normal.backgroundColor) &&
+                EditorStyles.toolbarButton.onHover.backgroundColor.Equals(
+                    EditorStyles.toolbarButton.hover.backgroundColor) &&
+                EditorStyles.toolbarButton.onActive.backgroundColor.Equals(
+                    EditorStyles.toolbarButton.active.backgroundColor) &&
+                EditorStyles.toolbarButton.onFocused.backgroundColor.Equals(
+                    EditorStyles.toolbarButton.focused.backgroundColor) &&
                 EditorStyles.toolbarButton.borderWidth == Fix64.Zero,
-            "Toolbar button colors were not restored to the toolbar surface.");
+            "Toolbar button unexpectedly exposes a selected state.");
+        Require(!EditorStyles.toolbarToggle.onNormal.backgroundColor.Equals(
+                    EditorStyles.toolbarToggle.normal.backgroundColor) &&
+                !EditorStyles.toolbarIconButtonSelected.normal.backgroundColor.Equals(
+                    EditorStyles.toolbarIconButton.normal.backgroundColor) &&
+                EditorStyles.toolbarDropDownToggle.onNormal.backgroundColor.Equals(
+                    EditorStyles.toolbarToggle.onNormal.backgroundColor),
+            "Dedicated toolbar toggle styles do not expose their selected state.");
         Require(EditorStyles.toolbarButton.normal.backgroundImage is not null &&
                 GUI.skin.button.normal.backgroundImage is not null &&
                 EditorStyles.dropDownButton.normal.backgroundImage is not null,
             "Button GUIStyles do not expose their textured background image.");
+
+        const string checkIconSuffix = "Check.png";
+        var checkbox = Render(() => GUI.Toggle(new Rect(10, 8, 120, 28), true, "Checkbox"));
+        Require(checkbox.Any(command => command.Type == GpuCanvasCommandType.Image &&
+                                        command.Content.EndsWith(checkIconSuffix,
+                                            StringComparison.OrdinalIgnoreCase)),
+            "The ordinary checkbox toggle lost its check mark.");
+
+        var toolbarButtonToggle = Render(() => GUI.Toggle(new Rect(10, 8, 120, 28), true,
+            "Command", EditorStyles.toolbarButton));
+        Require(!toolbarButtonToggle.Any(command => command.Type == GpuCanvasCommandType.Image &&
+                                               command.Content.EndsWith(checkIconSuffix,
+                                                   StringComparison.OrdinalIgnoreCase)) &&
+                HasFullControlSurface(toolbarButtonToggle,
+                    EditorStyles.toolbarButton.normal.backgroundColor, new Rect(10, 8, 120, 28)),
+            "toolbarButton rendered a check mark or selected surface.");
+
+        var toolbarToggle = Render(() => GUI.Toggle(new Rect(10, 8, 120, 28), true,
+            "Mode", EditorStyles.toolbarToggle));
+        Require(!toolbarToggle.Any(command => command.Type == GpuCanvasCommandType.Image &&
+                                         command.Content.EndsWith(checkIconSuffix,
+                                             StringComparison.OrdinalIgnoreCase)) &&
+                HasFullControlSurface(toolbarToggle,
+                    EditorStyles.toolbarToggle.onNormal.backgroundColor, new Rect(10, 8, 120, 28)),
+            "toolbarToggle did not render its selected background without a check mark.");
+
+        var selectedIconButton = Render(() => GUI.Button(new Rect(10, 8, 120, 28), "Selected",
+            EditorStyles.toolbarIconButtonSelected));
+        Require(HasFullControlSurface(selectedIconButton,
+                    EditorStyles.toolbarIconButtonSelected.normal.backgroundColor,
+                    new Rect(10, 8, 120, 28)) &&
+                !selectedIconButton.Any(command => command.Type == GpuCanvasCommandType.Image &&
+                                                   command.Content.EndsWith(checkIconSuffix,
+                                                       StringComparison.OrdinalIgnoreCase)),
+            "toolbarIconButtonSelected lost its selected surface or rendered a check mark.");
 
         var toolbar = Render(() => GUI.Button(new Rect(10, 8, 120, 28), "Toolbar",
             EditorStyles.toolbarButton));
@@ -166,12 +227,13 @@ internal static class Program
         var arrow = dropDown.Single(command => command.Type == GpuCanvasCommandType.Image &&
                                                  command.Content.EndsWith("FoldoutOpen.png",
                                                      StringComparison.OrdinalIgnoreCase));
-        Require(arrow.Rect.X > label.Rect.X && arrow.Rect.X >= 210 &&
+        Require(label.Rect.Right <= arrow.Rect.X + .01f &&
+                arrow.Rect.X > label.Rect.X && arrow.Rect.X >= 210 &&
                 dropDown.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
                                         command.Color == GpuCanvasColor.FromColor(
                                             EditorStyles.dropDownButton.normal.borderColor) &&
                                         Math.Abs(command.Rect.X - 210) < .01f),
-            "DropDownButton does not visibly separate its dropdown arrow region.");
+            "DropDownButton content overlaps or does not visibly separate its dropdown arrow region.");
 
         var clicked = false;
         Dispatch(new Event(EventType.MouseDown) { mousePosition = new Vector2(40, 18), button = 0 },
@@ -201,6 +263,14 @@ internal static class Program
                                           StringComparison.OrdinalIgnoreCase)),
             "EditorGUILayout.DropDownButton did not render its content and dropdown affordance.");
     }
+
+    private static bool HasFullControlSurface(IEnumerable<GpuCanvasCommand> commands, Color color, Rect rect) =>
+        commands.Any(command => command.Type == GpuCanvasCommandType.SolidRect &&
+                                command.Color == GpuCanvasColor.FromColor(color) &&
+                                Math.Abs(command.Rect.X - (float)rect.x) < .01f &&
+                                Math.Abs(command.Rect.Y - (float)rect.y) < .01f &&
+                                Math.Abs(command.Rect.Width - (float)rect.width) < .01f &&
+                                Math.Abs(command.Rect.Height - (float)rect.height) < .01f);
 
     private static void VerifyTextureStyleBackground()
     {

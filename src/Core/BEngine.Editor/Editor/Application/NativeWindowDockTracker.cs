@@ -1,21 +1,5 @@
 namespace BEngine.Editor;
 
-internal enum NativeDockDragPhase
-{
-    None,
-    Preview,
-    Drop
-}
-
-internal enum NativeWindowPointerOperation
-{
-    Unknown,
-    CaptionMove,
-    BorderResize
-}
-
-internal readonly record struct NativeDockDragUpdate(NativeDockDragPhase Phase, Vector2? DockPoint);
-
 /// <summary>
 /// Tracks a native title-bar move without depending on a particular windowing backend. Windows can
 /// enter a modal OS move loop, so a move first observed after mouse release is still treated as a

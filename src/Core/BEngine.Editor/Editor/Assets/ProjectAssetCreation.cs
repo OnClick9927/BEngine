@@ -98,13 +98,9 @@ internal static class ProjectAssetCreation
         var path = Unique(folder, "New Shader.shader");
         WriteText(path, """
             #pragma stage fragment
-            #version 450
-
-            layout(location = 0) out vec4 OutputColor;
-
-            void main()
+            float4 main() : SV_Target
             {
-                OutputColor = vec4(1.0, 1.0, 1.0, 1.0);
+                return float4(1.0, 1.0, 1.0, 1.0);
             }
             """);
         return path;

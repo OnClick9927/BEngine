@@ -3,10 +3,8 @@ namespace BEngine;
 [AddComponentMenu("Rendering/Sprite Renderer")]
 public sealed class SpriteRenderer : Renderer2D
 {
-    private static readonly Material DefaultMaterial = new(Shader.Find("BEngine/Sprite"))
-    {
-        name = "Default Sprite Material"
-    };
+    private static readonly Material DefaultMaterial =
+        Material.GetBuiltIn("BEngine/Sprite", "Default Sprite Material");
 
     public Sprite? sprite { get; set; }
     public Vector2 size { get; set; } = Vector2.one;
@@ -16,6 +14,7 @@ public sealed class SpriteRenderer : Renderer2D
     public Color color { get; set; } = Color.white;
     public bool flipX { get; set; }
     public bool flipY { get; set; }
+    public SpriteMaskInteraction maskInteraction { get; set; }
 
     public Material material
     {

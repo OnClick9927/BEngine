@@ -34,6 +34,7 @@ public static class EditorBuiltinIcons
         ["Shader Icon"] = Assets.Shader,
         ["Texture Icon"] = Assets.Image,
         ["Texture2D Icon"] = Assets.Image,
+        ["RenderTexture Icon"] = Assets.Image,
         ["Sprite Icon"] = Assets.Image,
         ["AudioClip Icon"] = Assets.Audio,
         ["AnimationClip Icon"] = Assets.Animation,
@@ -115,6 +116,9 @@ public static class EditorBuiltinIcons
         public const string Camera2D = "Icons/Components/Camera.png";
         public const string Script = "Icons/Components/Script.png";
         public const string SpriteRenderer = "Icons/Components/SpriteRenderer.png";
+        public const string LineRenderer2D = SpriteRenderer;
+        public const string TrailRenderer2D = SpriteRenderer;
+        public const string SpriteMask = SpriteRenderer;
         public const string ParticleSystem2D = "Icons/Components/ParticleSystem2D.png";
         public const string Rigidbody2D = "Icons/Components/Rigidbody2D.png";
         public const string Collider2D = "Icons/Components/Collider2D.png";

@@ -3,7 +3,6 @@ using UnityEditor.IMGUI.Controls;
 namespace BEngine.Editor;
 
 [EditorWindowIcon("Icons/Windows/Window.png")]
-[EditorWindowTab("Analysis/Profiler")]
 internal sealed class ProfilerWindow : EditorWindow
 {
     private const int CompactToolbarThreshold = 780;
@@ -13,7 +12,7 @@ internal sealed class ProfilerWindow : EditorWindow
     private const int SplitterHeight = 4;
     private const int MinimumGraphHeight = 84;
     private const int MinimumDetailsHeight = 70;
-    private const int ModuleRowHeight = 88;
+    private const int ModuleRowHeight = 132;
     private const string CpuModuleId = "builtin.cpu";
     private const string RenderingModuleId = "builtin.rendering";
     private const string MemoryModuleId = "builtin.memory";
@@ -35,11 +34,14 @@ internal sealed class ProfilerWindow : EditorWindow
 
     private readonly TreeViewState<int> _hierarchyState = new();
     private readonly TreeViewState<int> _moduleTreeState = new();
+    private readonly TreeViewState<int> _counterTreeState = new();
     private readonly HashSet<string> _visibleModuleIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _knownModuleIds = new(StringComparer.Ordinal);
     private ProfilerHierarchyTreeView? _hierarchy;
     private ProfilerModuleTreeView? _moduleTree;
+    private ProfilerCounterTreeView? _counterTree;
     private EditorProfilerMethodSample? _selectedMethodSample;
+    private ProfilerCounterDetail? _selectedCounterDetail;
     private long _observedVersion = -1;
     private long _selectedFrameIndex = -1;
     private bool _followLatest = true;
@@ -70,6 +72,8 @@ internal sealed class ProfilerWindow : EditorWindow
             sample => _selectedMethodSample = sample);
         _moduleTree ??= new ProfilerModuleTreeView(_moduleTreeState, SelectModule,
             DrawModuleTreeRow, ModuleRowHeight);
+        _counterTree ??= new ProfilerCounterTreeView(_counterTreeState,
+            detail => _selectedCounterDetail = detail);
         EditorProfilerModuleRegistry.modulesChanged -= OnProfilerModulesChanged;
         EditorProfilerModuleRegistry.modulesChanged += OnProfilerModulesChanged;
         EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
@@ -577,8 +581,82 @@ internal sealed class ProfilerWindow : EditorWindow
 
     private void DrawCounterDetails(Rect area, EditorProfilerFrame frame)
     {
-        var rows = _module == ProfilerModule.Rendering ? RenderingRows(frame) : MemoryRows(frame);
-        DrawCounterRows(area, rows);
+        var previous = PreviousSelectedFrame();
+        var details = _module == ProfilerModule.Rendering
+            ? RenderingDetails(frame, previous)
+            : MemoryDetails(frame, previous);
+        _counterTree ??= new ProfilerCounterTreeView(_counterTreeState,
+            detail => _selectedCounterDetail = detail);
+        _counterTree.SetDetails(details);
+        if (area.height < 150)
+        {
+            _counterTree.OnGUI(area);
+            return;
+        }
+
+        var inspectorHeight = Fix64.Clamp(area.height * Fix64.FromDecimal(0.38m), 96, 178);
+        var tree = new Rect(area.x, area.y, area.width,
+            Fix64.Max(1, area.height - inspectorHeight - 1));
+        _counterTree.OnGUI(tree);
+        GUI.DrawRect(new Rect(area.x, tree.yMax, area.width, 1),
+            EditorStyles.separator.normal.backgroundColor);
+        DrawCounterInspector(new Rect(area.x, tree.yMax + 1, area.width, inspectorHeight));
+    }
+
+    private void DrawCounterInspector(Rect area)
+    {
+        GUI.Box(area, GUIContent.none, EditorStyles.viewBackground);
+        if (_selectedCounterDetail is not { } detail)
+        {
+            DrawEmptyState(area, "Select a counter to inspect its captured value.");
+            return;
+        }
+
+        var width = Fix64.Max(1, area.width - 16);
+        var y = area.y + 5;
+        GUI.Label(new Rect(area.x + 8, y, width, 22),
+            $"{detail.Category} / {detail.Name}", EditorStyles.boldLabel);
+        y += 24;
+        using (new EditorGUI.DisabledScope(true))
+        {
+            _ = EditorGUI.TextField(new Rect(area.x + 8, y, width, 22), "Category",
+                detail.Category);
+            y += 23;
+            DrawCounterValueField(new Rect(area.x + 8, y, width, 22), detail);
+        }
+        y += 25;
+        if (area.yMax - y >= 38)
+            EditorGUI.HelpBox(new Rect(area.x + 8, y, width, area.yMax - y - 5),
+                detail.Description, MessageType.Info);
+    }
+
+    private static void DrawCounterValueField(Rect row, ProfilerCounterDetail detail)
+    {
+        switch (detail.Kind)
+        {
+            case ProfilerCounterValueKind.Integer when detail.IntegerValue is >= int.MinValue and
+                <= int.MaxValue:
+                _ = EditorGUI.IntField(row, "Value", (int)detail.IntegerValue);
+                break;
+            case ProfilerCounterValueKind.Milliseconds:
+            case ProfilerCounterValueKind.Percentage:
+            case ProfilerCounterValueKind.Decimal:
+                _ = EditorGUI.FloatField(row, "Value", (float)detail.NumericValue);
+                break;
+            case ProfilerCounterValueKind.Boolean:
+                _ = EditorGUI.Toggle(row, "Value", detail.BooleanValue);
+                break;
+            case ProfilerCounterValueKind.Bytes:
+            case ProfilerCounterValueKind.Integer:
+                _ = EditorGUI.TextField(row, "Value", detail.IntegerValue.ToString("N0"));
+                break;
+            default:
+                _ = EditorGUI.TextField(row, "Value",
+                    string.IsNullOrWhiteSpace(detail.TextValue)
+                        ? detail.DisplayValue
+                        : detail.TextValue);
+                break;
+        }
     }
 
     private void DrawExternalCounterDetails(
@@ -845,6 +923,12 @@ internal sealed class ProfilerWindow : EditorWindow
         return position >= 0 ? _frames[position] : null;
     }
 
+    private EditorProfilerFrame? PreviousSelectedFrame()
+    {
+        var position = SelectedFramePosition();
+        return position > 0 ? _frames[position - 1] : null;
+    }
+
     private bool ContainsFrame(long frameIndex)
     {
         for (var index = _frameCount - 1; index >= 0; index--)
@@ -909,7 +993,9 @@ internal sealed class ProfilerWindow : EditorWindow
         (OtherMilliseconds(frame), CpuOtherColor)
     ];
 
-    private static (string Name, string Value)[] RenderingRows(EditorProfilerFrame frame)
+    private static ProfilerCounterDetail[] RenderingDetails(
+        EditorProfilerFrame frame,
+        EditorProfilerFrame? previous)
     {
         var statistics = frame.RenderStatistics;
         var savedByBatching = Math.Max(0,
@@ -923,65 +1009,236 @@ internal sealed class ProfilerWindow : EditorWindow
         var averageTriangles = statistics.DrawCallCount <= 0
             ? 0
             : statistics.TriangleCount / (double)statistics.DrawCallCount;
-        return
+        List<ProfilerCounterDetail> details =
         [
-            ("Frame", frame.FrameIndex.ToString("N0")),
-            ("Render Time", $"{frame.RenderMilliseconds:F3} ms"),
-            ("Domain", frame.RuntimeMilliseconds > 0 ? "Runtime + Editor" : "Editor"),
-            ("Cameras", statistics.CameraCount.ToString("N0")),
-            ("Visible Submissions", statistics.VisibleSubmissionCount.ToString("N0")),
-            ("Batches", statistics.BatchCount.ToString("N0")),
-            ("Saved by Batching", savedByBatching.ToString("N0")),
-            ("Batching Efficiency", $"{batchEfficiency:F1}%"),
-            ("Draw Calls", DrawValue(statistics.DrawCallCount,
-                statistics.HasCompleteDrawStatistics)),
-            ("Average Vertices / Draw", statistics.HasCompleteDrawStatistics
-                ? averageVertices.ToString("N1") : "Unavailable"),
-            ("Average Triangles / Draw", statistics.HasCompleteDrawStatistics
-                ? averageTriangles.ToString("N1") : "Unavailable"),
-            ("Vertices", DrawValue(statistics.VertexCount,
-                statistics.HasCompleteDrawStatistics)),
-            ("Triangles", DrawValue(statistics.TriangleCount,
-                statistics.HasCompleteDrawStatistics)),
-            ("Lines", DrawValue(statistics.LineCount,
-                statistics.HasCompleteDrawStatistics)),
-            ("Render Target", $"{statistics.TargetWidth:N0} x {statistics.TargetHeight:N0}"),
-            ("Statistics", statistics.HasCompleteDrawStatistics ? "Complete" : "Partial")
+            IntegerDetail("Frame", "Frame Index", frame.FrameIndex,
+                "Monotonic index assigned when this editor profiler frame completed."),
+            MillisecondsDetail("Frame", "Frame Time", frame.FrameMilliseconds,
+                "Total measured editor frame duration."),
+            MillisecondsDetail("Frame", "Render Time", frame.RenderMilliseconds,
+                "Time spent in the measured rendering phase."),
+            PercentageDetail("Frame", "Render Share",
+                frame.FrameMilliseconds <= 0 ? 0 : frame.RenderMilliseconds * 100d /
+                frame.FrameMilliseconds,
+                "Rendering time as a percentage of the total measured frame time."),
+            TextDetail("Frame", "Domain",
+                frame.RuntimeMilliseconds > 0 ? "Runtime + Editor" : "Editor",
+                "Whether runtime work was observed in the captured editor frame."),
+            IntegerDetail("Scene", "Cameras", statistics.CameraCount,
+                "Number of cameras rendered across the scene render operations in this frame."),
+            IntegerDetail("Scene", "Visible Submissions", statistics.VisibleSubmissionCount,
+                "Visible renderer submissions before compatible submissions are batched."),
+            IntegerDetail("Scene", "Batches", statistics.BatchCount,
+                "Batches emitted by scene renderers after batching."),
+            IntegerDetail("Scene", "Saved by Batching", savedByBatching,
+                "Visible submissions merged into existing batches."),
+            PercentageDetail("Scene", "Batching Efficiency", batchEfficiency,
+                "Percentage of visible submissions saved by batching."),
+            DecimalDetail("Scene", "Submissions / Camera",
+                statistics.CameraCount <= 0 ? 0 : statistics.VisibleSubmissionCount /
+                (double)statistics.CameraCount,
+                "Average visible submissions processed per rendered camera."),
+            DecimalDetail("Scene", "Batches / Camera",
+                statistics.CameraCount <= 0 ? 0 : statistics.BatchCount /
+                (double)statistics.CameraCount,
+                "Average emitted batches per rendered camera."),
+            IntegerDetail("Render Target", "Target Width", statistics.TargetWidth,
+                "Width of the last scene render target in pixels."),
+            IntegerDetail("Render Target", "Target Height", statistics.TargetHeight,
+                "Height of the last scene render target in pixels."),
+            IntegerDetail("Render Target", "Target Pixels",
+                (long)statistics.TargetWidth * statistics.TargetHeight,
+                "Pixel count of the last scene render target."),
+            DecimalDetail("Render Target", "Aspect Ratio", statistics.TargetHeight <= 0
+                    ? 0
+                    : statistics.TargetWidth / (double)statistics.TargetHeight,
+                "Width divided by height for the last scene render target."),
+            BooleanDetail("Render Target", "Complete Draw Statistics",
+                statistics.HasCompleteDrawStatistics,
+                "True when every contributing graphics device supplied draw statistics.")
         ];
+        if (previous is { } previousFrame)
+            details.Insert(4, MillisecondsDetail("Frame", "Render Time Delta",
+                frame.RenderMilliseconds - previousFrame.RenderMilliseconds,
+                "Change in render time from the preceding retained profiler frame."));
+
+        if (statistics.HasCompleteDrawStatistics)
+        {
+            details.AddRange(
+            [
+                IntegerDetail("Draw Calls", "Draw Calls", statistics.DrawCallCount,
+                    "Draw calls reported by all contributing graphics devices."),
+                IntegerDetail("Draw Calls", "Vertices", statistics.VertexCount,
+                    "Submitted vertices across captured draw calls."),
+                IntegerDetail("Draw Calls", "Triangles", statistics.TriangleCount,
+                    "Submitted triangle primitives."),
+                IntegerDetail("Draw Calls", "Lines", statistics.LineCount,
+                    "Submitted line primitives."),
+                DecimalDetail("Draw Calls", "Average Vertices / Draw", averageVertices,
+                    "Submitted vertices divided by draw-call count."),
+                DecimalDetail("Draw Calls", "Average Triangles / Draw", averageTriangles,
+                    "Submitted triangles divided by draw-call count."),
+                DecimalDetail("Draw Calls", "Average Lines / Draw",
+                    statistics.DrawCallCount <= 0 ? 0 : statistics.LineCount /
+                    (double)statistics.DrawCallCount,
+                    "Submitted lines divided by draw-call count."),
+                DecimalDetail("Draw Calls", "Vertices / Triangle",
+                    statistics.TriangleCount <= 0 ? 0 : statistics.VertexCount /
+                    (double)statistics.TriangleCount,
+                    "Submitted vertices divided by submitted triangle count.")
+            ]);
+            if (previous is { } prior && prior.RenderStatistics.HasCompleteDrawStatistics)
+                details.Add(IntegerDetail("Draw Calls", "Draw Call Delta",
+                    statistics.DrawCallCount - prior.RenderStatistics.DrawCallCount,
+                    "Change in draw-call count from the preceding retained profiler frame."));
+        }
+        else
+            details.Add(TextDetail("Draw Calls", "Availability", "Unavailable",
+                "At least one contributing graphics device did not expose complete draw statistics."));
+        return details.ToArray();
     }
 
-    private static (string Name, string Value)[] MemoryRows(EditorProfilerFrame frame)
+    private static ProfilerCounterDetail[] MemoryDetails(
+        EditorProfilerFrame frame,
+        EditorProfilerFrame? previous)
     {
-        var rows = new List<(string Name, string Value)>
+        var liveManagedBytes = Math.Max(0, frame.ManagedHeapBytes - frame.ManagedFragmentedBytes);
+        var details = new List<ProfilerCounterDetail>
         {
-            ("Frame", frame.FrameIndex.ToString("N0")),
-            ("Allocated This Frame", FormatBytes(frame.ManagedAllocatedBytes)),
-            ("Managed Heap", FormatBytes(frame.ManagedHeapBytes)),
-            ("Managed Fragmented", FormatBytes(frame.ManagedFragmentedBytes)),
-            ("Fragmentation", frame.ManagedHeapBytes <= 0 ? "0.0%" :
-                $"{frame.ManagedFragmentedBytes * 100d / frame.ManagedHeapBytes:F1}%"),
-            ("Process Working Set", FormatBytes(frame.WorkingSetBytes)),
-            ("Process Private Bytes", FormatBytes(frame.PrivateBytes)),
-            ("Generation 0 Collections", frame.Gen0Collections.ToString("N0")),
-            ("Generation 1 Collections", frame.Gen1Collections.ToString("N0")),
-            ("Generation 2 Collections", frame.Gen2Collections.ToString("N0"))
+            IntegerDetail("Frame", "Frame Index", frame.FrameIndex,
+                "Monotonic index assigned when this editor profiler frame completed."),
+            MillisecondsDetail("Frame", "Frame Time", frame.FrameMilliseconds,
+                "Total measured editor frame duration."),
+            BytesDetail("Frame", "Allocated This Frame", frame.ManagedAllocatedBytes,
+                "Managed bytes allocated by the current thread while this frame was recorded."),
+            BytesDetail("Managed Memory", "Managed Heap", frame.ManagedHeapBytes,
+                "Managed heap size reported by the runtime at frame completion."),
+            BytesDetail("Managed Memory", "Estimated Live Managed", liveManagedBytes,
+                "Managed heap minus runtime-reported fragmented bytes."),
+            BytesDetail("Managed Memory", "Managed Fragmented", frame.ManagedFragmentedBytes,
+                "Fragmented managed heap bytes reported by the runtime."),
+            PercentageDetail("Managed Memory", "Fragmentation",
+                frame.ManagedHeapBytes <= 0 ? 0 :
+                frame.ManagedFragmentedBytes * 100d / frame.ManagedHeapBytes,
+                "Runtime-reported fragmented bytes as a percentage of managed heap size."),
+            PercentageDetail("Managed Memory", "Frame Allocations / Heap",
+                frame.ManagedHeapBytes <= 0 ? 0 :
+                frame.ManagedAllocatedBytes * 100d / frame.ManagedHeapBytes,
+                "Bytes allocated during this frame as a percentage of managed heap size."),
+            BytesDetail("Process Memory", "Process Working Set", frame.WorkingSetBytes,
+                "Physical memory currently resident for the editor process."),
+            BytesDetail("Process Memory", "Private Bytes", frame.PrivateBytes,
+                "Memory committed exclusively to the editor process."),
+            BytesDetail("Process Memory", "Private Minus Managed Heap",
+                Math.Max(0, frame.PrivateBytes - frame.ManagedHeapBytes),
+                "Private process memory excluding the measured managed heap; this also includes " +
+                "native engine, graphics, runtime, and other process allocations."),
+            IntegerDetail("Garbage Collection", "Generation 0 Collections",
+                frame.Gen0Collections,
+                "Cumulative generation 0 collection count reported by the runtime."),
+            IntegerDetail("Garbage Collection", "Generation 1 Collections",
+                frame.Gen1Collections,
+                "Cumulative generation 1 collection count reported by the runtime."),
+            IntegerDetail("Garbage Collection", "Generation 2 Collections",
+                frame.Gen2Collections,
+                "Cumulative generation 2 collection count reported by the runtime."),
+            IntegerDetail("Garbage Collection", "Total Collections",
+                (long)frame.Gen0Collections + frame.Gen1Collections + frame.Gen2Collections,
+                "Sum of cumulative collection counts for all managed generations.")
         };
+        if (frame.FrameMilliseconds > 0)
+            details.Insert(3, BytesDetail("Frame", "Allocation Rate (Bytes / ms)",
+                (long)Math.Round(frame.ManagedAllocatedBytes / frame.FrameMilliseconds),
+                "Managed bytes allocated in this frame divided by measured frame duration."));
+        if (previous is { } prior)
+        {
+            details.Add(BytesDetail("Managed Memory", "Heap Delta",
+                frame.ManagedHeapBytes - prior.ManagedHeapBytes,
+                "Change in managed heap size from the preceding retained profiler frame."));
+            details.Add(BytesDetail("Process Memory", "Working Set Delta",
+                frame.WorkingSetBytes - prior.WorkingSetBytes,
+                "Change in process working set from the preceding retained profiler frame."));
+            details.Add(IntegerDetail("Garbage Collection", "Generation 0 Delta",
+                Math.Max(0, frame.Gen0Collections - prior.Gen0Collections),
+                "Generation 0 collections since the preceding retained profiler frame."));
+            details.Add(IntegerDetail("Garbage Collection", "Generation 1 Delta",
+                Math.Max(0, frame.Gen1Collections - prior.Gen1Collections),
+                "Generation 1 collections since the preceding retained profiler frame."));
+            details.Add(IntegerDetail("Garbage Collection", "Generation 2 Delta",
+                Math.Max(0, frame.Gen2Collections - prior.Gen2Collections),
+                "Generation 2 collections since the preceding retained profiler frame."));
+        }
         var allocations = frame.MethodSamples
             .Where(sample => sample.AllocatedBytes > 0)
             .OrderByDescending(sample => sample.AllocatedBytes)
-            .Take(8)
+            .Take(12)
             .ToArray();
         for (var index = 0; index < allocations.Length; index++)
         {
             var sample = allocations[index];
-            rows.Add(($"Allocation {index + 1}",
-                $"[{sample.Domain}] {sample.DisplayName} | {FormatBytes(sample.AllocatedBytes)} | " +
-                sample.ThreadName));
-            if (sample.CallStack.Length > 0)
-                rows.Add(($"  Call Stack {index + 1}", string.Join(" <- ", sample.CallStack.Take(4))));
+            var callStack = sample.CallStack.Length == 0
+                ? "Call stack was not captured."
+                : $"Call stack: {string.Join(" <- ", sample.CallStack.Take(6))}";
+            details.Add(BytesDetail("Allocation Sites", $"#{index + 1} {sample.DisplayName}",
+                sample.AllocatedBytes,
+                $"{sample.Domain} domain, thread {sample.ThreadName} ({sample.ThreadId}), " +
+                $"{sample.Calls:N0} call(s), self allocation {FormatBytes(sample.SelfAllocatedBytes)}. " +
+                callStack));
         }
-        return rows.ToArray();
+        if (allocations.Length == 0)
+            details.Add(TextDetail("Allocation Sites", "Captured Sites", "None",
+                "No captured method sample reported managed allocation for this frame."));
+        return details.ToArray();
     }
+
+    private static ProfilerCounterDetail IntegerDetail(
+        string category,
+        string name,
+        long value,
+        string description) => new(category, name, value.ToString("N0"), description,
+        ProfilerCounterValueKind.Integer, IntegerValue: value);
+
+    private static ProfilerCounterDetail BytesDetail(
+        string category,
+        string name,
+        long value,
+        string description) => new(category, name, FormatSignedBytes(value), description,
+        ProfilerCounterValueKind.Bytes, IntegerValue: value);
+
+    private static ProfilerCounterDetail MillisecondsDetail(
+        string category,
+        string name,
+        double value,
+        string description) => new(category, name, $"{value:F3} ms", description,
+        ProfilerCounterValueKind.Milliseconds, NumericValue: value);
+
+    private static ProfilerCounterDetail PercentageDetail(
+        string category,
+        string name,
+        double value,
+        string description) => new(category, name, $"{value:F1}%", description,
+        ProfilerCounterValueKind.Percentage, NumericValue: value);
+
+    private static ProfilerCounterDetail DecimalDetail(
+        string category,
+        string name,
+        double value,
+        string description) => new(category, name, value.ToString("N2"), description,
+        ProfilerCounterValueKind.Decimal, NumericValue: value);
+
+    private static ProfilerCounterDetail BooleanDetail(
+        string category,
+        string name,
+        bool value,
+        string description) => new(category, name, value ? "Yes" : "No", description,
+        ProfilerCounterValueKind.Boolean, BooleanValue: value);
+
+    private static ProfilerCounterDetail TextDetail(
+        string category,
+        string name,
+        string value,
+        string description) => new(category, name, value, description,
+        ProfilerCounterValueKind.Text, TextValue: value);
 
     private static bool ToolbarButton(ref Fix64 x, Fix64 y, Fix64 width, string text)
     {
@@ -1045,6 +1302,12 @@ internal sealed class ProfilerWindow : EditorWindow
             >= 1L << 10 => $"{bytes / (double)(1L << 10):F1} KB",
             _ => $"{bytes} B"
         };
+    }
+
+    private static string FormatSignedBytes(long bytes)
+    {
+        if (bytes >= 0) return FormatBytes(bytes);
+        return $"-{FormatBytes(bytes == long.MinValue ? long.MaxValue : -bytes)}";
     }
 
     private static Color Rgb(int red, int green, int blue) => new(

@@ -86,6 +86,30 @@ Inspector 中修改 Texture 导入参数后必须点击 `Apply`；`Revert` 会�
 
 需要把可序列化资源写回源文件时，编辑器内部通过泛型 `Document<TAsset>` 在 BAsset 与磁盘文档之间转换；该桥梁不公开，也不形成新的资产类型层级。运行时只允许从 AssetBundle 读取 BAsset，并由渲染后端按需创建 GPU 对象；运行时及 Play 镜像都不能把资源保存回工程文件。
 
+### CG Shader 编译链、pragma 与阶段
+
+工程把 `Assets` 下的 `*.cg` 和 `*.shader` 作为 CG Shader 源。这里的 CG 是使用 HLSL 语义的单阶段源码，不是 Unity ShaderLab/`CGPROGRAM` 容器；入口函数、`SV_Target` 等签名必须对目标阶段有效。阶段可由文件名后缀声明：
+
+| 文件名/pragma | 阶段 |
+| --- | --- |
+| `*.vert.cg`, `*.vertex.cg` 或 `#pragma stage vertex` | Vertex |
+| `*.frag.cg`, `*.fragment.cg`, `#pragma stage fragment` 或 `pixel` | Fragment |
+| `*.comp.cg`, `*.compute.cg` 或 `#pragma stage compute` | Compute |
+
+普通 `*.shader` 以及没有阶段后缀的 `*.cg` 必须包含 `#pragma stage vertex|fragment|pixel|compute`。入口默认是 `main`，可用 `#pragma entry MyEntry` 修改。`stage` 和 `entry` 是 BEngine 引擎 pragma，解析后会从交给编译器的源码中移除；其他预处理指令仍由 shaderc 处理。
+
+```hlsl
+#pragma stage fragment
+#pragma entry FragmentMain
+
+float4 FragmentMain() : SV_Target
+{
+    return float4(0.15, 0.75, 0.65, 1.0);
+}
+```
+
+编辑器后台链路为 `Assets source -> stage/entry 解析 -> shaderc(HLSL) -> Vulkan 1.0 SPIR-V -> content-addressed .spv -> current 指针`。编译启用 performance optimization、自动 location 和 HLSL IO mapping；构建 ID 包含 schema、规范化工程路径、阶段、入口和完整源码，因此未变化输入复用现有 Artifact。后台编译只准备结果，Apply 阶段原子更新 `current` 指针、处理已删除 Shader，并清除默认 Shader 缓存。单个 Shader 失败不会提交坏指针；详情写入 `ShaderCompilation.log`，修正源码后重新导入或执行 `Edit > Recompile Scripts`。
+
 ## 运行时 API
 
 | API | 用途 |
@@ -124,6 +148,78 @@ public sealed class PlayerMover : MonoBehaviour
 
 生命周期顺序为 `Awake -> OnEnable -> Start -> FixedUpdate/Update/LateUpdate -> OnDisable -> OnDestroy`。运行时修改只发生在 Play 镜像；停止 Play 后编辑器继续显示播放前的 Scene 和组件数据。
 
+### 跨平台网络快速开始
+
+`BEngine.Networking` 只使用 .NET 的 `TcpClient`、`UdpClient`、`HttpClient` 和 `ClientWebSocket`，不自行实现协议。所有异步操作接受 `CancellationToken`；TCP、UDP 和 WebSocket 通过 `Timeout`、`LastResult`、`Error`、`Exception` 暴露最近状态，HTTP 请求通过 `Result`、`Error`、`ResponseCode`、`DownloadData/DownloadText` 暴露完成状态。`TimedOut`、`Canceled`、`ConnectionError`、`ProtocolError` 和 `DataProcessingError` 应分别处理。客户端和请求都必须 `Dispose`/`DisposeAsync`。
+
+```csharp
+using System.Net;
+using System.Text;
+using BEngine.Networking;
+
+using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+await using var tcp = new TcpNetworkClient { Timeout = TimeSpan.FromSeconds(5) };
+await tcp.ConnectAsync("127.0.0.1", 7000, stop.Token);
+await tcp.SendAsync(Encoding.UTF8.GetBytes("ping"), stop.Token);
+var tcpBuffer = new byte[1024];
+var tcpCount = await tcp.ReceiveAsync(tcpBuffer, stop.Token);
+
+await using var udp = new UdpNetworkClient(new IPEndPoint(IPAddress.Any, 0));
+await udp.SendAsync(
+    Encoding.UTF8.GetBytes("status"),
+    new IPEndPoint(IPAddress.Loopback, 7001),
+    stop.Token);
+NetworkDatagram datagram = await udp.ReceiveAsync(stop.Token);
+
+using var request = HttpNetworkRequest.Get("https://example.test/status");
+request.Timeout = TimeSpan.FromSeconds(5);
+request.SetRequestHeader("Accept", "application/json");
+await request.SendAsync(stop.Token);
+if (request.Result == NetworkRequestResult.Success)
+    Console.WriteLine(request.DownloadText);
+
+await using var socket = new WebSocketNetworkClient();
+await socket.ConnectAsync(new Uri("wss://example.test/events"), stop.Token);
+await socket.SendTextAsync("subscribe", stop.Token);
+WebSocketMessage message = await socket.ReceiveAsync(
+    maximumMessageSize: 256 * 1024,
+    cancellationToken: stop.Token);
+await socket.CloseAsync(cancellationToken: stop.Token);
+```
+
+HTTP 提供 `Get/Delete/Post/Put` 工厂，也可在构造函数注入共享 `HttpClient` 或 `HttpMessageHandler`；默认不会释放外部 `HttpClient`。需要流式处理大响应时使用 `SendAsync(Func<HttpResponseMessage, CancellationToken, Task>, token)`，不要先缓冲到 `DownloadData`。WebSocket 的扩展边界是 `IWebSocketTransport`：生产环境默认使用 `ClientWebSocketTransport`，可先配置其 `Options` 再传给 `WebSocketNetworkClient`，测试或平台适配可注入自己的 transport。协议、TLS、代理、压缩和握手仍交给 .NET 实现；扩展包应组合这些 sealed 客户端或实现 transport，不应复制协议栈。
+
+### AssetBundle 运行时、远程更新与只读契约
+
+`AssetBundleManager.InitializeAsync` 从内置目录、active/previous 指针和本地 content-addressed cache 选择一个已验证状态。每个状态只构建一次不可变 `AssetBundleCatalogIndex`，以大小写不敏感的冻结索引保存 address、bundle、每 bundle 的资产和预计算依赖闭包；`ContainsAddress` 与 `GetDependencyClosure` 可用于检查，`LoadBytesAsync`/`LoadTextAsync` 的热路径不再扫描 catalog。公开构造索引时会克隆 catalog，因此之后修改原对象不会改变索引。
+
+```csharp
+using BEngine.AssetBundles;
+
+await using var bundles = new AssetBundleManager(new AssetBundleRuntimeOptions
+{
+    PackageName = "com.example.game",
+    CacheDirectory = cachePath,
+    BuiltInDirectory = builtInPath,
+    RemoteBaseUri = new Uri("https://cdn.example.test/content/"),
+    RequireHttps = true,
+    MaxRetries = 3
+});
+
+await bundles.InitializeAsync(stop.Token);
+AssetBundleUpdatePlan plan = await bundles.CheckForUpdatesAsync(stop.Token);
+if (plan.HasUpdates)
+    await bundles.ApplyUpdateAsync(plan, progress: null, cancellationToken: stop.Token);
+
+await using AssetBundleHandle<string> text =
+    await bundles.LoadTextAsync("Assets/Data/config.json", stop.Token);
+```
+
+同一 manager 支持并发初始化和并发加载：相同内容 hash 只创建一个 loaded bundle task，句柄使用引用计数；每个句柄都必须释放，之后可调用 `UnloadUnused`。初始化、Apply、Rollback 和 Cleanup 串行修改管理状态；加载先捕获当前不可变快照，因此更新发布新状态时不会原地改变正在读取的 catalog。并发提交同一更新计划只有一次实际激活。
+
+远程元数据和 bundle 都执行大小、SHA-256 与目录边界校验。bundle 使用 `HttpNetworkRequest` 的流式响应入口逐块写入 staging、增量计算 hash，验证后才移动到 content-addressed object cache；catalog 和 active/previous 指针采用临时文件原子替换。验证失败保留旧 active 状态并清理 `.part`，`RollbackAsync` 只在已验证指针间切换而不重新下载。运行时契约是只读：不要修改 `ActiveCatalog` 后期待影响 manager，不要改写索引或 bundle 内容，也不要让运行时保存回 `Assets`；新版本必须通过构建 catalog、检查、下载、验证和原子 Apply 发布。
+
 ## 编辑器 API
 
 | API/特性 | 用途与注册方式 |
@@ -161,6 +257,16 @@ Project 与 Hierarchy 的 TreeView 只有在鼠标于同一行按下并抬起时
 SubAsset 不拥有独立的顶层资源身份，而由“主资源 GUID + 非零 `localIdentifier`”唯一标识；主资源自身的 `localIdentifier` 为 `0`。序列化 BAsset 子资源引用时使用 `guid:<主资源 GUID>#subasset=<localIdentifier>`，资源移动或重命名后引用仍然稳定。`AssetDatabase.TryGetGUIDAndLocalFileIdentifier` 返回同一组身份，`LoadAllAssetsAtPath` 返回主资源和所有表示，`LoadAllAssetRepresentationsAtPath` 只返回其 SubAsset。
 
 使用 `AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)` 创建内嵌 SubAsset，完成字段修改后按常规调用 `EditorUtility.SetDirty`/保存；使用 `RemoveObjectFromAsset` 将其移出主资源。不能让 SubAsset 再拥有子资源，也不能手动移除由 Importer 管理的 Sprite 等导入表示。Project 把 SubAsset 显示为主资源节点的子项；展开主资源即可查看、选择和拖拽，ObjectField、Inspector 与枚举 API 使用同一对象身份。
+
+### 全局 Layout、Undo 与 Profiler
+
+Layout 是编辑器级偏好，不属于当前工程。当前布局和命名布局统一保存在 `Output/EditorData/Preferences/Layouts`；旧工程 `ProjectSettings/EditorLayout.yaml` 与 `ProjectSettings/Layouts` 会在首次读取时迁移，之后不再写回工程。工具栏的布局下拉框将当前会话显示为 `Layout`，并提供不可删除的 `Default`、`2 by 3`、`Tall`、`Wide` 预设；自定义布局可保存、切换、重命名和删除。
+
+点击工具栏 Undo History 图标会打开 TreeView 历史窗口。每条记录显示组名、操作数、对象数、对象名和场景影响；选择任意记录会把 Undo 游标直接移动到该状态，右侧同时显示记录详情。新的编辑动作会按常规截断当前游标之后的 Redo 分支。
+
+`Window > Analysis > Profiler` 将 CPU、Rendering、Memory 和外部注册模块分开显示。顶部模块行高度固定为 132 像素并可纵向滚动；Rendering 包含 Camera、Batch、Draw、Triangle、Vertex、Render Target、耗时占比和帧间差值，Memory 包含托管堆、存活量、碎片、进程 Working Set/Private Bytes、分配速率、帧间差值及分配站点。CPU 按 Editor/Runtime 域、类、方法和调用栈展开。`Profiler Modules` 菜单控制可见模块，扩展代码通过 `EditorProfilerModuleRegistry` 注册计数器和详情绘制。
+
+编辑器快捷键遵循 Unity 的同类命令：Q/W/E/R/F 为 View/Move/Rotate/Scale/Frame Selected；Ctrl/Cmd+N/O/S 为新建/打开/保存场景；Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z（Windows 也支持 Ctrl+Y）为 Undo/Redo；Ctrl/Cmd+D 复制对象，F2 重命名，Delete 删除；Ctrl/Cmd+P、Ctrl/Cmd+Shift+P、Ctrl/Cmd+Alt+P 为 Play/Pause/Step；Ctrl/Cmd+1..5 聚焦 Scene/Game/Inspector/Hierarchy/Project，Ctrl/Cmd+7 聚焦 Profiler，Ctrl/Cmd+Shift+C 聚焦 Console。文本输入获得焦点时，复制、粘贴、全选等命令只作用于该字段。
 
 ### 自定义编辑器主题
 

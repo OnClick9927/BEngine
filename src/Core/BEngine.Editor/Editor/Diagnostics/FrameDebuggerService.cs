@@ -2,23 +2,6 @@ using BEngine.Rendering.Rhi;
 
 namespace BEngine.Editor.Diagnostics;
 
-public sealed record FrameDebugPreviewSnapshot(
-    long CaptureId,
-    int EventCount,
-    GraphicsColorReadbackStatus Status,
-    GraphicsColorReadbackImage? Image,
-    string Error)
-{
-    public int Width => Image?.Width ?? 0;
-    public int Height => Image?.Height ?? 0;
-}
-
-public interface IFrameDebuggerPlayMode
-{
-    bool IsPlaying { get; }
-    bool IsPaused { get; set; }
-}
-
 /// <summary>
 /// Coordinates the Frame Debugger window and render loop without exposing mutable capture buffers.
 /// All state access is synchronized; the published snapshot is immutable after publication.

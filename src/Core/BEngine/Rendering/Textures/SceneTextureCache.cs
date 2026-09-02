@@ -20,6 +20,7 @@ internal sealed class SceneTextureCache : IDisposable
     {
         if (string.IsNullOrWhiteSpace(source) || source.StartsWith("missing:", StringComparison.Ordinal))
             return Missing();
+        if (TryResolveRuntimeTexture(source, out var runtimeTexture)) return runtimeTexture;
         var path = ResolvePath(source);
         var isGuidSubAsset = path is null && source.StartsWith("guid:", StringComparison.OrdinalIgnoreCase) &&
                              source.Contains("#subasset=", StringComparison.OrdinalIgnoreCase);
@@ -65,6 +66,42 @@ internal sealed class SceneTextureCache : IDisposable
         new GraphicsTextureDescription(2, 2, GraphicsTextureFormat.Rgba8Unorm,
             GraphicsTextureUsage.Sampled, GraphicsTextureFilter.Nearest,
             GraphicsTextureFilter.Nearest, GraphicsTextureAddressMode.ClampToEdge), MissingPixels);
+
+    private bool TryResolveRuntimeTexture(string source, out IGraphicsTexture2D texture)
+    {
+        texture = null!;
+        const string prefix = "memory-texture:";
+        if (!source.StartsWith(prefix, StringComparison.Ordinal) ||
+            !int.TryParse(source.AsSpan(prefix.Length), out var instanceId) ||
+            BObject.FindObjectFromInstanceID(instanceId) is not Texture runtime) return false;
+        if (runtime is RenderTexture renderTexture && renderTexture.TryGetSampleTexture(_device, out texture))
+            return true;
+        if (!runtime.TryGetRuntimeRgba(out var pixels)) return false;
+        var stamp = new SourceStamp(DateTime.MinValue, DateTime.MinValue, runtime.PixelVersion);
+        if (_textures.TryGetValue(source, out var cached) && cached.Stamp == stamp)
+        {
+            texture = cached.Texture;
+            return true;
+        }
+        texture = _device.CreateTexture2D($"BEngine.Scene2D.Runtime.{instanceId}",
+            new GraphicsTextureDescription(runtime.width, runtime.height, GraphicsTextureFormat.Rgba8Unorm,
+                GraphicsTextureUsage.Sampled,
+                runtime.filterMode == TextureFilterMode.Point
+                    ? GraphicsTextureFilter.Nearest
+                    : GraphicsTextureFilter.Linear,
+                runtime.filterMode == TextureFilterMode.Point
+                    ? GraphicsTextureFilter.Nearest
+                    : GraphicsTextureFilter.Linear,
+                runtime.wrapMode switch
+                {
+                    TextureWrapMode.Repeat => GraphicsTextureAddressMode.Repeat,
+                    TextureWrapMode.Mirror => GraphicsTextureAddressMode.MirroredRepeat,
+                    _ => GraphicsTextureAddressMode.ClampToEdge
+                }), pixels);
+        if (_textures.Remove(source, out var previous)) previous.Texture.Dispose();
+        _textures[source] = new CacheEntry(stamp, texture);
+        return true;
+    }
 
     private static bool TryRead(string source, string? path, out byte[] bytes)
     {
@@ -127,7 +164,10 @@ internal sealed class SceneTextureCache : IDisposable
         }
     }
 
-    private readonly record struct SourceStamp(DateTime SourceWriteTimeUtc, DateTime MetaWriteTimeUtc)
+    private readonly record struct SourceStamp(
+        DateTime SourceWriteTimeUtc,
+        DateTime MetaWriteTimeUtc,
+        int RuntimeVersion = 0)
     {
         internal static SourceStamp Read(string? path)
         {

@@ -179,6 +179,26 @@ public static class RuntimeTypeCache
         return MembersByType.GetValueOrDefault(type) ?? [];
     }
 
+    internal static bool IsSerializableMember(MemberInfo member)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        return member switch
+        {
+            FieldInfo field => !field.IsStatic && !field.IsInitOnly &&
+                               !field.IsDefined(typeof(NonSerializedAttribute), inherit: true) &&
+                               !field.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute),
+                                   inherit: true) &&
+                               !typeof(Delegate).IsAssignableFrom(field.FieldType) &&
+                               (field.IsPublic || field.IsDefined(typeof(SerializeFieldAttribute), inherit: true) ||
+                                field.IsDefined(typeof(SerializeReferenceAttribute), inherit: true)),
+            PropertyInfo property => property.GetIndexParameters().Length == 0 &&
+                                     property.GetMethod is { IsPublic: true } &&
+                                     property.SetMethod is { IsPublic: true } &&
+                                     !typeof(Delegate).IsAssignableFrom(property.PropertyType),
+            _ => false
+        };
+    }
+
     public static bool TryFindInstanceMember(Type type, string name, out MemberInfo member)
     {
         EnsureInitialized();
@@ -517,13 +537,8 @@ public static class RuntimeTypeCache
         }
         catch { required = []; }
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        var fields = type.GetFields(flags).Where(field => !field.IsStatic && !field.IsInitOnly &&
-            !typeof(Delegate).IsAssignableFrom(field.FieldType) &&
-            (field.IsPublic || field.IsDefined(typeof(SerializeFieldAttribute), true) ||
-             field.IsDefined(typeof(SerializeReferenceAttribute), true)));
-        var properties = type.GetProperties(flags).Where(property => property.GetIndexParameters().Length == 0 &&
-            property.GetMethod is { IsPublic: true } && property.SetMethod is { IsPublic: true } &&
-            !typeof(Delegate).IsAssignableFrom(property.PropertyType) &&
+        var fields = type.GetFields(flags).Where(field => IsSerializableMember(field));
+        var properties = type.GetProperties(flags).Where(property => IsSerializableMember(property) &&
             !IgnoredComponentProperties.Contains(property.Name));
         var serializable = fields.Cast<MemberInfo>().Concat(properties)
             .OrderBy(member => member.Name, StringComparer.Ordinal).ToArray();

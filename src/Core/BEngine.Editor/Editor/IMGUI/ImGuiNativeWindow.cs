@@ -16,16 +16,6 @@ using BVector2 = BEngine.Vector2;
 
 namespace BEngine.Editor;
 
-internal readonly record struct ImGuiNativeFrameProfile(
-    double DeltaSeconds,
-    double BackgroundMilliseconds,
-    double LayoutMilliseconds,
-    double InputMilliseconds,
-    double RepaintMilliseconds,
-    double CanvasMilliseconds,
-    double PresentMilliseconds,
-    double TotalMilliseconds);
-
 /// <summary>Native window that executes Unity-style immediate GUI and submits it through the BEngine RHI.</summary>
 internal sealed class ImGuiNativeWindow : IDisposable
 {
@@ -607,60 +597,4 @@ internal sealed class ImGuiNativeWindow : IDisposable
 
     [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true)]
     private static extern IntPtr SendMessageNative(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
-}
-
-internal readonly record struct NativeWindowFrameDecision(
-    bool ShouldRender,
-    long Timestamp,
-    long RequestVersion);
-
-/// <summary>
-/// Keeps manually pumped native windows responsive without repainting every unfocused frame.
-/// </summary>
-internal sealed class NativeWindowFrameScheduler
-{
-    internal const int UnfocusedFramesPerSecond = 8;
-    internal static long UnfocusedFrameIntervalTicks { get; } =
-        Math.Max(1, Stopwatch.Frequency / UnfocusedFramesPerSecond);
-
-    private long _requestVersion = 1;
-    private long _renderedRequestVersion;
-    private long _lastRenderTimestamp;
-    private bool _hasRendered;
-    private bool _hasObservedState;
-    private bool _wasFocused;
-    private bool _wasMinimized;
-
-    internal void RequestRender() => Interlocked.Increment(ref _requestVersion);
-
-    internal NativeWindowFrameDecision Evaluate(bool focused, bool minimized, long timestamp)
-    {
-        if (_hasObservedState)
-        {
-            if (focused && !_wasFocused || !minimized && _wasMinimized) RequestRender();
-        }
-        else
-            _hasObservedState = true;
-
-        _wasFocused = focused;
-        _wasMinimized = minimized;
-        var requestVersion = Volatile.Read(ref _requestVersion);
-        if (minimized) return new NativeWindowFrameDecision(false, timestamp, requestVersion);
-
-        var requestPending = requestVersion > Volatile.Read(ref _renderedRequestVersion);
-        var inactiveIntervalElapsed = _hasRendered && timestamp - _lastRenderTimestamp >=
-            UnfocusedFrameIntervalTicks;
-        return new NativeWindowFrameDecision(
-            focused || !_hasRendered || requestPending || inactiveIntervalElapsed,
-            timestamp,
-            requestVersion);
-    }
-
-    internal void NotifyRendered(NativeWindowFrameDecision decision)
-    {
-        if (!decision.ShouldRender) return;
-        _hasRendered = true;
-        _lastRenderTimestamp = decision.Timestamp;
-        Volatile.Write(ref _renderedRequestVersion, decision.RequestVersion);
-    }
 }

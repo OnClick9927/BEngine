@@ -8,4 +8,5 @@ internal sealed class ComponentData
     public Guid? PrefabAsset { get; set; }
     public Guid? PrefabSource { get; set; }
     public Dictionary<string, string> Fields { get; set; } = [];
+    public ComponentGraphData? Graph { get; set; }
 }

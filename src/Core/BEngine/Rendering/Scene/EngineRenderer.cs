@@ -38,8 +38,9 @@ public sealed class EngineRenderer : IDisposable
 
     public static bool TryResolveGameCamera(Scene scene, out RenderCamera camera)
     {
-        var component = ResolveGameCameras([scene]).FirstOrDefault(item => item.isMain) ??
-                        ResolveGameCameras([scene]).FirstOrDefault();
+        ArgumentNullException.ThrowIfNull(scene);
+        var cameras = ResolveGameCameras([scene]);
+        var component = cameras.FirstOrDefault(item => item.isMain) ?? cameras.FirstOrDefault();
         if (component is null)
         {
             camera = default;

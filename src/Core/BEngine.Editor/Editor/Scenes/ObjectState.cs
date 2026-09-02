@@ -101,11 +101,8 @@ internal sealed class ObjectState : IUndoState
     {
         foreach (var field in RuntimeTypeCache.GetInstanceMembers(type).OfType<FieldInfo>())
         {
-            if (field.DeclaringType == typeof(BObject) || field.IsStatic || field.IsInitOnly) continue;
-            var metadata = SerializedMemberMetadata.For(field);
-            if (metadata.HasAttribute<NonSerializedAttribute>()) continue;
-            if (!field.IsPublic && !metadata.HasAttribute<SerializeFieldAttribute>()) continue;
-            yield return field;
+            if (field.DeclaringType != typeof(BObject) && RuntimeTypeCache.IsSerializableMember(field))
+                yield return field;
         }
     }
 
@@ -117,8 +114,7 @@ internal sealed class ObjectState : IUndoState
         }
         var fields = GetSerializableFields(target.GetType()).Cast<MemberInfo>();
         var properties = RuntimeTypeCache.GetInstanceMembers(target.GetType()).OfType<PropertyInfo>()
-            .Where(property => property.GetIndexParameters().Length == 0 &&
-                               property.GetMethod?.IsPublic is true && property.SetMethod?.IsPublic is true &&
+            .Where(property => RuntimeTypeCache.IsSerializableMember(property) &&
                                property.DeclaringType != typeof(BObject) &&
                                property.Name is not nameof(BObject.Id) and not nameof(BObject.name) and
                                    not nameof(BObject.hideFlags));

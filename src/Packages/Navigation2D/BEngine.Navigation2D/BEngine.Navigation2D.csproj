@@ -5,7 +5,6 @@
     <NoWarn>$(NoWarn);CA2255</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
     <ProjectReference Include="../../Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
   </ItemGroup>
 </Project>

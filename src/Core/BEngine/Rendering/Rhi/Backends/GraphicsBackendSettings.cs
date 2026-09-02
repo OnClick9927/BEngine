@@ -25,5 +25,6 @@ public static class GraphicsBackendSettings
         SystemInfo.graphicsDeviceName = capabilities.DeviceName;
         SystemInfo.graphicsDeviceVersion = capabilities.ApiVersion;
         SystemInfo.supportsComputeShaders = false;
+        SystemInfo.supportsRenderTextures = capabilities.Supports(GraphicsDeviceFeatures.RenderTargets);
     }
 }

@@ -747,8 +747,3 @@ public static class AssetPreview
     private readonly record struct CachedAtlas(FileStamp Stamp, AtlasPreviewData? Data);
     private readonly record struct AtlasPreviewData(TextureAtlas Atlas);
 }
-
-/// <summary>A source-backed raster preview. Procedural previews are drawn with DrawAssetPreview.</summary>
-public readonly record struct AssetPreviewImage(string Source, int Width, int Height);
-
-internal readonly record struct AssetPreviewCacheInvalidation(string? Path);

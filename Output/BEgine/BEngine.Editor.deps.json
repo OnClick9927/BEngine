@@ -12,6 +12,7 @@
           "Microsoft.Extensions.DependencyInjection": "10.0.11",
           "Silk.NET.Input": "2.23.0",
           "Silk.NET.OpenGL": "2.23.0",
+          "Silk.NET.Shaderc": "2.23.0",
           "Veldrid": "4.9.0",
           "Veldrid.SPIRV": "1.0.15"
         },
@@ -154,6 +155,62 @@
           "lib/net5.0/Silk.NET.OpenGL.dll": {
             "assemblyVersion": "2.23.0.0",
             "fileVersion": "2.23.0.0"
+          }
+        }
+      },
+      "Silk.NET.Shaderc/2.23.0": {
+        "dependencies": {
+          "Silk.NET.Core": "2.23.0",
+          "Silk.NET.Shaderc.Native": "2.23.0"
+        },
+        "runtime": {
+          "lib/net5.0/Silk.NET.Shaderc.dll": {
+            "assemblyVersion": "2.23.0.0",
+            "fileVersion": "2.23.0.0"
+          }
+        }
+      },
+      "Silk.NET.Shaderc.Native/2.23.0": {
+        "runtimeTargets": {
+          "runtimes/linux-arm/native/libshaderc_shared.so": {
+            "rid": "linux-arm",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/linux-arm64/native/libshaderc_shared.so": {
+            "rid": "linux-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/linux-x64/native/libshaderc_shared.so": {
+            "rid": "linux-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/osx-arm64/native/libshaderc_shared.dylib": {
+            "rid": "osx-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/osx-x64/native/libshaderc_shared.dylib": {
+            "rid": "osx-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-arm64/native/shaderc_shared.dll": {
+            "rid": "win-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x64/native/shaderc_shared.dll": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x86/native/shaderc_shared.dll": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
           }
         }
       },
@@ -490,6 +547,20 @@
       "sha512": "sha512-CIakUoUqiAyRPykMk54tr1M1XpbJrT/iw12T85HDQcuRCFlBa1cxbX7v3FmtznKO5eM89esfmGNCgqDaKBiWfg==",
       "path": "silk.net.opengl/2.23.0",
       "hashPath": "silk.net.opengl.2.23.0.nupkg.sha512"
+    },
+    "Silk.NET.Shaderc/2.23.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-+pXfOhmSCeeMECOo9HMi3C63LVbQ7FBxPFgxPKOT6mXD8Gg/90Wt4fLX4LqUuVbGid5LW6BXAUu1g17XQoawdA==",
+      "path": "silk.net.shaderc/2.23.0",
+      "hashPath": "silk.net.shaderc.2.23.0.nupkg.sha512"
+    },
+    "Silk.NET.Shaderc.Native/2.23.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-H6OMLIWdh2HITvkmj+ALs8LTIdQvQ2/JTtkDXinVbJ3xxrQIBXhVmc9jnuTQ67YDybGlENSMrgthzhLwK0rjnQ==",
+      "path": "silk.net.shaderc.native/2.23.0",
+      "hashPath": "silk.net.shaderc.native.2.23.0.nupkg.sha512"
     },
     "Silk.NET.Windowing.Common/2.23.0": {
       "type": "package",

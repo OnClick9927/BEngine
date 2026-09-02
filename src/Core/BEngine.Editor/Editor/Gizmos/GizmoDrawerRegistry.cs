@@ -202,11 +202,3 @@ internal static class GizmoDrawerRegistry
         Action<Component, GizmoType> Callback,
         string Feature);
 }
-
-internal readonly record struct GizmoDrawerCommand(
-    GizmoType DrawOptions,
-    Action<Component, GizmoType> Callback,
-    string Feature,
-    MethodInfo Method);
-
-internal readonly record struct GizmoDrawableType(Type ComponentType, string DisplayName);

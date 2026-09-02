@@ -1,0 +1,20 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.audio
+packageVersion: 1.0.0
+displayName: Audio
+description: Cross-platform 2D audio clips, sources, listeners, mixing and replaceable output backends.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Audio
+  rootNamespace: BEngine.Audio
+  dependencies: []
+editor:
+  assembly: BEngine.Audio.Editor
+  rootNamespace: BEngine.Audio.Editor
+  dependencies:
+  - packageId: com.bengine.audio
+    target: runtime

@@ -3,23 +3,6 @@ using System.Text.Json;
 
 namespace BEngine.Launcher;
 
-internal enum EditorStartupOutcomeKind
-{
-    Ready,
-    Failed,
-    UnexpectedExit,
-    TimedOut
-}
-
-internal sealed record EditorStartupOutcome(
-    EditorStartupOutcomeKind Kind,
-    string Message,
-    string? LogPath = null,
-    int? ExitCode = null)
-{
-    internal bool IsReady => Kind == EditorStartupOutcomeKind.Ready;
-}
-
 internal static class EditorStartupMonitor
 {
     private static readonly JsonSerializerOptions JsonOptions = new()

@@ -334,10 +334,12 @@ internal static class GameObjectMenuTests
             typeof(string));
         var items = method.Invoke(harness.Application, ["GameObject"]) as IEnumerable ??
                     throw new InvalidOperationException("GameObject main menu returned no entries.");
-        return items.Cast<object>().Select(item => new MenuSnapshot(
-            Read<string>(item, "Label"),
-            Read<bool>(item, "Enabled"),
-            Read<Action?>(item, "Action"))).ToArray();
+        return items.Cast<object>().Select(item =>
+        {
+            var label = Read<string>(item, "Label");
+            return new MenuSnapshot(StripShortcut(label), Read<bool>(item, "Enabled"),
+                Read<Action?>(item, "Action"));
+        }).ToArray();
     }
 
     private static IReadOnlyList<MenuSnapshot> CaptureContextMenu(
@@ -390,6 +392,12 @@ internal static class GameObjectMenuTests
 
     private static T Read<T>(object item, string propertyName) =>
         (T)item.GetType().GetProperty(propertyName, InstanceMembers)!.GetValue(item)!;
+
+    private static string StripShortcut(string label)
+    {
+        var separator = label.IndexOf('\t');
+        return (separator < 0 ? label : label[..separator]).TrimEnd();
+    }
 
     private sealed record MenuSnapshot(string Path, bool Enabled, Action? Action);
 }

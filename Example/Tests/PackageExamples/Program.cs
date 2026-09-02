@@ -200,6 +200,7 @@ static (string Name, string? PackageId, string[] ExpectedArchives)[] PublishedMo
     ("Core", null, ["CoreGettingStarted.bpackage"]),
     ("Animation", "com.bengine.animation",
         ["AnimationGettingStarted.bpackage", "StateMachine.bpackage"]),
+    ("Audio", "com.bengine.audio", ["AudioGettingStarted.bpackage", "OneShotMixer.bpackage"]),
     ("Navigation2D", "com.bengine.navigation2d",
         ["DynamicRebake.bpackage", "NavigationSurfaceAndAgent.bpackage"]),
     ("Physics2D", "com.bengine.physics2d",

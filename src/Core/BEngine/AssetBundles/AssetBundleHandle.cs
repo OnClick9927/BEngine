@@ -18,8 +18,7 @@ public sealed class AssetBundleHandle<T> : IDisposable, IAsyncDisposable
 
     public void Dispose()
     {
-        var release = _release;
-        _release = null;
+        var release = Interlocked.Exchange(ref _release, null);
         release?.Invoke();
     }
 

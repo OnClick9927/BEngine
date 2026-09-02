@@ -7,8 +7,8 @@
     <AssemblyName>BEngine.ExampleTests.PackageDocumentation</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
     <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../../src/Packages/Audio/BEngine.Audio/BEngine.Audio.csproj" />
     <ProjectReference Include="../../../src/Packages/Animation/BEngine.Animation/BEngine.Animation.csproj" />
     <ProjectReference Include="../../../src/Packages/Navigation2D/BEngine.Navigation2D/BEngine.Navigation2D.csproj" />
     <ProjectReference Include="../../../src/Packages/Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />

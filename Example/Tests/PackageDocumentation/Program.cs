@@ -1,5 +1,6 @@
 using System.Reflection;
 using BEngine.Animation;
+using BEngine.Audio;
 using BEngine.Editor;
 using BEngine.Editor.Rendering;
 using BEngine.Navigation2D;
@@ -29,6 +30,10 @@ internal static class Program
             ["Animation Background", "Bounce Start Guide", "Animated Sprite", "Animation Camera 2D"],
             ["Sprite Renderer", "Animator", "Runtime Controller", "Animation Event"],
             BuildAnimation),
+        new("Audio", "Packages/Audio",
+            ["Audio Stage", "Music Source", "Audio Listener", "Audio Camera 2D"],
+            ["Audio Source", "Audio Clip ObjectField", "Audio Listener", "2D Mixer / OpenAL"],
+            BuildAudio),
         new("Navigation2D", "Packages/Navigation2D",
             ["Navigation Surface", "Carving Obstacle", "Navigation Agent", "Navigation Camera 2D"],
             ["Navigation Surface 2D", "Navigation Obstacle 2D", "Navigation Agent 2D", "Bake / Clear"],
@@ -77,6 +82,9 @@ internal static class Program
         var scene = NewScene("Package Cache");
         var animation = scene.CreateGameObject("Animation");
         animation.AddComponent<Animator>();
+        var audio = scene.CreateGameObject("Audio");
+        audio.AddComponent<AudioSource>();
+        audio.AddComponent<AudioListener>();
         var navigation = scene.CreateGameObject("Navigation");
         navigation.AddComponent<NavigationSurface2D>();
         navigation.AddComponent<NavigationAgent2D>();
@@ -93,7 +101,8 @@ internal static class Program
 
         var expected = new[]
         {
-            typeof(Camera2D), typeof(Animator), typeof(NavigationSurface2D), typeof(NavigationAgent2D),
+            typeof(Camera2D), typeof(Animator), typeof(AudioSource), typeof(AudioListener),
+            typeof(NavigationSurface2D), typeof(NavigationAgent2D),
             typeof(Rigidbody2D), typeof(BoxCollider2D), typeof(Tilemap), typeof(TilemapRenderer),
             typeof(UIDocument), typeof(DocumentationAttributeShowcase)
         };
@@ -246,6 +255,25 @@ internal static class Program
         var actor = AddSprite(scene, "Animated Sprite", V(0, 1.8), V(1.35, 1.35),
             Hex("4D91E8"), 10);
         actor.AddComponent<Animator>();
+        return scene;
+    }
+
+    private static Scene BuildAudio()
+    {
+        var scene = NewScene("Audio");
+        AddSprite(scene, "Audio Stage", Vector2.zero, V(12, 8), Hex("151D25"), -20);
+        var source = AddSprite(scene, "Music Source", V(-1.8, 0.2), V(2.1, 2.1),
+            Hex("2CBCA9"), 8);
+        source.AddComponent<AudioSource>().playOnAwake = true;
+        var listener = AddSprite(scene, "Audio Listener", V(2.2, 0.2), V(1.4, 1.4),
+            Hex("E4A843"), 7);
+        listener.AddComponent<AudioListener>();
+        for (var index = 0; index < 9; index++)
+        {
+            var height = 0.35 + (index % 4) * 0.28;
+            AddSprite(scene, $"Wave {index + 1}", V(-4 + index, -2.4), V(0.42, height),
+                index % 2 == 0 ? Hex("3188C9") : Hex("5EC6B6"), 3);
+        }
         return scene;
     }
 

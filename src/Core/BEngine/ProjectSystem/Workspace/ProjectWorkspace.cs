@@ -14,7 +14,6 @@ public sealed class ProjectWorkspace
     public string EditorScriptsPath => ResolveInside(Project.EditorScriptsDirectory);
     public string ProjectSettingsPath => Path.Combine(RootPath, "ProjectSettings");
     public string ProjectSettingsFilePath => Path.Combine(ProjectSettingsPath, "ProjectSettings.yaml");
-    public string EditorLayoutPath => Path.Combine(ProjectSettingsPath, "EditorLayout.yaml");
     public string PackagesPath => Path.Combine(RootPath, "Packages");
     public string PackageManifestPath => Path.Combine(PackagesPath, "manifest.yaml");
     public string LibraryPath => Path.Combine(RootPath, "Library");

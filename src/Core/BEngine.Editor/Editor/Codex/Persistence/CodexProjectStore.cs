@@ -1,10 +1,14 @@
 using BEngine.Documents;
 using BEngine.Serialization;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace BEngine.Editor.Codex;
 
 public sealed class CodexProjectStore
 {
+    private readonly string _legacySettingsPath;
+
     public string ProjectRoot { get; }
     public string SettingsPath { get; }
     public string SessionPath { get; }
@@ -13,12 +17,14 @@ public sealed class CodexProjectStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectRoot);
         ProjectRoot = Path.GetFullPath(projectRoot);
-        SettingsPath = Path.Combine(ProjectRoot, "ProjectSettings", "CodexSettings.yaml");
+        SettingsPath = EditorDataPaths.codexSettingsPath;
+        _legacySettingsPath = Path.Combine(ProjectRoot, "ProjectSettings", "CodexSettings.yaml");
         SessionPath = Path.Combine(ProjectRoot, "Library", "Codex", "Session.yaml");
     }
 
     public CodexProjectSettingsData LoadSettings()
     {
+        MigrateLegacySettings();
         if (!File.Exists(SettingsPath))
         {
             var defaults = new CodexProjectSettingsData();
@@ -43,6 +49,7 @@ public sealed class CodexProjectStore
 
     public void SaveSettings(CodexProjectSettingsData settings)
     {
+        MigrateLegacySettings();
         CodexProtocolSettings.Normalize(settings);
         settings.Save(SettingsPath);
     }
@@ -84,5 +91,53 @@ public sealed class CodexProjectStore
         {
             throw new InvalidDataException($"Unsupported YAML document '{format}' v{version}: {path}");
         }
+    }
+
+    private void MigrateLegacySettings()
+    {
+        if (!File.Exists(_legacySettingsPath)) return;
+        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+        var destination = File.Exists(SettingsPath)
+            ? CreateConflictBackupPath()
+            : SettingsPath;
+        if (!File.Exists(destination)) File.Copy(_legacySettingsPath, destination, overwrite: false);
+        else if (!FilesHaveSameContents(_legacySettingsPath, destination))
+            throw new IOException($"Codex settings migration destination already exists: {destination}");
+        try { File.Delete(_legacySettingsPath); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private string CreateConflictBackupPath()
+    {
+        var directory = Path.Combine(Path.GetDirectoryName(SettingsPath)!, "MigratedLegacy");
+        Directory.CreateDirectory(directory);
+        var projectName = SanitizeFileName(Path.GetFileName(
+            Path.TrimEndingDirectorySeparator(ProjectRoot)));
+        var normalizedRoot = Path.GetFullPath(ProjectRoot).TrimEnd(Path.DirectorySeparatorChar)
+            .ToUpperInvariant();
+        var projectHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedRoot)))[..12];
+        var prefix = $"CodexSettings-{projectName}-{projectHash}";
+        var candidate = Path.Combine(directory, prefix + ".yaml");
+        for (var suffix = 2; File.Exists(candidate) &&
+                             !FilesHaveSameContents(_legacySettingsPath, candidate); suffix++)
+            candidate = Path.Combine(directory, $"{prefix}-{suffix}.yaml");
+        return candidate;
+    }
+
+    private static bool FilesHaveSameContents(string left, string right)
+    {
+        var leftInfo = new FileInfo(left);
+        var rightInfo = new FileInfo(right);
+        return leftInfo.Length == rightInfo.Length &&
+               File.ReadAllBytes(left).AsSpan().SequenceEqual(File.ReadAllBytes(right));
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        var sanitized = new string(name.Select(character => invalid.Contains(character) ? '_' : character)
+            .ToArray()).Trim(' ', '.');
+        return string.IsNullOrWhiteSpace(sanitized) ? "Project" : sanitized;
     }
 }

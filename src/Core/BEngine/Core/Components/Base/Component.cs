@@ -34,6 +34,7 @@ public abstract class Component : BObject
 
     internal GameObject GameObjectUnchecked => _gameObject ??
         throw new InvalidOperationException("Component is not attached to a GameObject.");
+    internal GameObject? GameObjectOrNull => _gameObject;
     internal bool EnabledUnchecked => _enabled;
 
     public T? GetComponent<T>() where T : Component

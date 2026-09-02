@@ -100,5 +100,3 @@ internal static class EditorWindowMetadataRegistry
         string? TabPath,
         EditorWindowContextCommand[] Commands);
 }
-
-internal readonly record struct EditorWindowTabDescriptor(Type WindowType, string MenuPath);

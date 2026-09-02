@@ -13,9 +13,12 @@ internal sealed class CodexAppServerConversationTests(string hostExecutable)
     {
         using var fixture = new CodexCliFixture("conversation");
         var protocolPath = Path.Combine(fixture.Root, "protocol.jsonl");
-        WriteLegacySettings(fixture.ProjectRoot, "unlessTrusted");
+        var legacySettingsPath = WriteLegacyProjectSettings(fixture.ProjectRoot, "unlessTrusted");
         using var environment = CodexEnvironmentScope.WithProtocolTrace(protocolPath);
         using var client = new CodexAppServerClient(fixture.ProjectRoot);
+        TestAssert.True(!File.Exists(legacySettingsPath) &&
+                        File.Exists(new CodexProjectStore(fixture.ProjectRoot).SettingsPath),
+            "Project-local Codex preferences were not migrated to global EditorData/Preferences.");
         client.Settings.ExecutablePath = hostExecutable;
         TestAssert.Equal("untrusted", client.Settings.ApprovalPolicy,
             "Legacy unlessTrusted settings were not migrated before starting Codex.");
@@ -64,6 +67,7 @@ internal sealed class CodexAppServerConversationTests(string hostExecutable)
 
         VerifyRequests(protocolPath, fixture.ProjectRoot);
         VerifyOnRequestMigration();
+        VerifyConflictingProjectSettingsMigration();
     }
 
     private static void VerifyRequests(string protocolPath, string projectRoot)
@@ -119,10 +123,60 @@ internal sealed class CodexAppServerConversationTests(string hostExecutable)
             "The migrated approval policy was not persisted.");
     }
 
+    private static void VerifyConflictingProjectSettingsMigration()
+    {
+        using var fixture = new CodexCliFixture("settings-conflict-migration");
+        var store = new CodexProjectStore(fixture.ProjectRoot);
+        var global = new CodexProjectSettingsData
+        {
+            Model = "global-model",
+            ApprovalPolicy = "never"
+        };
+        global.Save(store.SettingsPath);
+        var legacyPath = Path.Combine(fixture.ProjectRoot, "ProjectSettings", "CodexSettings.yaml");
+        Directory.CreateDirectory(Path.GetDirectoryName(legacyPath)!);
+        var legacy = new CodexProjectSettingsData
+        {
+            Model = "legacy-project-model",
+            ApprovalPolicy = "onRequest"
+        };
+        legacy.Save(legacyPath);
+
+        var migrationDirectory = Path.Combine(Path.GetDirectoryName(store.SettingsPath)!, "MigratedLegacy");
+        var previousBackups = Directory.Exists(migrationDirectory)
+            ? Directory.EnumerateFiles(migrationDirectory, "CodexSettings-*.yaml")
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : [];
+        var loaded = store.LoadSettings();
+        TestAssert.Equal("global-model", loaded.Model,
+            "A project-local Codex preference overwrote the existing global preference during migration.");
+        TestAssert.True(!File.Exists(legacyPath),
+            "The migrated project-local Codex preference was left in ProjectSettings.");
+        var backups = Directory.EnumerateFiles(migrationDirectory, "CodexSettings-*.yaml")
+            .Where(path => !previousBackups.Contains(path)).ToArray();
+        TestAssert.Equal(1, backups.Length,
+            "A conflicting project-local Codex preference was not preserved as exactly one migration backup.");
+        var backup = BEngine.YamlUtility.Load<CodexProjectSettingsData>(backups[0]);
+        TestAssert.Equal("legacy-project-model", backup.Model,
+            "The Codex migration backup did not preserve the project-local preference contents.");
+        TestAssert.Equal("onRequest", backup.ApprovalPolicy,
+            "The Codex migration backup was normalized or changed instead of being preserved losslessly.");
+    }
+
     private static void WriteLegacySettings(string projectRoot, string approvalPolicy)
     {
         var store = new CodexProjectStore(projectRoot);
         new CodexProjectSettingsData { ApprovalPolicy = approvalPolicy }.Save(store.SettingsPath);
+    }
+
+    private static string WriteLegacyProjectSettings(string projectRoot, string approvalPolicy)
+    {
+        var store = new CodexProjectStore(projectRoot);
+        if (File.Exists(store.SettingsPath)) File.Delete(store.SettingsPath);
+        var path = Path.Combine(projectRoot, "ProjectSettings", "CodexSettings.yaml");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        new CodexProjectSettingsData { ApprovalPolicy = approvalPolicy }.Save(path);
+        return path;
     }
 
     private static async Task<CodexClientSnapshot> WaitForAsync(

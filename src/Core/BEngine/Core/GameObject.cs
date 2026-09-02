@@ -12,6 +12,7 @@ public class GameObject : BObject
     private string _tag = "Untagged";
     private ulong _layer = SortingLayer.Default;
     private bool _isStatic;
+    private bool _destroyed;
     private Transform _transform;
     private Scene? _scene;
 
@@ -287,7 +288,9 @@ public class GameObject : BObject
     {
         if (!CanRemoveComponent(component)) return false;
         SceneRuntime.NotifyComponentDestroying(component);
-        return _components.Remove(component);
+        if (!_components.Remove(component)) return false;
+        BObject.Unregister(component);
+        return true;
     }
 
     internal bool CanRemoveComponent(Component component)
@@ -315,6 +318,7 @@ public class GameObject : BObject
         ArgumentNullException.ThrowIfNull(component);
         if (_components.Contains(component) || !ReferenceEquals(component.gameObject, this)) return false;
         _components.Insert(Math.Clamp(index, 1, _components.Count), component);
+        BObject.Register(component);
         SceneRuntime.NotifyComponentStateChanged(component);
         return true;
     }
@@ -333,6 +337,38 @@ public class GameObject : BObject
     }
 
     internal void RestoreSceneBinding(Scene owner) => _scene = owner;
+
+    internal void RegisterObjectNodeUnchecked()
+    {
+        _destroyed = false;
+        BObject.Register(this);
+        foreach (var component in CollectionsMarshal.AsSpan(_components)) BObject.Register(component);
+    }
+
+    internal void UnregisterObjectNodeUnchecked()
+    {
+        _destroyed = true;
+        foreach (var component in CollectionsMarshal.AsSpan(_components)) BObject.Unregister(component);
+        BObject.Unregister(this);
+    }
+
+    internal bool TryBeginDestroyUnchecked()
+    {
+        if (_destroyed) return false;
+        _destroyed = true;
+        return true;
+    }
+
+    internal void DestroyDetachedUnchecked()
+    {
+        if (!TryBeginDestroyUnchecked()) return;
+        foreach (var child in _transform.ChildrenUnchecked.ToArray())
+            child.GameObjectUnchecked.DestroyDetachedUnchecked();
+        foreach (var behaviour in GetComponentsUnchecked<MonoBehaviour>())
+            SceneRuntime.NotifyComponentDestroying(behaviour);
+        _transform.SetParent(null, false);
+        UnregisterObjectNodeUnchecked();
+    }
 
     internal void MarkDontDestroyOnLoad() => _transform.RootUnchecked.GameObjectUnchecked._dontDestroyOnLoad = true;
 

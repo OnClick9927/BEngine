@@ -17,9 +17,7 @@ internal static class BuiltInAssetTypeRegistration
         AssetTypeRegistry.Register<MonoScript>(".cs", "Script", LoadScript,
             EditorBuiltinIcons.Assets.Script, typeof(ScriptImporter));
         RegisterShader(".shader");
-        RegisterShader(".glsl");
-        RegisterShader(".hlsl");
-        RegisterShader(".wgsl");
+        RegisterShader(".cg");
         AssetTypeRegistry.Register<Scene>(".scene.yaml", "Scene", LoadScene,
             EditorBuiltinIcons.Assets.Scene);
         AssetTypeRegistry.Register<PrefabAsset>(".prefab.yaml", "Prefab",

@@ -55,6 +55,17 @@ internal static class GUITextMetrics
         return (Fix64)physicalAdvance / renderScale;
     }
 
+    public static Fix64 MeasureRenderedWidth(
+        string text,
+        Fix64 fontSize,
+        string fontFamily,
+        Fix64 renderScale)
+    {
+        if (string.IsNullOrEmpty(text)) return Fix64.Zero;
+        renderScale = Fix64.Max(Fix64.FromDecimal(0.01m), renderScale);
+        return MeasureWidth(text, fontSize * renderScale, fontFamily) / renderScale;
+    }
+
     private static Fix64 EstimateWidth(string text, float fontSize)
     {
         return (Fix64)Math.Ceiling(EstimateLayoutAdvance(text, fontSize) + 8f);

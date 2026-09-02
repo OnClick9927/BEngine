@@ -45,6 +45,7 @@ public static class EditorApplication
             if (EditorBridge.Host is { } host && host.IsPaused != value)
             {
                 host.IsPaused = value;
+                Application.SetPaused(value);
                 EditorCallbackDispatcher.Invoke(pauseStateChanged,
                     value ? PauseState.Paused : PauseState.Unpaused, nameof(pauseStateChanged));
             }

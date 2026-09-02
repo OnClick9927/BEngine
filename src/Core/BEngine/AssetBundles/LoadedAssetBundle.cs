@@ -10,6 +10,7 @@ internal sealed class LoadedAssetBundle : IDisposable
     private readonly Dictionary<string, ZipArchiveEntry> _entries;
     private readonly Dictionary<string, byte[]> _assetCache =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _gate = new();
     private int _references;
     private bool _disposed;
 
@@ -77,47 +78,65 @@ internal sealed class LoadedAssetBundle : IDisposable
 
     internal bool TryAcquire()
     {
-        if (_disposed) return false;
-        checked { _references++; }
-        return true;
+        lock (_gate)
+        {
+            if (_disposed) return false;
+            checked { _references++; }
+            return true;
+        }
     }
 
     internal void Release()
     {
-        if (_references <= 0) return;
-        _references--;
+        lock (_gate)
+        {
+            if (_references <= 0) return;
+            _references--;
+        }
     }
 
-    internal int ReferenceCount => _references;
+    internal int ReferenceCount
+    {
+        get { lock (_gate) return _references; }
+    }
 
     internal Task<byte[]> ReadAssetAsync(
         AssetBundleAsset asset,
         long maximumSize,
         CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!_assetCache.TryGetValue(asset.Entry, out var bytes))
+        lock (_gate)
         {
-            bytes = ReadAssetCore(asset, maximumSize, cancellationToken);
-            _assetCache[asset.Entry] = bytes;
+            ThrowIfDisposed();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_assetCache.TryGetValue(asset.Entry, out var bytes))
+            {
+                bytes = ReadAssetCore(asset, maximumSize, cancellationToken);
+                _assetCache[asset.Entry] = bytes;
+            }
+            return Task.FromResult(bytes);
         }
-        return Task.FromResult(bytes);
     }
 
     internal bool TryDisposeIfUnused()
     {
-        if (_disposed || _references != 0) return false;
-        _disposed = true;
-        DisposeResources();
-        return true;
+        lock (_gate)
+        {
+            if (_disposed || _references != 0) return false;
+            _disposed = true;
+            DisposeResources();
+            return true;
+        }
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        DisposeResources();
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            DisposeResources();
+        }
     }
 
     private byte[] ReadAssetCore(

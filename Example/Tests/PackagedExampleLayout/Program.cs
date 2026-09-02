@@ -11,6 +11,8 @@ internal static class Program
         new("Core", "Core", true, ["CoreGettingStarted.bpackage"]),
         new("Animation", "Packages/Animation", false,
             ["AnimationGettingStarted.bpackage", "StateMachine.bpackage"]),
+        new("Audio", "Packages/Audio", false,
+            ["AudioGettingStarted.bpackage", "OneShotMixer.bpackage"]),
         new("Navigation2D", "Packages/Navigation2D", false,
             ["DynamicRebake.bpackage", "NavigationSurfaceAndAgent.bpackage"]),
         new("Physics2D", "Packages/Physics2D", false,
@@ -31,7 +33,7 @@ internal static class Program
             foreach (var module in Modules) VerifyModule(repositoryRoot, module);
 
             Console.WriteLine(
-                "PACKAGED_EXAMPLE_LAYOUT_OK|core,6-packages,editor-only,expected-archives," +
+                "PACKAGED_EXAMPLE_LAYOUT_OK|core,7-packages,editor-only,expected-archives," +
                 "yaml-manifest,release-mirror,package-manager-discovery");
             return 0;
         }

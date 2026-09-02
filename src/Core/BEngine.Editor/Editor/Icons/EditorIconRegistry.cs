@@ -45,6 +45,9 @@ public static class EditorIconRegistry
         if (!string.IsNullOrWhiteSpace(registered)) return registered;
         if (typeof(Camera2D).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Camera2D;
         if (typeof(SpriteRenderer).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.SpriteRenderer;
+        if (typeof(LineRenderer2D).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.LineRenderer2D;
+        if (typeof(TrailRenderer2D).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.TrailRenderer2D;
+        if (typeof(SpriteMask).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.SpriteMask;
         if (typeof(Transform).IsAssignableFrom(type)) return EditorBuiltinIcons.Components.Transform;
         var builtIn = type.Name switch
         {

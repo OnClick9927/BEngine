@@ -14,6 +14,3 @@ public class TreeViewState<TIdentifier>
 
     internal bool hasLastClickedID { get; set; }
 }
-
-/// <summary>Unity-compatible integer TreeView state.</summary>
-public class TreeViewState : TreeViewState<int>;

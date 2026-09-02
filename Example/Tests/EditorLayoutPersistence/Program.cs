@@ -1,6 +1,9 @@
+using System.Reflection;
 using BEngine.Editor;
 using BEngine.Editor.Documents;
 using BEngine.ProjectSystem;
+using BEngine.ProjectSystem.Editor;
+using UnityEditor.IMGUI.Controls;
 
 namespace BEngine.ExampleTests.EditorLayoutPersistence;
 
@@ -9,14 +12,19 @@ internal static class Program
     private static int Main()
     {
         var root = Path.Combine(Path.GetTempPath(), $"BEngine-EditorLayout-{Guid.NewGuid():N}");
+        var previousEditorDataPath = Environment.GetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH");
+        var editorDataPath = Path.Combine(root, "EditorData");
+        Environment.SetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH", editorDataPath);
         try
         {
             VerifyProjectPackagesSplitterLayout();
-            VerifyGroupedUndoHistory();
+            VerifyIndependentUndoHistory();
+            VerifyUndoHistoryWindow();
             VerifyUndoHistoryDropdown();
-            VerifyLayoutRoundTrip(root);
+            VerifyLayoutRoundTrip(Path.Combine(root, "FirstProject"));
+            VerifyGlobalLayoutStorageAndMigration(Path.Combine(root, "SecondProject"), editorDataPath);
             Console.WriteLine(
-                "EDITOR_LAYOUT_PERSISTENCE_OK|yaml-v2,named,last-session,dock-tree,closed-window-placement,selection,lock-context,project-packages-splitter,project-packages-height,undo-group-collapse,undo-history-jump,toolbar-layout-menu,layout-rename,case-only-layout-rename,builtin-layout-protection");
+                "EDITOR_LAYOUT_PERSISTENCE_OK|yaml-v2,named,layout,dock-tree,closed-window-placement,selection,lock-context,project-packages-splitter,project-packages-height,undo-records-independent,undo-history-details,undo-history-popup,undo-history-jump,toolbar-layout-menu,layout-rename,case-only-layout-rename,builtin-layouts,global-preferences,legacy-project-migration");
             return 0;
         }
         catch (Exception exception)
@@ -26,6 +34,7 @@ internal static class Program
         }
         finally
         {
+            Environment.SetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH", previousEditorDataPath);
             try { Directory.Delete(root, true); } catch { }
         }
     }
@@ -70,7 +79,7 @@ internal static class Program
         }
     }
 
-    private static void VerifyGroupedUndoHistory()
+    private static void VerifyIndependentUndoHistory()
     {
         Undo.ClearAll();
         var target = new GameObject("Before");
@@ -82,17 +91,73 @@ internal static class Program
             target.name = "Second";
 
             var history = Undo.GetHistory(out var cursor);
-            Require(cursor == 1 && history is [{ Name: "Grouped Rename", IsRedo: false }],
-                "Multiple records in one Undo group were exposed as separate history entries.");
-            Require(Undo.MoveToHistoryCursor(0) && target.name == "Before",
-                "Jumping before a grouped history entry did not restore every record in the group.");
+            Require(cursor == 2 && history is
+                    [{ Name: "Grouped Rename", IsRedo: false, OperationCount: 1, TargetCount: 1,
+                        AffectsScene: true },
+                     { Name: "Grouped Rename", IsRedo: false, OperationCount: 1, TargetCount: 1,
+                         AffectsScene: true }] &&
+                    history.All(entry => entry.TargetNames is [var targetName] &&
+                                         !string.IsNullOrWhiteSpace(targetName)) &&
+                    history.All(entry => entry.Details.Contains("1 operation(s)")),
+                "Two Undo records in the same group were merged into one history entry.");
+            Require(Undo.MoveToHistoryCursor(1) && target.name == "First",
+                "Moving back one history record did not undo exactly one operation.");
             history = Undo.GetHistory(out cursor);
-            Require(cursor == 0 && history is [{ Name: "Grouped Rename", IsRedo: true }] &&
-                    Undo.MoveToHistoryCursor(1) && target.name == "Second",
-                "Replaying a grouped history entry did not restore every record in chronological order.");
+            Require(cursor == 1 && history.Count == 2 && !history[0].IsRedo && history[1].IsRedo &&
+                    Undo.MoveToHistoryCursor(0) && target.name == "Before",
+                "Undo history did not retain separate applied and redo records.");
+            Require(Undo.MoveToHistoryCursor(2) && target.name == "Second",
+                "Replaying two independent history entries did not restore them in chronological order.");
+            history = Undo.GetHistory(out cursor);
+            Require(cursor == 2 && history.Count == 2 &&
+                    history.All(entry => !entry.IsRedo && entry.OperationCount == 1 && entry.TargetCount == 1),
+                "Independent history records changed after an Undo/Redo round trip.");
         }
         finally
         {
+            Undo.ClearAll();
+        }
+    }
+
+    private static void VerifyUndoHistoryWindow()
+    {
+        var menuCommand = typeof(UndoHistoryWindow)
+            .GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+            .Single(method => method.GetCustomAttributes<MenuItemAttribute>()
+                .Any(attribute => attribute.itemName == "Window/Analysis/Undo History"));
+        Require(menuCommand.ReturnType == typeof(void) && menuCommand.GetParameters().Length == 0,
+            "Undo History registered an invalid MenuItem command and would emit a Console warning.");
+
+        Undo.ClearAll();
+        var target = new GameObject("Before");
+        Undo.RecordObject(target, "Window Rename");
+        target.name = "After";
+        var anchor = new Rect(18, 12, 26, 20);
+        var window = UndoHistoryWindow.Open(anchor);
+        try
+        {
+            Require(window.RequestedState == EditorWindowState.Pop && window.RequestedFocus &&
+                    !window.saveToLayout && window.position.x == anchor.x &&
+                    window.position.y == anchor.yMax && window.position.width == 720 &&
+                    window.position.height == 440,
+                "Opening Undo History did not request an anchored, non-persistent Popup window.");
+            window.OpenInternal();
+            Require(window.IsOpen && window.titleContent.text == "Undo History" &&
+                    window.titleContent.image == EditorBuiltinIcons.Toolbar.UndoHistory,
+                "The Undo toolbar target did not open the detailed Undo History TreeView Popup.");
+            var tree = (TreeView<int>?)typeof(UndoHistoryWindow)
+                .GetField("_tree", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(window) ??
+                throw new InvalidOperationException("The Undo History window did not create its TreeView.");
+            tree.SetSelection([0], TreeViewSelectionOptions.FireSelectionChanged);
+            Require(target.name == "Before",
+                "Selecting Initial State in the Undo History TreeView did not restore that state.");
+            tree.SetSelection([1], TreeViewSelectionOptions.FireSelectionChanged);
+            Require(target.name == "After",
+                "Selecting an Undo History TreeView record did not restore that record's state.");
+        }
+        finally
+        {
+            window.CloseInternal();
             Undo.ClearAll();
         }
     }
@@ -234,23 +299,28 @@ internal static class Program
                 !loaded.SceneCameraDrawGrid,
             "The layout YAML did not preserve the 2D Scene camera state.");
         Require(store.LoadLastSession().ActiveLayout == "Editing",
-            "The last-session layout did not remember the active named layout.");
+            "The Layout record did not remember the active named layout.");
 
         var menuActions = new List<string>();
         var layoutMenu = EditorToolbarDropdowns.CreateLayoutMenu(
-            "Editing", store.HasLastSession, store.Names,
+            "Editing", store.HasLastSession, store.AvailableNames,
             () => menuActions.Add("save"),
             () => menuActions.Add("save-as"),
-            () => menuActions.Add("last-session"),
+            () => menuActions.Add("layout"),
             name => menuActions.Add("switch:" + name),
             name => menuActions.Add("rename:" + name),
             name => menuActions.Add("delete:" + name));
         Require(layoutMenu.Items.Any(item => item.Path == "Save Current" && item.Enabled) &&
                 layoutMenu.Items.Any(item => item.Path == "Save As..." && item.Enabled) &&
-                layoutMenu.Items.Any(item => item.Path == "Switch/Last Session" && item.Enabled) &&
+                layoutMenu.Items.Any(item => item.Path == "Switch/Layout" && item.Enabled) &&
+                layoutMenu.Items.Any(item => item.Path == "Switch/Default" && item.Enabled) &&
+                layoutMenu.Items.Any(item => item.Path == "Switch/2 by 3" && item.Enabled) &&
+                layoutMenu.Items.Any(item => item.Path == "Switch/Tall" && item.Enabled) &&
+                layoutMenu.Items.Any(item => item.Path == "Switch/Wide" && item.Enabled) &&
                 layoutMenu.Items.Any(item => item.Path == "Switch/Editing" && item.On) &&
                 layoutMenu.Items.Any(item => item.Path == "Rename/Editing" && item.Enabled) &&
-                layoutMenu.Items.Any(item => item.Path == "Delete/Editing" && item.Enabled),
+                layoutMenu.Items.Any(item => item.Path == "Delete/Editing" && item.Enabled) &&
+                layoutMenu.Items.All(item => item.Path != "Rename/Default" && item.Path != "Delete/Default"),
             "The toolbar Layout menu did not expose save, switch, rename, and delete actions.");
         layoutMenu.Items.Single(item => item.Path == "Rename/Editing").Action!.Invoke();
         Require(menuActions.SequenceEqual(["rename:Editing"]),
@@ -275,17 +345,69 @@ internal static class Program
                 caseRenamedDocument.Name == caseRenamed && caseRenamedDocument.ActiveLayout == caseRenamed,
             "Changing only a layout name's casing did not update its file and serialized identity together.");
         Require(!store.Delete(EditorLayoutStore.LastSessionName),
-            "The built-in Last Session layout could be deleted.");
+            "The current Layout record could be deleted.");
         RequireThrows<InvalidOperationException>(() =>
                 store.Rename(EditorLayoutStore.LastSessionName, "Renamed"),
-            "The built-in Last Session layout could be renamed.");
+            "The current Layout record could be renamed.");
         RequireThrows<InvalidOperationException>(() =>
                 store.Save(EditorLayoutStore.LastSessionName, new EditorLayoutDocument()),
-            "A named layout overwrote the built-in Last Session identity.");
+            "A named layout overwrote the current Layout identity.");
+        foreach (var builtInName in EditorLayoutStore.BuiltInLayoutNames)
+        {
+            var builtIn = store.Load(builtInName);
+            Require(builtIn.Name == builtInName && builtIn.ActiveLayout == builtInName &&
+                    builtIn.DockRoot is not null && builtIn.Windows.Count == 6,
+                $"The built-in layout '{builtInName}' did not provide a complete dock layout.");
+            Require(!store.Delete(builtInName), $"The built-in layout '{builtInName}' could be deleted.");
+            RequireThrows<InvalidOperationException>(() => store.Save(builtInName, new EditorLayoutDocument()),
+                $"The built-in layout '{builtInName}' could be overwritten.");
+        }
         Require(store.Delete(caseRenamed) && store.Names.Count == 0,
             "Deleting a renamed layout left it in the layout list.");
         hierarchy.CloseInternal();
         scene.CloseInternal();
+    }
+
+    private static void VerifyGlobalLayoutStorageAndMigration(string secondProjectRoot, string editorDataPath)
+    {
+        Directory.CreateDirectory(secondProjectRoot);
+        YamlUtility.Save(new ProjectData { Name = "Second Layout Project" },
+            Path.Combine(secondProjectRoot, ProjectWorkspace.ProjectFileName));
+        var secondWorkspace = ProjectWorkspace.Open(secondProjectRoot);
+        var legacySessionPath = Path.Combine(secondWorkspace.ProjectSettingsPath, "EditorLayout.yaml");
+        YamlUtility.Save(new EditorLayoutDocument
+        {
+            Name = "Last Select",
+            ActiveLayout = "Last Select",
+            WindowWidth = 1111
+        }, legacySessionPath);
+        var legacyLayoutsPath = Path.Combine(secondWorkspace.ProjectSettingsPath, "Layouts");
+        Directory.CreateDirectory(legacyLayoutsPath);
+        YamlUtility.Save(new EditorLayoutDocument { Name = "Legacy Review", ActiveLayout = "Legacy Review" },
+            Path.Combine(legacyLayoutsPath, "Legacy Review.layout.yaml"));
+
+        var secondStore = new EditorLayoutStore(secondWorkspace);
+        var layoutsPath = Path.Combine(editorDataPath, "Preferences", "Layouts");
+        Require(!File.Exists(legacySessionPath) && !Directory.Exists(legacyLayoutsPath),
+            "Legacy project-local layout records were not removed after migration.");
+        Require(File.Exists(Path.Combine(layoutsPath, "Layout.yaml")) &&
+                Directory.EnumerateFiles(layoutsPath, "*.layout.yaml").Any(path =>
+                    Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(path)) == "Legacy Review") &&
+                !Directory.EnumerateDirectories(layoutsPath).Any(),
+            "Layouts were not stored directly in the global EditorData/Preferences/Layouts directory.");
+        Require(secondStore.Names.Contains("Legacy Review") &&
+                secondStore.Names.Any(name => name.StartsWith("Second Layout Project Layout",
+                    StringComparison.OrdinalIgnoreCase)),
+            "Project-local layouts were not preserved as global named layouts during a collision migration.");
+        Require(secondStore.AvailableNames.Take(EditorLayoutStore.BuiltInLayoutNames.Count)
+                .SequenceEqual(EditorLayoutStore.BuiltInLayoutNames),
+            "The engine-provided layouts were not exposed in their stable menu order.");
+
+        var createdWorkspace = ProjectWorkspaceFactory.Create(
+            Path.Combine(Path.GetDirectoryName(secondProjectRoot)!, "NewProject"), "New Layout Project");
+        Require(!File.Exists(Path.Combine(createdWorkspace.ProjectSettingsPath, "EditorLayout.yaml")) &&
+                !Directory.Exists(Path.Combine(createdWorkspace.ProjectSettingsPath, "Layouts")),
+            "Creating a project still wrote editor-only layout state into ProjectSettings.");
     }
 
     private static EditorWindowLayoutDocument WindowRecord(EditorWindow window) => new()

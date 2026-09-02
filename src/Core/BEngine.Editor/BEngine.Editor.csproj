@@ -15,6 +15,7 @@
     <PackageReference Include="Silk.NET.Windowing" />
     <PackageReference Include="Silk.NET.Input" />
     <PackageReference Include="Silk.NET.OpenGL" />
+    <PackageReference Include="Silk.NET.Shaderc" />
     <PackageReference Include="Veldrid" />
     <PackageReference Include="Veldrid.SPIRV" />
   </ItemGroup>

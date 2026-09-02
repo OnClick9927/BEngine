@@ -36,6 +36,39 @@ internal static class CoreBuiltInGizmoDrawers
     }
 
     [DrawGizmo(GizmoType.Selected)]
+    private static void DrawSpriteMask(SpriteMask mask, GizmoType state)
+    {
+        var localCenter = new Vector2(
+            (Fix64.Half - mask.pivot.x) * mask.size.x,
+            (Fix64.Half - mask.pivot.y) * mask.size.y);
+        Gizmos.color = Color.white;
+        Gizmos.DrawWireCube(mask.transform.TransformPoint(localCenter),
+            Vector2.Scale(mask.size, mask.transform.lossyScale), mask.transform.rotation);
+    }
+
+    [DrawGizmo(GizmoType.Selected)]
+    private static void DrawLine(LineRenderer2D line, GizmoType state)
+    {
+        if (line.positionCount < 2) return;
+        Gizmos.color = Color.white;
+        var previous = ResolveLinePoint(line, 0);
+        for (var index = 1; index < line.positionCount; index++)
+        {
+            var current = ResolveLinePoint(line, index);
+            Gizmos.DrawLine(previous, current);
+            previous = current;
+        }
+        if (line.loop && line.positionCount > 2)
+            Gizmos.DrawLine(previous, ResolveLinePoint(line, 0));
+    }
+
+    private static Vector2 ResolveLinePoint(LineRenderer2D line, int index)
+    {
+        var point = line.GetPosition(index);
+        return line.useWorldSpace ? point : line.transform.TransformPoint(point);
+    }
+
+    [DrawGizmo(GizmoType.Selected)]
     private static void DrawParticleDirection(ParticleSystem2D particles, GizmoType state)
     {
         var direction = particles.startDirection.sqrMagnitude > Fix64.Epsilon

@@ -52,9 +52,9 @@ internal static class TextInputShortcutIsolationTests
         undoProbe.name = "After Focused Project Undo";
 
         harness.SendProjectKey(KeyCode.Delete);
-        harness.SendProjectKey(KeyCode.C, EventModifiers.Control);
+        harness.SendProjectKey(KeyCode.C, EventModifiers.Command);
         GUIUtility.systemCopyBuffer = "PastedText";
-        harness.SendProjectKey(KeyCode.V, EventModifiers.Control);
+        harness.SendProjectKey(KeyCode.V, EventModifiers.Command);
         var editedText = harness.ProjectRenameValue;
         harness.SendProjectKey(KeyCode.D, EventModifiers.Control);
         harness.SendProjectKey(KeyCode.Z, EventModifiers.Control);
@@ -63,6 +63,7 @@ internal static class TextInputShortcutIsolationTests
                            EditorKeyboardHarness.CountFiles(directory) == before &&
                            harness.ProjectRenamingPath == "Assets/Shortcuts/TextFocus.txt" &&
                            undoProbe.name == "After Focused Project Undo" && Undo.canUndo &&
+                           editedText.Contains("PastedText", StringComparison.Ordinal) &&
                            harness.ProjectRenameValue == editedText,
             "A Project shortcut escaped the focused rename TextField and mutated the selected asset.");
     }

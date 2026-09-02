@@ -28,7 +28,12 @@ public static class Time
     public static Fix64 fixedDeltaTime
     {
         get { return _fixedDeltaTime; }
-        set { _fixedDeltaTime = value; }
+        set
+        {
+            if (value <= Fix64.Zero)
+                throw new ArgumentOutOfRangeException(nameof(value), "Fixed delta time must be positive.");
+            _fixedDeltaTime = value;
+        }
     }
     public static Fix64 time
     {
@@ -56,12 +61,22 @@ public static class Time
     public static Fix64 timeScale
     {
         get { return _timeScale; }
-        set { _timeScale = value; }
+        set
+        {
+            if (value < Fix64.Zero)
+                throw new ArgumentOutOfRangeException(nameof(value), "Time scale cannot be negative.");
+            _timeScale = value;
+        }
     }
     public static Fix64 maximumDeltaTime
     {
         get { return _maximumDeltaTime; }
-        set { _maximumDeltaTime = value; }
+        set
+        {
+            if (value <= Fix64.Zero)
+                throw new ArgumentOutOfRangeException(nameof(value), "Maximum delta time must be positive.");
+            _maximumDeltaTime = value;
+        }
     }
     public static bool inFixedTimeStep
     {

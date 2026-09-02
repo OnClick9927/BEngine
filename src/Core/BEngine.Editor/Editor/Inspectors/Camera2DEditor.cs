@@ -18,6 +18,8 @@ public sealed class Camera2DEditor : Editor
             "Orthographic Size", (float)camera.size);
         var viewportPosition = EditorGUILayout.Vector2Field("Viewport Position", camera.viewportRect.position);
         var viewportSize = EditorGUILayout.Vector2Field("Viewport Size", camera.viewportRect.size);
+        var targetTexture = EditorGUILayout.ObjectField(
+            "Target Texture", camera.targetTexture, typeof(RenderTexture), allowSceneObjects: false) as RenderTexture;
         if (EditorGUI.EndChangeCheck())
         {
             Undo.RecordObject(camera, "Edit Camera 2D");
@@ -28,6 +30,7 @@ public sealed class Camera2DEditor : Editor
             camera.size = orthographicSize;
             camera.viewportRect = new Rect(
                 viewportPosition.x, viewportPosition.y, viewportSize.x, viewportSize.y);
+            camera.targetTexture = targetTexture;
             EditorUtility.SetDirty(camera);
         }
 

@@ -1,4 +1,5 @@
-﻿Microsoft Visual Studio Solution File, Format Version 12.00
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.0.0.0
 MinimumVisualStudioVersion = 18.0.0.0
@@ -122,14 +123,14 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Editor", "Editor", "{A28951
 		Packages\UIElements\Editor\Readme.md = Packages\UIElements\Editor\Readme.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Icons", "Core\Resources\Icons", "{C6823955-164D-FD45-1CB4-28C4BDA69813}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Icons", "Icons", "{C6823955-164D-FD45-1CB4-28C4BDA69813}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Resources\Icons\BEngine.64.rgba = Core\Resources\Icons\BEngine.64.rgba
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "Core\Resources\Shaders", "{1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "Shaders", "{1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "IMGUI", "Core\Resources\Shaders\IMGUI", "{78CEB72C-CB5D-D808-C09B-F95EF2E01053}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "IMGUI", "IMGUI", "{78CEB72C-CB5D-D808-C09B-F95EF2E01053}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Resources\Shaders\IMGUI\Solid.direct3d.frag.hlsl = Core\Resources\Shaders\IMGUI\Solid.direct3d.frag.hlsl
 		Core\Resources\Shaders\IMGUI\Solid.direct3d.vert.hlsl = Core\Resources\Shaders\IMGUI\Solid.direct3d.vert.hlsl
@@ -147,7 +148,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "IMGUI", "Core\Resources\Sha
 		Core\Resources\Shaders\IMGUI\Textured.webgpu.wgsl = Core\Resources\Shaders\IMGUI\Textured.webgpu.wgsl
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PortableScene", "Core\Resources\Shaders\PortableScene", "{5470AC1D-5254-4BD6-4AD6-FA21F229A052}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PortableScene", "PortableScene", "{5470AC1D-5254-4BD6-4AD6-FA21F229A052}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Resources\Shaders\PortableScene\Solid.opengl.frag.glsl = Core\Resources\Shaders\PortableScene\Solid.opengl.frag.glsl
 		Core\Resources\Shaders\PortableScene\Solid.opengl.vert.glsl = Core\Resources\Shaders\PortableScene\Solid.opengl.vert.glsl
@@ -162,33 +163,34 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PortableScene", "Core\Resou
 		Core\Resources\Shaders\PortableScene\Textured.webgpu.wgsl = Core\Resources\Shaders\PortableScene\Textured.webgpu.wgsl
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Scene", "Core\Resources\Shaders\Scene", "{51A648AF-6DE1-94E6-3D40-19F9320D3D91}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Scene", "Scene", "{51A648AF-6DE1-94E6-3D40-19F9320D3D91}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Core\Editor\Doc", "{C3FB6417-5EAA-0C77-1C46-C4509F547FAB}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{C3FB6417-5EAA-0C77-1C46-C4509F547FAB}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Editor\Doc\index.html = Core\Editor\Doc\index.html
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "Core\Editor\Doc\images", "{F92B29C9-0AA1-C248-CD95-796346222A8A}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{F92B29C9-0AA1-C248-CD95-796346222A8A}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Editor\Doc\images\overview.png = Core\Editor\Doc\images\overview.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Core\Editor\Examples", "{67E94F58-5EFA-D92E-B3B8-515B8B3030A9}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{67E94F58-5EFA-D92E-B3B8-515B8B3030A9}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Editor\Examples\CoreGettingStarted.bpackage = Core\Editor\Examples\CoreGettingStarted.bpackage
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Icons", "Core\Editor\Icons", "{252DB6A6-A652-9664-C878-305B07034993}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Icons", "Icons", "{252DB6A6-A652-9664-C878-305B07034993}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Editor\Icons\BEngine.ico = Core\Editor\Icons\BEngine.ico
 		Core\Editor\Icons\BEngine.png = Core\Editor\Icons\BEngine.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Assets", "Core\Editor\Icons\Assets", "{A6D9B692-D38E-137B-3905-7257811D40C7}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Assets", "Assets", "{A6D9B692-D38E-137B-3905-7257811D40C7}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Editor\Icons\Assets\AssetAnimation.png = Core\Editor\Icons\Assets\AssetAnimation.png
 		Core\Editor\Icons\Assets\AssetAssembly.png = Core\Editor\Icons\Assets\AssetAssembly.png
+		Core\Editor\Icons\Assets\AssetAtlas.png = Core\Editor\Icons\Assets\AssetAtlas.png
 		Core\Editor\Icons\Assets\AssetAudio.png = Core\Editor\Icons\Assets\AssetAudio.png
 		Core\Editor\Icons\Assets\AssetData.png = Core\Editor\Icons\Assets\AssetData.png
 		Core\Editor\Icons\Assets\AssetDefault.png = Core\Editor\Icons\Assets\AssetDefault.png
@@ -201,6 +203,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Assets", "Core\Editor\Icons
 		Core\Editor\Icons\Assets\AssetScene.png = Core\Editor\Icons\Assets\AssetScene.png
 		Core\Editor\Icons\Assets\AssetScript.png = Core\Editor\Icons\Assets\AssetScript.png
 		Core\Editor\Icons\Assets\AssetShader.png = Core\Editor\Icons\Assets\AssetShader.png
+		Core\Editor\Icons\Assets\AssetSkin.png = Core\Editor\Icons\Assets\AssetSkin.png
 		Core\Editor\Icons\Assets\AssetStyle.png = Core\Editor\Icons\Assets\AssetStyle.png
 		Core\Editor\Icons\Assets\AssetText.png = Core\Editor\Icons\Assets\AssetText.png
 		Core\Editor\Icons\Assets\FolderClosed.png = Core\Editor\Icons\Assets\FolderClosed.png
@@ -208,33 +211,51 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Assets", "Core\Editor\Icons
 		Core\Editor\Icons\Assets\FolderOpen.png = Core\Editor\Icons\Assets\FolderOpen.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Components", "Core\Editor\Icons\Components", "{4427E4E6-64D1-396D-4476-DB90520FB9D3}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Components", "Components", "{4427E4E6-64D1-396D-4476-DB90520FB9D3}"
 	ProjectSection(SolutionItems) = preProject
+		Core\Editor\Icons\Components\Animator.png = Core\Editor\Icons\Components\Animator.png
 		Core\Editor\Icons\Components\Camera.png = Core\Editor\Icons\Components\Camera.png
+		Core\Editor\Icons\Components\Collider2D.png = Core\Editor\Icons\Components\Collider2D.png
 		Core\Editor\Icons\Components\Component.png = Core\Editor\Icons\Components\Component.png
 		Core\Editor\Icons\Components\GameObject.png = Core\Editor\Icons\Components\GameObject.png
+		Core\Editor\Icons\Components\Navigation.png = Core\Editor\Icons\Components\Navigation.png
+		Core\Editor\Icons\Components\ParticleSystem2D.png = Core\Editor\Icons\Components\ParticleSystem2D.png
+		Core\Editor\Icons\Components\Rigidbody2D.png = Core\Editor\Icons\Components\Rigidbody2D.png
 		Core\Editor\Icons\Components\Script.png = Core\Editor\Icons\Components\Script.png
+		Core\Editor\Icons\Components\SpriteRenderer.png = Core\Editor\Icons\Components\SpriteRenderer.png
+		Core\Editor\Icons\Components\Tilemap.png = Core\Editor\Icons\Components\Tilemap.png
 		Core\Editor\Icons\Components\Transform.png = Core\Editor\Icons\Components\Transform.png
+		Core\Editor\Icons\Components\UIDocument.png = Core\Editor\Icons\Components\UIDocument.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Toolbar", "Core\Editor\Icons\Toolbar", "{4534649C-7AFA-C3CE-546A-0B68F96F4BCB}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Toolbar", "Toolbar", "{4534649C-7AFA-C3CE-546A-0B68F96F4BCB}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Editor\Icons\Toolbar\Add.png = Core\Editor\Icons\Toolbar\Add.png
+		Core\Editor\Icons\Toolbar\AddDropdown.png = Core\Editor\Icons\Toolbar\AddDropdown.png
 		Core\Editor\Icons\Toolbar\Browse.png = Core\Editor\Icons\Toolbar\Browse.png
 		Core\Editor\Icons\Toolbar\Button.png = Core\Editor\Icons\Toolbar\Button.png
 		Core\Editor\Icons\Toolbar\Check.png = Core\Editor\Icons\Toolbar\Check.png
 		Core\Editor\Icons\Toolbar\Clear.png = Core\Editor\Icons\Toolbar\Clear.png
+		Core\Editor\Icons\Toolbar\Close.png = Core\Editor\Icons\Toolbar\Close.png
 		Core\Editor\Icons\Toolbar\Container.png = Core\Editor\Icons\Toolbar\Container.png
 		Core\Editor\Icons\Toolbar\Delete.png = Core\Editor\Icons\Toolbar\Delete.png
+		Core\Editor\Icons\Toolbar\Dropdown.png = Core\Editor\Icons\Toolbar\Dropdown.png
+		Core\Editor\Icons\Toolbar\Duplicate.png = Core\Editor\Icons\Toolbar\Duplicate.png
 		Core\Editor\Icons\Toolbar\Error.png = Core\Editor\Icons\Toolbar\Error.png
+		Core\Editor\Icons\Toolbar\Export.png = Core\Editor\Icons\Toolbar\Export.png
 		Core\Editor\Icons\Toolbar\Field.png = Core\Editor\Icons\Toolbar\Field.png
+		Core\Editor\Icons\Toolbar\Filter.png = Core\Editor\Icons\Toolbar\Filter.png
 		Core\Editor\Icons\Toolbar\FoldoutClosed.png = Core\Editor\Icons\Toolbar\FoldoutClosed.png
 		Core\Editor\Icons\Toolbar\FoldoutOpen.png = Core\Editor\Icons\Toolbar\FoldoutOpen.png
+		Core\Editor\Icons\Toolbar\FrameDebugger.png = Core\Editor\Icons\Toolbar\FrameDebugger.png
 		Core\Editor\Icons\Toolbar\Hidden.png = Core\Editor\Icons\Toolbar\Hidden.png
 		Core\Editor\Icons\Toolbar\Html.png = Core\Editor\Icons\Toolbar\Html.png
+		Core\Editor\Icons\Toolbar\Import.png = Core\Editor\Icons\Toolbar\Import.png
 		Core\Editor\Icons\Toolbar\Info.png = Core\Editor\Icons\Toolbar\Info.png
 		Core\Editor\Icons\Toolbar\Label.png = Core\Editor\Icons\Toolbar\Label.png
+		Core\Editor\Icons\Toolbar\Layout.png = Core\Editor\Icons\Toolbar\Layout.png
 		Core\Editor\Icons\Toolbar\Lock.png = Core\Editor\Icons\Toolbar\Lock.png
+		Core\Editor\Icons\Toolbar\Minus.png = Core\Editor\Icons\Toolbar\Minus.png
 		Core\Editor\Icons\Toolbar\More.png = Core\Editor\Icons\Toolbar\More.png
 		Core\Editor\Icons\Toolbar\Move.png = Core\Editor\Icons\Toolbar\Move.png
 		Core\Editor\Icons\Toolbar\New.png = Core\Editor\Icons\Toolbar\New.png
@@ -242,6 +263,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Toolbar", "Core\Editor\Icon
 		Core\Editor\Icons\Toolbar\Pause.png = Core\Editor\Icons\Toolbar\Pause.png
 		Core\Editor\Icons\Toolbar\Play.png = Core\Editor\Icons\Toolbar\Play.png
 		Core\Editor\Icons\Toolbar\Rect.png = Core\Editor\Icons\Toolbar\Rect.png
+		Core\Editor\Icons\Toolbar\Redo.png = Core\Editor\Icons\Toolbar\Redo.png
 		Core\Editor\Icons\Toolbar\Refresh.png = Core\Editor\Icons\Toolbar\Refresh.png
 		Core\Editor\Icons\Toolbar\Rotate.png = Core\Editor\Icons\Toolbar\Rotate.png
 		Core\Editor\Icons\Toolbar\Save.png = Core\Editor\Icons\Toolbar\Save.png
@@ -251,6 +273,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Toolbar", "Core\Editor\Icon
 		Core\Editor\Icons\Toolbar\Settings.png = Core\Editor\Icons\Toolbar\Settings.png
 		Core\Editor\Icons\Toolbar\Step.png = Core\Editor\Icons\Toolbar\Step.png
 		Core\Editor\Icons\Toolbar\Stop.png = Core\Editor\Icons\Toolbar\Stop.png
+		Core\Editor\Icons\Toolbar\Undo.png = Core\Editor\Icons\Toolbar\Undo.png
+		Core\Editor\Icons\Toolbar\UndoHistory.png = Core\Editor\Icons\Toolbar\UndoHistory.png
 		Core\Editor\Icons\Toolbar\Unlock.png = Core\Editor\Icons\Toolbar\Unlock.png
 		Core\Editor\Icons\Toolbar\Up.png = Core\Editor\Icons\Toolbar\Up.png
 		Core\Editor\Icons\Toolbar\View.png = Core\Editor\Icons\Toolbar\View.png
@@ -258,7 +282,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Toolbar", "Core\Editor\Icon
 		Core\Editor\Icons\Toolbar\Warning.png = Core\Editor\Icons\Toolbar\Warning.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Windows", "Core\Editor\Icons\Windows", "{F5E71ECB-FE17-F556-AE07-81B670778047}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Windows", "Windows", "{F5E71ECB-FE17-F556-AE07-81B670778047}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Editor\Icons\Windows\Codex.png = Core\Editor\Icons\Windows\Codex.png
 		Core\Editor\Icons\Windows\Console.png = Core\Editor\Icons\Windows\Console.png
@@ -278,133 +302,133 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Windows", "Core\Editor\Icon
 		Core\Editor\Icons\Windows\Window.png = Core\Editor\Icons\Windows\Window.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Core\Editor\Skills", "{E15952DA-288C-3C12-6947-FFEE3500A3B6}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Skills", "{E15952DA-288C-3C12-6947-FFEE3500A3B6}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-core", "Core\Editor\Skills\bengine-core", "{FF7EF71C-A505-40C0-0ABF-C66BCCF833C7}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-core", "bengine-core", "{FF7EF71C-A505-40C0-0ABF-C66BCCF833C7}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Editor\Skills\bengine-core\SKILL.md = Core\Editor\Skills\bengine-core\SKILL.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Core\Editor\Skills\bengine-core\agents", "{E96FCCF8-31DF-D670-FC4C-DFFF499ACF14}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "agents", "{E96FCCF8-31DF-D670-FC4C-DFFF499ACF14}"
 	ProjectSection(SolutionItems) = preProject
 		Core\Editor\Skills\bengine-core\agents\openai.yaml = Core\Editor\Skills\bengine-core\agents\openai.yaml
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Packages\Animation\Editor\Doc", "{AD7A3ABD-2838-64FD-BE5A-27D533572851}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{AD7A3ABD-2838-64FD-BE5A-27D533572851}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Animation\Editor\Doc\index.html = Packages\Animation\Editor\Doc\index.html
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "Packages\Animation\Editor\Doc\images", "{FAE6B292-B02D-598C-C8D6-8FF46A081A85}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{FAE6B292-B02D-598C-C8D6-8FF46A081A85}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Animation\Editor\Doc\images\overview.png = Packages\Animation\Editor\Doc\images\overview.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Packages\Animation\Editor\Examples", "{46386BF0-1F8F-4DBB-B0B3-FB605B41FD17}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{46386BF0-1F8F-4DBB-B0B3-FB605B41FD17}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Animation\Editor\Examples\AnimationGettingStarted.bpackage = Packages\Animation\Editor\Examples\AnimationGettingStarted.bpackage
 		Packages\Animation\Editor\Examples\StateMachine.bpackage = Packages\Animation\Editor\Examples\StateMachine.bpackage
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Packages\Animation\Editor\Skills", "{9A31F25D-4C05-B9F4-4E2E-12DC901077FA}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Skills", "{9A31F25D-4C05-B9F4-4E2E-12DC901077FA}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-animation", "Packages\Animation\Editor\Skills\bengine-animation", "{75B04967-9E47-7F74-C865-366B8C7FDBE9}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-animation", "bengine-animation", "{75B04967-9E47-7F74-C865-366B8C7FDBE9}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Animation\Editor\Skills\bengine-animation\SKILL.md = Packages\Animation\Editor\Skills\bengine-animation\SKILL.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Packages\Animation\Editor\Skills\bengine-animation\agents", "{752312C3-BDB9-DA9A-921B-E4D7176B1F6E}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "agents", "{752312C3-BDB9-DA9A-921B-E4D7176B1F6E}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Animation\Editor\Skills\bengine-animation\agents\openai.yaml = Packages\Animation\Editor\Skills\bengine-animation\agents\openai.yaml
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Packages\Navigation2D\Editor\Doc", "{7B4B3D63-2713-F4C7-3D9B-6F6291BD6FA2}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{7B4B3D63-2713-F4C7-3D9B-6F6291BD6FA2}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Navigation2D\Editor\Doc\index.html = Packages\Navigation2D\Editor\Doc\index.html
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "Packages\Navigation2D\Editor\Doc\images", "{98491A2C-1F0B-D1F8-3B8E-4AD8B5A10807}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{98491A2C-1F0B-D1F8-3B8E-4AD8B5A10807}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Navigation2D\Editor\Doc\images\overview.png = Packages\Navigation2D\Editor\Doc\images\overview.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Packages\Navigation2D\Editor\Examples", "{B433E3F8-862E-B528-9827-9AC29760CE91}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{B433E3F8-862E-B528-9827-9AC29760CE91}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Navigation2D\Editor\Examples\DynamicRebake.bpackage = Packages\Navigation2D\Editor\Examples\DynamicRebake.bpackage
 		Packages\Navigation2D\Editor\Examples\NavigationSurfaceAndAgent.bpackage = Packages\Navigation2D\Editor\Examples\NavigationSurfaceAndAgent.bpackage
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Packages\Navigation2D\Editor\Skills", "{87DD3DFB-998A-07B4-E3EF-4BC5C0A53ABE}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Skills", "{87DD3DFB-998A-07B4-E3EF-4BC5C0A53ABE}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-navigation2d", "Packages\Navigation2D\Editor\Skills\bengine-navigation2d", "{85909041-4D87-5DA3-6A83-41C85592D06A}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-navigation2d", "bengine-navigation2d", "{85909041-4D87-5DA3-6A83-41C85592D06A}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Navigation2D\Editor\Skills\bengine-navigation2d\SKILL.md = Packages\Navigation2D\Editor\Skills\bengine-navigation2d\SKILL.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Packages\Navigation2D\Editor\Skills\bengine-navigation2d\agents", "{BD4B0AB1-E0A5-8FF4-EE6F-549D2D7A2F6A}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "agents", "{BD4B0AB1-E0A5-8FF4-EE6F-549D2D7A2F6A}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Navigation2D\Editor\Skills\bengine-navigation2d\agents\openai.yaml = Packages\Navigation2D\Editor\Skills\bengine-navigation2d\agents\openai.yaml
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Packages\Physics2D\Editor\Doc", "{AD81FF0A-764F-BF29-7D4C-8BF613E1368C}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{AD81FF0A-764F-BF29-7D4C-8BF613E1368C}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Physics2D\Editor\Doc\index.html = Packages\Physics2D\Editor\Doc\index.html
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "Packages\Physics2D\Editor\Doc\images", "{715DB6B9-1B3B-F54C-5094-E2A925EEFD72}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{715DB6B9-1B3B-F54C-5094-E2A925EEFD72}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Physics2D\Editor\Doc\images\overview.png = Packages\Physics2D\Editor\Doc\images\overview.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Packages\Physics2D\Editor\Examples", "{A24FB72E-A2C9-651F-8FFE-7C61182A1DAD}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{A24FB72E-A2C9-651F-8FFE-7C61182A1DAD}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Physics2D\Editor\Examples\RigidbodyAndQueries.bpackage = Packages\Physics2D\Editor\Examples\RigidbodyAndQueries.bpackage
 		Packages\Physics2D\Editor\Examples\TriggersAndQueries.bpackage = Packages\Physics2D\Editor\Examples\TriggersAndQueries.bpackage
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Packages\Physics2D\Editor\Skills", "{D732FEDA-550E-A6D4-A3D9-53D630CA1EC3}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Skills", "{D732FEDA-550E-A6D4-A3D9-53D630CA1EC3}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-physics2d", "Packages\Physics2D\Editor\Skills\bengine-physics2d", "{26A22189-4EE9-83E4-8774-537D73A2F8B1}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-physics2d", "bengine-physics2d", "{26A22189-4EE9-83E4-8774-537D73A2F8B1}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Physics2D\Editor\Skills\bengine-physics2d\SKILL.md = Packages\Physics2D\Editor\Skills\bengine-physics2d\SKILL.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Packages\Physics2D\Editor\Skills\bengine-physics2d\agents", "{9164CA5E-1876-75A4-9171-8D202B5D26B5}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "agents", "{9164CA5E-1876-75A4-9171-8D202B5D26B5}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\Physics2D\Editor\Skills\bengine-physics2d\agents\openai.yaml = Packages\Physics2D\Editor\Skills\bengine-physics2d\agents\openai.yaml
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Packages\PropertyAttributes\Editor\Doc", "{8A1666C9-E4A5-A9CB-44DB-4866839A998C}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{8A1666C9-E4A5-A9CB-44DB-4866839A998C}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\PropertyAttributes\Editor\Doc\index.html = Packages\PropertyAttributes\Editor\Doc\index.html
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "Packages\PropertyAttributes\Editor\Doc\images", "{64C003DD-C4B2-30F1-DEA3-BEF054F20CFE}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{64C003DD-C4B2-30F1-DEA3-BEF054F20CFE}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\PropertyAttributes\Editor\Doc\images\overview.png = Packages\PropertyAttributes\Editor\Doc\images\overview.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Packages\PropertyAttributes\Editor\Examples", "{0F3BDB01-1DCE-7D91-E779-028D5BAA1824}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{0F3BDB01-1DCE-7D91-E779-028D5BAA1824}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\PropertyAttributes\Editor\Examples\AttributesGallery.bpackage = Packages\PropertyAttributes\Editor\Examples\AttributesGallery.bpackage
 		Packages\PropertyAttributes\Editor\Examples\InspectorAttributesAndDrawer.bpackage = Packages\PropertyAttributes\Editor\Examples\InspectorAttributesAndDrawer.bpackage
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Packages\PropertyAttributes\Editor\Skills", "{9C1F0F9D-92E8-FD66-6AAA-D5CA4B73F06D}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Skills", "{9C1F0F9D-92E8-FD66-6AAA-D5CA4B73F06D}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-property-attributes", "Packages\PropertyAttributes\Editor\Skills\bengine-property-attributes", "{FEEE042D-F2C0-5E91-CD28-636215893D8E}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-property-attributes", "bengine-property-attributes", "{FEEE042D-F2C0-5E91-CD28-636215893D8E}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\PropertyAttributes\Editor\Skills\bengine-property-attributes\SKILL.md = Packages\PropertyAttributes\Editor\Skills\bengine-property-attributes\SKILL.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Packages\PropertyAttributes\Editor\Skills\bengine-property-attributes\agents", "{14A620FB-4501-BE30-5E57-12D0594AF27E}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "agents", "{14A620FB-4501-BE30-5E57-12D0594AF27E}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\PropertyAttributes\Editor\Skills\bengine-property-attributes\agents\openai.yaml = Packages\PropertyAttributes\Editor\Skills\bengine-property-attributes\agents\openai.yaml
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "Packages\TiledMap\Resources\Shaders", "{ED47689F-B435-7260-4872-D0E52582A078}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "Shaders", "{ED47689F-B435-7260-4872-D0E52582A078}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TiledMap", "Packages\TiledMap\Resources\Shaders\TiledMap", "{CBF2DD64-A4A7-6686-D818-A4BD088E8A56}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TiledMap", "TiledMap", "{CBF2DD64-A4A7-6686-D818-A4BD088E8A56}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\TiledMap\Resources\Shaders\TiledMap\Textured.direct3d.frag.hlsl = Packages\TiledMap\Resources\Shaders\TiledMap\Textured.direct3d.frag.hlsl
 		Packages\TiledMap\Resources\Shaders\TiledMap\Textured.direct3d.vert.hlsl = Packages\TiledMap\Resources\Shaders\TiledMap\Textured.direct3d.vert.hlsl
@@ -415,37 +439,37 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TiledMap", "Packages\TiledM
 		Packages\TiledMap\Resources\Shaders\TiledMap\Textured.webgpu.wgsl = Packages\TiledMap\Resources\Shaders\TiledMap\Textured.webgpu.wgsl
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Packages\TiledMap\Editor\Doc", "{389A1CE6-07B0-FA91-BED8-72923407524C}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{389A1CE6-07B0-FA91-BED8-72923407524C}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\TiledMap\Editor\Doc\index.html = Packages\TiledMap\Editor\Doc\index.html
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "Packages\TiledMap\Editor\Doc\images", "{A6BB576A-B3F3-EC30-D13B-EB2BA66D26DB}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{A6BB576A-B3F3-EC30-D13B-EB2BA66D26DB}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\TiledMap\Editor\Doc\images\overview.png = Packages\TiledMap\Editor\Doc\images\overview.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Packages\TiledMap\Editor\Examples", "{D85FE4C8-19AC-402F-5C6E-9715C5565B8B}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{D85FE4C8-19AC-402F-5C6E-9715C5565B8B}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\TiledMap\Editor\Examples\AtlasPalette.bpackage = Packages\TiledMap\Editor\Examples\AtlasPalette.bpackage
 		Packages\TiledMap\Editor\Examples\RuntimePainting.bpackage = Packages\TiledMap\Editor\Examples\RuntimePainting.bpackage
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Packages\TiledMap\Editor\Skills", "{1F010978-B829-9ACC-1B67-62D1829DD74B}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Skills", "{1F010978-B829-9ACC-1B67-62D1829DD74B}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-tiledmap", "Packages\TiledMap\Editor\Skills\bengine-tiledmap", "{320BCAEB-9C21-252B-70EA-BF1F74AE24D3}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-tiledmap", "bengine-tiledmap", "{320BCAEB-9C21-252B-70EA-BF1F74AE24D3}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\TiledMap\Editor\Skills\bengine-tiledmap\SKILL.md = Packages\TiledMap\Editor\Skills\bengine-tiledmap\SKILL.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Packages\TiledMap\Editor\Skills\bengine-tiledmap\agents", "{A11EBA28-C1A4-E26C-C633-ABDFDF17AF8E}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "agents", "{A11EBA28-C1A4-E26C-C633-ABDFDF17AF8E}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\TiledMap\Editor\Skills\bengine-tiledmap\agents\openai.yaml = Packages\TiledMap\Editor\Skills\bengine-tiledmap\agents\openai.yaml
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "Packages\UIElements\Resources\Shaders", "{46254D36-E17B-F0A9-3CF7-84788A743368}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "Shaders", "{46254D36-E17B-F0A9-3CF7-84788A743368}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UIElements", "Packages\UIElements\Resources\Shaders\UIElements", "{6490DE42-75A7-A2FC-A01B-6A97C81EE795}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UIElements", "UIElements", "{6490DE42-75A7-A2FC-A01B-6A97C81EE795}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\UIElements\Resources\Shaders\UIElements\Solid.direct3d.frag.hlsl = Packages\UIElements\Resources\Shaders\UIElements\Solid.direct3d.frag.hlsl
 		Packages\UIElements\Resources\Shaders\UIElements\Solid.direct3d.vert.hlsl = Packages\UIElements\Resources\Shaders\UIElements\Solid.direct3d.vert.hlsl
@@ -463,32 +487,79 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UIElements", "Packages\UIEl
 		Packages\UIElements\Resources\Shaders\UIElements\Textured.webgpu.wgsl = Packages\UIElements\Resources\Shaders\UIElements\Textured.webgpu.wgsl
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Packages\UIElements\Editor\Doc", "{36206326-3E12-255D-FB9A-36F6BE19F0C9}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{36206326-3E12-255D-FB9A-36F6BE19F0C9}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\UIElements\Editor\Doc\index.html = Packages\UIElements\Editor\Doc\index.html
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "Packages\UIElements\Editor\Doc\images", "{B0888862-66F4-9615-74F6-ADE892C3D56B}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{B0888862-66F4-9615-74F6-ADE892C3D56B}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\UIElements\Editor\Doc\images\overview.png = Packages\UIElements\Editor\Doc\images\overview.png
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Packages\UIElements\Editor\Examples", "{3E0F8FE2-C571-F6B0-CA76-100F4AB37B65}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{3E0F8FE2-C571-F6B0-CA76-100F4AB37B65}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\UIElements\Editor\Examples\ControlsGallery.bpackage = Packages\UIElements\Editor\Examples\ControlsGallery.bpackage
 		Packages\UIElements\Editor\Examples\RuntimeHud.bpackage = Packages\UIElements\Editor\Examples\RuntimeHud.bpackage
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Packages\UIElements\Editor\Skills", "{7C30C1FA-EB11-25FC-6312-D68263F020D5}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Skills", "{7C30C1FA-EB11-25FC-6312-D68263F020D5}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-ui-elements", "Packages\UIElements\Editor\Skills\bengine-ui-elements", "{3857E9DE-8EFE-61FB-9816-D37DC2BFB530}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-ui-elements", "bengine-ui-elements", "{3857E9DE-8EFE-61FB-9816-D37DC2BFB530}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\UIElements\Editor\Skills\bengine-ui-elements\SKILL.md = Packages\UIElements\Editor\Skills\bengine-ui-elements\SKILL.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "Packages\UIElements\Editor\Skills\bengine-ui-elements\agents", "{32661C3A-701D-45D8-F837-86FEDEDED20B}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "agents", "{32661C3A-701D-45D8-F837-86FEDEDED20B}"
 	ProjectSection(SolutionItems) = preProject
 		Packages\UIElements\Editor\Skills\bengine-ui-elements\agents\openai.yaml = Packages\UIElements\Editor\Skills\bengine-ui-elements\agents\openai.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Audio", "Audio", "{5A4B4502-EA65-3CAA-36B5-CB4BDBF65FA6}"
+	ProjectSection(SolutionItems) = preProject
+		Packages\Audio\package.yaml = Packages\Audio\package.yaml
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Audio", "Packages\Audio\BEngine.Audio\BEngine.Audio.csproj", "{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BEngine.Audio.Editor", "Packages\Audio\BEngine.Audio.Editor\BEngine.Audio.Editor.csproj", "{5A1DC88C-C63E-49B3-8470-2FD3602BA364}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{A10D1001-43E8-4F7C-8A10-000000000001}"
+	ProjectSection(SolutionItems) = preProject
+		Packages\Audio\Resources\README.md = Packages\Audio\Resources\README.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Editor", "Editor", "{A10D1002-43E8-4F7C-8A10-000000000002}"
+	ProjectSection(SolutionItems) = preProject
+		Packages\Audio\Editor\Readme.md = Packages\Audio\Editor\Readme.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{A10D1003-43E8-4F7C-8A10-000000000003}"
+	ProjectSection(SolutionItems) = preProject
+		Packages\Audio\Editor\Doc\index.html = Packages\Audio\Editor\Doc\index.html
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{A10D1004-43E8-4F7C-8A10-000000000004}"
+	ProjectSection(SolutionItems) = preProject
+		Packages\Audio\Editor\Doc\images\overview.png = Packages\Audio\Editor\Doc\images\overview.png
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{A10D1005-43E8-4F7C-8A10-000000000005}"
+	ProjectSection(SolutionItems) = preProject
+		Packages\Audio\Editor\Examples\AudioGettingStarted.bpackage = Packages\Audio\Editor\Examples\AudioGettingStarted.bpackage
+		Packages\Audio\Editor\Examples\OneShotMixer.bpackage = Packages\Audio\Editor\Examples\OneShotMixer.bpackage
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Skills", "Skills", "{A10D1006-43E8-4F7C-8A10-000000000006}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "bengine-audio", "bengine-audio", "{A10D1007-43E8-4F7C-8A10-000000000007}"
+	ProjectSection(SolutionItems) = preProject
+		Packages\Audio\Editor\Skills\bengine-audio\SKILL.md = Packages\Audio\Editor\Skills\bengine-audio\SKILL.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "agents", "agents", "{A10D1008-43E8-4F7C-8A10-000000000008}"
+	ProjectSection(SolutionItems) = preProject
+		Packages\Audio\Editor\Skills\bengine-audio\agents\openai.yaml = Packages\Audio\Editor\Skills\bengine-audio\agents\openai.yaml
 	EndProjectSection
 EndProject
 Global
@@ -693,102 +764,137 @@ Global
 		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Release|x64.Build.0 = Release|Any CPU
 		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Release|x86.ActiveCfg = Release|Any CPU
 		{CF5E9187-CF07-443D-AC63-6A45ED2713F8}.Release|x86.Build.0 = Release|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Debug|x64.Build.0 = Debug|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Debug|x86.Build.0 = Debug|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Release|x64.ActiveCfg = Release|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Release|x64.Build.0 = Release|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Release|x86.ActiveCfg = Release|Any CPU
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A}.Release|x86.Build.0 = Release|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Debug|x64.Build.0 = Debug|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Debug|x86.Build.0 = Debug|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Release|x64.ActiveCfg = Release|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Release|x64.Build.0 = Release|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Release|x86.ActiveCfg = Release|Any CPU
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{0ECEAD53-1810-C10A-B502-49C453FB671F} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
-		{0F3BDB01-1DCE-7D91-E779-028D5BAA1824} = {9C8B9BD7-7F85-D0E6-CCDF-EF0DBD3648B4}
-		{14A620FB-4501-BE30-5E57-12D0594AF27E} = {FEEE042D-F2C0-5E91-CD28-636215893D8E}
+		{743F2933-655E-4B11-9BCA-5B27724B7DE2} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{48794D92-E601-4812-8ADE-A6B9754E7949} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286} = {61A9E50A-3428-4BA8-8BD0-CEB1F0E9B89A}
+		{82F2CCA9-DC52-43C3-93D1-193C8640BA62} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
 		{19F1F373-D2F2-4749-D293-CBFA6DD8BB5A} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
-		{1C4915DE-3783-A9F8-8766-D1562A68A3A4} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
-		{1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8} = {743F2933-655E-4B11-9BCA-5B27724B7DE2}
-		{1F010978-B829-9ACC-1B67-62D1829DD74B} = {7D10B074-9B61-8D1E-127E-36137BAB78E3}
-		{252DB6A6-A652-9664-C878-305B07034993} = {9412CA5B-328B-9D9D-EA38-D6DDA88218EA}
-		{26A22189-4EE9-83E4-8774-537D73A2F8B1} = {D732FEDA-550E-A6D4-A3D9-53D630CA1EC3}
-		{2910F368-5CA1-2D46-6E59-C06D97E707D6} = {19F1F373-D2F2-4749-D293-CBFA6DD8BB5A}
-		{320BCAEB-9C21-252B-70EA-BF1F74AE24D3} = {1F010978-B829-9ACC-1B67-62D1829DD74B}
-		{32661C3A-701D-45D8-F837-86FEDEDED20B} = {3857E9DE-8EFE-61FB-9816-D37DC2BFB530}
-		{36206326-3E12-255D-FB9A-36F6BE19F0C9} = {A2895189-F924-91D4-37C6-938A678C9D39}
-		{3857E9DE-8EFE-61FB-9816-D37DC2BFB530} = {7C30C1FA-EB11-25FC-6312-D68263F020D5}
-		{389A1CE6-07B0-FA91-BED8-72923407524C} = {7D10B074-9B61-8D1E-127E-36137BAB78E3}
-		{3E0F8FE2-C571-F6B0-CA76-100F4AB37B65} = {A2895189-F924-91D4-37C6-938A678C9D39}
+		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85} = {19F1F373-D2F2-4749-D293-CBFA6DD8BB5A}
+		{D253D880-F9F4-43C9-BB36-735CA41CCB44} = {19F1F373-D2F2-4749-D293-CBFA6DD8BB5A}
+		{BAD34BFD-F3E4-1894-6299-B7234D1ED676} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
+		{0ECEAD53-1810-C10A-B502-49C453FB671F} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
+		{516113CF-3001-69AE-4CE3-FBA0BE8823AE} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
+		{D6CAAE35-2CFF-40A6-861B-672913F96735} = {516113CF-3001-69AE-4CE3-FBA0BE8823AE}
+		{F777EEB3-41D9-4500-96FF-312ED9A3E940} = {516113CF-3001-69AE-4CE3-FBA0BE8823AE}
+		{9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
+		{A85FF4AC-334A-4AA4-B064-D98676FC7B35} = {9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0}
+		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE} = {9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0}
+		{66B17977-3C35-4CEC-8C0B-03E54DED2B56} = {9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0}
+		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
+		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
+		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
 		{3EC67D67-DF56-473E-AF25-690F609E78BA} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
+		{1C4915DE-3783-A9F8-8766-D1562A68A3A4} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
+		{9BE17F9D-0605-4FEA-B800-B71D73907315} = {1C4915DE-3783-A9F8-8766-D1562A68A3A4}
+		{CF5E9187-CF07-443D-AC63-6A45ED2713F8} = {1C4915DE-3783-A9F8-8766-D1562A68A3A4}
+		{B2EBBFD2-9AA9-9B9E-A8D3-450ACF6131FE} = {1C4915DE-3783-A9F8-8766-D1562A68A3A4}
+		{89A51FA3-106F-320F-C40B-FECCB34E7EB1} = {19F1F373-D2F2-4749-D293-CBFA6DD8BB5A}
+		{E3B66917-3241-3F00-5415-339B2A1F8A24} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
+		{99D82B8E-E023-D6B7-A0BE-76A541408A33} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
+		{BBC9ACF3-7518-A543-D9C1-10654DD99716} = {516113CF-3001-69AE-4CE3-FBA0BE8823AE}
+		{9412CA5B-328B-9D9D-EA38-D6DDA88218EA} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
+		{2910F368-5CA1-2D46-6E59-C06D97E707D6} = {19F1F373-D2F2-4749-D293-CBFA6DD8BB5A}
+		{91057B22-09EC-B664-8DFD-EE308C57AB79} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
 		{41D8BE42-7458-1D39-184C-428653C6DBD9} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
+		{9C8B9BD7-7F85-D0E6-CCDF-EF0DBD3648B4} = {516113CF-3001-69AE-4CE3-FBA0BE8823AE}
+		{7D10B074-9B61-8D1E-127E-36137BAB78E3} = {1C4915DE-3783-A9F8-8766-D1562A68A3A4}
+		{A2895189-F924-91D4-37C6-938A678C9D39} = {9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0}
+		{C6823955-164D-FD45-1CB4-28C4BDA69813} = {743F2933-655E-4B11-9BCA-5B27724B7DE2}
+		{1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8} = {743F2933-655E-4B11-9BCA-5B27724B7DE2}
+		{78CEB72C-CB5D-D808-C09B-F95EF2E01053} = {1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}
+		{5470AC1D-5254-4BD6-4AD6-FA21F229A052} = {1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}
+		{51A648AF-6DE1-94E6-3D40-19F9320D3D91} = {1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}
+		{C3FB6417-5EAA-0C77-1C46-C4509F547FAB} = {9412CA5B-328B-9D9D-EA38-D6DDA88218EA}
+		{F92B29C9-0AA1-C248-CD95-796346222A8A} = {C3FB6417-5EAA-0C77-1C46-C4509F547FAB}
+		{67E94F58-5EFA-D92E-B3B8-515B8B3030A9} = {9412CA5B-328B-9D9D-EA38-D6DDA88218EA}
+		{252DB6A6-A652-9664-C878-305B07034993} = {9412CA5B-328B-9D9D-EA38-D6DDA88218EA}
+		{A6D9B692-D38E-137B-3905-7257811D40C7} = {252DB6A6-A652-9664-C878-305B07034993}
 		{4427E4E6-64D1-396D-4476-DB90520FB9D3} = {252DB6A6-A652-9664-C878-305B07034993}
 		{4534649C-7AFA-C3CE-546A-0B68F96F4BCB} = {252DB6A6-A652-9664-C878-305B07034993}
-		{46254D36-E17B-F0A9-3CF7-84788A743368} = {A85FF4AC-334A-4AA4-B064-D98676FC7B35}
-		{46386BF0-1F8F-4DBB-B0B3-FB605B41FD17} = {2910F368-5CA1-2D46-6E59-C06D97E707D6}
-		{48794D92-E601-4812-8ADE-A6B9754E7949} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
-		{516113CF-3001-69AE-4CE3-FBA0BE8823AE} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
-		{51A648AF-6DE1-94E6-3D40-19F9320D3D91} = {1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}
-		{5256C9C5-AD8C-4BEF-9FFB-A751B22C2286} = {61A9E50A-3428-4BA8-8BD0-CEB1F0E9B89A}
-		{5470AC1D-5254-4BD6-4AD6-FA21F229A052} = {1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}
-		{5E592BFA-020A-4C93-9CD8-90AAE92A60D6} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
-		{6490DE42-75A7-A2FC-A01B-6A97C81EE795} = {46254D36-E17B-F0A9-3CF7-84788A743368}
-		{64ACEBA2-6741-4151-AA72-3F5E1B5A12BE} = {9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0}
-		{64C003DD-C4B2-30F1-DEA3-BEF054F20CFE} = {8A1666C9-E4A5-A9CB-44DB-4866839A998C}
-		{66B17977-3C35-4CEC-8C0B-03E54DED2B56} = {9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0}
-		{67E94F58-5EFA-D92E-B3B8-515B8B3030A9} = {9412CA5B-328B-9D9D-EA38-D6DDA88218EA}
-		{715DB6B9-1B3B-F54C-5094-E2A925EEFD72} = {AD81FF0A-764F-BF29-7D4C-8BF613E1368C}
-		{743F2933-655E-4B11-9BCA-5B27724B7DE2} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
-		{752312C3-BDB9-DA9A-921B-E4D7176B1F6E} = {75B04967-9E47-7F74-C865-366B8C7FDBE9}
-		{75B04967-9E47-7F74-C865-366B8C7FDBE9} = {9A31F25D-4C05-B9F4-4E2E-12DC901077FA}
-		{78BBB9FF-1B16-434D-A68E-B58B2F0E47EB} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
-		{78CEB72C-CB5D-D808-C09B-F95EF2E01053} = {1ECC88FC-3DAC-03CB-49CF-92FCE5AC66F8}
-		{7B4B3D63-2713-F4C7-3D9B-6F6291BD6FA2} = {91057B22-09EC-B664-8DFD-EE308C57AB79}
-		{7C30C1FA-EB11-25FC-6312-D68263F020D5} = {A2895189-F924-91D4-37C6-938A678C9D39}
-		{7D10B074-9B61-8D1E-127E-36137BAB78E3} = {1C4915DE-3783-A9F8-8766-D1562A68A3A4}
-		{82F2CCA9-DC52-43C3-93D1-193C8640BA62} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
-		{85909041-4D87-5DA3-6A83-41C85592D06A} = {87DD3DFB-998A-07B4-E3EF-4BC5C0A53ABE}
-		{87DD3DFB-998A-07B4-E3EF-4BC5C0A53ABE} = {91057B22-09EC-B664-8DFD-EE308C57AB79}
-		{89A51FA3-106F-320F-C40B-FECCB34E7EB1} = {19F1F373-D2F2-4749-D293-CBFA6DD8BB5A}
-		{8A1666C9-E4A5-A9CB-44DB-4866839A998C} = {9C8B9BD7-7F85-D0E6-CCDF-EF0DBD3648B4}
-		{91057B22-09EC-B664-8DFD-EE308C57AB79} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
-		{9164CA5E-1876-75A4-9171-8D202B5D26B5} = {26A22189-4EE9-83E4-8774-537D73A2F8B1}
-		{9412CA5B-328B-9D9D-EA38-D6DDA88218EA} = {CD1B5D5A-B6D1-43FC-A25E-879FA641616B}
-		{98491A2C-1F0B-D1F8-3B8E-4AD8B5A10807} = {7B4B3D63-2713-F4C7-3D9B-6F6291BD6FA2}
-		{99D82B8E-E023-D6B7-A0BE-76A541408A33} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
-		{9A31F25D-4C05-B9F4-4E2E-12DC901077FA} = {2910F368-5CA1-2D46-6E59-C06D97E707D6}
-		{9BE17F9D-0605-4FEA-B800-B71D73907315} = {1C4915DE-3783-A9F8-8766-D1562A68A3A4}
-		{9C1F0F9D-92E8-FD66-6AAA-D5CA4B73F06D} = {9C8B9BD7-7F85-D0E6-CCDF-EF0DBD3648B4}
-		{9C8B9BD7-7F85-D0E6-CCDF-EF0DBD3648B4} = {516113CF-3001-69AE-4CE3-FBA0BE8823AE}
-		{9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
-		{A11EBA28-C1A4-E26C-C633-ABDFDF17AF8E} = {320BCAEB-9C21-252B-70EA-BF1F74AE24D3}
-		{A24FB72E-A2C9-651F-8FFE-7C61182A1DAD} = {41D8BE42-7458-1D39-184C-428653C6DBD9}
-		{A2895189-F924-91D4-37C6-938A678C9D39} = {9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0}
-		{A6BB576A-B3F3-EC30-D13B-EB2BA66D26DB} = {389A1CE6-07B0-FA91-BED8-72923407524C}
-		{A6D9B692-D38E-137B-3905-7257811D40C7} = {252DB6A6-A652-9664-C878-305B07034993}
-		{A85FF4AC-334A-4AA4-B064-D98676FC7B35} = {9E5A56CA-43C8-AA35-2CD1-64CE3FAE18F0}
-		{AD7A3ABD-2838-64FD-BE5A-27D533572851} = {2910F368-5CA1-2D46-6E59-C06D97E707D6}
-		{AD81FF0A-764F-BF29-7D4C-8BF613E1368C} = {41D8BE42-7458-1D39-184C-428653C6DBD9}
-		{B0888862-66F4-9615-74F6-ADE892C3D56B} = {36206326-3E12-255D-FB9A-36F6BE19F0C9}
-		{B1B3AD2E-418E-4687-8433-DEE096DC0B9C} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
-		{B2EBBFD2-9AA9-9B9E-A8D3-450ACF6131FE} = {1C4915DE-3783-A9F8-8766-D1562A68A3A4}
-		{B433E3F8-862E-B528-9827-9AC29760CE91} = {91057B22-09EC-B664-8DFD-EE308C57AB79}
-		{BAD34BFD-F3E4-1894-6299-B7234D1ED676} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
-		{BBC9ACF3-7518-A543-D9C1-10654DD99716} = {516113CF-3001-69AE-4CE3-FBA0BE8823AE}
-		{BD4B0AB1-E0A5-8FF4-EE6F-549D2D7A2F6A} = {85909041-4D87-5DA3-6A83-41C85592D06A}
-		{C3FB6417-5EAA-0C77-1C46-C4509F547FAB} = {9412CA5B-328B-9D9D-EA38-D6DDA88218EA}
-		{C6823955-164D-FD45-1CB4-28C4BDA69813} = {743F2933-655E-4B11-9BCA-5B27724B7DE2}
-		{CAB4FC1C-7DE3-435B-8501-BD5BB1A22476} = {BAD34BFD-F3E4-1894-6299-B7234D1ED676}
-		{CBF2DD64-A4A7-6686-D818-A4BD088E8A56} = {ED47689F-B435-7260-4872-D0E52582A078}
-		{CF5E9187-CF07-443D-AC63-6A45ED2713F8} = {1C4915DE-3783-A9F8-8766-D1562A68A3A4}
-		{D253D880-F9F4-43C9-BB36-735CA41CCB44} = {19F1F373-D2F2-4749-D293-CBFA6DD8BB5A}
-		{D6CAAE35-2CFF-40A6-861B-672913F96735} = {516113CF-3001-69AE-4CE3-FBA0BE8823AE}
-		{D732FEDA-550E-A6D4-A3D9-53D630CA1EC3} = {41D8BE42-7458-1D39-184C-428653C6DBD9}
-		{D85FE4C8-19AC-402F-5C6E-9715C5565B8B} = {7D10B074-9B61-8D1E-127E-36137BAB78E3}
-		{DD613E5F-BC20-455C-866A-3BCB0D6E0E85} = {19F1F373-D2F2-4749-D293-CBFA6DD8BB5A}
-		{E15952DA-288C-3C12-6947-FFEE3500A3B6} = {9412CA5B-328B-9D9D-EA38-D6DDA88218EA}
-		{E3B66917-3241-3F00-5415-339B2A1F8A24} = {0ECEAD53-1810-C10A-B502-49C453FB671F}
-		{E96FCCF8-31DF-D670-FC4C-DFFF499ACF14} = {FF7EF71C-A505-40C0-0ABF-C66BCCF833C7}
-		{ED47689F-B435-7260-4872-D0E52582A078} = {B2EBBFD2-9AA9-9B9E-A8D3-450ACF6131FE}
 		{F5E71ECB-FE17-F556-AE07-81B670778047} = {252DB6A6-A652-9664-C878-305B07034993}
-		{F777EEB3-41D9-4500-96FF-312ED9A3E940} = {516113CF-3001-69AE-4CE3-FBA0BE8823AE}
-		{F92B29C9-0AA1-C248-CD95-796346222A8A} = {C3FB6417-5EAA-0C77-1C46-C4509F547FAB}
-		{FAE6B292-B02D-598C-C8D6-8FF46A081A85} = {AD7A3ABD-2838-64FD-BE5A-27D533572851}
-		{FEEE042D-F2C0-5E91-CD28-636215893D8E} = {9C1F0F9D-92E8-FD66-6AAA-D5CA4B73F06D}
+		{E15952DA-288C-3C12-6947-FFEE3500A3B6} = {9412CA5B-328B-9D9D-EA38-D6DDA88218EA}
 		{FF7EF71C-A505-40C0-0ABF-C66BCCF833C7} = {E15952DA-288C-3C12-6947-FFEE3500A3B6}
+		{E96FCCF8-31DF-D670-FC4C-DFFF499ACF14} = {FF7EF71C-A505-40C0-0ABF-C66BCCF833C7}
+		{AD7A3ABD-2838-64FD-BE5A-27D533572851} = {2910F368-5CA1-2D46-6E59-C06D97E707D6}
+		{FAE6B292-B02D-598C-C8D6-8FF46A081A85} = {AD7A3ABD-2838-64FD-BE5A-27D533572851}
+		{46386BF0-1F8F-4DBB-B0B3-FB605B41FD17} = {2910F368-5CA1-2D46-6E59-C06D97E707D6}
+		{9A31F25D-4C05-B9F4-4E2E-12DC901077FA} = {2910F368-5CA1-2D46-6E59-C06D97E707D6}
+		{75B04967-9E47-7F74-C865-366B8C7FDBE9} = {9A31F25D-4C05-B9F4-4E2E-12DC901077FA}
+		{752312C3-BDB9-DA9A-921B-E4D7176B1F6E} = {75B04967-9E47-7F74-C865-366B8C7FDBE9}
+		{7B4B3D63-2713-F4C7-3D9B-6F6291BD6FA2} = {91057B22-09EC-B664-8DFD-EE308C57AB79}
+		{98491A2C-1F0B-D1F8-3B8E-4AD8B5A10807} = {7B4B3D63-2713-F4C7-3D9B-6F6291BD6FA2}
+		{B433E3F8-862E-B528-9827-9AC29760CE91} = {91057B22-09EC-B664-8DFD-EE308C57AB79}
+		{87DD3DFB-998A-07B4-E3EF-4BC5C0A53ABE} = {91057B22-09EC-B664-8DFD-EE308C57AB79}
+		{85909041-4D87-5DA3-6A83-41C85592D06A} = {87DD3DFB-998A-07B4-E3EF-4BC5C0A53ABE}
+		{BD4B0AB1-E0A5-8FF4-EE6F-549D2D7A2F6A} = {85909041-4D87-5DA3-6A83-41C85592D06A}
+		{AD81FF0A-764F-BF29-7D4C-8BF613E1368C} = {41D8BE42-7458-1D39-184C-428653C6DBD9}
+		{715DB6B9-1B3B-F54C-5094-E2A925EEFD72} = {AD81FF0A-764F-BF29-7D4C-8BF613E1368C}
+		{A24FB72E-A2C9-651F-8FFE-7C61182A1DAD} = {41D8BE42-7458-1D39-184C-428653C6DBD9}
+		{D732FEDA-550E-A6D4-A3D9-53D630CA1EC3} = {41D8BE42-7458-1D39-184C-428653C6DBD9}
+		{26A22189-4EE9-83E4-8774-537D73A2F8B1} = {D732FEDA-550E-A6D4-A3D9-53D630CA1EC3}
+		{9164CA5E-1876-75A4-9171-8D202B5D26B5} = {26A22189-4EE9-83E4-8774-537D73A2F8B1}
+		{8A1666C9-E4A5-A9CB-44DB-4866839A998C} = {9C8B9BD7-7F85-D0E6-CCDF-EF0DBD3648B4}
+		{64C003DD-C4B2-30F1-DEA3-BEF054F20CFE} = {8A1666C9-E4A5-A9CB-44DB-4866839A998C}
+		{0F3BDB01-1DCE-7D91-E779-028D5BAA1824} = {9C8B9BD7-7F85-D0E6-CCDF-EF0DBD3648B4}
+		{9C1F0F9D-92E8-FD66-6AAA-D5CA4B73F06D} = {9C8B9BD7-7F85-D0E6-CCDF-EF0DBD3648B4}
+		{FEEE042D-F2C0-5E91-CD28-636215893D8E} = {9C1F0F9D-92E8-FD66-6AAA-D5CA4B73F06D}
+		{14A620FB-4501-BE30-5E57-12D0594AF27E} = {FEEE042D-F2C0-5E91-CD28-636215893D8E}
+		{ED47689F-B435-7260-4872-D0E52582A078} = {B2EBBFD2-9AA9-9B9E-A8D3-450ACF6131FE}
+		{CBF2DD64-A4A7-6686-D818-A4BD088E8A56} = {ED47689F-B435-7260-4872-D0E52582A078}
+		{389A1CE6-07B0-FA91-BED8-72923407524C} = {7D10B074-9B61-8D1E-127E-36137BAB78E3}
+		{A6BB576A-B3F3-EC30-D13B-EB2BA66D26DB} = {389A1CE6-07B0-FA91-BED8-72923407524C}
+		{D85FE4C8-19AC-402F-5C6E-9715C5565B8B} = {7D10B074-9B61-8D1E-127E-36137BAB78E3}
+		{1F010978-B829-9ACC-1B67-62D1829DD74B} = {7D10B074-9B61-8D1E-127E-36137BAB78E3}
+		{320BCAEB-9C21-252B-70EA-BF1F74AE24D3} = {1F010978-B829-9ACC-1B67-62D1829DD74B}
+		{A11EBA28-C1A4-E26C-C633-ABDFDF17AF8E} = {320BCAEB-9C21-252B-70EA-BF1F74AE24D3}
+		{46254D36-E17B-F0A9-3CF7-84788A743368} = {A85FF4AC-334A-4AA4-B064-D98676FC7B35}
+		{6490DE42-75A7-A2FC-A01B-6A97C81EE795} = {46254D36-E17B-F0A9-3CF7-84788A743368}
+		{36206326-3E12-255D-FB9A-36F6BE19F0C9} = {A2895189-F924-91D4-37C6-938A678C9D39}
+		{B0888862-66F4-9615-74F6-ADE892C3D56B} = {36206326-3E12-255D-FB9A-36F6BE19F0C9}
+		{3E0F8FE2-C571-F6B0-CA76-100F4AB37B65} = {A2895189-F924-91D4-37C6-938A678C9D39}
+		{7C30C1FA-EB11-25FC-6312-D68263F020D5} = {A2895189-F924-91D4-37C6-938A678C9D39}
+		{3857E9DE-8EFE-61FB-9816-D37DC2BFB530} = {7C30C1FA-EB11-25FC-6312-D68263F020D5}
+		{32661C3A-701D-45D8-F837-86FEDEDED20B} = {3857E9DE-8EFE-61FB-9816-D37DC2BFB530}
+		{5A4B4502-EA65-3CAA-36B5-CB4BDBF65FA6} = {14C09CB1-320C-46A0-97D8-C6B7ADBB9AB1}
+		{DE431E1C-EEB7-47B9-A5B2-0F936D4C1F4A} = {5A4B4502-EA65-3CAA-36B5-CB4BDBF65FA6}
+		{5A1DC88C-C63E-49B3-8470-2FD3602BA364} = {5A4B4502-EA65-3CAA-36B5-CB4BDBF65FA6}
+		{A10D1001-43E8-4F7C-8A10-000000000001} = {5A4B4502-EA65-3CAA-36B5-CB4BDBF65FA6}
+		{A10D1002-43E8-4F7C-8A10-000000000002} = {5A4B4502-EA65-3CAA-36B5-CB4BDBF65FA6}
+		{A10D1003-43E8-4F7C-8A10-000000000003} = {A10D1002-43E8-4F7C-8A10-000000000002}
+		{A10D1004-43E8-4F7C-8A10-000000000004} = {A10D1003-43E8-4F7C-8A10-000000000003}
+		{A10D1005-43E8-4F7C-8A10-000000000005} = {A10D1002-43E8-4F7C-8A10-000000000002}
+		{A10D1006-43E8-4F7C-8A10-000000000006} = {A10D1002-43E8-4F7C-8A10-000000000002}
+		{A10D1007-43E8-4F7C-8A10-000000000007} = {A10D1006-43E8-4F7C-8A10-000000000006}
+		{A10D1008-43E8-4F7C-8A10-000000000008} = {A10D1007-43E8-4F7C-8A10-000000000007}
 	EndGlobalSection
 EndGlobal

@@ -1,25 +1,5 @@
 namespace BEngine.Editor;
 
-public enum DragAndDropVisualMode
-{
-    None,
-    Copy,
-    Link,
-    Move,
-    Generic,
-    Rejected
-}
-
-[Flags]
-public enum HierarchyDropFlags
-{
-    None = 0,
-    DropUpon = 1 << 0,
-    DropBetween = 1 << 1,
-    DropAfterParent = 1 << 2,
-    DropOutside = 1 << 3
-}
-
 public static class DragAndDrop
 {
     public delegate DragAndDropVisualMode ProjectBrowserDropHandler(
@@ -329,12 +309,4 @@ public static class DragAndDrop
         int ActiveControlId,
         bool IsDragging,
         bool Accepted);
-}
-
-internal static class DragAndDropWindowTarget
-{
-    internal const int ProjectBrowser = 1;
-    internal const int SceneView = 2;
-    internal const int Inspector = 3;
-    internal const int Hierarchy = 4;
 }

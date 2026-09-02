@@ -68,6 +68,14 @@ try
             Path.Combine(expected, "Preferences", "LauncherSettings.yaml"),
             StringComparison.OrdinalIgnoreCase),
         "Launcher settings path escaped the configured data root.");
+    Require(EditorDataPaths.layoutsDirectoryPath.Equals(
+            Path.Combine(expected, "Preferences", "Layouts"),
+            StringComparison.OrdinalIgnoreCase) && Directory.Exists(EditorDataPaths.layoutsDirectoryPath),
+        "Editor layouts escaped the global Preferences directory.");
+    Require(EditorDataPaths.codexSettingsPath.Equals(
+            Path.Combine(expected, "Preferences", "CodexSettings.yaml"),
+            StringComparison.OrdinalIgnoreCase),
+        "Codex settings path escaped the global Preferences directory.");
     Require(!File.Exists(Path.Combine(expected, "LauncherSettings.yaml")) &&
             File.ReadAllText(EditorDataPaths.launcherSettingsPath) == "legacy-launcher-settings",
         "Root LauncherSettings file was not migrated into the Preferences directory.");
@@ -77,7 +85,8 @@ try
 
     Console.WriteLine("EDITOR_DATA_PATHS_OK|environment-override,root,logs,preferences-directory," +
                       "startup-status-path,invalid-startup-token,themes-directory," +
-                      "root-preferences-migration,launcher-migration,conflict-backup");
+                      "layouts-directory,codex-settings,root-preferences-migration," +
+                      "launcher-migration,conflict-backup");
     return 0;
 }
 catch (Exception exception)

@@ -12,6 +12,7 @@ public sealed class Scene : BAsset, IDisposable
     private readonly IServiceScope? _serviceScope;
     private string _path = string.Empty;
     private bool _isLoaded = true;
+    private bool _disposing;
     private bool _disposed;
 
     public IReadOnlyList<GameObject> gameObjects => _gameObjectsView;
@@ -70,6 +71,27 @@ public sealed class Scene : BAsset, IDisposable
         if (gameObject.SceneUnchecked is not null)
             throw new InvalidOperationException("GameObject already belongs to a Scene.");
 
+        BindGameObject(gameObject);
+        SceneRuntime.NotifyGameObjectAdded(gameObject);
+    }
+
+    internal void AddHierarchy(GameObject root)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ThrowIfDisposed();
+        if (!_isLoaded)
+            throw new InvalidOperationException("GameObjects cannot be added to an unloaded Scene.");
+
+        var hierarchy = EnumerateHierarchy(root).ToArray();
+        if (hierarchy.Any(gameObject => gameObject.SceneUnchecked is not null))
+            throw new InvalidOperationException("GameObject hierarchy already belongs to a Scene.");
+
+        foreach (var gameObject in hierarchy) BindGameObject(gameObject);
+        SceneRuntime.NotifyGameObjectAdded(root);
+    }
+
+    private void BindGameObject(GameObject gameObject)
+    {
         if (IsRuntimeOnly)
         {
             gameObject.IsRuntimeOnly = true;
@@ -77,8 +99,8 @@ public sealed class Scene : BAsset, IDisposable
                 component.IsRuntimeOnly = true;
         }
         gameObject.BindToScene(this);
+        gameObject.RegisterObjectNodeUnchecked();
         _gameObjects.Add(gameObject);
-        SceneRuntime.NotifyGameObjectAdded(gameObject);
     }
 
     internal IReadOnlyList<GameObject> ReleaseAll()
@@ -178,6 +200,13 @@ public sealed class Scene : BAsset, IDisposable
         return result.Count == 0 ? [] : [.. result];
     }
 
+    public int GetComponents<T>(List<T> results) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        FillComponents(results);
+        return results.Count;
+    }
+
     internal void FillComponents<T>(List<T> result) where T : class
     {
         ArgumentNullException.ThrowIfNull(result);
@@ -202,7 +231,7 @@ public sealed class Scene : BAsset, IDisposable
 
     public bool Destroy(GameObject gameObject)
     {
-        if (!_gameObjects.Contains(gameObject)) return false;
+        if (!_gameObjects.Contains(gameObject) || !gameObject.TryBeginDestroyUnchecked()) return false;
 
         foreach (var child in gameObject.TransformUnchecked.ChildrenUnchecked.ToArray())
             Destroy(child.GameObjectUnchecked);
@@ -211,18 +240,29 @@ public sealed class Scene : BAsset, IDisposable
 
         gameObject.UnbindFromScene();
         gameObject.TransformUnchecked.SetParent(null, false);
-        return _gameObjects.Remove(gameObject);
+        if (!_gameObjects.Remove(gameObject)) return false;
+        gameObject.UnregisterObjectNodeUnchecked();
+        return true;
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        SceneRuntime.StopRunningScene(this);
-        foreach (var root in rootGameObjects.ToArray()) Destroy(root);
-        _gameObjects.Clear();
-        _serviceScope?.Dispose();
-        _isLoaded = false;
-        _disposed = true;
+        if (_disposed || _disposing) return;
+        _disposing = true;
+        try
+        {
+            SceneRuntime.StopRunningScene(this);
+            foreach (var root in rootGameObjects.ToArray()) Destroy(root);
+            _gameObjects.Clear();
+            _serviceScope?.Dispose();
+        }
+        finally
+        {
+            _isLoaded = false;
+            _disposed = true;
+            _disposing = false;
+            BObject.Unregister(this);
+        }
     }
 
     private void ThrowIfDisposed()

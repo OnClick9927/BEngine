@@ -54,6 +54,12 @@ internal static class Program
                                   "multi-inspector-play-isolation,close-layout-restore");
                 return 0;
             }
+            if (args.Contains("--gameobject-menu-only", StringComparer.Ordinal))
+            {
+                GameObjectMenuTests.Run(fixture);
+                Console.WriteLine("HIERARCHY_MULTI_SCENE_OK|shared-gameobject-menu,gameobject-actions");
+                return 0;
+            }
             EditorSceneContractTests.Run();
             SceneGizmoDispatchTests.Run();
             PackageGizmoDrawerTests.Run();

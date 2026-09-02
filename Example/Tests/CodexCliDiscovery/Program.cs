@@ -4,6 +4,7 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        using var editorData = EditorDataTestScope.Create();
         if (args is ["app-server"])
         {
             return await FakeCodexAppServer.RunAsync(args).ConfigureAwait(false);
@@ -23,13 +24,41 @@ internal static class Program
         {
             await new CodexCliDiscoveryTests().RunAsync().ConfigureAwait(false);
             Console.WriteLine("CODEX_CLI_DISCOVERY_OK|skills,absolute,path-exe,path-cmd,shim-args," +
-                              "app-server-dialogue,assistant-stream,error-event,error-deduplication");
+                              "app-server-dialogue,assistant-stream,error-event,error-deduplication," +
+                              "global-codex-preferences,lossless-conflict-migration");
             return 0;
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"CODEX_CLI_DISCOVERY_FAILED|{exception}");
             return 1;
+        }
+    }
+
+    private sealed class EditorDataTestScope : IDisposable
+    {
+        private readonly string? _ownedPath;
+
+        private EditorDataTestScope(string? ownedPath) => _ownedPath = ownedPath;
+
+        internal static EditorDataTestScope Create()
+        {
+            if (!string.IsNullOrWhiteSpace(
+                    Environment.GetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH")))
+                return new EditorDataTestScope(null);
+            var path = Path.Combine(Path.GetTempPath(), "BEngine", "CodexCliDiscovery",
+                Guid.NewGuid().ToString("N"));
+            Environment.SetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH", path);
+            return new EditorDataTestScope(path);
+        }
+
+        public void Dispose()
+        {
+            if (_ownedPath is null) return;
+            Environment.SetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH", null);
+            try { if (Directory.Exists(_ownedPath)) Directory.Delete(_ownedPath, recursive: true); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 

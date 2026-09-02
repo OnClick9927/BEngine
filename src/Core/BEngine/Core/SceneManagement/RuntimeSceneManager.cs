@@ -2,6 +2,7 @@ namespace BEngine.SceneManagement;
 
 public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSceneManager
 {
+    private readonly Lock _stateGate = new();
     private readonly List<Scene> _loadedScenes = [];
     private Scene? _activeScene;
 
@@ -35,11 +36,42 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sceneNameOrPath);
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        var scene = PrepareScene(sceneNameOrPath, CancellationToken.None);
+        try { return ActivateScene(scene, sceneNameOrPath, mode); }
+        catch
+        {
+            if (!_loadedScenes.Contains(scene) && scene.isCreated) scene.Dispose();
+            throw;
+        }
+    }
+
+    public SceneLoadOperation LoadSceneAsync(
+        string sceneNameOrPath,
+        LoadSceneMode mode = LoadSceneMode.Single)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneNameOrPath);
+        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        return new SceneLoadOperation(
+            cancellationToken => PrepareScene(sceneNameOrPath, cancellationToken),
+            scene => ActivateScene(scene, sceneNameOrPath, mode));
+    }
+
+    private Scene PrepareScene(string sceneNameOrPath, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         var loader = services.GetService(typeof(ISceneLoader)) as ISceneLoader ??
-            throw new InvalidOperationException(
-                "No ISceneLoader is registered. Register the player or host scene loader with AddBEngine services.");
+                     throw new InvalidOperationException(
+                         "No ISceneLoader is registered. Register the player or host scene loader with AddBEngine services.");
         var scene = loader.LoadScene(sceneNameOrPath, services) ??
-            throw new InvalidOperationException($"The scene loader returned null for '{sceneNameOrPath}'.");
+                    throw new InvalidOperationException($"The scene loader returned null for '{sceneNameOrPath}'.");
+        cancellationToken.ThrowIfCancellationRequested();
+        return scene;
+    }
+
+    private Scene ActivateScene(Scene scene, string sceneNameOrPath, LoadSceneMode mode)
+    {
+        lock (_stateGate)
+        {
         if (_loadedScenes.Contains(scene))
             throw new InvalidOperationException("The scene loader returned a Scene that is already loaded.");
         if (string.IsNullOrWhiteSpace(scene.path)) scene.path = sceneNameOrPath;
@@ -65,6 +97,7 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
         SceneLoaded?.Invoke(scene, mode);
         if (!ReferenceEquals(previousActive, scene)) ActiveSceneChanged?.Invoke(previousActive, scene);
         return scene;
+        }
     }
 
     public void RegisterScene(Scene scene, bool setActive = false)
@@ -84,6 +117,16 @@ public sealed class RuntimeSceneManager(IServiceProvider services) : IRuntimeSce
             throw new InvalidOperationException("The only loaded Scene cannot be unloaded.");
 
         return UnregisterScene(scene, disposeScene: true);
+    }
+
+    public SceneUnloadOperation UnloadSceneAsync(Scene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        return new SceneUnloadOperation(cancellationToken =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return UnloadScene(scene);
+        });
     }
 
     public bool UnregisterScene(Scene scene, bool disposeScene = false)

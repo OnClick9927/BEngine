@@ -114,7 +114,6 @@ public sealed class SceneRuntime
         finally
         {
             Time.EndFixedStepUnchecked();
-            Input.BeginFrame();
             SetCurrentScene(previousScene);
         }
     }
@@ -324,7 +323,7 @@ public sealed class SceneRuntime
     private MonoBehaviour[] EnabledBehaviours()
     {
         if (!_enabledSnapshotDirty) return _enabledSnapshot;
-        _enabledSnapshot = _enabled.ToArray();
+        _enabledSnapshot = _behaviours.Where(_enabled.Contains).ToArray();
         _enabledSnapshotDirty = false;
         return _enabledSnapshot;
     }

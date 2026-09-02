@@ -1,24 +1,12 @@
 using BEngine.Documents;
+using System.Collections.Concurrent;
 using YamlDotNet.Serialization;
 
 namespace BEngine;
 
-public enum HideFlags
-{
-    None = 0,
-    HideInHierarchy = 1,
-    HideInInspector = 2,
-    DontSaveInEditor = 4,
-    NotEditable = 8,
-    DontSaveInBuild = 16,
-    DontUnloadUnusedAsset = 32,
-    DontSave = DontSaveInEditor | DontSaveInBuild,
-    HideAndDontSave = HideInHierarchy | HideInInspector | DontSave
-}
-
 public abstract class BObject
 {
-    private static readonly Dictionary<int, WeakReference<BObject>> Objects = [];
+    private static readonly ConcurrentDictionary<int, WeakReference<BObject>> Objects = [];
     private static int _nextInstanceId;
     private readonly int _instanceId;
     private Guid _id = Guid.NewGuid();
@@ -92,7 +80,7 @@ public abstract class BObject
     {
         _instanceId = NextInstanceId();
         IsRuntimeOnly = Application.isPlaying && SceneRuntime.currentScene is not null;
-        Objects[_instanceId] = new WeakReference<BObject>(this);
+        Register(this);
     }
 
     public int GetInstanceID() => _instanceId;
@@ -102,7 +90,7 @@ public abstract class BObject
         if (!Objects.TryGetValue(instanceId, out var reference)) return null;
         if (reference.TryGetTarget(out var target))
             return IsVisibleInCurrentRuntimeDomain(target) ? target : null;
-        Objects.Remove(instanceId);
+        Objects.TryRemove(instanceId, out _);
         return null;
     }
 
@@ -145,7 +133,7 @@ public abstract class BObject
     private static void RemoveStaleObjects(List<int>? staleIds)
     {
         if (staleIds is null) return;
-        foreach (var instanceId in staleIds) Objects.Remove(instanceId);
+        foreach (var instanceId in staleIds) Objects.TryRemove(instanceId, out _);
     }
 
     private static bool IsVisibleInCurrentRuntimeDomain(BObject target)
@@ -174,8 +162,20 @@ public abstract class BObject
 
     private static int NextInstanceId()
     {
-        var id = ++_nextInstanceId;
-        return id != 0 ? id : ++_nextInstanceId;
+        var id = Interlocked.Increment(ref _nextInstanceId);
+        return id != 0 ? id : Interlocked.Increment(ref _nextInstanceId);
+    }
+
+    internal static void Register(BObject target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        Objects[target._instanceId] = new WeakReference<BObject>(target);
+    }
+
+    internal static void Unregister(BObject target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        Objects.TryRemove(target._instanceId, out _);
     }
 
     public static void Destroy(BObject target)
@@ -183,11 +183,21 @@ public abstract class BObject
         ArgumentNullException.ThrowIfNull(target);
         switch (target)
         {
+            case Scene assetScene:
+                assetScene.Dispose();
+                break;
             case GameObject gameObject when gameObject.scene is { } scene:
                 scene.Destroy(gameObject);
                 break;
+            case GameObject gameObject:
+                gameObject.DestroyDetachedUnchecked();
+                break;
             case Component component:
-                component.gameObject.RemoveComponent(component);
+                if (component.GameObjectOrNull is { } owner) owner.RemoveComponent(component);
+                else Unregister(component);
+                break;
+            default:
+                Unregister(target);
                 break;
         }
     }
@@ -238,6 +248,27 @@ public abstract class BObject
 
     private static GameObject CloneGameObject(GameObject source, Transform? parent)
     {
+        var objectMap = new Dictionary<Guid, BObject>();
+        var components = new List<(Component Source, Component Clone)>();
+        var clone = CloneHierarchy(source, parent, objectMap, components);
+        BObject? Resolve(Guid id) => objectMap.GetValueOrDefault(id) ?? FindSceneObject(source.scene, id);
+        foreach (var (sourceComponent, clonedComponent) in components)
+        {
+            SerializationCallbackUtility.BeforeSerialize(sourceComponent);
+            ComponentObjectGraphSerializer.Restore(clonedComponent,
+                ComponentObjectGraphSerializer.Capture(sourceComponent, allowTransientObjects: true), Resolve);
+            SerializationCallbackUtility.AfterDeserialize(clonedComponent);
+        }
+        if (parent is null && source.scene is { } scene) scene.AddHierarchy(clone);
+        return clone;
+    }
+
+    private static GameObject CloneHierarchy(
+        GameObject source,
+        Transform? parent,
+        IDictionary<Guid, BObject> objectMap,
+        ICollection<(Component Source, Component Clone)> components)
+    {
         var clone = new GameObject(source.name)
         {
             activeSelf = source.activeSelf,
@@ -248,23 +279,39 @@ public abstract class BObject
             PrefabAssetId = source.PrefabAssetId,
             PrefabSourceId = source.PrefabSourceId
         };
-        if (source.scene is { } scene) scene.Add(clone);
+        if (source.transform.GetType() != typeof(Transform)) clone.AddComponent(source.transform.GetType());
         clone.transform.localPosition = source.transform.localPosition;
         clone.transform.localRotation = source.transform.localRotation;
         clone.transform.localScale = source.transform.localScale;
         clone.transform.PrefabAssetId = source.transform.PrefabAssetId;
         clone.transform.PrefabSourceId = source.transform.PrefabSourceId;
         if (parent is not null) clone.transform.SetParent(parent, false);
+        objectMap.Add(source.Id, clone);
+        objectMap.Add(source.transform.Id, clone.transform);
         foreach (var component in source.components.Where(component => component is not Transform))
         {
             var copied = clone.AddComponent(component.GetType());
-            ComponentFieldSerializer.Deserialize(copied, ComponentFieldSerializer.Serialize(component));
             copied.enabled = component.enabled;
             copied.PrefabAssetId = component.PrefabAssetId;
             copied.PrefabSourceId = component.PrefabSourceId;
+            objectMap.Add(component.Id, copied);
+            components.Add((component, copied));
         }
-        foreach (var child in source.transform.children) CloneGameObject(child.gameObject, clone.transform);
+        foreach (var child in source.transform.children)
+            CloneHierarchy(child.gameObject, clone.transform, objectMap, components);
         return clone;
+    }
+
+    private static BObject? FindSceneObject(Scene? scene, Guid id)
+    {
+        if (scene is null) return null;
+        foreach (var gameObject in scene.gameObjects)
+        {
+            if (gameObject.Id == id) return gameObject;
+            foreach (var component in gameObject.components)
+                if (component.Id == id) return component;
+        }
+        return null;
     }
 
     private static Component CloneComponent(Component source)

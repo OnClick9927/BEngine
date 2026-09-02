@@ -10,11 +10,15 @@ description: "Develop and use BEngine core runtime, editor host, launcher, playe
 - Start the editor with `Output/BEngine.bat` and select a project whose authored content is below `Assets`.
 - Open the primary panels from `Window/General/Console`, `Window/General/Game`, `Window/General/Hierarchy`, `Window/General/Project`, `Window/General/Inspector`, and `Window/General/Scene`. Open `Window/Package Manager` for packages and examples.
 - Use `Window/Editor Status` for editor, graphics, package, service, and log diagnostics; `Window/Codex` opens the built-in Codex surface.
-- Use `Window/Rendering/Sorting Layers` or `Edit/Sorting Layers...` for render layers. Use `Edit/Project Settings...` for `Asset Bundles`, `Graphics`, `Player`, `Scripting`, and the separate `Tags` and `Layers` tabs under `Tags and Layers`. Layer values are contiguous natural indices `1..63`; the five default built-in layers may be renamed and reordered but not deleted, while custom layers may be added, deleted, renamed, and reordered.
+- Use `Edit/Project Settings... > Tags and Layers` for render layers; the obsolete duplicate Sorting Layers window was removed. The same settings window also exposes `Asset Bundles`, `Graphics`, `Player`, and `Scripting`. Layer values are contiguous natural indices `1..63`; the five default built-in layers may be renamed and reordered but not deleted, while custom layers may be added, deleted, renamed, and reordered.
 - Use `Edit/Preferences...` for language, scale, font, theme, asset refresh, meta-file visibility, and the external script editor. Preferences and Project Settings are normal layout-persistent EditorWindows: dock, float, and redock them like any other panel; repeated menu commands focus the existing instance. General exposes Editor Scale as a precise slider limited to `0.5` through `1.8`.
 - Floating EditorWindows are independent native windows. Move them across monitors or drag them back over the main dock; local popups remain with their owner. Saved off-screen bounds recover to a current work area after monitor topology changes. Unfocused floats repaint at a reduced rate and minimized floats stop GPU submission.
 - File operations are `File/New Scene`, `Open Scene...`, `Open Scene Additive...`, `Save Scene`, `Save All Scenes`, `Show Project in Explorer`, and `Exit`. Save commands are unavailable when the Play-mode write policy is active.
 - Selection/edit operations are `Edit/Undo`, `Redo`, `Copy`, `Paste`, `Duplicate`, `Rename`, `Delete`, `Select All`, `Deselect All`, and `Frame Selected`; their validators follow the focused Project/Hierarchy/Scene context.
+- Treat Layout as an editor preference, never a project setting. Persist current and named layouts below `Output/EditorData/Preferences/Layouts`, migrate legacy `ProjectSettings/EditorLayout.yaml`/`Layouts` once, display the current session as `Layout`, and keep built-ins `Default`, `2 by 3`, `Tall`, and `Wide` immutable.
+- Open the toolbar Undo History icon for a detailed TreeView of group name, operation/object counts, object names, and scene impact. Selecting a row moves the Undo cursor directly to that state and must preserve normal Redo-branch truncation after a new edit.
+- Open `Window/Analysis/Profiler` for CPU, Rendering, Memory, and registered external modules. Keep module rows 132 px high and vertically scrollable; expose Editor/Runtime method/call-stack CPU data, detailed render counters and deltas, and managed/process memory, fragmentation, allocation-rate, delta, and allocation-site data. Register extensions with `EditorProfilerModuleRegistry` and use `Profiler Modules` to control visibility.
+- Match Unity shortcuts for implemented commands: Q/W/E/R/F tools; Ctrl/Cmd+N/O/S scene operations; Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z Undo/Redo; Ctrl/Cmd+P, Ctrl/Cmd+Shift+P, and Ctrl/Cmd+Alt+P Play/Pause/Step; Ctrl/Cmd+1..5 primary windows; Ctrl/Cmd+7 Profiler; Ctrl/Cmd+Shift+C Console; F2 rename and Delete delete. Never route text editing shortcuts to window commands while an input field owns focus.
 - Manage the focused dock with `Window/Panels/Close Focused Tab`, `Lock Focused Window`, `Maximize Focused Tab`, `Next Window`, and `Previous Window`. Use `Help/Documentation`, `View Editor Log`, `Reveal Logs Folder`, `Copy System Info`, and `About BEngine` for help/diagnostics.
 - Import the required Core example from `Window/Package Manager > BEngine Core > Examples > Core Getting Started > Import`. It is installed below `Assets/Examples/CoreGettingStarted`; open `res/Core.scene.yaml`, enter Play mode, use the configured Horizontal/Vertical axes and Space, and inspect lifecycle/coroutine output in Console. The imported editor assembly also registers `Tools/Examples/BEngine Editor Window`.
 
@@ -34,6 +38,27 @@ description: "Develop and use BEngine core runtime, editor host, launcher, playe
 - All project asset types derive directly from the unified `BAsset`; do not introduce parallel asset base-type categories. The `BAsset` Inspector shows source identity and an `Import Settings` section whenever the asset has an `AssetImporter`. Texture import settings are `compressionFormat`, `filterMode`, `wrapMode`, `generateMipMaps`, `maxTextureSize`, and `pixelsPerUnit`; font settings are `defaultSize`, `includeKerning`, and `characterSet`; shader settings are `strictCompilation` and `optimizationLevel`. Use the Inspector's Apply or Revert buttons explicitly.
 - Preserve the editor pipeline `Source -> AssetDatabase -> AssetImporter -> Artifact -> BAsset`. AssetDatabase owns GUID/path/hash/SubAsset identity and caches loaded BAssets; the Assets pane is built from those records rather than raw disk enumeration. Invalidate affected cache entries after import, refresh, move, or delete. `Document<TAsset>` is an internal persistence bridge only, not another asset hierarchy.
 - Runtime loads BAssets from AssetBundles and may create GPU objects from them, but cannot save an asset. Play mode uses the same write prohibition. Sprite is a Texture-created `BObject` SubAsset, not a standalone BAsset.
+
+## Compile project CG shaders correctly
+
+- Treat `Assets/**/*.cg` and `Assets/**/*.shader` as HLSL-semantic, single-stage CG sources. They are not Unity ShaderLab or `CGPROGRAM` containers; do not wrap them in a ShaderLab document.
+- Resolve vertex stages from `*.vert.cg`, `*.vertex.cg`, or `#pragma stage vertex`. Resolve fragment stages from `*.frag.cg`, `*.fragment.cg`, or `#pragma stage fragment`/`pixel`. Resolve compute stages from `*.comp.cg`, `*.compute.cg`, or `#pragma stage compute`.
+- Require `#pragma stage vertex|fragment|pixel|compute` for `*.shader` and `*.cg` files without a recognized stage suffix. The default entry point is `main`; `#pragma entry EntryName` selects another non-empty entry.
+- Strip only BEngine's `#pragma stage` and `#pragma entry` lines before compilation. Leave other preprocessor directives in the compiler input.
+- Preserve the pipeline `Assets source -> stage/entry parsing -> shaderc HLSL -> Vulkan 1.0 SPIR-V -> content-addressed .spv -> current pointer`. Shaderc uses performance optimization, automatic locations, and HLSL IO mapping.
+- Include the compiler schema, normalized project path, stage, entry point, and complete source in the build ID. Reuse an existing SPIR-V artifact for unchanged input.
+- Perform compilation in background preparation, then atomically update `current` pointers and deleted pointers in the apply phase. Clear `DefaultShaderResources` only after compiled or deleted results are applied. Never publish a failed artifact.
+- Isolate failures per shader and use `ShaderCompilation.log` for compiler diagnostics. A minimal fragment source is:
+
+```hlsl
+#pragma stage fragment
+#pragma entry FragmentMain
+
+float4 FragmentMain() : SV_Target
+{
+    return float4(0.15, 0.75, 0.65, 1.0);
+}
+```
 
 ## Create and identify SubAssets
 
@@ -92,6 +117,56 @@ GUILayout.Button("Build", packageStyle);
 - The Atlas Inspector and Texture Atlas window draw `Sources` as typed Sprite ObjectFields. Atlas manifests are versionless and persist every Sprite's stable `ownerGuid` plus `localIdentifier`; do not store source paths or a separate `SpriteReferences` list.
 - The builder requires at least one valid Sprite-mode PNG input (or a legacy read-compatible source), unique references/names, deterministic power-of-two packing, and `Extrude <= Padding`. The generated PNG is an artifact-backed SubAsset identified by the Atlas GUID and a reserved localIdentifier; show it below the expanded Atlas node without exposing a second top-level Project asset.
 - Assign only a `Sprite` to `SpriteRenderer.sprite`. `TextureAtlasResolver` finds any Atlas that references it and supplies UV, pivot, and batch identity; an unpacked Sprite uses its own texture. Batching requires adjacent sorted submissions with the same Material, Shader, and Atlas/texture identity.
+
+## Use and extend cross-platform networking
+
+- Use `BEngine.Networking` for portable TCP, UDP, HTTP, and WebSocket work. It delegates protocols to .NET `TcpClient`, `UdpClient`, `HttpClient`, and `ClientWebSocket`; never add a handwritten HTTP or WebSocket parser.
+- Pass a `CancellationToken` to every operation and set a finite `Timeout` when the workflow needs a deadline. For TCP, UDP, and WebSocket inspect `LastResult`, `Error`, and `Exception` after failure. For HTTP inspect `Result`, `Error`, `ResponseCode`, response headers, and `DownloadData`/`DownloadText`.
+- Handle `TimedOut`, `Canceled`, `ConnectionError`, `ProtocolError`, and `DataProcessingError` distinctly. Dispose or asynchronously dispose every client and request; do not reuse a sent `HttpNetworkRequest` or a used WebSocket client.
+- Use `TcpNetworkClient.ConnectAsync/SendAsync/ReceiveAsync/CloseAsync` for streams. Use a bound `UdpNetworkClient(IPEndPoint)` and either connected or endpoint-based `SendAsync`; `ReceiveAsync` returns a `NetworkDatagram` with sender endpoint.
+- Use `HttpNetworkRequest.Get/Delete/Post/Put` for UnityWebRequest-style one-shot calls. Set headers before `SendAsync`. Inject a shared `HttpClient` or an `HttpMessageHandler` for platform policy and deterministic tests; an external HttpClient is not owned unless explicitly requested.
+- Use `HttpNetworkRequest.SendAsync(responseHandler, token)` to stream large responses without filling `DownloadData`. Validate response status before consuming a body and enforce application size limits inside the handler.
+- Use `WebSocketNetworkClient.SendTextAsync`, `SendBinaryAsync`, bounded `ReceiveAsync(maximumMessageSize)`, and `CloseAsync`. Configure a `ClientWebSocketTransport.Options` instance before passing it to the client when headers, proxy, keep-alive, subprotocol, or certificates require platform configuration.
+- Implement `IWebSocketTransport` for a test double or a genuinely different platform adapter. Prefer composition around the sealed TCP/UDP/HTTP clients; keep TLS, proxy, compression, handshake, framing, and protocol parsing in proven .NET implementations.
+
+```csharp
+using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+using var request = HttpNetworkRequest.Get("https://example.test/status");
+request.Timeout = TimeSpan.FromSeconds(5);
+request.SetRequestHeader("Accept", "application/json");
+await request.SendAsync(stop.Token);
+if (request.Result == NetworkRequestResult.Success)
+    Console.WriteLine(request.DownloadText);
+```
+
+## Preserve AssetBundle indexing and runtime updates
+
+- Treat runtime catalogs as immutable snapshots. `AssetBundleCatalogIndex` clones a publicly supplied catalog and freezes address, bundle, per-bundle asset, and precomputed dependency-closure indexes. Use `ContainsAddress` and `GetDependencyClosure` for public inspection.
+- Construct one index when each manager runtime state is created. Keep `LoadBytesAsync` and `LoadTextAsync` on dictionary lookups; do not reintroduce per-load `FirstOrDefault`, `ToDictionary`, asset `Where` scans, or dependency graph traversal.
+- Support concurrent `InitializeAsync` and concurrent loads on one manager. Share one loaded-bundle task per content hash, protect cache creation/removal, reference counts, ZIP access, asset cache, and disposal against races, and release every `AssetBundleHandle<T>`.
+- Serialize state-changing `InitializeAsync`, `ApplyUpdateAsync`, `RollbackAsync`, and `CleanupAsync` operations. Publish a fully constructed state atomically. A load captures one state snapshot and must remain valid while a newer state is published; concurrent application of the same plan performs one activation.
+- Keep remote version/catalog checks, maximum sizes, SHA-256 verification, content-addressed object names, path traversal rejection, dependency validation, and active/previous rollback pointers.
+- Stream bundle downloads through `HttpNetworkRequest.SendAsync(responseHandler, token)` with response-headers-first completion. Write into staging, incrementally hash and enforce declared/maximum sizes, flush, then move only a verified file into the object cache. Do not buffer a complete bundle in memory.
+- Atomically persist catalogs and active/previous pointers through temporary files. On download or verification failure, remove `.part` files and leave the previous active state intact. Rollback switches verified pointers and must not download.
+- Runtime is read-only: never save back to `Assets`, mutate a manager by editing `ActiveCatalog`, edit the index, or modify installed bundle content. Publish new content only through build, check, download, verify, and atomic apply.
+
+```csharp
+await using var bundles = new AssetBundleManager(new AssetBundleRuntimeOptions
+{
+    PackageName = "com.example.game",
+    CacheDirectory = cachePath,
+    BuiltInDirectory = builtInPath,
+    RemoteBaseUri = new Uri("https://cdn.example.test/content/"),
+    RequireHttps = true
+});
+await bundles.InitializeAsync(cancellationToken);
+var plan = await bundles.CheckForUpdatesAsync(cancellationToken);
+if (plan.HasUpdates)
+    await bundles.ApplyUpdateAsync(
+        plan, progress: null, cancellationToken: cancellationToken);
+await using var text =
+    await bundles.LoadTextAsync("Assets/Data/config.json", cancellationToken);
+```
 
 ## Preserve runtime architecture
 

@@ -10,13 +10,13 @@ public static class AssetBundleAssetLoader
     {
         ArgumentNullException.ThrowIfNull(manager);
         ArgumentException.ThrowIfNullOrWhiteSpace(reference);
-        if (!manager.IsInitialized || manager.ActiveCatalog is not { } catalog) return null;
+        if (!manager.IsInitialized) return null;
 
         var canonical = AssetBundleValidation.NormalizeAddress(reference);
-        var asset = catalog.Assets.FirstOrDefault(candidate =>
-            candidate.LocalIdentifier > 0 &&
-            candidate.Address.Equals(canonical, StringComparison.OrdinalIgnoreCase));
+        var fallbackCatalog = manager is AssetBundleManager ? null : manager.ActiveCatalog;
+        var asset = FindAsset(manager, fallbackCatalog, canonical);
         if (asset is null || asset.OwnerGuid == Guid.Empty ||
+            asset.LocalIdentifier <= 0 ||
             !asset.AssetType.Equals(nameof(Texture), StringComparison.OrdinalIgnoreCase)) return null;
 
         var expectedAddress = AssetBundleValidation.CreateSubAssetAddress(
@@ -28,9 +28,7 @@ public static class AssetBundleAssetLoader
             throw new InvalidDataException(
                 $"Bundled Texture sub-asset '{canonical}' is not a supported PNG image.");
 
-        var owner = catalog.Assets.FirstOrDefault(candidate =>
-            candidate.LocalIdentifier == 0 &&
-            (candidate.OwnerGuid == Guid.Empty ? candidate.Guid : candidate.OwnerGuid) == asset.OwnerGuid);
+        var owner = FindMainAsset(manager, fallbackCatalog, asset.OwnerGuid);
         if (owner is null) return null;
 
         var texture = new Texture
@@ -58,11 +56,11 @@ public static class AssetBundleAssetLoader
     {
         ArgumentNullException.ThrowIfNull(manager);
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
-        if (!manager.IsInitialized || manager.ActiveCatalog is null) return null;
+        if (!manager.IsInitialized) return null;
 
         var canonical = AssetBundleValidation.NormalizeAddress(address);
-        var asset = manager.ActiveCatalog.Assets.FirstOrDefault(candidate =>
-            candidate.Address.Equals(canonical, StringComparison.OrdinalIgnoreCase));
+        var fallbackCatalog = manager is AssetBundleManager ? null : manager.ActiveCatalog;
+        var asset = FindAsset(manager, fallbackCatalog, canonical);
         if (asset is null ||
             !asset.Importer.Equals("TextureImporter", StringComparison.OrdinalIgnoreCase) ||
             !asset.ImporterSettings.TryGetValue("textureType", out var textureType) ||
@@ -84,6 +82,29 @@ public static class AssetBundleAssetLoader
         sprite.sourcePath = string.Empty;
         sprite.assetType = nameof(Sprite);
         return sprite;
+    }
+
+    private static AssetBundleAsset? FindAsset(
+        IAssetBundleManager manager,
+        AssetBundleCatalog? fallbackCatalog,
+        string canonicalAddress)
+    {
+        if (manager is AssetBundleManager runtime)
+            return runtime.TryGetActiveAsset(canonicalAddress, out var indexed) ? indexed : null;
+        return fallbackCatalog?.Assets.FirstOrDefault(candidate =>
+            candidate.Address.Equals(canonicalAddress, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static AssetBundleAsset? FindMainAsset(
+        IAssetBundleManager manager,
+        AssetBundleCatalog? fallbackCatalog,
+        Guid ownerGuid)
+    {
+        if (manager is AssetBundleManager runtime)
+            return runtime.TryGetActiveMainAsset(ownerGuid, out var indexed) ? indexed : null;
+        return fallbackCatalog?.Assets.FirstOrDefault(candidate =>
+            candidate.LocalIdentifier == 0 &&
+            (candidate.OwnerGuid == Guid.Empty ? candidate.Guid : candidate.OwnerGuid) == ownerGuid);
     }
 
     private static float ReadPivot(IReadOnlyDictionary<string, string> settings, string key) =>

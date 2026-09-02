@@ -11,8 +11,10 @@ internal static class MainMenuIntegrationTests
 
     private static readonly string[] ShortcutTokens =
     [
-        "Ctrl+Shift+P", "Ctrl+Alt+P", "Ctrl+Shift+A", "Ctrl+N", "Ctrl+O", "Ctrl+S",
-        "Ctrl+Z", "Ctrl+Y", "Ctrl+C", "Ctrl+V", "Ctrl+D", "Ctrl+A", "Ctrl+P", "F2", "Del", "F"
+        "Ctrl+Shift+P", "Ctrl+Shift+N", "Ctrl+Shift+C", "Ctrl+Alt+P", "Ctrl+Shift+A",
+        "Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Z", "Ctrl+Y", "Ctrl+C", "Ctrl+V", "Ctrl+D",
+        "Ctrl+A", "Ctrl+P", "Ctrl+R", "Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+7",
+        "F2", "Del", "F"
     ];
 
     internal static void Run(SceneFixture fixture)
@@ -88,6 +90,12 @@ internal static class MainMenuIntegrationTests
         RequireShortcut(file, "Open Scene...", "Ctrl+O");
         RequireShortcut(file, "Save Scene", "Ctrl+S");
 
+        var assets = Capture(harness, "Assets");
+        RequireShortcut(assets, "Refresh", "Ctrl+R");
+
+        var gameObject = Capture(harness, "GameObject");
+        RequireShortcut(gameObject, "Create Empty", "Ctrl+Shift+N");
+
         var edit = Capture(harness, "Edit");
         RequireShortcut(edit, "Undo", "Ctrl+Z");
         RequireShortcut(edit, "Redo", "Ctrl+Y");
@@ -103,14 +111,25 @@ internal static class MainMenuIntegrationTests
         RequireShortcut(edit, "Step", "Ctrl+Alt+P");
 
         var window = Capture(harness, "Window");
-        foreach (var title in new[] { "Console", "Game", "Hierarchy", "Inspector", "Project", "Scene" })
+        var windowShortcuts = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Scene"] = "Ctrl+1",
+            ["Game"] = "Ctrl+2",
+            ["Inspector"] = "Ctrl+3",
+            ["Hierarchy"] = "Ctrl+4",
+            ["Project"] = "Ctrl+5",
+            ["Console"] = "Ctrl+Shift+C"
+        };
+        foreach (var (title, shortcut) in windowShortcuts)
         {
             TestAssert.Require(window.All(item => item.Path != title),
                 $"The legacy Window/{title} item is still present at the Window root.");
             var item = RequireItem(window, $"General/{title}", "Window/General built-in windows");
             TestAssert.Require(item.Enabled && item.Action is not null,
                 $"Window/General/{title} did not preserve its window-opening action.");
+            RequireShortcut(window, $"General/{title}", shortcut);
         }
+        RequireShortcut(window, "Analysis/Profiler", "Ctrl+7");
         TestAssert.Require(window.Where(item => item.Path.StartsWith("General/", StringComparison.Ordinal))
                 .All(item => !item.Checked),
             "Window/General built-in window items should not display checked state.");

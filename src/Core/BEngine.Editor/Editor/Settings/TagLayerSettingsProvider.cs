@@ -229,9 +229,3 @@ internal static class TagLayerSettingsProvider
         Draft.Reload();
     }
 }
-
-internal enum TagLayerSettingsPage
-{
-    Tags,
-    Layers
-}

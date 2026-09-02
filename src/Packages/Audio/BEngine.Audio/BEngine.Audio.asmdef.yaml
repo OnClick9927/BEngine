@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Audio
+rootNamespace: BEngine.Audio
+references: []
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false
+allowUnsafeCode: false

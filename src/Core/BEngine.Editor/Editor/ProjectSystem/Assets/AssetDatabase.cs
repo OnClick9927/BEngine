@@ -490,7 +490,7 @@ public sealed class AssetDatabase
         {
             ".cs" => "Script",
             ".png" => "Texture",
-            ".shader" or ".glsl" => "Shader",
+            ".shader" or ".cg" => "Shader",
             ".json" => "JSON",
             ".xml" => "XML",
             ".md" => "Markdown",

@@ -141,7 +141,7 @@ public class AssetImporter : BObject
         {
             ".png" => typeof(TextureImporter),
             ".ttf" or ".otf" or ".woff" or ".woff2" => typeof(FontImporter),
-            ".shader" or ".glsl" or ".hlsl" or ".wgsl" => typeof(ShaderImporter),
+            ".shader" or ".cg" => typeof(ShaderImporter),
             ".cs" => typeof(ScriptImporter),
             _ => typeof(DefaultImporter)
         };

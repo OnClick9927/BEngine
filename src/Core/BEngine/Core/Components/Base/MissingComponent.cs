@@ -5,6 +5,7 @@ public sealed class MissingComponent : Component
     private string _originalType = string.Empty;
     private Dictionary<string, string> _serializedFields = [];
     private IReadOnlyDictionary<string, string> _serializedFieldsView;
+    internal Serialization.ComponentGraphData? serializedGraph { get; set; }
 
     public MissingComponent()
     {

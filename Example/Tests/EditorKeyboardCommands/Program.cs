@@ -10,12 +10,13 @@ internal static class Program
         try
         {
             EditorAppearance.Apply(new EditorPreferencesDocument());
+            ShortcutMappingTests.Run();
             UndoBehaviorTests.Run();
             HierarchyKeyboardTests.Run();
             ProjectKeyboardTests.Run();
             TextInputShortcutIsolationTests.Run();
             Console.WriteLine(
-                "EDITOR_KEYBOARD_COMMANDS_OK|undo,redo,delete,f2,copy,duplicate,paste,hierarchy,project,text-focus-isolation");
+                "EDITOR_KEYBOARD_COMMANDS_OK|unity-shortcut-map,undo,redo,delete,f2,copy,duplicate,paste,hierarchy,project,text-focus-isolation");
             return 0;
         }
         catch (Exception exception)

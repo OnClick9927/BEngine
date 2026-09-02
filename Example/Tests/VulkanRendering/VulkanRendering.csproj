@@ -7,7 +7,6 @@
     <AssemblyName>BEngine.ExampleTests.VulkanRendering</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
     <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
   </ItemGroup>
 </Project>

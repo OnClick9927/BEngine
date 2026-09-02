@@ -30,6 +30,7 @@ internal sealed class PlayerApplication : IDisposable
     private IGraphicsPresentationDevice? _presentationDevice;
     private IInputContext? _input;
     private IMouse? _primaryMouse;
+    private readonly HashSet<IGamepad> _registeredGamepads = [];
     private System.Numerics.Vector2? _lastMousePosition;
     private bool? _appliedCursorVisible;
     private CursorLockMode? _appliedCursorLockState;
@@ -56,6 +57,10 @@ internal sealed class PlayerApplication : IDisposable
         RegisterCoreResourceRoot();
         _uiElementsEnabled = true;
         _preferredBackend = GraphicsBackendDefaults.Parse(projectSettings.GraphicsBackend);
+        Application.companyName = projectSettings.CompanyName;
+        Application.productName = projectSettings.ProductName;
+        Application.isEditor = false;
+        Application.isPlaying = true;
         GraphicsBackendSettings.PreferredBackend = _preferredBackend;
         Time.fixedDeltaTime = Fix64.Parse(workspace.Project.FixedDeltaTime);
         assetBundles?.InitializeAsync().ConfigureAwait(false).GetAwaiter().GetResult();
@@ -76,6 +81,7 @@ internal sealed class PlayerApplication : IDisposable
         _window.Update += OnUpdate;
         _window.Render += OnRender;
         _window.Closing += OnClosing;
+        _window.FocusChanged += Application.SetFocus;
     }
 
     private PlayerApplication((ProjectWorkspace Workspace, ServiceProvider Services) startup)
@@ -206,6 +212,7 @@ internal sealed class PlayerApplication : IDisposable
         {
             keyboard.KeyDown += OnKeyDown;
             keyboard.KeyUp += OnKeyUp;
+            keyboard.KeyChar += OnKeyChar;
         }
 
         foreach (var mouse in _input.Mice)
@@ -216,14 +223,22 @@ internal sealed class PlayerApplication : IDisposable
             mouse.MouseUp += OnMouseUp;
             mouse.Scroll += OnMouseScroll;
         }
+        foreach (var gamepad in _input.Gamepads) RegisterGamepad(gamepad);
+        _input.ConnectionChanged += OnInputConnectionChanged;
         ApplyCursorState();
     }
 
     private void OnUpdate(double deltaSeconds)
     {
-        ApplyCursorState();
-        PollMouseInput();
-        foreach (var runtime in _runtimes.ToArray()) runtime.Tick((Fix64)deltaSeconds);
+        try
+        {
+            ApplyCursorState();
+            PollMouseInput();
+            PollGamepadInput();
+            if (!Application.isFocused && !Application.runInBackground) return;
+            foreach (var runtime in _runtimes.ToArray()) runtime.Tick((Fix64)deltaSeconds);
+        }
+        finally { Input.EndFrame(); }
     }
 
     private void OnRender(double _)
@@ -304,6 +319,8 @@ internal sealed class PlayerApplication : IDisposable
         }
     }
 
+    private static void OnKeyChar(IKeyboard _, char character) => Input.AppendTextInput(character);
+
     private void OnMouseMove(IMouse _, System.Numerics.Vector2 position)
     {
         if (_lastMousePosition is { } previous)
@@ -344,6 +361,55 @@ internal sealed class PlayerApplication : IDisposable
         Input.SetKeyState(KeyCode.Mouse2, mouse.IsButtonPressed(MouseButton.Middle));
     }
 
+    private void RegisterGamepad(IGamepad gamepad)
+    {
+        if (!_registeredGamepads.Add(gamepad)) return;
+        Input.SetGamepadConnected(gamepad.Index, gamepad.IsConnected, gamepad.Name);
+        gamepad.ButtonDown += OnGamepadButtonDown;
+        gamepad.ButtonUp += OnGamepadButtonUp;
+    }
+
+    private void OnInputConnectionChanged(IInputDevice device, bool connected)
+    {
+        if (device is not IGamepad gamepad) return;
+        if (connected) RegisterGamepad(gamepad);
+        Input.SetGamepadConnected(gamepad.Index, connected, gamepad.Name);
+    }
+
+    private static void OnGamepadButtonDown(IGamepad gamepad, Button button)
+    {
+        if (TryMap(button.Name, out var mapped)) Input.SetGamepadButtonState(gamepad.Index, mapped, true);
+    }
+
+    private static void OnGamepadButtonUp(IGamepad gamepad, Button button)
+    {
+        if (TryMap(button.Name, out var mapped)) Input.SetGamepadButtonState(gamepad.Index, mapped, false);
+    }
+
+    private void PollGamepadInput()
+    {
+        if (_input is null) return;
+        foreach (var gamepad in _input.Gamepads)
+        {
+            RegisterGamepad(gamepad);
+            Input.SetGamepadConnected(gamepad.Index, gamepad.IsConnected, gamepad.Name);
+            foreach (var button in gamepad.Buttons)
+                if (TryMap(button.Name, out var mapped))
+                    Input.SetGamepadButtonState(gamepad.Index, mapped, button.Pressed);
+            foreach (var stick in gamepad.Thumbsticks)
+            {
+                var x = stick.Index == 0 ? GamepadAxis.LeftStickX : GamepadAxis.RightStickX;
+                var y = stick.Index == 0 ? GamepadAxis.LeftStickY : GamepadAxis.RightStickY;
+                Input.SetGamepadAxis(gamepad.Index, x, (Fix64)stick.X);
+                Input.SetGamepadAxis(gamepad.Index, y, (Fix64)stick.Y);
+            }
+            foreach (var trigger in gamepad.Triggers)
+                Input.SetGamepadAxis(gamepad.Index,
+                    trigger.Index == 0 ? GamepadAxis.LeftTrigger : GamepadAxis.RightTrigger,
+                    (Fix64)trigger.Position);
+        }
+    }
+
     private void ApplyCursorState()
     {
         if (_primaryMouse is not { } mouse ||
@@ -381,21 +447,61 @@ internal sealed class PlayerApplication : IDisposable
     {
         code = key switch
         {
-            Key.W => KeyCode.W,
-            Key.A => KeyCode.A,
-            Key.S => KeyCode.S,
-            Key.D => KeyCode.D,
-            Key.Q => KeyCode.Q,
-            Key.E => KeyCode.E,
-            Key.Space => KeyCode.Space,
-            Key.ShiftLeft => KeyCode.LeftShift,
-            Key.Up => KeyCode.UpArrow,
-            Key.Down => KeyCode.DownArrow,
-            Key.Left => KeyCode.LeftArrow,
+            >= Key.A and <= Key.Z => (KeyCode)((int)KeyCode.A + key - Key.A),
+            >= Key.Number0 and <= Key.Number9 => (KeyCode)((int)KeyCode.Alpha0 + key - Key.Number0),
+            >= Key.F1 and <= Key.F15 => (KeyCode)((int)KeyCode.F1 + key - Key.F1),
+            >= Key.Keypad0 and <= Key.Keypad9 => (KeyCode)((int)KeyCode.Keypad0 + key - Key.Keypad0),
+            Key.Enter => KeyCode.Return,
             Key.Right => KeyCode.RightArrow,
+            Key.Left => KeyCode.LeftArrow,
+            Key.Down => KeyCode.DownArrow,
+            Key.Up => KeyCode.UpArrow,
+            Key.ShiftLeft => KeyCode.LeftShift,
+            Key.ShiftRight => KeyCode.RightShift,
+            Key.ControlLeft => KeyCode.LeftControl,
+            Key.ControlRight => KeyCode.RightControl,
+            Key.AltLeft => KeyCode.LeftAlt,
+            Key.AltRight => KeyCode.RightAlt,
+            Key.SuperLeft => KeyCode.LeftCommand,
+            Key.SuperRight => KeyCode.RightCommand,
+            Key.Apostrophe => KeyCode.Quote,
+            Key.Equal => KeyCode.Equals,
+            Key.BackSlash => KeyCode.Backslash,
+            Key.GraveAccent => KeyCode.BackQuote,
+            Key.PrintScreen => KeyCode.Print,
+            Key.NumLock => KeyCode.Numlock,
+            Key.KeypadDecimal => KeyCode.KeypadPeriod,
+            Key.KeypadSubtract => KeyCode.KeypadMinus,
+            Key.KeypadAdd => KeyCode.KeypadPlus,
+            Key.KeypadEqual => KeyCode.KeypadEquals,
+            Key.Unknown or >= Key.F16 => KeyCode.None,
+            _ when Enum.TryParse<KeyCode>(key.ToString(), ignoreCase: false, out var direct) => direct,
             _ => default
         };
-        return key is Key.W or Key.A or Key.S or Key.D or Key.Q or Key.E or Key.Space or Key.ShiftLeft or
-            Key.Up or Key.Down or Key.Left or Key.Right;
+        return code != KeyCode.None;
+    }
+
+    private static bool TryMap(ButtonName button, out GamepadButton mapped)
+    {
+        mapped = button switch
+        {
+            ButtonName.A => GamepadButton.South,
+            ButtonName.B => GamepadButton.East,
+            ButtonName.X => GamepadButton.West,
+            ButtonName.Y => GamepadButton.North,
+            ButtonName.LeftBumper => GamepadButton.LeftShoulder,
+            ButtonName.RightBumper => GamepadButton.RightShoulder,
+            ButtonName.Back => GamepadButton.Back,
+            ButtonName.Start => GamepadButton.Start,
+            ButtonName.Home => GamepadButton.Home,
+            ButtonName.LeftStick => GamepadButton.LeftStick,
+            ButtonName.RightStick => GamepadButton.RightStick,
+            ButtonName.DPadUp => GamepadButton.DPadUp,
+            ButtonName.DPadRight => GamepadButton.DPadRight,
+            ButtonName.DPadDown => GamepadButton.DPadDown,
+            ButtonName.DPadLeft => GamepadButton.DPadLeft,
+            _ => default
+        };
+        return button != ButtonName.Unknown;
     }
 }

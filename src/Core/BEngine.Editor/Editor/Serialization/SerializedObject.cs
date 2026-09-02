@@ -315,18 +315,6 @@ public sealed class SerializedObject : IDisposable
                 .ToArray());
     }
 
-    private static bool IsSerializableChildMember(MemberInfo member) => member switch
-    {
-        FieldInfo field => !field.IsStatic && !field.IsInitOnly &&
-                           !typeof(Delegate).IsAssignableFrom(field.FieldType) &&
-                           !field.IsDefined(typeof(CompilerGeneratedAttribute), inherit: true) &&
-                           !field.IsDefined(typeof(NonSerializedAttribute), inherit: true) &&
-                           (field.IsPublic || field.IsDefined(typeof(SerializeFieldAttribute), inherit: true) ||
-                            field.IsDefined(typeof(SerializeReferenceAttribute), inherit: true)),
-        PropertyInfo property => property.GetIndexParameters().Length == 0 &&
-                                 property.GetMethod is { IsPublic: true } &&
-                                 property.SetMethod is { IsPublic: true } &&
-                                 !typeof(Delegate).IsAssignableFrom(property.PropertyType),
-        _ => false
-    };
+    private static bool IsSerializableChildMember(MemberInfo member) =>
+        RuntimeTypeCache.IsSerializableMember(member);
 }

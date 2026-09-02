@@ -48,7 +48,8 @@ internal static class EditorToolbarDropdowns
         ArgumentNullException.ThrowIfNull(renameLayout);
         ArgumentNullException.ThrowIfNull(deleteLayout);
 
-        var names = layoutNames.Distinct(StringComparer.OrdinalIgnoreCase)
+        var names = layoutNames.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var editableNames = names.Where(static name => !EditorLayoutStore.IsBuiltInName(name))
             .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase).ToArray();
         var menu = new GenericMenu();
         menu.AddItem(new GUIContent("Save Current"), false, saveCurrent.Invoke);
@@ -71,13 +72,13 @@ internal static class EditorToolbarDropdowns
         }
 
         menu.AddSeparator(string.Empty);
-        if (names.Length == 0)
+        if (editableNames.Length == 0)
         {
             menu.AddDisabledItem(new GUIContent("Rename/No Saved Layouts"));
             menu.AddDisabledItem(new GUIContent("Delete/No Saved Layouts"));
         }
         else
-            foreach (var name in names)
+            foreach (var name in editableNames)
             {
                 var captured = name;
                 menu.AddItem(new GUIContent($"Rename/{captured}"), false, () => renameLayout(captured));

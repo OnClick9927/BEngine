@@ -83,12 +83,3 @@ public sealed class TextureImporter : AssetImporter
         return clamped - lower < upper - clamped ? lower : upper;
     }
 }
-
-public enum TextureImporterType
-{
-    Texture,
-    Sprite,
-    NormalMap,
-    Cursor,
-    EditorGui
-}

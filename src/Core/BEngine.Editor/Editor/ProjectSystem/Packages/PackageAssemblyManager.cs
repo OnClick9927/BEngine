@@ -186,6 +186,7 @@ internal sealed class PackageAssemblyManager : IDisposable
                 RuntimeSystemRegistry.Unregister(registration);
             foreach (var assembly in assemblies)
             {
+                RuntimeAssetCodecRegistry.UnregisterAssembly(assembly);
                 ScenePickingProviderRegistry.UnregisterAssembly(assembly);
                 SceneRenderContributor2DRegistry.UnregisterAssembly(assembly);
             }
@@ -238,6 +239,7 @@ internal sealed class PackageAssemblyManager : IDisposable
             EditorIconRegistry.UnregisterAssembly(assembly);
             ScenePickingProviderRegistry.UnregisterAssembly(assembly);
             RuntimeSystemRegistry.UnregisterAssembly(assembly);
+            RuntimeAssetCodecRegistry.UnregisterAssembly(assembly);
             SceneRenderContributor2DRegistry.UnregisterAssembly(assembly);
             RemoveStaticEventHandlers(assembly);
         }

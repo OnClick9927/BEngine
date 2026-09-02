@@ -12,6 +12,12 @@ internal static class Program
         try
         {
             VerifyRemovedInfrastructure();
+            CoreRuntimeSafetyTests.Run();
+            AsyncOperationTests.Run();
+            InputTests.Run();
+            AudioTests.Run();
+            ProfilerTests.Run();
+            TwoDimensionalRenderingTests.Run();
             VerifyManagedSceneQueries();
             VerifyRuntimeLifecycle();
             VerifyRuntimeObjectDomainIsolation();
@@ -19,11 +25,12 @@ internal static class Program
             VerifyFailedSystemCreationDisposesCreatedScopes();
             VerifyReentrantSingleSceneLoadDuringAwake();
             VerifySceneSerializationRoundtrip();
+            VerifyObjectGraphSerializationRoundtrip();
             RuntimeHotPathTests.Run();
             Console.WriteLine(
                 "SCENE_RUNTIME_ARCHITECTURE_OK|no-ecs,no-runtime-threading,managed-query,destroy," +
-                "single-thread-systems,monobehaviour,current-scene,object-domain,start-rollback," +
-                "failed-scope-cleanup,reentrant-single,yaml-roundtrip");
+                "single-thread-systems,monobehaviour,async-operation,input-devices,audio-2d,runtime-profiler,rendering-2d,current-scene,object-domain,start-rollback," +
+                "failed-scope-cleanup,reentrant-single,yaml-roundtrip,object-graph,core-runtime-safety");
             return 0;
         }
         catch (Exception exception)
@@ -289,6 +296,62 @@ internal static class Program
                 "YAML roundtrip did not rebuild the managed Scene component collection.");
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private static void VerifyObjectGraphSerializationRoundtrip()
+    {
+        RuntimeTypeCache.Warmup();
+        using var source = new Scene("Object graph roundtrip");
+        var owner = source.CreateGameObject("Graph owner");
+        var target = source.CreateGameObject("Graph target");
+        var targetComponent = target.AddComponent<SceneProbeBehaviour>();
+        var shared = new ObjectGraphProbeBehaviour.DerivedProbeNode
+        {
+            Name = "Shared",
+            Weight = 27
+        };
+        shared.Next = shared;
+        var probe = owner.AddComponent<ObjectGraphProbeBehaviour>();
+        probe.SetPrivateValue(19);
+        probe.Polymorphic = shared;
+        probe.Values = [3, 5, 8];
+        probe.Grid = new[,] { { 1, 2 }, { 3, 4 } };
+        probe.Nodes = [shared];
+        probe.Lookup = new Dictionary<string, ObjectGraphProbeBehaviour.ProbeNode>
+        {
+            ["shared"] = shared
+        };
+        probe.SharedA = shared;
+        probe.SharedB = shared;
+        probe.TargetObject = target;
+        probe.TargetComponent = targetComponent;
+        probe.OptionalValue = 31;
+        probe.Mode = ObjectGraphProbeBehaviour.ProbeMode.Negative;
+
+        using var restored = SceneAssetSerialization.Deserialize(SceneAssetSerialization.Serialize(source));
+        var restoredOwner = restored.Find("Graph owner") ??
+                            throw new InvalidOperationException("Object graph lost its owner.");
+        var restoredTarget = restored.Find("Graph target") ??
+                             throw new InvalidOperationException("Object graph lost its target.");
+        var restoredProbe = restoredOwner.GetComponent<ObjectGraphProbeBehaviour>() ??
+                            throw new InvalidOperationException("Object graph lost its Component.");
+        var restoredShared = restoredProbe.SharedA as ObjectGraphProbeBehaviour.DerivedProbeNode;
+
+        Require(restoredProbe.PrivateValue == 19 && restoredProbe.Values.SequenceEqual([3, 5, 8]) &&
+                restoredProbe.Grid.GetLength(0) == 2 && restoredProbe.Grid.GetLength(1) == 2 &&
+                restoredProbe.Grid[1, 1] == 4 && restoredProbe.OptionalValue == 31 &&
+                restoredProbe.Mode == ObjectGraphProbeBehaviour.ProbeMode.Negative,
+            "Object graph roundtrip lost scalar, private, nullable, enum, array, or multidimensional array data.");
+        Require(restoredShared is { Weight: 27 } && ReferenceEquals(restoredShared.Next, restoredShared) &&
+                ReferenceEquals(restoredProbe.Polymorphic, restoredShared) &&
+                ReferenceEquals(restoredProbe.SharedB, restoredShared) &&
+                ReferenceEquals(restoredProbe.Nodes.Single(), restoredShared) &&
+                ReferenceEquals(restoredProbe.Lookup["shared"], restoredShared),
+            "Object graph roundtrip lost polymorphism, shared identity, collections, or a cycle.");
+        Require(ReferenceEquals(restoredProbe.TargetObject, restoredTarget) &&
+                ReferenceEquals(restoredProbe.TargetComponent,
+                    restoredTarget.GetComponent<SceneProbeBehaviour>()),
+            "Object graph roundtrip did not resolve scene BObject references after graph creation.");
     }
 
     private static void Require(bool condition, string message)

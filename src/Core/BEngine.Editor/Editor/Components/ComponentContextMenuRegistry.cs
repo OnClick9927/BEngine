@@ -120,8 +120,3 @@ internal static class ComponentContextMenuRegistry
 
     private readonly record struct AttributedMethod(MethodInfo Method, string Name);
 }
-
-internal readonly record struct ComponentContextMenuCommand(
-    string Name,
-    string MethodName,
-    Action<Component> Callback);

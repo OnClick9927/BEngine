@@ -217,8 +217,15 @@ public class Transform : Component
     {
         if (ReferenceEquals(newParent, this) || IsDescendantOf(newParent))
             throw new InvalidOperationException("A Transform cannot be parented to itself or one of its descendants.");
-        var worldPosition = GetPositionCore();
-        var worldRotation = GetRotationCore();
+        if (newParent is not null &&
+            !ReferenceEquals(GameObjectUnchecked.SceneUnchecked, newParent.GameObjectUnchecked.SceneUnchecked))
+            throw new InvalidOperationException("Transforms in different Scenes cannot share a hierarchy.");
+
+        var worldPosition = Vector2.zero;
+        var worldRotation = Fix64.Zero;
+        var worldScale = Vector2.one;
+        if (worldPositionStays)
+            GetWorldPoseCore(out worldPosition, out worldRotation, out worldScale);
         var previousParent = _parent;
         _parent?._children.Remove(this);
         _parent = newParent;
@@ -228,9 +235,13 @@ public class Transform : Component
         {
             SetPositionCore(worldPosition);
             SetRotationCore(worldRotation);
+            SetLossyScaleCore(worldScale);
         }
         SceneRuntime.NotifyTransformParentChanged(this, previousParent, newParent);
     }
+    private void SetLossyScaleCore(Vector2 value) => SetLocalScaleCore(_parent is null
+        ? value
+        : DivideByScale(value, _parent.GetLossyScaleCore()));
     private void SetSiblingIndexCore(int index)
     {
         if (_parent is null)

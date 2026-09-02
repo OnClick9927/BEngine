@@ -152,6 +152,11 @@ public static class GUI
         var hovered = absolute.Contains(PointerPosition) && PointerInsideClip(PointerPosition);
         var active = GUIUtility.hotControl == id;
         var focused = GUIUtility.keyboardControl == id;
+        if (!UsesCheckboxToggle(style))
+        {
+            DrawContent(position, content, style, true, active, focused, value);
+            return value;
+        }
         var state = ResolveStyleState(style, value, active, focused, hovered);
         var boxSize = Fix64.Clamp(position.height - 6, 13, 16);
         var box = new Rect(position.x, position.y + (position.height - boxSize) / 2, boxSize, boxSize);
@@ -175,6 +180,8 @@ public static class GUI
         DoTextField(position, text, maxLength, true, style ?? skin.textArea);
     public static string TextArea(Rect position, string text, GUIStyle? style) =>
         DoTextField(position, text, -1, true, style ?? skin.textArea);
+    internal static void SelectableText(Rect position, string text, bool multiline, GUIStyle style) =>
+        _ = DoTextField(position, text, -1, multiline, style, readOnly: true, drawBackground: false);
     public static string PasswordField(Rect position, string password, char maskChar = '*', int maxLength = -1,
         GUIStyle? style = null)
     {
@@ -412,7 +419,7 @@ public static class GUI
     }
 
     private static string DoTextField(Rect rect, string value, int maxLength, bool multiline,
-        GUIStyle style, char? mask = null)
+        GUIStyle style, char? mask = null, bool readOnly = false, bool drawBackground = true)
     {
         value ??= string.Empty;
         var id = GUIUtility.GetControlID("TextField".GetHashCode(StringComparison.Ordinal), FocusType.Keyboard, rect);
@@ -425,10 +432,11 @@ public static class GUI
             GUIUtility.keyboardControl = id;
             var visibleValue = mask is null ? value : new string(mask.Value, value.Length);
             var pointer = PointerPosition;
-            var interactionTextRect = GetContentTextRect(rect, visibleValue, style, true, false);
+            var interactionTextRect = GetContentTextRect(rect, visibleValue, style, drawBackground, false);
             var absoluteTextRect = _context?.Translate(interactionTextRect) ?? interactionTextRect;
             var localX = Fix64.Max(0, pointer.x - absoluteTextRect.x);
-            var clickedIndex = ClosestTextBoundary(visibleValue, localX, style);
+            var localY = Fix64.Max(0, pointer.y - absoluteTextRect.y);
+            var clickedIndex = ClosestTextBoundary(visibleValue, localX, localY, style, multiline);
             _context?.SetText(id, new TextState(value,
                 evt.clickCount >= 2 ? value.Length : clickedIndex,
                 evt.clickCount >= 2 ? 0 : clickedIndex,
@@ -436,6 +444,7 @@ public static class GUI
             _activeTextControl = id;
             _activeTextState = new TextState(value, evt.clickCount >= 2 ? value.Length : clickedIndex,
                 evt.clickCount >= 2 ? 0 : clickedIndex, value);
+            GUIUtility.hotControl = id;
             _caretBlinkStart = Environment.TickCount64;
             if (controlName.Length > 0 && _context is not null) _context.FocusedName = controlName;
             evt.Use();
@@ -450,10 +459,32 @@ public static class GUI
             state = state.Text.Equals(value, StringComparison.Ordinal)
                 ? state with { ObservedValue = value }
                 : new TextState(value, value.Length, value.Length, value);
+        if (enabled && focused && evt.type == EventType.MouseDrag && GUIUtility.hotControl == id)
+        {
+            var visibleValue = mask is null ? value : new string(mask.Value, value.Length);
+            var interactionTextRect = GetContentTextRect(rect, visibleValue, style, drawBackground, false);
+            var absoluteTextRect = _context?.Translate(interactionTextRect) ?? interactionTextRect;
+            var pointer = PointerPosition;
+            state = state with
+            {
+                Caret = ClosestTextBoundary(visibleValue,
+                    Fix64.Max(0, pointer.x - absoluteTextRect.x),
+                    Fix64.Max(0, pointer.y - absoluteTextRect.y), style, multiline)
+            };
+            _caretBlinkStart = Environment.TickCount64;
+            evt.Use();
+        }
+        if (enabled && evt.type == EventType.MouseUp && GUIUtility.hotControl == id)
+        {
+            GUIUtility.hotControl = 0;
+            evt.Use();
+        }
         if (enabled && focused && evt.type == EventType.KeyDown)
         {
             var before = state.Text;
-            state = EditText(state, evt, multiline, maxLength);
+            state = readOnly
+                ? EditSelectableText(state, evt, multiline)
+                : EditText(state, evt, multiline, maxLength);
             if (state.Text != before) changed = true;
             _caretBlinkStart = Environment.TickCount64;
             if (evt.type != EventType.Used) evt.Use();
@@ -464,42 +495,98 @@ public static class GUI
         var displayed = GUIContent.Temp(mask is null
             ? state.Text
             : new string(mask.Value, state.Text.Length));
-        DrawContent(rect, displayed, style, true, false, focused);
-        var textRect = GetContentTextRect(rect, displayed.text, style, true, false);
+        DrawContent(rect, displayed, style, drawBackground, false, focused);
+        var textRect = GetContentTextRect(rect, displayed.text, style, drawBackground, false);
         var visualState = ResolveStyleState(style, false, false, focused, hovered);
         if (focused && Event.current.type == EventType.Repaint && state.Caret != state.Anchor)
-        {
-            var start = Math.Min(state.Caret, state.Anchor);
-            var length = Math.Abs(state.Caret - state.Anchor);
-            var visibleText = displayed.text;
-            var selectionX = TextBoundaryOffset(visibleText, start, style);
-            var selectionWidth = TextBoundaryOffset(visibleText, start + length, style) - selectionX;
-            DrawRect(new Rect(textRect.x + selectionX, rect.y + 3,
-                selectionWidth, Fix64.Max(0, rect.height - 6)),
-                EditorStyles.selectionRect.normal.backgroundColor);
-        }
+            DrawTextSelection(textRect, displayed.text, state.Anchor, state.Caret, style, multiline);
         if (focused && state.Caret != state.Anchor) DrawContent(rect, displayed, style, false, false, true);
         if (focused && Event.current.type == EventType.Repaint &&
             (Environment.TickCount64 - _caretBlinkStart) / 500 % 2 == 0)
         {
             var visibleText = displayed.text;
-            var caretOffset = Fix64.Min(Fix64.Max(0, textRect.width),
-                TextBoundaryOffset(visibleText, state.Caret, style));
-            DrawRect(new Rect(textRect.x + caretOffset, rect.y + 3,
-                1, Fix64.Max(0, rect.height - 6)),
+            var caret = TextPosition(visibleText, state.Caret, style, multiline);
+            var lineHeight = TextLineHeight(style);
+            DrawRect(new Rect(textRect.x + Fix64.Min(Fix64.Max(0, textRect.width), caret.x),
+                textRect.y + caret.y + 2, 1, Fix64.Max(0, Fix64.Min(lineHeight - 4,
+                    textRect.height - caret.y - 2))),
                 visualState.textColor * contentColor * color);
         }
         return state.Text;
+    }
+
+    private static TextState EditSelectableText(TextState state, Event evt, bool multiline)
+    {
+        var text = state.Text;
+        var actionModifier = evt.control || evt.command;
+        if (actionModifier && evt.keyCode == KeyCode.A)
+            return state with { Caret = text.Length, Anchor = 0 };
+        if (actionModifier && evt.keyCode == KeyCode.C)
+        {
+            var start = Math.Min(state.Caret, state.Anchor);
+            var end = Math.Max(state.Caret, state.Anchor);
+            GUIUtility.systemCopyBuffer = text[start..end];
+            return state;
+        }
+        var caret = evt.keyCode switch
+        {
+            KeyCode.LeftArrow => Math.Max(0, state.Caret - 1),
+            KeyCode.RightArrow => Math.Min(text.Length, state.Caret + 1),
+            KeyCode.Home => multiline ? LineStart(text, state.Caret) : 0,
+            KeyCode.End => multiline ? LineEnd(text, state.Caret) : text.Length,
+            _ => state.Caret
+        };
+        return state with { Caret = caret, Anchor = evt.shift ? state.Anchor : caret };
+    }
+
+    private static void DrawTextSelection(Rect textRect, string text, int anchor, int caret,
+        GUIStyle style, bool multiline)
+    {
+        var start = Math.Min(anchor, caret);
+        var end = Math.Max(anchor, caret);
+        if (!multiline)
+        {
+            var selectionX = TextBoundaryOffset(text, start, style);
+            var selectionWidth = TextBoundaryOffset(text, end, style) - selectionX;
+            DrawRect(new Rect(textRect.x + selectionX, textRect.y + 3,
+                selectionWidth, Fix64.Max(0, textRect.height - 6)),
+                EditorStyles.selectionRect.normal.backgroundColor);
+            return;
+        }
+
+        var lineHeight = TextLineHeight(style);
+        var lineStart = 0;
+        var lineIndex = 0;
+        while (lineStart <= text.Length)
+        {
+            var newline = text.IndexOf('\n', lineStart);
+            var lineEnd = newline < 0 ? text.Length : newline;
+            var selectedStart = Math.Max(start, lineStart);
+            var selectedEnd = Math.Min(end, lineEnd);
+            if (selectedEnd > selectedStart)
+            {
+                var line = text[lineStart..lineEnd];
+                var x = TextBoundaryOffset(line, selectedStart - lineStart, style);
+                var width = TextBoundaryOffset(line, selectedEnd - lineStart, style) - x;
+                DrawRect(new Rect(textRect.x + x, textRect.y + lineIndex * lineHeight + 2,
+                    width, Fix64.Max(0, lineHeight - 4)),
+                    EditorStyles.selectionRect.normal.backgroundColor);
+            }
+            if (newline < 0) break;
+            lineStart = newline + 1;
+            lineIndex++;
+        }
     }
 
     private static TextState EditText(TextState state, Event evt, bool multiline, int maxLength)
     {
         var text = state.Text; var start = Math.Min(state.Caret, state.Anchor); var end = Math.Max(state.Caret, state.Anchor);
         void DeleteSelection() { if (end <= start) return; text = text.Remove(start, end - start); state = state with { Caret = start, Anchor = start }; }
-        if (evt.control && evt.keyCode == KeyCode.A) return state with { Caret = text.Length, Anchor = 0 };
-        if (evt.control && evt.keyCode == KeyCode.C) { GUIUtility.systemCopyBuffer = text[start..end]; return state; }
-        if (evt.control && evt.keyCode == KeyCode.X) { GUIUtility.systemCopyBuffer = text[start..end]; DeleteSelection(); return state with { Text = text }; }
-        if (evt.control && evt.keyCode == KeyCode.V)
+        var actionModifier = evt.control || evt.command;
+        if (actionModifier && evt.keyCode == KeyCode.A) return state with { Caret = text.Length, Anchor = 0 };
+        if (actionModifier && evt.keyCode == KeyCode.C) { GUIUtility.systemCopyBuffer = text[start..end]; return state; }
+        if (actionModifier && evt.keyCode == KeyCode.X) { GUIUtility.systemCopyBuffer = text[start..end]; DeleteSelection(); return state with { Text = text }; }
+        if (actionModifier && evt.keyCode == KeyCode.V)
         {
             DeleteSelection(); var insert = GUIUtility.systemCopyBuffer;
             if (maxLength >= 0) insert = insert[..Math.Min(insert.Length, Math.Max(0, maxLength - text.Length))];
@@ -835,12 +922,20 @@ public static class GUI
         return active ? style.active : focused ? style.focused : hovered ? style.hover : style.normal;
     }
 
+    private static bool UsesCheckboxToggle(GUIStyle style) =>
+        ReferenceEquals(style, skin.toggle) ||
+        ReferenceEquals(style, skin.toggleMixed) ||
+        ReferenceEquals(style, skin.radioButton) ||
+        string.Equals(style.name, nameof(GUISkin.toggle), StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(style.name, nameof(GUISkin.toggleMixed), StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(style.name, nameof(GUISkin.radioButton), StringComparison.OrdinalIgnoreCase);
+
     private static Rect AlignTextRect(Rect rect, string text, GUIStyle style)
     {
         if (style.alignment is TextAnchor.UpperLeft or TextAnchor.MiddleLeft or TextAnchor.LowerLeft)
             return rect;
         var textWidth = string.IsNullOrEmpty(text) ? Fix64.Zero : Fix64.Min(rect.width,
-            GUITextMetrics.MeasureRenderedAdvance(text, style.fontSize, GUIUtility.fontFamily,
+            GUITextMetrics.MeasureRenderedWidth(text, style.fontSize, GUIUtility.fontFamily,
                 _context?.ScaleFactor ?? Fix64.One));
         var x = style.alignment is TextAnchor.UpperCenter or TextAnchor.MiddleCenter or TextAnchor.LowerCenter
             ? rect.x + (rect.width - textWidth) / 2
@@ -863,6 +958,24 @@ public static class GUI
         return AlignTextRect(contentRect, text, style);
     }
 
+    private static int ClosestTextBoundary(string text, Fix64 localX, Fix64 localY,
+        GUIStyle style, bool multiline)
+    {
+        if (!multiline) return ClosestTextBoundary(text, localX, style);
+        var line = Math.Max(0, (int)(localY / TextLineHeight(style)));
+        var lineStart = 0;
+        while (line > 0)
+        {
+            var newline = text.IndexOf('\n', lineStart);
+            if (newline < 0) return text.Length;
+            lineStart = newline + 1;
+            line--;
+        }
+        var lineEnd = text.IndexOf('\n', lineStart);
+        if (lineEnd < 0) lineEnd = text.Length;
+        return lineStart + ClosestTextBoundary(text[lineStart..lineEnd], localX, style);
+    }
+
     private static int ClosestTextBoundary(string text, Fix64 localX, GUIStyle style)
     {
         if (text.Length == 0 || localX <= 0) return 0;
@@ -882,6 +995,37 @@ public static class GUI
         return index == 0 ? Fix64.Zero :
             GUITextMetrics.MeasureRenderedAdvance(text[..index], style.fontSize,
                 GUIUtility.fontFamily, _context?.ScaleFactor ?? Fix64.One);
+    }
+
+    private static Vector2 TextPosition(string text, int index, GUIStyle style, bool multiline)
+    {
+        index = Math.Clamp(index, 0, text.Length);
+        if (!multiline) return new Vector2(TextBoundaryOffset(text, index, style), 0);
+        var lineStart = index <= 0 ? -1 : text.LastIndexOf('\n', index - 1);
+        lineStart = lineStart < 0 ? 0 : lineStart + 1;
+        var line = 0;
+        for (var position = 0; position < lineStart; position++)
+            if (text[position] == '\n') line++;
+        return new Vector2(TextBoundaryOffset(text[lineStart..index], index - lineStart, style),
+            line * TextLineHeight(style));
+    }
+
+    private static Fix64 TextLineHeight(GUIStyle style) =>
+        GUITextMetrics.MeasureLineHeight(style.fontSize, GUIUtility.fontFamily);
+
+    private static int LineStart(string text, int index)
+    {
+        index = Math.Clamp(index, 0, text.Length);
+        if (index <= 0) return 0;
+        var newline = text.LastIndexOf('\n', index - 1);
+        return newline < 0 ? 0 : newline + 1;
+    }
+
+    private static int LineEnd(string text, int index)
+    {
+        index = Math.Clamp(index, 0, text.Length);
+        var newline = text.IndexOf('\n', index);
+        return newline < 0 ? text.Length : newline;
     }
 
     private static void DrawStyleBackground(Rect rect, GUIStyleState state, Fix64 borderWidth)

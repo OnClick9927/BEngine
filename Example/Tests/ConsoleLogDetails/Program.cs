@@ -41,6 +41,13 @@ internal static class Program
             Require(exceptionEntry.StackTrace.Contains(nameof(ThrowTestException), StringComparison.Ordinal),
                 "LogException did not retain the exception stack.");
 
+            EmitWarning();
+            var warningEntry = RequireEntry();
+            Require(warningEntry.Type == LogType.Warning,
+                "Debug.LogWarning must create a warning log for the Console.");
+            Require(warningEntry.Message == "CONSOLE_WARNING_TEST",
+                "The Console warning message was not retained.");
+
             var consoleType = typeof(EditorWindow).Assembly.GetType(
                 "BEngine.Editor.GpuEditorApplication+ImGuiConsoleWindow", throwOnError: true)!;
             Require(consoleType.GetField("_selected", BindingFlags.Instance | BindingFlags.NonPublic) is not null,
@@ -53,9 +60,10 @@ internal static class Program
             VerifyDetailsSplitter(consoleType);
             VerifyStackTraceParser();
             VerifyStackTraceLink(consoleType);
+            VerifySelectableLogText(consoleType);
 
             Console.WriteLine(
-                "CONSOLE_LOG_DETAILS_OK|timestamp,stack,selection,details,exception,splitter,limits,file-line,highlight,open-asset");
+                "CONSOLE_LOG_DETAILS_OK|timestamp,stack,selection,details,exception,warning,splitter,limits,file-line,highlight,open-asset,select-copy");
             return 0;
         }
         catch (Exception exception)
@@ -70,6 +78,8 @@ internal static class Program
     }
 
     private static void EmitLog() => BEngine.Debug.Log("CONSOLE_DETAIL_TEST");
+
+    private static void EmitWarning() => BEngine.Debug.LogWarning("CONSOLE_WARNING_TEST");
 
     private static void EmitException()
     {
@@ -241,6 +251,52 @@ internal static class Program
         var commands = new List<GpuCanvasCommand>();
         BeginFrame.Invoke(null, [evt, 1600, 300, commands]);
         try { drawStackTrace.Invoke(console, [stackTrace]); }
+        finally { EndFrame.Invoke(null, null); }
+        return commands;
+    }
+
+    private static void VerifySelectableLogText(Type consoleType)
+    {
+        var drawLines = consoleType.GetMethod("DrawLines", BindingFlags.Static | BindingFlags.NonPublic) ??
+                        throw new MissingMethodException(consoleType.FullName, "DrawLines");
+        const string text = "CONSOLE_SELECT_FIRST\nCONSOLE_SELECT_SECOND";
+        var commands = RenderLogText(drawLines, text, new Event(EventType.Repaint));
+        var rendered = commands.Single(command => command.Type == GpuCanvasCommandType.Text &&
+                                                  command.Content == text);
+        var start = new Vector2((Fix64)(rendered.Rect.X + 1), (Fix64)(rendered.Rect.Y + 2));
+        var finish = new Vector2((Fix64)(rendered.Rect.Right - 1), (Fix64)(rendered.Rect.Bottom - 2));
+
+        RenderLogText(drawLines, text,
+            new Event(EventType.MouseDown) { mousePosition = start, button = 0 });
+        RenderLogText(drawLines, text,
+            new Event(EventType.MouseDrag)
+            {
+                mousePosition = finish,
+                delta = finish - start,
+                button = 0
+            });
+        RenderLogText(drawLines, text,
+            new Event(EventType.MouseUp) { mousePosition = finish, button = 0 });
+        GUIUtility.systemCopyBuffer = string.Empty;
+        RenderLogText(drawLines, text,
+            new Event(EventType.KeyDown)
+            {
+                modifiers = EventModifiers.Control,
+                keyCode = KeyCode.C
+            });
+
+        Require(GUIUtility.systemCopyBuffer == text,
+            "Console detail text could not be selected across lines and copied.");
+        Require(GUIUtility.hotControl == 0,
+            "Console selectable text did not release its pointer capture.");
+        GUIUtility.keyboardControl = 0;
+    }
+
+    private static List<GpuCanvasCommand> RenderLogText(MethodInfo drawLines, string text, Event evt)
+    {
+        var commands = new List<GpuCanvasCommand>();
+        BeginFrame.Invoke(null, [evt, 1600, 300, commands]);
+        try { drawLines.Invoke(null, [text]); }
         finally { EndFrame.Invoke(null, null); }
         return commands;
     }

@@ -129,7 +129,8 @@ public static class EditorGUI
     public static void LabelField(Rect position, GUIContent label, GUIStyle? style = null) =>
         DrawHierarchyLabel(IndentedRect(position), label, style ?? EditorStyles.label);
     public static void SelectableLabel(Rect position, string text, GUIStyle? style = null) =>
-        DrawHierarchyLabel(IndentedRect(position), new GUIContent(text), style ?? EditorStyles.label);
+        GUI.SelectableText(IndentedRect(position), text ?? string.Empty,
+            text?.IndexOfAny(['\r', '\n']) >= 0, style ?? EditorStyles.label);
     public static bool Toggle(Rect position, bool value) => Toggle(position, value, (GUIStyle?)null);
     public static bool Toggle(Rect position, bool value, GUIStyle? style) =>
         GUI.Toggle(position, value, GUIContent.none, style ?? GUI.skin.toggle);
@@ -569,8 +570,11 @@ public static class EditorGUI
     {
         ArgumentNullException.ThrowIfNull(content);
         style ??= EditorStyles.dropDownButton;
-        var pressed = GUI.Button(position, content, style, focusType);
         var arrowWidth = Fix64.Min(20, Fix64.Max(0, position.width));
+        var contentRect = new Rect(position.x, position.y,
+            Fix64.Max(0, position.width - arrowWidth), position.height);
+        var pressed = GUI.Button(position, GUIContent.none, style, focusType);
+        GUI.Label(contentRect, content, style);
         var arrow = new Rect(position.xMax - arrowWidth, position.y, arrowWidth, position.height);
         if (Event.current.type == EventType.Repaint && arrowWidth > 0)
         {

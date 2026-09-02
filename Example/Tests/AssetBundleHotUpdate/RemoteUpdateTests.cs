@@ -39,10 +39,16 @@ internal static class RemoteUpdateTests
             "Remote planning did not reuse the unchanged content hash across versions.");
         TestAssert.That(handler.RequestCount(latestPath) == 2,
             "A transient version request was not retried exactly once.");
-        var result = await manager.ApplyUpdateAsync(plan).ConfigureAwait(false);
-        TestAssert.That(result.Updated && result.PreviousVersion == "1.0.0" &&
+        plan.TargetCatalog.Version = "caller-mutated";
+        plan.Downloads[0].Name = "caller-mutated";
+        var concurrentResults = await Task.WhenAll(
+            manager.ApplyUpdateAsync(plan),
+            manager.ApplyUpdateAsync(plan)).ConfigureAwait(false);
+        var result = concurrentResults.Single(item => item.Updated);
+        TestAssert.That(concurrentResults.Count(item => item.Updated) == 1 &&
+                        result.PreviousVersion == "1.0.0" &&
                         result.ActiveVersion == "2.0.0" && result.DownloadedBundleCount == 1,
-            "The verified update did not report its atomic version transition.");
+            "Concurrent update submission did not produce one atomic version transition.");
         TestAssert.That(handler.RequestCount(changedBundlePath) == 2,
             "A transient bundle download was not retried exactly once.");
         TestAssert.That(handler.RequestCount(unchangedBundlePath) == 0,

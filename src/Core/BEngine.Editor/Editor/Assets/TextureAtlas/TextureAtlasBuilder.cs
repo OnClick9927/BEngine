@@ -1,4 +1,5 @@
 using BEngine.Rendering;
+using BEngine.ProjectSystem.Editor;
 
 namespace BEngine.Editor;
 
@@ -29,6 +30,7 @@ public static class TextureAtlasBuilder
         if (sources.Length != atlas.Sources.Length) atlas.Sources = sources;
         if (sources.Length == 0)
             return ClearGeneratedTexture(atlas, manifestPath, refreshAssets);
+        foreach (var source in sources) BindMissingSourceIdentity(source, manifestPath);
 
         var images = sources
             .Select(sprite => LoadSprite(sprite, manifestPath))
@@ -124,6 +126,23 @@ public static class TextureAtlasBuilder
         var source = new AtlasSource(sprite.name, identity, sprite.Texture,
             sprite.PivotX, sprite.PivotY, sprite.OwnerGuid);
         return LoadSource(source, manifestPath);
+    }
+
+    private static void BindMissingSourceIdentity(Sprite sprite, string manifestPath)
+    {
+        if (Guid.TryParse(sprite.OwnerGuid, out _) && sprite.LocalIdentifier > 0) return;
+        var texturePath = ResolveSourcePath(sprite.Texture, manifestPath);
+        var metaPath = texturePath + ".meta";
+        if (!File.Exists(metaPath))
+            throw new InvalidDataException(
+                $"Texture atlas Sprite '{sprite.name}' source metadata does not exist: {metaPath}");
+        var meta = YamlUtility.Load<AssetMetaDocument>(metaPath);
+        if (!Guid.TryParse(meta.Guid, out var ownerGuid))
+            throw new InvalidDataException(
+                $"Texture atlas Sprite '{sprite.name}' source metadata has an invalid GUID.");
+        var localIdentifier = sprite.LocalIdentifier > 0 ? sprite.LocalIdentifier : 21300000;
+        sprite.BindSourceIdentity(ownerGuid.ToString("N"), localIdentifier,
+            ToPortableAssetPath(texturePath, manifestPath));
     }
 
     private static SourceImage LoadSource(AtlasSource source, string ownerPath)

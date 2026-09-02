@@ -8,7 +8,7 @@ public static class PrefabAssetOperations
         ArgumentNullException.ThrowIfNull(prefab);
         AssetDataValidation.ValidatePrefab(prefab.Data);
         var source = prefab.Data;
-        var objectIds = source.GameObjects.ToDictionary(item => item.Id, _ => Guid.NewGuid());
+        var objectIds = CreateInstanceIdMap(source.GameObjects, preserveIds: false);
         var sceneDocument = new SceneAssetData
         {
             Id = Guid.NewGuid(),
@@ -16,12 +16,13 @@ public static class PrefabAssetOperations
             GameObjects = [.. source.GameObjects.Select(item =>
                 CloneForInstance(item, source.Id, objectIds, connectToPrefab))]
         };
-        var temporary = SceneAssetSerialization.Restore(sceneDocument);
+        using var temporary = SceneAssetSerialization.Restore(sceneDocument);
         var rootId = objectIds[source.Root];
         var root = temporary.Find(rootId) ?? throw new InvalidDataException("Prefab root could not be instantiated.");
         if (destinationScene is not null)
         {
-            foreach (var gameObject in temporary.ReleaseAll()) destinationScene.Add(gameObject);
+            temporary.ReleaseAll();
+            destinationScene.AddHierarchy(root);
         }
         else temporary.ReleaseAll();
         if (parent is not null) root.transform.SetParent(parent, false);
@@ -32,7 +33,7 @@ public static class PrefabAssetOperations
     {
         ArgumentNullException.ThrowIfNull(prefab);
         AssetDataValidation.ValidatePrefab(prefab.Data);
-        var ids = prefab.Data.GameObjects.ToDictionary(item => item.Id, item => item.Id);
+        var ids = CreateInstanceIdMap(prefab.Data.GameObjects, preserveIds: true);
         var sceneDocument = new SceneAssetData
         {
             Id = Guid.NewGuid(),
@@ -40,7 +41,7 @@ public static class PrefabAssetOperations
             GameObjects = [.. prefab.Data.GameObjects.Select(item =>
                 CloneForInstance(item, prefab.assetId, ids, connected: false, preserveIds: true))]
         };
-        var temporary = SceneAssetSerialization.Restore(sceneDocument);
+        using var temporary = SceneAssetSerialization.Restore(sceneDocument);
         var root = temporary.Find(prefab.Data.Root) ??
                    throw new InvalidDataException("Prefab root could not be loaded.");
         temporary.ReleaseAll();
@@ -101,25 +102,68 @@ public static class PrefabAssetOperations
             PrefabSource = connected ? source.Id : null,
             Transform = new TransformData
             {
-                Id = preserveIds ? source.Transform.Id : Guid.NewGuid(),
+                Id = objectIds[source.Transform.Id],
                 Type = source.Transform.Type,
                 PrefabAsset = connected ? assetId : null,
                 PrefabSource = connected ? source.Transform.Id : null,
                 LocalPosition = new FixedVector2Data(source.Transform.LocalPosition.ToVector2()),
                 LocalRotation = source.Transform.LocalRotation,
                 LocalScale = new FixedVector2Data(source.Transform.LocalScale.ToVector2()),
-                Fields = new Dictionary<string, string>(source.Transform.Fields, StringComparer.Ordinal)
+                Fields = new Dictionary<string, string>(source.Transform.Fields, StringComparer.Ordinal),
+                Graph = CloneGraph(source.Transform.Graph, objectIds)
             }
         };
         instance.Components.AddRange(source.Components.Select(component => new ComponentData
         {
-            Id = preserveIds ? component.Id : Guid.NewGuid(),
+            Id = objectIds[component.Id],
             Type = component.Type,
             Enabled = component.Enabled,
             PrefabAsset = connected ? assetId : null,
             PrefabSource = connected ? component.Id : null,
-            Fields = new Dictionary<string, string>(component.Fields, StringComparer.Ordinal)
+            Fields = new Dictionary<string, string>(component.Fields, StringComparer.Ordinal),
+            Graph = CloneGraph(component.Graph, objectIds)
         }));
         return instance;
+    }
+
+    private static Dictionary<Guid, Guid> CreateInstanceIdMap(
+        IEnumerable<GameObjectData> gameObjects,
+        bool preserveIds)
+    {
+        var result = new Dictionary<Guid, Guid>();
+        foreach (var gameObject in gameObjects)
+        {
+            result.Add(gameObject.Id, preserveIds ? gameObject.Id : Guid.NewGuid());
+            result.Add(gameObject.Transform.Id, preserveIds ? gameObject.Transform.Id : Guid.NewGuid());
+            foreach (var component in gameObject.Components)
+                result.Add(component.Id, preserveIds ? component.Id : Guid.NewGuid());
+        }
+        return result;
+    }
+
+    private static ComponentGraphData? CloneGraph(
+        ComponentGraphData? graph,
+        IReadOnlyDictionary<Guid, Guid> objectIds)
+    {
+        if (graph is null) return null;
+        var clone = ComponentObjectGraphSerializer.Clone(graph);
+        foreach (var member in clone.Members) Remap(member.Value);
+        return clone;
+
+        void Remap(SerializedValueData value)
+        {
+            const string scenePrefix = "scene:";
+            if (value.Kind == "EngineObject" && value.Value.StartsWith(scenePrefix, StringComparison.Ordinal) &&
+                Guid.TryParse(value.Value.AsSpan(scenePrefix.Length), out var sourceId) &&
+                objectIds.TryGetValue(sourceId, out var destinationId))
+                value.Value = $"{scenePrefix}{destinationId:D}";
+            foreach (var item in value.Items) Remap(item);
+            foreach (var child in value.Members) Remap(child.Value);
+            foreach (var entry in value.Entries)
+            {
+                Remap(entry.Key);
+                Remap(entry.Value);
+            }
+        }
     }
 }

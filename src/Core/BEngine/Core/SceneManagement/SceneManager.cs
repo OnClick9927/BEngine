@@ -26,6 +26,10 @@ public static class SceneManager
     public static Scene LoadScene(string sceneNameOrPath, LoadSceneMode mode = LoadSceneMode.Single) =>
         Current.LoadScene(sceneNameOrPath, mode);
 
+    public static SceneLoadOperation LoadSceneAsync(
+        string sceneNameOrPath,
+        LoadSceneMode mode = LoadSceneMode.Single) => Current.LoadSceneAsync(sceneNameOrPath, mode);
+
     public static Scene? GetActiveScene() => Current.ActiveScene;
     public static Scene GetSceneAt(int index) => Current.LoadedScenes[index];
     public static Scene? GetSceneByName(string name) => Current.LoadedScenes.FirstOrDefault(
@@ -36,6 +40,7 @@ public static class SceneManager
     public static bool UnregisterScene(Scene scene, bool disposeScene = false) =>
         ManagerFor(scene).UnregisterScene(scene, disposeScene);
     public static bool UnloadScene(Scene scene) => ManagerFor(scene).UnloadScene(scene);
+    public static SceneUnloadOperation UnloadSceneAsync(Scene scene) => ManagerFor(scene).UnloadSceneAsync(scene);
 
     public static void MoveGameObjectToScene(GameObject gameObject, Scene destination) =>
         ManagerFor(gameObject.scene ?? destination).MoveGameObjectToScene(gameObject, destination);

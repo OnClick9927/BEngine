@@ -62,7 +62,8 @@ internal static class SceneAssetSerialization
                 LocalPosition = new FixedVector2Data(gameObject.transform.localPosition),
                 LocalRotation = gameObject.transform.localRotation.ToString(),
                 LocalScale = new FixedVector2Data(gameObject.transform.localScale),
-                Fields = SerializeDerivedTransformFields(gameObject.transform)
+                Fields = SerializeDerivedTransformFields(gameObject.transform),
+                Graph = SerializeDerivedTransformGraph(gameObject.transform)
             }
         };
 
@@ -78,7 +79,8 @@ internal static class SceneAssetSerialization
                 Enabled = component.enabled,
                 PrefabAsset = component.PrefabAssetId,
                 PrefabSource = component.PrefabSourceId,
-                Fields = ComponentFieldSerializer.Serialize(component)
+                Fields = ComponentFieldSerializer.Serialize(component),
+                Graph = ComponentObjectGraphSerializer.Capture(component)
             });
         }
 
@@ -94,6 +96,9 @@ internal static class SceneAssetSerialization
             IsRuntimeOnly = document.IsRuntimeSnapshot
         };
         var objects = new Dictionary<Guid, GameObject>();
+        var references = new Dictionary<Guid, BObject>();
+        var componentBindings = new List<(Component Component, ComponentData Data)>();
+        var transformBindings = new List<(Transform Transform, TransformData Data)>();
 
         foreach (var item in document.GameObjects)
         {
@@ -108,10 +113,13 @@ internal static class SceneAssetSerialization
                 PrefabSourceId = item.PrefabSource
             };
             RestoreTransformType(gameObject, item.Transform);
-            RestoreTransform(gameObject.transform, item.Transform);
+            RestoreTransformIdentity(gameObject.transform, item.Transform);
             scene.Add(gameObject);
             objects.Add(item.Id, gameObject);
-            RestoreComponents(gameObject, item.Components);
+            references.Add(item.Id, gameObject);
+            references.Add(gameObject.transform.Id, gameObject.transform);
+            transformBindings.Add((gameObject.transform, item.Transform));
+            CreateComponents(gameObject, item.Components, references, componentBindings);
         }
 
         foreach (var item in document.GameObjects.Where(item => item.Parent.HasValue))
@@ -120,6 +128,24 @@ internal static class SceneAssetSerialization
                 !objects.TryGetValue(item.Parent!.Value, out var parent))
                 throw new InvalidDataException($"Scene hierarchy contains an unknown object reference for {item.Id}.");
             child.transform.SetParent(parent.transform, worldPositionStays: false);
+        }
+
+        BObject? ResolveReference(Guid id) => references.GetValueOrDefault(id);
+        foreach (var (transform, data) in transformBindings)
+        {
+            if (data.Graph is not null)
+                ComponentObjectGraphSerializer.Restore(transform, data.Graph, ResolveReference);
+            else if (data.Fields.Count > 0)
+                ComponentFieldSerializer.Deserialize(transform, data.Fields);
+            SerializationCallbackUtility.AfterDeserialize(transform);
+        }
+        foreach (var (component, data) in componentBindings)
+        {
+            if (data.Graph is not null)
+                ComponentObjectGraphSerializer.Restore(component, data.Graph, ResolveReference);
+            else
+                ComponentFieldSerializer.Deserialize(component, data.Fields);
+            SerializationCallbackUtility.AfterDeserialize(component);
         }
 
         return scene;
@@ -134,7 +160,7 @@ internal static class SceneAssetSerialization
         gameObject.AddComponent(transformType);
     }
 
-    private static void RestoreTransform(Transform transform, TransformData document)
+    private static void RestoreTransformIdentity(Transform transform, TransformData document)
     {
         transform.Id = document.Id;
         transform.PrefabAssetId = document.PrefabAsset;
@@ -142,11 +168,13 @@ internal static class SceneAssetSerialization
         transform.localPosition = document.LocalPosition.ToVector2();
         transform.localRotation = Fix64.Parse(document.LocalRotation);
         transform.localScale = document.LocalScale.ToVector2();
-        if (document.Fields.Count > 0) ComponentFieldSerializer.Deserialize(transform, document.Fields);
-        SerializationCallbackUtility.AfterDeserialize(transform);
     }
 
-    private static void RestoreComponents(GameObject gameObject, IEnumerable<ComponentData> documents)
+    private static void CreateComponents(
+        GameObject gameObject,
+        IEnumerable<ComponentData> documents,
+        IDictionary<Guid, BObject> references,
+        ICollection<(Component Component, ComponentData Data)> bindings)
     {
         foreach (var document in documents)
         {
@@ -157,19 +185,19 @@ internal static class SceneAssetSerialization
                 var missing = gameObject.AddComponent<MissingComponent>();
                 missing.originalType = document.Type;
                 missing.serializedFields = new Dictionary<string, string>(document.Fields, StringComparer.Ordinal);
+                missing.serializedGraph = document.Graph is null
+                    ? null
+                    : ComponentObjectGraphSerializer.Clone(document.Graph);
                 component = missing;
             }
-            else
-            {
-                component = gameObject.AddComponent(type);
-                ComponentFieldSerializer.Deserialize(component, document.Fields);
-            }
+            else component = gameObject.AddComponent(type);
 
             component.Id = document.Id;
             component.enabled = document.Enabled;
             component.PrefabAssetId = document.PrefabAsset;
             component.PrefabSourceId = document.PrefabSource;
-            SerializationCallbackUtility.AfterDeserialize(component);
+            references.Add(component.Id, component);
+            bindings.Add((component, document));
         }
     }
 
@@ -180,5 +208,15 @@ internal static class SceneAssetSerialization
         foreach (var member in ComponentFieldSerializer.GetSerializableMembers(typeof(Transform)))
             fields.Remove(member.Name);
         return fields;
+    }
+
+    private static ComponentGraphData? SerializeDerivedTransformGraph(Transform transform)
+    {
+        if (transform.GetType() == typeof(Transform)) return null;
+        var baseMemberNames = ComponentFieldSerializer.GetSerializableMembers(typeof(Transform))
+            .Select(member => member.Name).ToHashSet(StringComparer.Ordinal);
+        var members = ComponentFieldSerializer.GetSerializableMembers(transform.GetType())
+            .Where(member => !baseMemberNames.Contains(member.Name));
+        return ComponentObjectGraphSerializer.Capture(transform, members);
     }
 }

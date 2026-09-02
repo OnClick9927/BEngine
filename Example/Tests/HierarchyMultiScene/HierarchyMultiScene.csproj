@@ -7,7 +7,6 @@
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
     <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />
     <ProjectReference Include="../../../src/Packages/Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
     <ProjectReference Include="../../../src/Packages/Physics2D/BEngine.Physics2D.Editor/BEngine.Physics2D.Editor.csproj" />

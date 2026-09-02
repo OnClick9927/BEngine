@@ -1,6 +1,8 @@
 using System.Net;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
+using BEngine.Networking;
 
 namespace BEngine.AssetBundles;
 
@@ -17,14 +19,16 @@ public sealed class AssetBundleManager : IAssetBundleManager
     private readonly HttpClient _httpClient;
     private readonly bool _ownsHttpClient;
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly SemaphoreSlim _stateGate = new(1, 1);
+    private readonly object _bundleCacheGate = new();
     private readonly Dictionary<string, Task<LoadedAssetBundle>> _loadedBundles =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _builtInBundlePaths =
         new(StringComparer.OrdinalIgnoreCase);
     private RuntimeState? _active;
     private RuntimeState? _builtIn;
-    private bool _initialized;
-    private bool _disposed;
+    private volatile bool _initialized;
+    private volatile bool _disposed;
 
     public AssetBundleManager(AssetBundleRuntimeOptions options)
     {
@@ -41,7 +45,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         get
         {
-            var catalog = _active?.Catalog;
+            var catalog = Volatile.Read(ref _active)?.Catalog;
             return catalog is null ? null : CloneCatalog(catalog);
         }
     }
@@ -50,7 +54,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         get
         {
-            var version = _active?.Version;
+            var version = Volatile.Read(ref _active)?.Version;
             return version is null ? null : CloneVersion(version);
         }
     }
@@ -66,39 +70,50 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         ThrowIfDisposed();
         if (IsInitialized) return;
-        CreateCacheLayout();
-        CleanupStagingFiles();
-
-        _builtIn = await LoadBuiltInStateAsync(cancellationToken).ConfigureAwait(false);
-        RuntimeState? selected = null;
+        using var linked = CreateLinkedTokenSource(cancellationToken);
+        await _stateGate.WaitAsync(linked.Token).ConfigureAwait(false);
         try
         {
-            selected = await LoadCachedStateAsync(ActivePointerPath, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsRecoverableContentFailure(exception))
-        {
-            selected = null;
-        }
+            ThrowIfDisposed();
+            if (IsInitialized) return;
+            CreateCacheLayout();
+            CleanupStagingFiles();
 
-        if (selected is null)
-        {
+            _builtIn = await LoadBuiltInStateAsync(linked.Token).ConfigureAwait(false);
+            RuntimeState? selected = null;
             try
             {
-                selected = await LoadCachedStateAsync(PreviousPointerPath, cancellationToken)
+                selected = await LoadCachedStateAsync(ActivePointerPath, linked.Token)
                     .ConfigureAwait(false);
-                if (selected is not null)
-                    await WritePointerAsync(ActivePointerPath, selected.Version, cancellationToken)
-                        .ConfigureAwait(false);
             }
             catch (Exception exception) when (IsRecoverableContentFailure(exception))
             {
                 selected = null;
             }
+
+            if (selected is null)
+            {
+                try
+                {
+                    selected = await LoadCachedStateAsync(PreviousPointerPath, linked.Token)
+                        .ConfigureAwait(false);
+                    if (selected is not null)
+                        await WritePointerAsync(ActivePointerPath, selected.Version, linked.Token)
+                            .ConfigureAwait(false);
+                }
+                catch (Exception exception) when (IsRecoverableContentFailure(exception))
+                {
+                    selected = null;
+                }
+            }
+            selected ??= _builtIn;
+            Volatile.Write(ref _active, selected);
+            _initialized = true;
         }
-        selected ??= _builtIn;
-        _active = selected;
-        _initialized = true;
+        finally
+        {
+            _stateGate.Release();
+        }
     }
 
     public async Task<AssetBundleUpdatePlan> CheckForUpdatesAsync(
@@ -106,21 +121,23 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         EnsureInitialized();
         ThrowIfDisposed();
+        using var linked = CreateLinkedTokenSource(cancellationToken);
+        var operationToken = linked.Token;
         if (_options.RemoteBaseUri is null)
         {
-            var active = _active ??
+            var active = Volatile.Read(ref _active) ??
                          throw new InvalidOperationException(
                              "No active asset bundle catalog and no remote source are configured.");
             return new AssetBundleUpdatePlan(
                 active.Version, active.Catalog, (byte[])active.CatalogBytes.Clone(), [], false);
         }
 
-        var versionBytes = await FetchRemoteVersionAsync(cancellationToken).ConfigureAwait(false);
+        var versionBytes = await FetchRemoteVersionAsync(operationToken).ConfigureAwait(false);
         var version = AssetBundleCatalogSerializer.DeserializeVersion(versionBytes);
         ValidatePackage(version.PackageName);
         var catalogUri = BuildRemoteUri(version.Version, version.CatalogFile);
         var catalogBytes = await FetchBytesWithRetryAsync(
-            catalogUri, _options.MaximumCatalogSize, cancellationToken).ConfigureAwait(false);
+            catalogUri, _options.MaximumCatalogSize, operationToken).ConfigureAwait(false);
         VerifyPayload(catalogBytes, version.CatalogSize, version.CatalogSha256, "remote catalog");
         var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes);
         ValidateCatalogPair(version, catalog);
@@ -129,11 +146,11 @@ public sealed class AssetBundleManager : IAssetBundleManager
         var downloads = new List<AssetBundleDescriptor>();
         foreach (var descriptor in catalog.Bundles)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!await HasValidBundleAsync(descriptor, cancellationToken).ConfigureAwait(false))
+            operationToken.ThrowIfCancellationRequested();
+            if (!await HasValidBundleAsync(descriptor, operationToken).ConfigureAwait(false))
                 downloads.Add(descriptor);
         }
-        var activeState = _active;
+        var activeState = Volatile.Read(ref _active);
         var hasUpdates = activeState is null ||
                          !activeState.Version.CatalogSha256.Equals(
                              version.CatalogSha256, StringComparison.OrdinalIgnoreCase) ||
@@ -148,35 +165,51 @@ public sealed class AssetBundleManager : IAssetBundleManager
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        EnsureInitialized();
         ThrowIfDisposed();
-        ValidateCatalogPair(plan.TargetVersion, plan.TargetCatalog);
-        ValidateCatalogLimits(plan.TargetCatalog);
-        VerifyPayload(plan.CatalogBytes, plan.TargetVersion.CatalogSize,
-            plan.TargetVersion.CatalogSha256, "update catalog");
+        using var linked = CreateLinkedTokenSource(cancellationToken);
+        await _stateGate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            EnsureInitialized();
+            ThrowIfDisposed();
+            var targetVersion = plan.CreateTargetVersionSnapshot();
+            VerifyPayload(plan.CatalogBytes.Span, targetVersion.CatalogSize,
+                targetVersion.CatalogSha256, "update catalog");
+            var targetCatalog = plan.CreateTargetCatalogSnapshot();
+            ValidateCatalogPair(targetVersion, targetCatalog);
+            ValidateCatalogLimits(targetCatalog);
 
-        var current = _active;
+            var downloads = new List<AssetBundleDescriptor>();
+            foreach (var descriptor in targetCatalog.Bundles)
+                if (!await HasValidBundleAsync(descriptor, linked.Token).ConfigureAwait(false))
+                    downloads.Add(descriptor);
+
+            var current = Volatile.Read(ref _active);
             var previousVersion = current?.Version.Version ?? string.Empty;
-            if (!plan.HasUpdates)
+            if (current is not null &&
+                current.Version.Version.Equals(targetVersion.Version, StringComparison.Ordinal) &&
+                current.Version.CatalogSha256.Equals(
+                    targetVersion.CatalogSha256, StringComparison.OrdinalIgnoreCase) &&
+                downloads.Count == 0)
                 return new AssetBundleUpdateResult(
                     false, previousVersion, previousVersion, 0, 0);
-            if (plan.Downloads.Count > 0 && _options.RemoteBaseUri is null)
+            if (downloads.Count > 0 && _options.RemoteBaseUri is null)
                 throw new InvalidOperationException("The update requires downloads but no remote source is configured.");
 
-            var totalBytes = plan.DownloadSize;
+            var totalBytes = downloads.Aggregate(0L, (total, item) => checked(total + item.Size));
             var completedBundles = 0;
             long completedBytes = 0;
             var downloadedBundles = 0;
             long downloadedBytes = 0;
             progress?.Report(new AssetBundleUpdateProgress(
-                AssetBundleUpdatePhase.Downloading, 0, plan.Downloads.Count, 0, totalBytes));
+                AssetBundleUpdatePhase.Downloading, 0, downloads.Count, 0, totalBytes));
 
             try
             {
-                foreach (var descriptor in plan.Downloads)
+                foreach (var descriptor in downloads)
                 {
                     var downloaded = await DownloadBundleAsync(
-                        plan.TargetVersion, descriptor, cancellationToken).ConfigureAwait(false);
+                        targetVersion, descriptor, linked.Token).ConfigureAwait(false);
                     if (downloaded)
                     {
                         downloadedBundles++;
@@ -187,7 +220,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
                     progress?.Report(new AssetBundleUpdateProgress(
                         AssetBundleUpdatePhase.Downloading,
                         completedBundles,
-                        plan.Downloads.Count,
+                        downloads.Count,
                         completedBytes,
                         totalBytes,
                         descriptor.Name));
@@ -201,59 +234,69 @@ public sealed class AssetBundleManager : IAssetBundleManager
 
             progress?.Report(new AssetBundleUpdateProgress(
                 AssetBundleUpdatePhase.Verifying,
-                plan.Downloads.Count,
-                plan.Downloads.Count,
+                downloads.Count,
+                downloads.Count,
                 totalBytes,
                 totalBytes));
-            foreach (var descriptor in plan.TargetCatalog.Bundles)
-                if (!await HasValidBundleAsync(descriptor, cancellationToken).ConfigureAwait(false))
+            foreach (var descriptor in targetCatalog.Bundles)
+                if (!await HasValidBundleAsync(descriptor, linked.Token).ConfigureAwait(false))
                     throw new InvalidDataException(
                         $"Bundle '{descriptor.Name}' is unavailable after the update download.");
 
             progress?.Report(new AssetBundleUpdateProgress(
                 AssetBundleUpdatePhase.Activating,
-                plan.Downloads.Count,
-                plan.Downloads.Count,
+                downloads.Count,
+                downloads.Count,
                 totalBytes,
                 totalBytes));
-            var catalogPath = GetCatalogCachePath(plan.TargetVersion.CatalogSha256);
-            await AtomicWriteAsync(catalogPath, plan.CatalogBytes, cancellationToken).ConfigureAwait(false);
+            var catalogPath = GetCatalogCachePath(targetVersion.CatalogSha256);
+            await AtomicWriteAsync(catalogPath, plan.CatalogBytes, linked.Token).ConfigureAwait(false);
 
             if (current is not null)
             {
-                await PersistCatalogAsync(current, cancellationToken).ConfigureAwait(false);
-                await WritePointerAsync(PreviousPointerPath, current.Version, cancellationToken)
+                await PersistCatalogAsync(current, linked.Token).ConfigureAwait(false);
+                await WritePointerAsync(PreviousPointerPath, current.Version, linked.Token)
                     .ConfigureAwait(false);
             }
-            await WritePointerAsync(ActivePointerPath, plan.TargetVersion, cancellationToken)
+            await WritePointerAsync(ActivePointerPath, targetVersion, linked.Token)
                 .ConfigureAwait(false);
             var activated = new RuntimeState(
-                CloneVersion(plan.TargetVersion),
-                CloneCatalog(plan.TargetCatalog),
-                (byte[])plan.CatalogBytes.Clone());
-            _active = activated;
+                targetVersion,
+                targetCatalog,
+                plan.CatalogBytes.ToArray());
+            Volatile.Write(ref _active, activated);
             progress?.Report(new AssetBundleUpdateProgress(
                 AssetBundleUpdatePhase.Completed,
-                plan.Downloads.Count,
-                plan.Downloads.Count,
+                downloads.Count,
+                downloads.Count,
                 totalBytes,
                 totalBytes));
-        return new AssetBundleUpdateResult(
-            true,
-            previousVersion,
-            activated.Version.Version,
-            downloadedBundles,
-            downloadedBytes);
+            return new AssetBundleUpdateResult(
+                true,
+                previousVersion,
+                activated.Version.Version,
+                downloadedBundles,
+                downloadedBytes);
+        }
+        finally
+        {
+            _stateGate.Release();
+        }
     }
 
     public async Task<bool> RollbackAsync(CancellationToken cancellationToken = default)
     {
-        EnsureInitialized();
         ThrowIfDisposed();
-        RuntimeState? previous;
+        using var linked = CreateLinkedTokenSource(cancellationToken);
+        await _stateGate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            EnsureInitialized();
+            ThrowIfDisposed();
+            RuntimeState? previous;
             try
             {
-                previous = await LoadCachedStateAsync(PreviousPointerPath, cancellationToken)
+                previous = await LoadCachedStateAsync(PreviousPointerPath, linked.Token)
                     .ConfigureAwait(false);
             }
             catch (Exception exception) when (IsRecoverableContentFailure(exception))
@@ -262,21 +305,26 @@ public sealed class AssetBundleManager : IAssetBundleManager
             }
             if (previous is null) return false;
 
-            var current = _active;
-            await WritePointerAsync(ActivePointerPath, previous.Version, cancellationToken)
+            var current = Volatile.Read(ref _active);
+            await WritePointerAsync(ActivePointerPath, previous.Version, linked.Token)
                 .ConfigureAwait(false);
             if (current is not null)
             {
-                await PersistCatalogAsync(current, cancellationToken).ConfigureAwait(false);
-                await WritePointerAsync(PreviousPointerPath, current.Version, cancellationToken)
+                await PersistCatalogAsync(current, linked.Token).ConfigureAwait(false);
+                await WritePointerAsync(PreviousPointerPath, current.Version, linked.Token)
                     .ConfigureAwait(false);
             }
             else if (File.Exists(PreviousPointerPath))
             {
                 File.Delete(PreviousPointerPath);
             }
-            _active = previous;
+            Volatile.Write(ref _active, previous);
             return true;
+        }
+        finally
+        {
+            _stateGate.Release();
+        }
     }
 
     public async Task<AssetBundleHandle<byte[]>> LoadBytesAsync(
@@ -285,18 +333,16 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         EnsureInitialized();
         ThrowIfDisposed();
-        var state = _active ??
+        var state = Volatile.Read(ref _active) ??
                     throw new InvalidOperationException("No asset bundle catalog is active.");
         var canonicalAddress = AssetBundleValidation.NormalizeAddress(address);
-        var asset = state.Catalog.Assets.FirstOrDefault(item =>
-            item.Address.Equals(canonicalAddress, StringComparison.OrdinalIgnoreCase)) ??
-                    throw new KeyNotFoundException($"Asset bundle address '{canonicalAddress}' was not found.");
-        var leases = await AcquireBundleClosureAsync(state.Catalog, asset.Bundle, cancellationToken)
+        if (!state.Index.TryGetAsset(canonicalAddress, out var asset))
+            throw new KeyNotFoundException($"Asset bundle address '{canonicalAddress}' was not found.");
+        var leases = await AcquireBundleClosureAsync(state.Index, asset.Bundle, cancellationToken)
             .ConfigureAwait(false);
         try
         {
-            var owner = leases.Last(item =>
-                item.Descriptor.Name.Equals(asset.Bundle, StringComparison.OrdinalIgnoreCase));
+            var owner = leases[^1];
             var bytes = await owner.Bundle.ReadAssetAsync(
                 asset, _options.MaximumAssetSize, cancellationToken).ConfigureAwait(false);
             return new AssetBundleHandle<byte[]>(
@@ -315,18 +361,16 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         EnsureInitialized();
         ThrowIfDisposed();
-        var state = _active ??
+        var state = Volatile.Read(ref _active) ??
                     throw new InvalidOperationException("No asset bundle catalog is active.");
         var canonicalAddress = AssetBundleValidation.NormalizeAddress(address);
-        var asset = state.Catalog.Assets.FirstOrDefault(item =>
-            item.Address.Equals(canonicalAddress, StringComparison.OrdinalIgnoreCase)) ??
-                    throw new KeyNotFoundException($"Asset bundle address '{canonicalAddress}' was not found.");
-        var leases = await AcquireBundleClosureAsync(state.Catalog, asset.Bundle, cancellationToken)
+        if (!state.Index.TryGetAsset(canonicalAddress, out var asset))
+            throw new KeyNotFoundException($"Asset bundle address '{canonicalAddress}' was not found.");
+        var leases = await AcquireBundleClosureAsync(state.Index, asset.Bundle, cancellationToken)
             .ConfigureAwait(false);
         try
         {
-            var owner = leases.Last(item =>
-                item.Descriptor.Name.Equals(asset.Bundle, StringComparison.OrdinalIgnoreCase));
+            var owner = leases[^1];
             var bytes = await owner.Bundle.ReadAssetAsync(
                 asset, _options.MaximumAssetSize, cancellationToken).ConfigureAwait(false);
             var text = new UTF8Encoding(false, true).GetString(bytes);
@@ -352,12 +396,11 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         EnsureInitialized();
         ThrowIfDisposed();
-        var catalog = _active?.Catalog;
-        if (catalog is null) return [];
+        var index = Volatile.Read(ref _active)?.Index;
+        if (index is null) return [];
         var normalizedPrefix = NormalizePrefix(prefix);
-        return catalog.Assets.Select(item => item.Address)
+        return index.Addresses
             .Where(address => address.StartsWith(normalizedPrefix, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(address => address, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
@@ -365,7 +408,9 @@ public sealed class AssetBundleManager : IAssetBundleManager
     {
         ThrowIfDisposed();
         var unloaded = 0;
-        foreach (var (hash, task) in _loadedBundles.ToArray())
+        KeyValuePair<string, Task<LoadedAssetBundle>>[] snapshot;
+        lock (_bundleCacheGate) snapshot = _loadedBundles.ToArray();
+        foreach (var (hash, task) in snapshot)
         {
             if (!task.IsCompleted)
                 continue;
@@ -383,58 +428,75 @@ public sealed class AssetBundleManager : IAssetBundleManager
 
     public async Task<int> CleanupAsync(CancellationToken cancellationToken = default)
     {
-        EnsureInitialized();
         ThrowIfDisposed();
-        _ = UnloadUnused();
-        var keepBundles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var keepCatalogs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        AddState(_active, keepBundles, keepCatalogs);
+        using var linked = CreateLinkedTokenSource(cancellationToken);
+        await _stateGate.WaitAsync(linked.Token).ConfigureAwait(false);
         try
         {
-            AddState(await LoadCachedStateAsync(PreviousPointerPath, cancellationToken)
-                .ConfigureAwait(false), keepBundles, keepCatalogs);
-        }
-        catch (Exception exception) when (IsRecoverableContentFailure(exception))
-        {
-        }
-        foreach (var (hash, task) in _loadedBundles)
-            if (task.IsCompletedSuccessfully && task.Result.ReferenceCount > 0)
-                keepBundles.Add(hash);
+            EnsureInitialized();
+            ThrowIfDisposed();
+            _ = UnloadUnused();
+            var keepBundles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var keepCatalogs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddState(Volatile.Read(ref _active), keepBundles, keepCatalogs);
+            try
+            {
+                AddState(await LoadCachedStateAsync(PreviousPointerPath, linked.Token)
+                    .ConfigureAwait(false), keepBundles, keepCatalogs);
+            }
+            catch (Exception exception) when (IsRecoverableContentFailure(exception))
+            {
+            }
+            KeyValuePair<string, Task<LoadedAssetBundle>>[] loadedSnapshot;
+            lock (_bundleCacheGate) loadedSnapshot = _loadedBundles.ToArray();
+            foreach (var (hash, task) in loadedSnapshot)
+                if (task.IsCompletedSuccessfully && task.Result.ReferenceCount > 0)
+                    keepBundles.Add(hash);
 
-        var deleted = 0;
-        foreach (var path in Directory.EnumerateFiles(ObjectsDirectory, "*.bassetbundle"))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var hash = Path.GetFileNameWithoutExtension(path);
-            if (keepBundles.Contains(hash)) continue;
-            try { File.Delete(path); deleted++; }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            var deleted = 0;
+            foreach (var path in Directory.EnumerateFiles(ObjectsDirectory, "*.bassetbundle"))
+            {
+                linked.Token.ThrowIfCancellationRequested();
+                var hash = Path.GetFileNameWithoutExtension(path);
+                if (keepBundles.Contains(hash)) continue;
+                try { File.Delete(path); deleted++; }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            foreach (var path in Directory.EnumerateFiles(CatalogsDirectory, "*.json"))
+            {
+                linked.Token.ThrowIfCancellationRequested();
+                var hash = Path.GetFileNameWithoutExtension(path);
+                if (keepCatalogs.Contains(hash)) continue;
+                try { File.Delete(path); deleted++; }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            CleanupStagingFiles();
+            return deleted;
         }
-        foreach (var path in Directory.EnumerateFiles(CatalogsDirectory, "*.json"))
+        finally
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var hash = Path.GetFileNameWithoutExtension(path);
-            if (keepCatalogs.Contains(hash)) continue;
-            try { File.Delete(path); deleted++; }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            _stateGate.Release();
         }
-        CleanupStagingFiles();
-        return deleted;
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        Task<LoadedAssetBundle>[] loaded;
+        lock (_bundleCacheGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            loaded = _loadedBundles.Values.ToArray();
+            _loadedBundles.Clear();
+        }
         _lifetime.Cancel();
-        foreach (var task in _loadedBundles.Values)
+        foreach (var task in loaded)
         {
             try { task.ConfigureAwait(false).GetAwaiter().GetResult().Dispose(); }
             catch { }
         }
-        _loadedBundles.Clear();
         if (_ownsHttpClient) _httpClient.Dispose();
         _lifetime.Dispose();
     }
@@ -450,8 +512,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
         try
         {
             var canonical = AssetBundleValidation.NormalizeAddress(address);
-            return _active?.Catalog.Assets.Any(item =>
-                item.Address.Equals(canonical, StringComparison.OrdinalIgnoreCase)) == true;
+            return Volatile.Read(ref _active)?.Index.TryGetAsset(canonical, out _) == true;
         }
         catch (ArgumentException)
         {
@@ -463,23 +524,36 @@ public sealed class AssetBundleManager : IAssetBundleManager
         }
     }
 
+    internal bool TryGetActiveAsset(string canonicalAddress, out AssetBundleAsset asset)
+    {
+        var state = Volatile.Read(ref _active);
+        if (state is not null) return state.Index.TryGetAsset(canonicalAddress, out asset!);
+        asset = null!;
+        return false;
+    }
+
+    internal bool TryGetActiveMainAsset(Guid ownerGuid, out AssetBundleAsset asset)
+    {
+        var state = Volatile.Read(ref _active);
+        if (state is not null) return state.Index.TryGetMainAsset(ownerGuid, out asset!);
+        asset = null!;
+        return false;
+    }
+
     private async Task<List<BundleLease>> AcquireBundleClosureAsync(
-        AssetBundleCatalog catalog,
+        AssetBundleCatalogIndex index,
         string bundleName,
         CancellationToken cancellationToken)
     {
-        var descriptors = catalog.Bundles.ToDictionary(item => item.Name, StringComparer.OrdinalIgnoreCase);
-        var ordered = new List<AssetBundleDescriptor>();
-        CollectBundleClosure(bundleName, descriptors, new HashSet<string>(StringComparer.OrdinalIgnoreCase), ordered);
+        var ordered = index.GetBundleClosure(bundleName);
         var leases = new List<BundleLease>(ordered.Count);
         try
         {
-            foreach (var descriptor in ordered)
+            foreach (var indexedBundle in ordered)
             {
-                var assets = catalog.Assets.Where(item =>
-                    item.Bundle.Equals(descriptor.Name, StringComparison.OrdinalIgnoreCase)).ToArray();
-                var bundle = await AcquireBundleAsync(descriptor, assets, cancellationToken).ConfigureAwait(false);
-                leases.Add(new BundleLease(descriptor, bundle));
+                var bundle = await AcquireBundleAsync(
+                    indexedBundle.Descriptor, indexedBundle.Assets, cancellationToken).ConfigureAwait(false);
+                leases.Add(new BundleLease(indexedBundle.Descriptor, bundle));
             }
             return leases;
         }
@@ -499,11 +573,15 @@ public sealed class AssetBundleManager : IAssetBundleManager
         while (true)
         {
             ThrowIfDisposed();
-            if (!_loadedBundles.TryGetValue(hash, out var task))
+            Task<LoadedAssetBundle> task;
+            lock (_bundleCacheGate)
             {
-                var lifetimeToken = _lifetime.Token;
-                task = OpenBundleAsync(descriptor, assets, lifetimeToken);
-                _loadedBundles[hash] = task;
+                ThrowIfDisposed();
+                if (!_loadedBundles.TryGetValue(hash, out task!))
+                {
+                    task = OpenBundleAsync(descriptor, assets, _lifetime.Token);
+                    _loadedBundles.Add(hash, task);
+                }
             }
             LoadedAssetBundle bundle;
             try
@@ -632,6 +710,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
         {
             if (File.Exists(part)) File.Delete(part);
         }
+        cancellationToken.ThrowIfCancellationRequested();
         if (failure is InvalidDataException invalidData)
             throw new InvalidDataException(invalidData.Message, invalidData);
         throw new IOException($"Failed to download asset bundle '{descriptor.Name}'.", failure);
@@ -643,36 +722,39 @@ public sealed class AssetBundleManager : IAssetBundleManager
         AssetBundleDescriptor descriptor,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        using var response = await _httpClient.SendAsync(
-            request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        if (response.Content.Headers.ContentLength is { } contentLength &&
-            contentLength != descriptor.Size)
-            throw new InvalidDataException(
-                $"Remote bundle '{descriptor.Name}' length does not match its catalog.");
-        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-            64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = new byte[64 * 1024];
-        long total = 0;
-        while (true)
+        await SendHttpStreamingAsync(uri, async (response, token) =>
         {
-            var read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (read == 0) break;
-            total = checked(total + read);
-            if (total > descriptor.Size || total > _options.MaximumBundleSize)
-                throw new InvalidDataException($"Remote bundle '{descriptor.Name}' exceeds its declared size.");
-            hash.AppendData(buffer, 0, read);
-            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-        }
-        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
-        output.Flush(flushToDisk: true);
-        var actualHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
-        if (total != descriptor.Size ||
-            !actualHash.Equals(descriptor.Sha256, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"Remote bundle '{descriptor.Name}' failed content verification.");
+            if (!response.IsSuccessStatusCode) return;
+            if (response.Content.Headers.ContentLength is { } contentLength &&
+                contentLength != descriptor.Size)
+                throw new InvalidDataException(
+                    $"Remote bundle '{descriptor.Name}' length does not match its catalog.");
+            await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+            await using var output = new FileStream(
+                destination, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            var buffer = new byte[64 * 1024];
+            long total = 0;
+            while (true)
+            {
+                var read = await input.ReadAsync(buffer, token).ConfigureAwait(false);
+                if (read == 0) break;
+                total = checked(total + read);
+                if (total > descriptor.Size || total > _options.MaximumBundleSize)
+                    throw new InvalidDataException(
+                        $"Remote bundle '{descriptor.Name}' exceeds its declared size.");
+                hash.AppendData(buffer, 0, read);
+                await output.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+            }
+            await output.FlushAsync(token).ConfigureAwait(false);
+            output.Flush(flushToDisk: true);
+            var actualHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+            if (total != descriptor.Size ||
+                !actualHash.Equals(descriptor.Sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(
+                    $"Remote bundle '{descriptor.Name}' failed content verification.");
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<byte[]> FetchRemoteVersionAsync(CancellationToken cancellationToken)
@@ -702,26 +784,27 @@ public sealed class AssetBundleManager : IAssetBundleManager
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-                using var response = await _httpClient.SendAsync(
-                    request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-                if (response.Content.Headers.ContentLength is { } length && length > maximumSize)
-                    throw new InvalidDataException($"Remote content '{uri}' exceeds its size limit.");
-                await using var source = await response.Content.ReadAsStreamAsync(cancellationToken)
-                    .ConfigureAwait(false);
                 using var output = new MemoryStream();
-                var buffer = new byte[32 * 1024];
-                long total = 0;
-                while (true)
+                await SendHttpStreamingAsync(uri, async (response, token) =>
                 {
-                    var read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-                    if (read == 0) break;
-                    total = checked(total + read);
-                    if (total > maximumSize)
+                    if (!response.IsSuccessStatusCode) return;
+                    if (response.Content.Headers.ContentLength is { } length && length > maximumSize)
                         throw new InvalidDataException($"Remote content '{uri}' exceeds its size limit.");
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-                }
+                    await using var source = await response.Content.ReadAsStreamAsync(token)
+                        .ConfigureAwait(false);
+                    var buffer = new byte[32 * 1024];
+                    long total = 0;
+                    while (true)
+                    {
+                        var read = await source.ReadAsync(buffer, token).ConfigureAwait(false);
+                        if (read == 0) break;
+                        total = checked(total + read);
+                        if (total > maximumSize)
+                            throw new InvalidDataException(
+                                $"Remote content '{uri}' exceeds its size limit.");
+                        await output.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+                    }
+                }, cancellationToken).ConfigureAwait(false);
                 return output.ToArray();
             }
             catch (HttpRequestException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
@@ -740,7 +823,26 @@ public sealed class AssetBundleManager : IAssetBundleManager
                 break;
             }
         }
+        cancellationToken.ThrowIfCancellationRequested();
         throw new IOException($"Failed to fetch remote asset bundle content '{uri}'.", failure);
+    }
+
+    private async Task SendHttpStreamingAsync(
+        Uri uri,
+        Func<HttpResponseMessage, CancellationToken, Task> responseHandler,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpNetworkRequest(uri, HttpMethod.Get, _httpClient)
+        {
+            Timeout = System.Threading.Timeout.InfiniteTimeSpan
+        };
+        await request.SendAsync(responseHandler, cancellationToken).ConfigureAwait(false);
+        if (request.Result == NetworkRequestResult.Success) return;
+        if (request.Result == NetworkRequestResult.ProtocolError)
+            throw new HttpRequestException(request.Error, request.Exception, request.ResponseCode);
+        if (request.Exception is not null)
+            ExceptionDispatchInfo.Capture(request.Exception).Throw();
+        throw new IOException(request.Error ?? $"HTTP request '{uri}' failed.");
     }
 
     private async Task<RuntimeState?> LoadBuiltInStateAsync(CancellationToken cancellationToken)
@@ -866,20 +968,6 @@ public sealed class AssetBundleManager : IAssetBundleManager
         return normalized;
     }
 
-    private static void CollectBundleClosure(
-        string bundleName,
-        IReadOnlyDictionary<string, AssetBundleDescriptor> descriptors,
-        ISet<string> visited,
-        ICollection<AssetBundleDescriptor> ordered)
-    {
-        if (!visited.Add(bundleName)) return;
-        if (!descriptors.TryGetValue(bundleName, out var descriptor))
-            throw new InvalidDataException($"Bundle '{bundleName}' is missing from the active catalog.");
-        foreach (var dependency in descriptor.Dependencies)
-            CollectBundleClosure(dependency, descriptors, visited, ordered);
-        ordered.Add(descriptor);
-    }
-
     private static void ReleaseBundles(IReadOnlyList<BundleLease> leases)
     {
         for (var index = leases.Count - 1; index >= 0; index--) leases[index].Bundle.Release();
@@ -887,8 +975,9 @@ public sealed class AssetBundleManager : IAssetBundleManager
 
     private void RemoveLoadedBundle(string hash, Task<LoadedAssetBundle> task)
     {
-        if (_loadedBundles.TryGetValue(hash, out var current) && ReferenceEquals(current, task))
-            _loadedBundles.Remove(hash);
+        lock (_bundleCacheGate)
+            if (_loadedBundles.TryGetValue(hash, out var current) && ReferenceEquals(current, task))
+                _loadedBundles.Remove(hash);
     }
 
     private void CreateCacheLayout()
@@ -1042,10 +1131,27 @@ public sealed class AssetBundleManager : IAssetBundleManager
         if (_disposed) throw new ObjectDisposedException(nameof(AssetBundleManager));
     }
 
-    private sealed record RuntimeState(
-        AssetBundleVersion Version,
-        AssetBundleCatalog Catalog,
-        byte[] CatalogBytes);
+    private CancellationTokenSource CreateLinkedTokenSource(CancellationToken cancellationToken) =>
+        CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+
+    private sealed class RuntimeState
+    {
+        internal RuntimeState(
+            AssetBundleVersion version,
+            AssetBundleCatalog catalog,
+            byte[] catalogBytes)
+        {
+            Version = version;
+            Catalog = catalog;
+            CatalogBytes = catalogBytes;
+            Index = new AssetBundleCatalogIndex(catalog, cloneCatalog: false);
+        }
+
+        internal AssetBundleVersion Version { get; }
+        internal AssetBundleCatalog Catalog { get; }
+        internal byte[] CatalogBytes { get; }
+        internal AssetBundleCatalogIndex Index { get; }
+    }
 
     private sealed record BundleLease(
         AssetBundleDescriptor Descriptor,

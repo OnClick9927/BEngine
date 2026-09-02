@@ -18,6 +18,7 @@ public static class Undo
     private static bool _groupNameExplicit;
     private static bool _currentGroupHasRecords;
     private static bool _isProcessing;
+    private static long _historyVersion;
 
     public static event UndoRedoCallback? undoRedoPerformed;
     public static event UndoRedoEventCallback? undoRedoEvent;
@@ -27,6 +28,7 @@ public static class Undo
     public static bool canUndo => UndoStack.Count > 0;
     public static bool canRedo => RedoStack.Count > 0;
     public static bool isProcessing => _isProcessing;
+    internal static long historyVersion => _historyVersion;
 
     public static void RecordObject(BObject objectToUndo, string name) =>
         RecordObjects([objectToUndo], name);
@@ -242,6 +244,7 @@ public static class Undo
         _groupNameExplicit = true;
         RenameGroup(UndoStack, _group, _groupName);
         RenameGroup(RedoStack, _group, _groupName);
+        _historyVersion++;
     }
 
     public static void IncrementCurrentGroup()
@@ -282,13 +285,16 @@ public static class Undo
         UndoStack.Push(new UndoOperation(groupIndex, operations[^1].Name, [], targets,
             null, null, operations.ToArray(), operations.Any(static operation => operation.AffectsScene)));
         RedoStack.Clear();
+        _historyVersion++;
     }
 
     public static void ClearUndo(BObject identifier)
     {
         ArgumentNullException.ThrowIfNull(identifier);
+        var previousCount = UndoStack.Count + RedoStack.Count;
         FilterStack(UndoStack, operation => !ContainsTarget(operation, identifier));
         FilterStack(RedoStack, operation => !ContainsTarget(operation, identifier));
+        if (UndoStack.Count + RedoStack.Count != previousCount) _historyVersion++;
     }
 
     public static void FlushUndoRecordObjects() =>
@@ -306,6 +312,7 @@ public static class Undo
         _groupNameExplicit = false;
         _currentGroupHasRecords = false;
         _isProcessing = false;
+        _historyVersion++;
     }
 
     [Obsolete("Use Undo.RecordObject instead")]
@@ -384,8 +391,8 @@ public static class Undo
 
     internal static IReadOnlyList<UndoHistoryEntry> GetHistory(out int cursor)
     {
-        var undo = GroupHistory(UndoStack.Reverse(), takeLastName: true, isRedo: false);
-        var redo = GroupHistory(RedoStack, takeLastName: false, isRedo: true);
+        var undo = BuildHistory(UndoStack.Reverse(), isRedo: false);
+        var redo = BuildHistory(RedoStack, isRedo: true);
         cursor = undo.Count;
         return [.. undo, .. redo];
     }
@@ -429,6 +436,7 @@ public static class Undo
         foreach (var operation in snapshot.RedoOperations.Reverse()) RedoStack.Push(operation);
         _group = snapshot.Group;
         _groupName = snapshot.GroupName;
+        _historyVersion++;
     }
 
     internal static void RegisterSnapshot(ObjectState state, string name)
@@ -466,22 +474,12 @@ public static class Undo
         UndoStack.Push(operation);
         RedoStack.Clear();
         _currentGroupHasRecords = true;
+        _historyVersion++;
     }
 
     private static void Apply(Stack<UndoOperation> source, Stack<UndoOperation> destination, bool isRedo)
     {
-        if (!source.TryPop(out var first)) return;
-        var popped = new List<UndoOperation> { first };
-        while (source.TryPeek(out var candidate) && candidate.Group == first.Group)
-            popped.Add(source.Pop());
-        var chronological = popped.AsEnumerable().Reverse().ToArray();
-        var operation = chronological.Length == 1
-            ? chronological[0]
-            : new UndoOperation(first.Group, first.Name, [],
-                chronological.SelectMany(static item => item.Targets)
-                    .DistinctBy(static target => target.GetInstanceID()).ToArray(),
-                null, null, chronological,
-                chronological.Any(static item => item.AffectsScene));
+        if (!source.TryPop(out var operation)) return;
         try
         {
             _isProcessing = true;
@@ -490,10 +488,11 @@ public static class Undo
         }
         catch
         {
-            for (var index = popped.Count - 1; index >= 0; index--) source.Push(popped[index]);
+            source.Push(operation);
             throw;
         }
         finally { _isProcessing = false; }
+        _historyVersion++;
         NotifyApplied(operation, isRedo);
     }
 
@@ -542,6 +541,7 @@ public static class Undo
         finally { _isProcessing = false; }
         if (reverted.Count == 0) return;
         RedoStack.Clear();
+        _historyVersion++;
         NotifyApplied(reverted[^1], isRedo: false);
     }
 
@@ -673,23 +673,34 @@ public static class Undo
     private static bool TargetsAffectScene(IEnumerable<BObject> targets) =>
         targets.Any(static target => target is Scene or GameObject or Component);
 
-    private static List<UndoHistoryEntry> GroupHistory(
+    private static List<UndoHistoryEntry> BuildHistory(
         IEnumerable<UndoOperation> operations,
-        bool takeLastName,
         bool isRedo)
     {
         var result = new List<UndoHistoryEntry>();
         foreach (var operation in operations)
         {
-            if (result.Count == 0 || result[^1].Group != operation.Group)
-            {
-                result.Add(new UndoHistoryEntry(operation.Name, operation.Group, isRedo));
-                continue;
-            }
-            if (takeLastName) result[^1] = new UndoHistoryEntry(operation.Name, operation.Group, isRedo);
+            var operationCount = CountRecordedOperations(operation);
+            var targets = operation.Targets
+                .DistinctBy(static target => target.GetInstanceID()).ToArray();
+            var targetNames = targets.Select(static target =>
+                    $"{target.name} ({ObjectNames.NicifyVariableName(target.GetType().Name)})")
+                .ToArray();
+            var details = targetNames.Length == 0
+                ? $"{operationCount:N0} recorded operation(s)"
+                : $"{operationCount:N0} operation(s) on {targetNames.Length:N0} object(s): " +
+                  string.Join(", ", targetNames);
+            result.Add(new UndoHistoryEntry(operation.Name, operation.Group, isRedo,
+                operationCount, targetNames.Length, operation.AffectsScene,
+                targetNames, details));
         }
         return result;
     }
+
+    private static int CountRecordedOperations(UndoOperation operation) =>
+        operation.Children is { Length: > 0 } children
+            ? children.Sum(CountRecordedOperations)
+            : 1;
 
     internal sealed record UndoOperation(
         int Group,
@@ -724,5 +735,3 @@ public static class Undo
         }
     }
 }
-
-internal readonly record struct UndoHistoryEntry(string Name, int Group, bool IsRedo);

@@ -130,23 +130,3 @@ internal static class EditorObjectPing
         _ => HierarchyGameObject(target)?.GetInstanceID()
     };
 }
-
-internal readonly record struct EditorObjectPingSnapshot
-{
-    internal EditorObjectPingSnapshot(int instanceId, string? assetPath, double startedAt)
-    {
-        InstanceId = instanceId;
-        AssetPath = assetPath ?? string.Empty;
-        StartedAt = startedAt;
-    }
-
-    internal int InstanceId { get; }
-    internal string AssetPath { get; }
-    internal double StartedAt { get; }
-}
-
-internal readonly record struct EditorObjectPingFrame(
-    bool IsActive,
-    Fix64 Progress,
-    Fix64 Expansion,
-    Fix64 Alpha);

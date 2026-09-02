@@ -9,10 +9,12 @@ public static class EditorDataPaths
     public static string logsPath => EnsureDirectory(Path.Combine(rootPath, "Logs"));
     public static string startupStatusDirectoryPath => EnsureDirectory(Path.Combine(rootPath, "Startup"));
     public static string preferencesDirectoryPath => EnsureDirectory(Path.Combine(rootPath, "Preferences"));
+    public static string layoutsDirectoryPath => EnsureDirectory(Path.Combine(preferencesDirectoryPath, "Layouts"));
     public static string themesPath => EnsureDirectory(Path.Combine(preferencesDirectoryPath, "Themes"));
     public static string preferencesPath => Path.Combine(preferencesDirectoryPath, "Preferences.yaml");
     public static string editorPrefsPath => Path.Combine(preferencesDirectoryPath, "EditorPrefs.yaml");
     public static string launcherSettingsPath => Path.Combine(preferencesDirectoryPath, "LauncherSettings.yaml");
+    public static string codexSettingsPath => Path.Combine(preferencesDirectoryPath, "CodexSettings.yaml");
     public static string editorBootstrapLogPath => Path.Combine(logsPath, "EditorBootstrap.log");
     public static string launcherBuildLogPath => Path.Combine(logsPath, "LauncherBuild.log");
 
@@ -30,6 +32,7 @@ public static class EditorDataPaths
         MigrateRootPreferences(root);
         MigrateLegacyData(root);
         Directory.CreateDirectory(Path.Combine(root, "Preferences", "Themes"));
+        Directory.CreateDirectory(Path.Combine(root, "Preferences", "Layouts"));
         return root;
     }
 

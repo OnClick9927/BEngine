@@ -328,8 +328,9 @@ public static class EditorStyles
         CopyStyle(dropDownButton, objectFieldButton, optionsButtonStyle, dropDownToggleButton);
 
         CopyStyle(toolbar, contentToolbar);
-        CopyStyle(toolbarButton, toolbarButtonLeft, toolbarButtonRight, toolbarDropDownToggle,
-            toolbarDropDownToggleButton, toolbarDropDownToggleRight);
+        CopyStyle(toolbarButton, toolbarButtonLeft, toolbarButtonRight);
+        CopyStyle(toolbarToggle, toolbarDropDownToggle, toolbarDropDownToggleButton,
+            toolbarDropDownToggleRight);
         CopyStyle(toolbarSearchField, toolbarSearchFieldPopup, toolbarSearchFieldWithJumpSynced,
             toolbarSearchFieldWithJumpPopupSynced, toolbarSearchFieldWithJump,
             toolbarSearchFieldWithJumpPopup, searchField);

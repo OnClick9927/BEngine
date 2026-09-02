@@ -153,20 +153,20 @@ internal static class Program
                     Require(style.normal.backgroundColor.Equals(EditorStyles.toolbar.normal.backgroundColor),
                         $"{theme} toolbar button normal color was not restored.");
                     Require(style.borderWidth == Fix64.Zero &&
-                            style.normal.borderColor.Equals(palette.Border) &&
+                            style.normal.borderColor.Equals(GUI.skin.box.normal.borderColor) &&
                             style.normal.backgroundImage is not null,
                         $"{theme} toolbar buttons have no textured separator background.");
                     Require(!style.hover.backgroundColor.Equals(style.normal.backgroundColor) &&
                             !style.active.backgroundColor.Equals(style.normal.backgroundColor),
                         $"{theme} toolbar buttons lost their hover or pressed feedback.");
                     Require(style.disabled.backgroundColor.Equals(style.normal.backgroundColor) &&
-                            style.disabled.textColor.Equals(palette.DisabledText),
+                            style.disabled.textColor.Equals(GUI.skin.label.disabled.textColor),
                         $"{theme} disabled toolbar buttons do not preserve their surface and muted text.");
                 }
 
                 var selected = EditorStyles.toolbarIconButtonSelected;
-                Require(selected.normal.backgroundColor.Equals(palette.Selection) &&
-                        selected.normal.borderColor.Equals(palette.Border) &&
+                Require(selected.normal.backgroundColor.Equals(EditorStyles.selectionRect.normal.backgroundColor) &&
+                        selected.normal.borderColor.Equals(GUI.skin.box.normal.borderColor) &&
                         selected.borderWidth == Fix64.Zero && selected.normal.backgroundImage is not null,
                     $"{theme} selected toolbar buttons lost their selected surface or boundary.");
             }

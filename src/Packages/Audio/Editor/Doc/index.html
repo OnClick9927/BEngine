@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BEngine Audio</title>
+  <style>
+    :root { color-scheme: dark; --bg:#171a1d; --panel:#24282c; --line:#3d454c; --text:#e8ecef; --muted:#aeb8bf; --accent:#2cbca9; --warn:#e4a843; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.65 "Segoe UI",sans-serif; }
+    header,main { max-width:1120px; margin:auto; padding:28px 36px; }
+    header { border-bottom:1px solid var(--line); }
+    h1 { margin:0 0 6px; font-size:30px; letter-spacing:0; }
+    h2 { margin:34px 0 12px; font-size:21px; border-bottom:1px solid var(--line); padding-bottom:8px; }
+    h3 { font-size:16px; color:var(--accent); }
+    p,li { color:var(--muted); }
+    code { color:#a8e2da; background:#202428; padding:2px 5px; }
+    pre { background:#101214; border:1px solid var(--line); padding:14px; overflow:auto; }
+    table { width:100%; border-collapse:collapse; background:var(--panel); }
+    th,td { border:1px solid var(--line); padding:9px 11px; text-align:left; vertical-align:top; }
+    th { color:var(--text); }
+    figure { margin:18px 0; }
+    img { width:100%; height:auto; border:1px solid var(--line); display:block; }
+    figcaption { padding:9px 12px; background:var(--panel); color:var(--muted); }
+    .note { border-left:3px solid var(--warn); padding:8px 12px; background:var(--panel); }
+  </style>
+</head>
+<body>
+<header>
+  <h1>BEngine Audio</h1>
+  <p>用于 BEngine 2D 场景的 WAV 资源、音源、监听器、实时软件混音和跨平台输出。</p>
+</header>
+<main>
+  <h2>快速开始</h2>
+  <ol>
+    <li>在 <code>Window &gt; General &gt; Package Manager</code> 启用 Audio，导入 Audio Getting Started。</li>
+    <li>从 Project 打开 <code>Assets/Examples/AudioGettingStarted/res/Audio.scene.yaml</code>。</li>
+    <li>选择 Music Source，在 Inspector 检查 Clip、Loop、Volume、Pitch、Pan 和 Play On Awake。</li>
+    <li>打开 Scene、Game、Console 后 Play。Space 暂停，方向键调节音量/声像，R 重新播放。</li>
+  </ol>
+  <figure>
+    <img src="images/overview.png" alt="Audio 示例场景、Hierarchy 与 Inspector">
+    <figcaption>完整示例场景：左侧是 Listener、Music Source 与 Camera2D，右侧 Inspector 展示 Audio Source 的可编辑字段；中间是纯 2D 场景内容。</figcaption>
+  </figure>
+
+  <h2>组件介绍</h2>
+  <table>
+    <thead><tr><th>类型</th><th>职责</th><th>关键字段</th></tr></thead>
+    <tbody>
+      <tr><td><code>AudioClip</code></td><td>保存导入后的 PCM 样本，是可被 Resources/AssetBundle 加载的 BAsset。</td><td>samples、channels、frequency、length、loadState</td></tr>
+      <tr><td><code>AudioSource</code></td><td>播放 Clip 和一次性音效；按优先级进入 2D 软件混音。</td><td>clip、volume、pitch、panStereo、loop、mute、priority</td></tr>
+      <tr><td><code>AudioListener</code></td><td>场景监听器标记与全局音量/暂停入口。</td><td>AudioListener.volume、AudioListener.pause</td></tr>
+      <tr><td><code>AudioImporter</code></td><td>将磁盘 WAV 转换为 Artifact/AudioClip。</td><td>forceToMono、normalize、loadInBackground、preloadAudioData</td></tr>
+    </tbody>
+  </table>
+  <p class="note">BEngine 是 2D 引擎。AudioSource 不读取 Transform 距离，不提供 3D spatial blend、doppler、reverb zone 或 3D 环绕定位。</p>
+
+  <h2>API</h2>
+  <h3>创建和读写 Clip</h3>
+  <pre><code>var clip = AudioClip.Create("Tone", 44100, 2, 44100);
+clip.SetData(interleavedPcm, 0);
+var copy = new float[interleavedPcm.Length];
+clip.GetData(copy, 0);</code></pre>
+  <h3>播放控制</h3>
+  <pre><code>var source = GetComponent&lt;AudioSource&gt;();
+source.volume = Fix64.Parse("0.8");
+source.panStereo = Fix64.Parse("-0.2");
+source.Play();
+source.PlayOneShot(clickClip, Fix64.Half);</code></pre>
+  <p><code>PlayDelayed</code> 接受确定性 Fix64 秒数；<code>time</code>、<code>timeSamples</code> 可定位；
+     <code>Pause</code>/<code>UnPause</code> 保留游标，<code>Stop</code> 清除游标和 one-shot。</p>
+
+  <h2>编辑器工作流</h2>
+  <ol>
+    <li>将 WAV 拖入 Project。Importer 校验 RIFF/WAVE、fmt 和 data 块并生成 AudioClip。</li>
+    <li>在 Inspector 修改导入设置后重新导入；Force To Mono 会合并声道，Normalize 提升峰值。</li>
+    <li>从 Project 将 Clip 拖到 Audio Clip ObjectField；类型不匹配时光标明确显示拒绝。</li>
+    <li>字段右侧选择按钮打开 Assets/Scene 双页签 TreeView，可搜索且不显示 Assets 根节点。</li>
+    <li>修改 Source 使用 Undo；Play 中只改变运行镜像，Stop 后恢复编辑态数据。</li>
+  </ol>
+
+  <h2>如何扩展</h2>
+  <p>平台输出实现 <code>IAudioOutput</code> 并用 <code>AudioOutput.SetBackend</code> 安装。提交的是交错 float PCM；
+     实现需要自行维护设备缓冲，避免在帧热路径分配，并在 Dispose 中释放原生资源。</p>
+  <p>新增编码格式时，在 Runtime 注册 <code>RuntimeAssetCodecRegistry</code>，在 Editor 注册对应
+     <code>AssetImporter</code> 和图标。包卸载必须注销静态注册；Inspector 修改依次调用 Undo、赋值、
+     <code>EditorUtility.SetDirty</code>。</p>
+
+  <h2>排错</h2>
+  <table>
+    <tbody>
+      <tr><th>没有声音</th><td>检查 OpenAL、Listener.pause、Source.mute/volume、Clip 引用和 Play 状态。</td></tr>
+      <tr><th>导入失败</th><td>当前只接受未压缩 PCM 或 Float WAV；在 Console 查看具体块/位深错误。</td></tr>
+      <tr><th>播放太快/太慢</th><td>检查 Clip 采样率与 Source pitch；输出端会按设备采样率重采样。</td></tr>
+      <tr><th>Stop 后参数恢复</th><td>这是编辑态/运行态隔离，属于预期行为。</td></tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>

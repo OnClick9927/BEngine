@@ -5,6 +5,7 @@ using BEngine.Editor.Documents;
 using BEngine.Editor.Rendering;
 using BEngine.Rendering;
 using BEngine.Rendering.Rhi;
+using UnityEditor.IMGUI.Controls;
 using NVector4 = System.Numerics.Vector4;
 
 namespace BEngine.ExampleTests.EditorDiagnosticsWindows;
@@ -34,7 +35,7 @@ internal static class Program
             VerifyProfilerRendering();
             VerifyMultiWindowLifecycles();
             Console.WriteLine(
-                "EDITOR_DIAGNOSTICS_WINDOWS_OK|menu-metadata,tab-metadata,empty-state,data-state," +
+                "EDITOR_DIAGNOSTICS_WINDOWS_OK|menu-metadata,tab-opt-out,empty-state,data-state," +
                 "narrow-layout,wide-layout,frame-preview,typed-details,preview-lifecycle," +
                 "step-selection,multi-window-step-sync,frame-debugger-lifecycle," +
                 "profiler-recording-lifecycle");
@@ -59,18 +60,17 @@ internal static class Program
 
     private static void VerifyWindowMetadata()
     {
-        VerifyMetadata(FrameDebuggerWindowType, "Analysis/Frame Debugger",
-            "Window/Analysis/Frame Debugger");
-        VerifyMetadata(ProfilerWindowType, "Analysis/Profiler", "Window/Analysis/Profiler");
+        VerifyMetadata(FrameDebuggerWindowType, "Window/Analysis/Frame Debugger");
+        VerifyMetadata(ProfilerWindowType, "Window/Analysis/Profiler");
     }
 
-    private static void VerifyMetadata(Type windowType, string tabPath, string menuPath)
+    private static void VerifyMetadata(Type windowType, string menuPath)
     {
         Require(typeof(EditorWindow).IsAssignableFrom(windowType),
             $"{windowType.Name} is not an EditorWindow.");
         var tab = windowType.GetCustomAttribute<EditorWindowTabAttribute>();
-        Require(tab?.menuPath == tabPath,
-            $"{windowType.Name} did not register the Add new tab path '{tabPath}'.");
+        Require(tab is null,
+            $"{windowType.Name} must stay out of the default Add new tab menu.");
         var menuItems = windowType.GetMethods(BindingFlags.Static | BindingFlags.Public |
                                               BindingFlags.NonPublic)
             .SelectMany(method => method.GetCustomAttributes<MenuItemAttribute>())
@@ -214,6 +214,17 @@ internal static class Program
             Require(cpuText.Any(text => text.Contains("ProfiledEditorWork", StringComparison.Ordinal)) &&
                     cpuText.Any(text => text.Contains("ProfiledRuntimeWork", StringComparison.Ordinal)),
                 "Profiler CPU hierarchy did not render captured class and method names.");
+            var rowHeight = Convert.ToSingle(moduleTree!.GetType()
+                .GetProperty("rowHeight", HiddenInstance)!.GetValue(moduleTree));
+            Require(Math.Abs(rowHeight - 132) < 0.01f,
+                "Profiler analysis rows were not increased to 1.5 times their previous height.");
+            var moduleTitles = cpuCommands.Where(command =>
+                    command.Type == GpuCanvasCommandType.Text &&
+                    command.Content is "CPU Usage" or "Rendering" or "Memory")
+                .ToDictionary(command => command.Content, command => command.Rect.Y);
+            Require(moduleTitles["Rendering"] - moduleTitles["CPU Usage"] >= 131 &&
+                    moduleTitles["Memory"] - moduleTitles["Rendering"] >= 131,
+                "Profiler module rows overlap after increasing their graph height.");
 
             var selectedSample = EditorProfiler.GetSnapshot().Latest!.Value.MethodSamples
                 .Single(sample => sample.MethodName == "ProfiledRuntimeWork");
@@ -227,40 +238,49 @@ internal static class Program
                         StringComparison.Ordinal)),
                 "Profiler CPU details did not render the method domain and managed call stack.");
 
-            _ = Render(window, ProfilerWindowType,
-                new Event(EventType.MouseDown) { button = 0, mousePosition = new Vector2(10, 150) },
-                900, 600);
-            _ = Render(window, ProfilerWindowType,
-                new Event(EventType.MouseUp) { button = 0, mousePosition = new Vector2(10, 150) },
-                900, 600);
+            SelectProfilerModule(window, "Rendering");
             var renderingText = Render(window, ProfilerWindowType,
                     new Event(EventType.Repaint), 900, 600)
                 .Where(command => command.Type == GpuCanvasCommandType.Text)
                 .Select(command => command.Content).ToArray();
-            Require(renderingText.Contains("Saved by Batching") &&
-                    renderingText.Contains("Visible Submissions") &&
-                    renderingText.Contains("Render Target"),
-                "Profiler Rendering module did not expose detailed frame counters.");
+            var renderingTree = (TreeView<int>)GetField(window, "_counterTree")!;
+            var renderingRows = renderingTree.GetRows().Select(row => row.displayName).ToArray();
+            Require(renderingRows.Contains("Saved by Batching") &&
+                    renderingRows.Contains("Visible Submissions") &&
+                    renderingRows.Contains("Render Target") &&
+                    renderingRows.Contains("Average Vertices / Draw") &&
+                    renderingRows.Contains("Complete Draw Statistics"),
+                "Profiler Rendering TreeView did not expose detailed frame counters.");
+            var savedByBatching = renderingTree.GetRows()
+                .Single(row => row.displayName == "Saved by Batching");
+            renderingTree.SetSelection([savedByBatching.id],
+                TreeViewSelectionOptions.FireSelectionChanged);
+            renderingText = Render(window, ProfilerWindowType,
+                    new Event(EventType.Repaint), 900, 600)
+                .Where(command => command.Type == GpuCanvasCommandType.Text)
+                .Select(command => command.Content).ToArray();
+            Require(renderingText.Contains("Scene / Saved by Batching") &&
+                    renderingText.Contains("Category"),
+                "Profiler Rendering counter selection did not render its typed detail fields.");
 
-            _ = Render(window, ProfilerWindowType,
-                new Event(EventType.MouseDown) { button = 0, mousePosition = new Vector2(10, 220) },
-                900, 600);
-            _ = Render(window, ProfilerWindowType,
-                new Event(EventType.MouseUp) { button = 0, mousePosition = new Vector2(10, 220) },
-                900, 600);
+            SelectProfilerModule(window, "Memory");
             var memoryText = Render(window, ProfilerWindowType,
                     new Event(EventType.Repaint), 900, 600)
                 .Where(command => command.Type == GpuCanvasCommandType.Text)
                 .Select(command => command.Content).ToArray();
-            Require(memoryText.Contains("Allocated This Frame") &&
-                    memoryText.Contains("Managed Heap") &&
-                    memoryText.Contains("Process Working Set"),
-                $"Profiler Memory module did not expose detailed memory counters. " +
+            var memoryTree = (TreeView<int>)GetField(window, "_counterTree")!;
+            var memoryRows = memoryTree.GetRows().Select(row => row.displayName).ToArray();
+            Require(memoryRows.Contains("Allocated This Frame") &&
+                    memoryRows.Contains("Managed Heap") &&
+                    memoryRows.Contains("Process Working Set") &&
+                    memoryRows.Contains("Estimated Live Managed") &&
+                    memoryRows.Contains("Total Collections"),
+                $"Profiler Memory TreeView did not expose detailed memory counters. " +
                 $"Selected module: {GetField(window, "_module")}.");
 
             var moduleTreeState = GetField(window, "_moduleTreeState")!;
             moduleTreeState.GetType().GetProperty("scrollPos")!.SetValue(
-                moduleTreeState, new Vector2(0, 120));
+                moduleTreeState, new Vector2(0, 240));
             var customText = Render(window, ProfilerWindowType,
                     new Event(EventType.Repaint), 900, 600)
                 .Where(command => command.Type == GpuCanvasCommandType.Text)
@@ -553,6 +573,14 @@ internal static class Program
     private static void SetField(object target, string name, object? value) =>
         (target.GetType().GetField(name, HiddenInstance) ??
          throw new MissingFieldException(target.GetType().FullName, name)).SetValue(target, value);
+
+    private static void SelectProfilerModule(object window, string name)
+    {
+        var field = window.GetType().GetField("_module", HiddenInstance) ??
+                    throw new MissingFieldException(window.GetType().FullName, "_module");
+        field.SetValue(window, Enum.Parse(field.FieldType, name));
+        SetField(window, "_externalModuleId", null);
+    }
 
     private static Type RequireType(string fullName) =>
         EditorAssembly.GetType(fullName, throwOnError: true) ??

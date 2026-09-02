@@ -1162,11 +1162,3 @@ public abstract class TreeView<TIdentifier>
         foreach (var child in item.children) NormalizeExistingHierarchy(child, item, depth + 1);
     }
 }
-
-/// <summary>Unity-compatible integer identifier TreeView.</summary>
-public abstract class TreeView : TreeView<int>
-{
-    protected TreeView(TreeViewState state) : base(state) { }
-    protected TreeView(TreeViewState state, MultiColumnHeader multiColumnHeader)
-        : base(state, multiColumnHeader) { }
-}

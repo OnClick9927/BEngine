@@ -248,9 +248,3 @@ internal static class GeneratedAssetArtifacts
 
     private readonly record struct StagedFile(string OriginalPath, string StagedPath);
 }
-
-internal readonly record struct GeneratedAssetArtifact(
-    Guid OwnerGuid,
-    long LocalIdentifier,
-    string Reference,
-    string ArtifactPath);

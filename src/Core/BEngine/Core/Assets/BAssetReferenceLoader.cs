@@ -11,10 +11,10 @@ internal static class BAssetReferenceLoader
 {
     private static ReadOnlySpan<byte> PngSignature => [137, 80, 78, 71, 13, 10, 26, 10];
     private static readonly Lock Gate = new();
-    private static readonly Dictionary<CacheKey, BAsset> Cache = [];
-    private static readonly Dictionary<SubAssetCacheKey, BAsset> SubAssetCache = [];
-    private static readonly Dictionary<BundledSubAssetCacheKey, BAsset> BundledSubAssetCache = [];
-    private static readonly Dictionary<SubAssetCacheKey, Sprite> SpriteSubAssetCache = [];
+    private static readonly Dictionary<CacheKey, AssetCacheEntry> Cache = [];
+    private static readonly Dictionary<SubAssetCacheKey, WeakReference<BAsset>> SubAssetCache = [];
+    private static readonly Dictionary<BundledSubAssetCacheKey, WeakReference<BAsset>> BundledSubAssetCache = [];
+    private static readonly Dictionary<SubAssetCacheKey, WeakReference<Sprite>> SpriteSubAssetCache = [];
     private static readonly Dictionary<Guid, string> GuidPaths = [];
     private static readonly Dictionary<FileSubAssetKey, string> FileSubAssetPaths = [];
     private static string _metadataIndexDataPath = string.Empty;
@@ -31,13 +31,28 @@ internal static class BAssetReferenceLoader
         var fullPath = AssetReferencePath.Resolve(path);
         if (!File.Exists(fullPath)) return null;
         var key = new CacheKey(CanonicalPath(fullPath), assetType);
+        AssetCacheEntry pending;
         lock (Gate)
-            if (Cache.TryGetValue(key, out var cached)) return cached;
+        {
+            if (!Cache.TryGetValue(key, out pending!))
+            {
+                pending = new AssetCacheEntry();
+                Cache.Add(key, pending);
+            }
+        }
 
-        var asset = LoadUncached(fullPath, assetType);
-        if (asset is null) return null;
-        lock (Gate) Cache[key] = asset;
-        return asset;
+        try
+        {
+            var asset = pending.GetOrLoad(() => LoadUncached(fullPath, assetType));
+            if (asset is not null) return asset;
+            RemovePendingLoad(key, pending);
+            return null;
+        }
+        catch
+        {
+            RemovePendingLoad(key, pending);
+            throw;
+        }
     }
 
     private static BAsset? LoadUncached(string fullPath, Type assetType)
@@ -94,7 +109,7 @@ internal static class BAssetReferenceLoader
             !IsKnownImportedRepresentation(mainMeta, localIdentifier, typeof(Sprite))) return null;
         var cacheKey = new SubAssetCacheKey(CanonicalPath(mainFullPath), localIdentifier, typeof(Sprite));
         lock (Gate)
-            if (SpriteSubAssetCache.TryGetValue(cacheKey, out var cached)) return cached;
+            if (TryGetTarget(SpriteSubAssetCache, cacheKey, out var cached)) return cached;
 
         if (Load(mainFullPath, typeof(Texture)) is not Texture texture) return null;
         var pivot = new Vector2(
@@ -103,8 +118,12 @@ internal static class BAssetReferenceLoader
         var sprite = texture.CreateSprite(pivot, localIdentifier);
         sprite.BindSourceIdentity(parentGuid.ToString("N"), localIdentifier,
             AssetReferencePath.ToReference(mainFullPath));
-        lock (Gate) SpriteSubAssetCache[cacheKey] = sprite;
-        return sprite;
+        lock (Gate)
+        {
+            if (TryGetTarget(SpriteSubAssetCache, cacheKey, out var existing)) return existing;
+            SpriteSubAssetCache[cacheKey] = new WeakReference<Sprite>(sprite);
+            return sprite;
+        }
     }
 
     internal static BAsset? LoadSubAsset(string path, long localIdentifier, Type assetType)
@@ -134,7 +153,7 @@ internal static class BAssetReferenceLoader
                 : LoadBundledSubAsset(requestedOwnerGuid, localIdentifier, assetType);
         var cacheKey = new SubAssetCacheKey(CanonicalPath(mainFullPath), localIdentifier, assetType);
         lock (Gate)
-            if (SubAssetCache.TryGetValue(cacheKey, out var cached)) return cached;
+            if (TryGetTarget(SubAssetCache, cacheKey, out var cached)) return cached;
 
         BAsset? asset = null;
         var embedded = mainMeta.SubAssets?.FirstOrDefault(item => item.LocalIdentifier == localIdentifier);
@@ -156,15 +175,19 @@ internal static class BAssetReferenceLoader
             return requestedOwnerGuid == Guid.Empty
                 ? null
                 : LoadBundledSubAsset(requestedOwnerGuid, localIdentifier, assetType);
-        lock (Gate) SubAssetCache[cacheKey] = asset;
-        return asset;
+        lock (Gate)
+        {
+            if (TryGetTarget(SubAssetCache, cacheKey, out var existing)) return existing;
+            SubAssetCache[cacheKey] = new WeakReference<BAsset>(asset);
+            return asset;
+        }
     }
 
     private static BAsset? LoadBundledSubAsset(Guid ownerGuid, long localIdentifier, Type assetType)
     {
         var cacheKey = new BundledSubAssetCacheKey(ownerGuid, localIdentifier, assetType);
         lock (Gate)
-            if (BundledSubAssetCache.TryGetValue(cacheKey, out var cached)) return cached;
+            if (TryGetTarget(BundledSubAssetCache, cacheKey, out var cached)) return cached;
 
         var reference = $"guid:{ownerGuid:N}#subasset={localIdentifier}";
         BAsset? asset;
@@ -184,8 +207,8 @@ internal static class BAssetReferenceLoader
         if (string.IsNullOrWhiteSpace(asset.assetType)) asset.assetType = assetType.Name;
         lock (Gate)
         {
-            if (BundledSubAssetCache.TryGetValue(cacheKey, out var existing)) return existing;
-            BundledSubAssetCache[cacheKey] = asset;
+            if (TryGetTarget(BundledSubAssetCache, cacheKey, out var existing)) return existing;
+            BundledSubAssetCache[cacheKey] = new WeakReference<BAsset>(asset);
             return asset;
         }
     }
@@ -213,8 +236,13 @@ internal static class BAssetReferenceLoader
         lock (Gate)
         {
             List<CacheKey>? staleKeys = null;
-            foreach (var (key, asset) in Cache)
+            foreach (var (key, pending) in Cache)
             {
+                if (!pending.TryGetTarget(out var asset))
+                {
+                    (staleKeys ??= []).Add(key);
+                    continue;
+                }
                 var matchesAsset = assetGuid != Guid.Empty &&
                                    (asset.Id == assetGuid || asset.parentAssetGuid == assetGuid);
                 var matchesParent = parentGuid != Guid.Empty &&
@@ -234,6 +262,37 @@ internal static class BAssetReferenceLoader
         }
     }
 
+    internal static void Unload(BObject target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        lock (Gate)
+        {
+            RemoveCachedValue(Cache, target, static pending =>
+                pending.TryGetTarget(out var asset) ? asset : null);
+            RemoveCachedValue(SubAssetCache, target, static reference =>
+                reference.TryGetTarget(out var asset) ? asset : null);
+            RemoveCachedValue(BundledSubAssetCache, target, static reference =>
+                reference.TryGetTarget(out var asset) ? asset : null);
+            RemoveCachedValue(SpriteSubAssetCache, target, static reference =>
+                reference.TryGetTarget(out var asset) ? asset : null);
+        }
+    }
+
+    internal static void PruneMissingFiles()
+    {
+        lock (Gate)
+        {
+            RemoveMissingPaths(Cache, static key => key.Path);
+            RemoveMissingPaths(SubAssetCache, static key => key.Path);
+            RemoveMissingPaths(SpriteSubAssetCache, static key => key.Path);
+            RemoveDeadReferences(Cache, static entry => entry.TryGetTarget(out _));
+            RemoveDeadReferences(SubAssetCache, static reference => reference.TryGetTarget(out _));
+            RemoveDeadReferences(BundledSubAssetCache, static reference => reference.TryGetTarget(out _));
+            RemoveDeadReferences(SpriteSubAssetCache, static reference => reference.TryGetTarget(out _));
+            ResetMetadataIndex();
+        }
+    }
+
     internal static void Clear()
     {
         lock (Gate)
@@ -244,6 +303,54 @@ internal static class BAssetReferenceLoader
             SpriteSubAssetCache.Clear();
             ResetMetadataIndex();
         }
+    }
+
+    private static void RemovePendingLoad(CacheKey key, AssetCacheEntry pending)
+    {
+        lock (Gate)
+            if (Cache.TryGetValue(key, out var current) && ReferenceEquals(current, pending))
+                Cache.Remove(key);
+    }
+
+    private static void RemoveCachedValue<TKey, TValue>(
+        Dictionary<TKey, TValue> cache,
+        BObject target,
+        Func<TValue, BObject?> valueSelector) where TKey : notnull
+    {
+        List<TKey>? removals = null;
+        foreach (var (key, value) in cache)
+            if (ReferenceEquals(valueSelector(value), target)) (removals ??= []).Add(key);
+        foreach (var key in removals ?? []) cache.Remove(key);
+    }
+
+    private static void RemoveMissingPaths<TKey, TValue>(
+        Dictionary<TKey, TValue> cache,
+        Func<TKey, string> pathSelector) where TKey : notnull
+    {
+        List<TKey>? removals = null;
+        foreach (var key in cache.Keys)
+            if (!File.Exists(pathSelector(key))) (removals ??= []).Add(key);
+        foreach (var key in removals ?? []) cache.Remove(key);
+    }
+
+    private static void RemoveDeadReferences<TKey, TValue>(
+        Dictionary<TKey, TValue> cache,
+        Func<TValue, bool> isAlive) where TKey : notnull
+    {
+        List<TKey>? removals = null;
+        foreach (var (key, value) in cache)
+            if (!isAlive(value)) (removals ??= []).Add(key);
+        foreach (var key in removals ?? []) cache.Remove(key);
+    }
+
+    private static bool TryGetTarget<TKey, TAsset>(
+        IReadOnlyDictionary<TKey, WeakReference<TAsset>> cache,
+        TKey key,
+        out TAsset asset) where TKey : notnull where TAsset : BObject
+    {
+        if (cache.TryGetValue(key, out var reference) && reference.TryGetTarget(out asset!)) return true;
+        asset = null!;
+        return false;
     }
 
     private static string? ResolveGuidPath(Guid guid)
@@ -575,6 +682,59 @@ internal static class BAssetReferenceLoader
         long LocalIdentifier,
         Type AssetType);
     private readonly record struct FileSubAssetKey(Guid OwnerGuid, long LocalIdentifier);
+
+    private sealed class AssetCacheEntry
+    {
+        private readonly object _gate = new();
+        private WeakReference<BAsset>? _asset;
+        private bool _loading;
+        private int _loadingThreadId;
+
+        internal BAsset? GetOrLoad(Func<BAsset?> loader)
+        {
+            ArgumentNullException.ThrowIfNull(loader);
+            lock (_gate)
+            {
+                if (_asset?.TryGetTarget(out var cached) is true) return cached;
+                while (_loading)
+                {
+                    if (_loadingThreadId == Environment.CurrentManagedThreadId)
+                        throw new InvalidOperationException("A cyclic asset load was detected.");
+                    Monitor.Wait(_gate);
+                    if (_asset?.TryGetTarget(out cached) is true) return cached;
+                }
+                _loading = true;
+                _loadingThreadId = Environment.CurrentManagedThreadId;
+            }
+
+            BAsset? loaded = null;
+            try
+            {
+                loaded = loader();
+                return loaded;
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    if (loaded is not null) _asset = new WeakReference<BAsset>(loaded);
+                    _loading = false;
+                    _loadingThreadId = 0;
+                    Monitor.PulseAll(_gate);
+                }
+            }
+        }
+
+        internal bool TryGetTarget(out BAsset asset)
+        {
+            lock (_gate)
+            {
+                if (_asset?.TryGetTarget(out asset!) is true) return true;
+                asset = null!;
+                return false;
+            }
+        }
+    }
 
     private sealed class AssetMetaIdentity
     {

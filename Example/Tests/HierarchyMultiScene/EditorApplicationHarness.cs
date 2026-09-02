@@ -109,7 +109,7 @@ internal sealed class EditorApplicationHarness : IDisposable
         SetField("_packageManager", PackageManagerWindow);
         SetField("_tool", Tool.Move);
         SetField("_layoutStore", Create("BEngine.Editor.EditorLayoutStore", fixture.Workspace));
-        SetField("_activeLayoutName", "Last Session");
+        SetField("_activeLayoutName", "Layout");
         var instanceLogPath = Path.Combine(fixture.Workspace.LibraryPath, "Logs", "HierarchyMultiScene.log");
         Directory.CreateDirectory(Path.GetDirectoryName(instanceLogPath)!);
         File.WriteAllText(instanceLogPath, "HierarchyMultiScene test log");

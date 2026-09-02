@@ -619,12 +619,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             yield return new("Layouts/Save Current", true, SaveCurrentLayout);
             yield return new("Layouts/Save As...", true,
                 () => SaveLayoutWindow.Open(_activeLayoutName, SaveNamedLayout));
-            yield return new("Layouts/Load Last Session", _layoutStore.HasLastSession,
+            yield return new($"Layouts/Switch/{EditorLayoutStore.LastSessionName}", _layoutStore.HasLastSession,
                 SwitchToLastSessionLayout);
-            foreach (var name in _layoutStore.Names)
+            foreach (var name in _layoutStore.AvailableNames)
             {
                 var capturedName = name;
                 yield return new($"Layouts/Switch/{name}", true, () => LoadNamedLayout(capturedName));
+            }
+            foreach (var name in _layoutStore.Names)
+            {
+                var capturedName = name;
                 yield return new($"Layouts/Rename/{name}", true, () => BeginRenameNamedLayout(capturedName));
                 yield return new($"Layouts/Delete/{name}", true, () => DeleteNamedLayout(capturedName));
             }
@@ -710,6 +714,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             "File/New Scene" => "Ctrl+N",
             "File/Open Scene..." => "Ctrl+O",
             "File/Save Scene" => "Ctrl+S",
+            "Assets/Refresh" => "Ctrl+R",
+            "GameObject/Create Empty" => "Ctrl+Shift+N",
             "Edit/Undo" => "Ctrl+Z",
             "Edit/Redo" => "Ctrl+Y",
             "Edit/Copy" => "Ctrl+C",
@@ -722,6 +728,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             "Edit/Play" => "Ctrl+P",
             "Edit/Pause" => "Ctrl+Shift+P",
             "Edit/Step" => "Ctrl+Alt+P",
+            "Window/Analysis/Profiler" => "Ctrl+7",
             _ => string.Empty
         };
         return shortcut.Length == 0 ? label : $"{label}\t{shortcut}";
@@ -730,10 +737,21 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private static string BuiltInWindowMenuPath(EditorWindow window)
     {
         var title = window.titleContent.text;
-        return window is ImGuiConsoleWindow or ImGuiGameWindow or ImGuiHierarchyWindow or
+        var path = window is ImGuiConsoleWindow or ImGuiGameWindow or ImGuiHierarchyWindow or
             ImGuiProjectWindow or ImGuiInspectorWindow or ImGuiSceneWindow
             ? $"General/{title}"
             : title;
+        var shortcut = window switch
+        {
+            ImGuiSceneWindow => "Ctrl+1",
+            ImGuiGameWindow => "Ctrl+2",
+            ImGuiInspectorWindow => "Ctrl+3",
+            ImGuiHierarchyWindow => "Ctrl+4",
+            ImGuiProjectWindow => "Ctrl+5",
+            ImGuiConsoleWindow => "Ctrl+Shift+C",
+            _ => string.Empty
+        };
+        return shortcut.Length == 0 ? path : $"{path}\t{shortcut}";
     }
 
     private static IEnumerable<MenuEntry> FlattenMenu(IEnumerable<MenuItemRegistry.MenuNode> nodes,
@@ -861,14 +879,14 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         var layoutContent = new GUIContent(showLayoutName ? _activeLayoutName : string.Empty,
             EditorBuiltinIcons.Toolbar.Layout, $"Layout: {_activeLayoutName}");
         var desiredLayoutWidth = showLayoutName
-            ? EditorStyles.toolbarDropDown.CalcSize(layoutContent).x + 24
+            ? EditorStyles.toolbarDropDown.CalcSize(layoutContent).x + 44
             : (Fix64)48;
         var layoutWidth = Fix64.Min(220, Fix64.Max(48, desiredLayoutWidth));
         var layoutRect = new Rect(rect.xMax - layoutWidth - 6, buttonY, layoutWidth, buttonHeight);
         var undoHistoryRect = new Rect(layoutRect.x - toolWidth - 4, buttonY, toolWidth, buttonHeight);
         if (EditorToolbar.Button(undoHistoryRect, new GUIContent(string.Empty,
                 EditorBuiltinIcons.Toolbar.UndoHistory, "Undo History")))
-            EditorToolbarDropdowns.CreateUndoHistoryMenu().DropDown(undoHistoryRect);
+            UndoHistoryWindow.Open(undoHistoryRect);
         if (EditorGUI.DropDownButton(layoutRect, layoutContent, FocusType.Passive,
                 EditorStyles.toolbarDropDown))
             ShowLayoutMenu(layoutRect);
@@ -879,7 +897,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         var menu = EditorToolbarDropdowns.CreateLayoutMenu(
             _activeLayoutName,
             _layoutStore.HasLastSession,
-            _layoutStore.Names,
+            _layoutStore.AvailableNames,
             SaveCurrentLayout,
             () => SaveLayoutWindow.Open(_activeLayoutName, SaveNamedLayout),
             SwitchToLastSessionLayout,
@@ -1005,6 +1023,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         _profilerFrame.Dispose();
         _profilerFrame = EditorProfiler.BeginFrame();
+        BEngine.Profiling.Profiler.enabled = EditorProfiler.Recording;
         _profiledNativeWindowMilliseconds = 0;
         var profiling = EditorProfiler.Recording;
         var updateStarted = profiling ? Stopwatch.GetTimestamp() : 0;
@@ -1050,6 +1069,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
         finally
         {
+            Input.EndFrame();
             if (profiling)
             {
                 var hostUpdateMilliseconds = Math.Max(0,
@@ -1125,6 +1145,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (_mainWindow.isFocused || _nativeFloatingWindows.Values.Any(window => window.IsFocused))
         {
             _applicationFocusLossPending = false;
+            Application.SetFocus(true);
             return;
         }
         _applicationFocusLossPending = true;
@@ -1135,6 +1156,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (!_applicationFocusLossPending || _mainWindow.isFocused ||
             _nativeFloatingWindows.Values.Any(window => window.IsFocused)) return;
         _applicationFocusLossPending = false;
+        Application.SetFocus(false);
         GUIUtility.ReleaseInputFocus();
         _dock.CancelInteractions();
         _windowLayer.CancelInteractions();
@@ -2429,59 +2451,62 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         var current = Event.current;
         if (current.type != EventType.KeyDown || EditorGUIUtility.editingTextField) return;
-        var actionModifier = current.control || current.command;
-        if (!actionModifier && !current.alt && !current.shift)
+        var shortcut = EditorShortcutMap.Resolve(current.keyCode, current.modifiers);
+        if (shortcut == EditorShortcut.None) return;
+        var executed = false;
+        EditorFeatureGuard.Invoke($"Editor shortcut {shortcut}",
+            () => executed = ExecuteEditorShortcut(shortcut));
+        if (executed) current.Use();
+    }
+
+    private bool ExecuteEditorShortcut(EditorShortcut shortcut)
+    {
+        if (EditorShortcutMap.MainMenuCommandFor(shortcut) is { } command)
+            return ExecuteMainMenuCommand(command);
+
+        switch (shortcut)
         {
-            var tool = current.keyCode switch
-            {
-                KeyCode.Q => Tool.View,
-                KeyCode.W => Tool.Move,
-                KeyCode.E => Tool.Rotate,
-                KeyCode.R => Tool.Scale,
-                _ => (Tool?)null
-            };
-            if (tool is { } selectedTool)
-            {
-                _tool = selectedTool;
-                current.Use();
-                return;
-            }
+            case EditorShortcut.ViewTool:
+                _tool = Tool.View;
+                return true;
+            case EditorShortcut.MoveTool:
+                _tool = Tool.Move;
+                return true;
+            case EditorShortcut.RotateTool:
+                _tool = Tool.Rotate;
+                return true;
+            case EditorShortcut.ScaleTool:
+                _tool = Tool.Scale;
+                return true;
+            case EditorShortcut.RefreshAssets:
+                return CurrentProjectWindow.ExecuteCommand(ProjectAssetCommand.Refresh);
+            case EditorShortcut.CreateEmptyGameObject:
+                return ExecuteGameObjectCommand(GameObjectCommand.CreateEmpty, null);
+            case EditorShortcut.SceneWindow:
+                return FocusBuiltInShortcut(_sceneView, DockArea.Center);
+            case EditorShortcut.GameWindow:
+                return FocusBuiltInShortcut(_gameView, DockArea.Center);
+            case EditorShortcut.InspectorWindow:
+                return FocusBuiltInShortcut(_inspector, DockArea.Right);
+            case EditorShortcut.HierarchyWindow:
+                return FocusBuiltInShortcut(_hierarchy, DockArea.Left);
+            case EditorShortcut.ProjectWindow:
+                return FocusBuiltInShortcut(_project, DockArea.Bottom);
+            case EditorShortcut.ProfilerWindow:
+                EditorWindow.GetWindow<ProfilerWindow>("Profiler");
+                return true;
+            case EditorShortcut.ConsoleWindow:
+                return FocusBuiltInShortcut(_console, DockArea.Bottom);
+            default:
+                return false;
         }
-        MainMenuCommand? command = null;
-        if (actionModifier)
-        {
-            command = current.keyCode switch
-            {
-                KeyCode.N => MainMenuCommand.NewScene,
-                KeyCode.O => MainMenuCommand.OpenScene,
-                KeyCode.S => MainMenuCommand.SaveScene,
-                KeyCode.Z when current.shift => MainMenuCommand.Redo,
-                KeyCode.Z => MainMenuCommand.Undo,
-                KeyCode.Y => MainMenuCommand.Redo,
-                KeyCode.C => MainMenuCommand.Copy,
-                KeyCode.V => MainMenuCommand.Paste,
-                KeyCode.D => MainMenuCommand.Duplicate,
-                KeyCode.A => MainMenuCommand.SelectAll,
-                KeyCode.P when current.alt => MainMenuCommand.Step,
-                KeyCode.P when current.shift => MainMenuCommand.Pause,
-                KeyCode.P => MainMenuCommand.Play,
-                _ => null
-            };
-        }
-        else
-        {
-            command = current.keyCode switch
-            {
-                KeyCode.Delete => MainMenuCommand.Delete,
-                KeyCode.F2 => MainMenuCommand.Rename,
-                KeyCode.F => MainMenuCommand.FrameSelected,
-                _ => null
-            };
-        }
-        if (command is not { } selectedCommand || !CanExecuteMainMenuCommand(selectedCommand)) return;
-        EditorFeatureGuard.Invoke($"Editor keyboard command {selectedCommand}",
-            () => ExecuteMainMenuCommand(selectedCommand));
-        current.Use();
+    }
+
+    private bool FocusBuiltInShortcut(EditorWindow window, DockArea area)
+    {
+        ShowBuiltIn(window, area);
+        window.FocusInternal();
+        return true;
     }
 
     private void SaveScene()
@@ -2759,8 +2784,12 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     {
         if (!_playing || _runtimes.Count == 0) return;
         _paused = true;
-        foreach (var runtime in _runtimes.ToArray())
-            EditorFeatureGuard.Invoke(runtime, "SceneRuntime.Step", () => runtime.Tick(Time.fixedDeltaTime));
+        try
+        {
+            foreach (var runtime in _runtimes.ToArray())
+                EditorFeatureGuard.Invoke(runtime, "SceneRuntime.Step", () => runtime.Tick(Time.fixedDeltaTime));
+        }
+        finally { Input.EndFrame(); }
     }
 
     private IReadOnlyList<Scene> LoadedScenes() => _loadedSceneSnapshot;
@@ -3762,11 +3791,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void SaveCurrentLayout()
     {
-        if (_activeLayoutName.Equals(EditorLayoutStore.LastSessionName, StringComparison.OrdinalIgnoreCase))
+        if (EditorLayoutStore.IsBuiltInName(_activeLayoutName))
         {
+            if (!_activeLayoutName.Equals(EditorLayoutStore.LastSessionName, StringComparison.OrdinalIgnoreCase))
+            {
+                SaveLayoutWindow.Open(_activeLayoutName, SaveNamedLayout);
+                return;
+            }
             _layoutSaved = false;
             SaveLastLayout();
-            Debug.Log("Saved the current editor layout as Last Session.");
+            Debug.Log("Saved the current editor Layout.");
             return;
         }
         SaveNamedLayout(_activeLayoutName);
@@ -3816,11 +3850,11 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             ApplyLayout(_layoutStore.LoadLastSession());
             _activeLayoutName = EditorLayoutStore.LastSessionName;
             _layoutSaved = false;
-            Debug.Log("Loaded the Last Session editor layout.");
+            Debug.Log("Loaded the editor Layout.");
         }
         catch (Exception exception)
         {
-            EditorFeatureGuard.Report("Load Last Session editor layout", exception);
+            EditorFeatureGuard.Report("Load editor Layout", exception);
         }
     }
 
@@ -8748,12 +8782,17 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
             DrawLogList(new Rect(0, contentY, GUIUtility.currentViewWidth, listHeight));
 
-            if (_selected is not { } selected || detailsHeight <= 0) return;
+            if (_selected is not { } selected || detailsHeight <= 0)
+            {
+                HandleCopySelectedLog();
+                return;
+            }
             GUI.Box(new Rect(separatorRect.x, separatorRect.y + 2, separatorRect.width, 2),
                 GUIContent.none, EditorStyles.separator);
             using (GUILayout.Area(new Rect(0, contentY + listHeight + separatorHeight,
                        GUIUtility.currentViewWidth, detailsHeight)))
                 DrawDetails(selected);
+            HandleCopySelectedLog();
         }
 
         private Fix64 HandleDetailsSplitter(Rect separatorRect, Fix64 availableHeight, Fix64 currentDetailsHeight)
@@ -8849,6 +8888,16 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             menu.AddSeparator(string.Empty);
             menu.AddItem(new GUIContent("Clear"), false, Clear);
             menu.ShowAsContext();
+        }
+
+        private void HandleCopySelectedLog()
+        {
+            var evt = Event.current;
+            if (_selected is not { } selected || evt.type != EventType.KeyDown ||
+                !(evt.control || evt.command) || evt.keyCode != KeyCode.C ||
+                EditorGUIUtility.editingTextField) return;
+            GUIUtility.systemCopyBuffer = selected.ToDetailedString();
+            evt.Use();
         }
 
         private void DrawDetails(LogEntry log)
@@ -9033,13 +9082,12 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             {
                 if (frame is not { } source)
                 {
-                    GUILayout.Label(string.IsNullOrEmpty(line) ? " " : line,
-                        GUILayout.Height(rowHeight), GUILayout.Width(Fix64.Max(1, MeasureLineWidth(line) + 8)));
+                    DrawSelectableLine(line, rowHeight, Fix64.Max(1, MeasureLineWidth(line) + 8));
                     continue;
                 }
                 if (!string.IsNullOrWhiteSpace(source.Prefix))
-                    GUILayout.Label(source.Prefix, GUILayout.Height(rowHeight),
-                        GUILayout.Width(Fix64.Max(1, MeasureLineWidth(source.Prefix) + 8)));
+                    DrawSelectableLine(source.Prefix, rowHeight,
+                        Fix64.Max(1, MeasureLineWidth(source.Prefix) + 8));
                 var linkWidth = Fix64.Max(40, MeasureLineWidth(source.SourceLocation) + 8);
                 var content = new GUIContent(source.SourceLocation,
                     $"Open {source.FilePath} at line {source.LineNumber}");
@@ -9077,8 +9125,20 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         private static void DrawLines(string text)
         {
-            foreach (var line in text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
-                GUILayout.Label(string.IsNullOrEmpty(line) ? " " : line);
+            var normalized = text.ReplaceLineEndings("\n");
+            var lineHeight = Fix64.Max(22,
+                GUITextMetrics.MeasureLineHeight(EditorStyles.label.fontSize, GUIUtility.fontFamily) + 1);
+            var lineCount = Math.Max(1, normalized.Count(static character => character == '\n') + 1);
+            var rect = GUILayoutUtility.GetControlRect(lineHeight * lineCount, GUILayout.ExpandWidth(true));
+            EditorGUI.SelectableLabel(rect, normalized, EditorStyles.label);
+            EditorGUIUtility.AddCursorRect(rect, MouseCursor.Text);
+        }
+
+        private static void DrawSelectableLine(string text, Fix64 height, Fix64 width)
+        {
+            var rect = GUILayoutUtility.GetControlRect(height, GUILayout.Width(width));
+            EditorGUI.SelectableLabel(rect, string.IsNullOrEmpty(text) ? " " : text, EditorStyles.label);
+            EditorGUIUtility.AddCursorRect(rect, MouseCursor.Text);
         }
 
         private static string RowText(LogEntry log, bool multiline = false) =>

@@ -4,7 +4,6 @@ using UnityEditor.IMGUI.Controls;
 namespace BEngine.Editor;
 
 [EditorWindowIcon("Icons/Windows/Window.png")]
-[EditorWindowTab("Analysis/Frame Debugger")]
 internal sealed class FrameDebuggerWindow : EditorWindow
 {
     private const int WideLayoutThreshold = 700;

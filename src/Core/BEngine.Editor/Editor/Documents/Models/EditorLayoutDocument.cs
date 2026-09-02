@@ -6,8 +6,8 @@ public sealed class EditorLayoutDocument
 {
     public string Format { get; set; } = "BEngine.EditorLayout";
     public int Version { get; set; } = 2;
-    public string Name { get; set; } = "Last Session";
-    public string ActiveLayout { get; set; } = "Last Session";
+    public string Name { get; set; } = "Layout";
+    public string ActiveLayout { get; set; } = "Layout";
     public int WindowX { get; set; } = 60;
     public int WindowY { get; set; } = 40;
     public int WindowWidth { get; set; } = 1280;

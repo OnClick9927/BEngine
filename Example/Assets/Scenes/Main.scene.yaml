@@ -47,6 +47,7 @@ gameObjects:
       color: 0.03499999991618096828460693359375,0.0469999997876584529876708984375,0.06599999987520277500152587890625,1
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: -30
       pivot: 0.5,0.5
@@ -54,6 +55,152 @@ gameObjects:
       size: 18,10
       sortingLayer: 1
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.03499999991618096828460693359375,0.0469999997876584529876708984375,0.06599999987520277500152587890625,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: -30
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 18,10
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 4d2c371e-bd0a-4533-96f4-7458f005e2c9
   name: Lower Field
   active: true
@@ -80,6 +227,7 @@ gameObjects:
       color: 0.07499999995343387126922607421875,0.1049999999813735485076904296875,0.13499999977648258209228515625,1
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: -20
       pivot: 0.5,0.5
@@ -87,6 +235,152 @@ gameObjects:
       size: 18,3.69999999995343387126922607421875
       sortingLayer: 1
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.07499999995343387126922607421875,0.1049999999813735485076904296875,0.13499999977648258209228515625,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: -20
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 18,3.69999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 67b0097a-dc1f-43ce-93ed-16589c37c2ee
   name: Left Accent
   active: true
@@ -113,6 +407,7 @@ gameObjects:
       color: 0.1099999998696148395538330078125,0.41999999992549419403076171875,0.379999999888241291046142578125,0.23999999999068677425384521484375
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 0.69999999995343387126922607421875
       orderInLayer: -10
       pivot: 0.5,0.5
@@ -120,6 +415,152 @@ gameObjects:
       size: 2.799999999813735485076904296875,8
       sortingLayer: 1
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.1099999998696148395538330078125,0.41999999992549419403076171875,0.379999999888241291046142578125,0.23999999999068677425384521484375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.69999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: -10
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 2.799999999813735485076904296875,8
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 9302f7f6-f261-442a-9bc8-f00b0169b5fe
   name: Right Accent
   active: true
@@ -146,6 +587,7 @@ gameObjects:
       color: 0.8599999998696148395538330078125,0.55999999982304871082305908203125,0.15999999991618096828460693359375,0.19999999995343387126922607421875
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 0.69999999995343387126922607421875
       orderInLayer: -9
       pivot: 0.5,0.5
@@ -153,6 +595,152 @@ gameObjects:
       size: 2.799999999813735485076904296875,8
       sortingLayer: 1
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.8599999998696148395538330078125,0.55999999982304871082305908203125,0.15999999991618096828460693359375,0.19999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.69999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: -9
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 2.799999999813735485076904296875,8
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 8f55da12-d071-40a0-8645-28c5942a72f9
   name: Atlas Showcase
   active: true
@@ -197,6 +785,7 @@ gameObjects:
       color: 0.05499999993480741977691650390625,0.14499999978579580783843994140625,0.16999999992549419403076171875,0.9399999999441206455230712890625
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: -5
       pivot: 0.5,0.5
@@ -204,6 +793,152 @@ gameObjects:
       size: 2.799999999813735485076904296875,2.1499999999068677425384521484375
       sortingLayer: 2
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.05499999993480741977691650390625,0.14499999978579580783843994140625,0.16999999992549419403076171875,0.9399999999441206455230712890625
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: -5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 2.799999999813735485076904296875,2.1499999999068677425384521484375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 2
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 0ade6cf0-62a2-4ebc-9378-b756f07d45f2
   name: Physics Card
   active: true
@@ -230,6 +965,7 @@ gameObjects:
       color: 0.16999999992549419403076171875,0.11999999987892806529998779296875,0.05499999993480741977691650390625,0.9399999999441206455230712890625
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: -5
       pivot: 0.5,0.5
@@ -237,6 +973,152 @@ gameObjects:
       size: 2.799999999813735485076904296875,2.1499999999068677425384521484375
       sortingLayer: 2
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.16999999992549419403076171875,0.11999999987892806529998779296875,0.05499999993480741977691650390625,0.9399999999441206455230712890625
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: -5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 2.799999999813735485076904296875,2.1499999999068677425384521484375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 2
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 2f550d74-2ef5-45bc-9bb5-5802a204c008
   name: Navigation Card
   active: true
@@ -263,6 +1145,7 @@ gameObjects:
       color: 0.05499999993480741977691650390625,0.0899999998509883880615234375,0.16999999992549419403076171875,0.9399999999441206455230712890625
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: -5
       pivot: 0.5,0.5
@@ -270,6 +1153,152 @@ gameObjects:
       size: 2.799999999813735485076904296875,2.1499999999068677425384521484375
       sortingLayer: 2
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.05499999993480741977691650390625,0.0899999998509883880615234375,0.16999999992549419403076171875,0.9399999999441206455230712890625
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: -5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 2.799999999813735485076904296875,2.1499999999068677425384521484375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 2
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 7a484c2a-705a-4db2-8b34-7dca5ac93b27
   name: Input Card
   active: true
@@ -296,6 +1325,7 @@ gameObjects:
       color: 0.07999999984167516231536865234375,0.129999999888241291046142578125,0.1099999998696148395538330078125,0.9399999999441206455230712890625
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: -5
       pivot: 0.5,0.5
@@ -303,6 +1333,152 @@ gameObjects:
       size: 2.799999999813735485076904296875,2.1499999999068677425384521484375
       sortingLayer: 2
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.07999999984167516231536865234375,0.129999999888241291046142578125,0.1099999998696148395538330078125,0.9399999999441206455230712890625
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: -5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 2.799999999813735485076904296875,2.1499999999068677425384521484375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 2
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 07ddad15-805e-4dea-a24d-684d8ab6ec46
   name: BEngine Logo
   active: true
@@ -329,6 +1505,7 @@ gameObjects:
       color: 1,1,1,1
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: 0
       pivot: 0.5,0.5
@@ -337,6 +1514,152 @@ gameObjects:
       sortingLayer: 2
       sprite: guid:ff11351b2c3044aa8c77107eb2f6b942#subasset=21300000
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1,1,1,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 0
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 3.25,3.25
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 2
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: EngineObject
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: guid:ff11351b2c3044aa8c77107eb2f6b942#subasset=21300000
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
   - id: d10e21c5-e811-44ef-90fe-9c7b170ea38d
     type: Game.ShowcaseMotion
     enabled: true
@@ -346,6 +1669,64 @@ gameObjects:
       phaseOffset: 0
       rotationSpeed: 4
       runInEditMode: false
+    graph:
+      version: 1
+      members:
+      - name: movementAmplitude
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0,0.15999999991618096828460693359375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: movementSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.799999999813735485076904296875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: phaseOffset
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: rotationSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 4
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: c696fb78-05de-4582-a0ef-6100b6324627
   name: Animation Sprite
   active: true
@@ -372,6 +1753,7 @@ gameObjects:
       color: 1,1,1,1
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: 15
       pivot: 0.5,0.5
@@ -380,6 +1762,152 @@ gameObjects:
       sortingLayer: 2
       sprite: guid:d3b57829c75d4c96a4f77fc4c1354df3#subasset=21300000
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1,1,1,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 15
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.049999999813735485076904296875,1.049999999813735485076904296875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 2
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: EngineObject
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: guid:d3b57829c75d4c96a4f77fc4c1354df3#subasset=21300000
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
   - id: d160dec8-0146-477a-a64e-998b6a01effb
     type: Game.ShowcaseMotion
     enabled: true
@@ -389,6 +1917,64 @@ gameObjects:
       phaseOffset: 0
       rotationSpeed: -12
       runInEditMode: false
+    graph:
+      version: 1
+      members:
+      - name: movementAmplitude
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0,0.21999999997206032276153564453125
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: movementSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.25
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: phaseOffset
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: rotationSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: -12
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 981497b6-ed19-4738-b55c-3e959d3a58ee
   name: Physics 2D Sprite
   active: true
@@ -415,6 +2001,7 @@ gameObjects:
       color: 1,1,1,1
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: 15
       pivot: 0.5,0.5
@@ -423,6 +2010,152 @@ gameObjects:
       sortingLayer: 2
       sprite: guid:fdc19827d60047d8b0f65705212e92e1#subasset=21300000
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1,1,1,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 15
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.19999999995343387126922607421875,1.19999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 2
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: EngineObject
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: guid:fdc19827d60047d8b0f65705212e92e1#subasset=21300000
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
   - id: 867de2eb-8ac6-4430-bae2-062800861933
     type: Game.ShowcaseMotion
     enabled: true
@@ -432,6 +2165,64 @@ gameObjects:
       phaseOffset: 1.5
       rotationSpeed: 30
       runInEditMode: false
+    graph:
+      version: 1
+      members:
+      - name: movementAmplitude
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0,0.21999999997206032276153564453125
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: movementSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.25
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: phaseOffset
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: rotationSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 30
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: f44cc949-140d-42fd-a65a-9325f1ae6340
   name: Navigation 2D Sprite
   active: true
@@ -458,6 +2249,7 @@ gameObjects:
       color: 1,1,1,1
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: 15
       pivot: 0.5,0.5
@@ -466,6 +2258,152 @@ gameObjects:
       sortingLayer: 2
       sprite: guid:f0ebeda551aa44e491ba3274b564e4ce#subasset=21300000
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1,1,1,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 15
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.94999999995343387126922607421875,0.94999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 2
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: EngineObject
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: guid:f0ebeda551aa44e491ba3274b564e4ce#subasset=21300000
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
   - id: 8236caa2-b6a5-4658-bec0-2c888f037ee2
     type: Game.ShowcaseMotion
     enabled: true
@@ -475,6 +2413,64 @@ gameObjects:
       phaseOffset: 3
       rotationSpeed: -12
       runInEditMode: false
+    graph:
+      version: 1
+      members:
+      - name: movementAmplitude
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0,0.21999999997206032276153564453125
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: movementSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.25
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: phaseOffset
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 3
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: rotationSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: -12
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: fb626c7b-f223-431b-942f-6cd86ae49094
   name: Player (WASD or Arrow Keys)
   active: true
@@ -501,6 +2497,7 @@ gameObjects:
       color: 1,1,1,1
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: 25
       pivot: 0.5,0.5
@@ -509,6 +2506,152 @@ gameObjects:
       sortingLayer: 2
       sprite: guid:f0ebeda551aa44e491ba3274b564e4ce#subasset=21300000
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1,1,1,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 25
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.25,1.25
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 2
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: EngineObject
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: guid:f0ebeda551aa44e491ba3274b564e4ce#subasset=21300000
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
   - id: 24168131-df7d-4eb4-b80d-75e499f7b0ee
     type: Game.PlayerMover
     enabled: true
@@ -516,6 +2659,42 @@ gameObjects:
       moveBounds: 7.19999999995343387126922607421875,3.59999999986030161380767822265625
       runInEditMode: false
       speed: 3.19999999995343387126922607421875
+    graph:
+      version: 1
+      members:
+      - name: moveBounds
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 7.19999999995343387126922607421875,3.59999999986030161380767822265625
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: speed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 3.19999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 98c3037f-c4b4-48a5-95d0-39f1488a954c
   name: Foreground Effects
   active: true
@@ -575,6 +2754,218 @@ gameObjects:
       startRotation: 0
       startSize: 0.21999999997206032276153564453125,0.21999999997206032276153564453125
       startSpeed: 1.69999999995343387126922607421875
+    graph:
+      version: 1
+      members:
+      - name: atlas
+        value:
+          kind: Scalar
+          type: System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: Assets/Art/Showcase.atlas.yaml
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: duration
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: emissionRate
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 18
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: loop
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FParticle2D|Default%20Particle%202D%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maxParticles
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 96
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 20
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: playOnAwake
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 3
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: Scalar
+          type: System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: Spark
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startAngularVelocity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 70
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startColor
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.25,0.91999999992549419403076171875,0.799999999813735485076904296875,0.8199999998323619365692138671875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startDirection
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.2799999997951090335845947265625,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startLifetime
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 2.799999999813735485076904296875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startRotation
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startSize
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.21999999997206032276153564453125,0.21999999997206032276153564453125
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.69999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: a9d41e8a-6662-4c0a-896a-5886ac74e42d
   name: Gold Spark Emitter
   active: true
@@ -616,6 +3007,218 @@ gameObjects:
       startRotation: 0
       startSize: 0.21999999997206032276153564453125,0.21999999997206032276153564453125
       startSpeed: 1.69999999995343387126922607421875
+    graph:
+      version: 1
+      members:
+      - name: atlas
+        value:
+          kind: Scalar
+          type: System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: Assets/Art/Showcase.atlas.yaml
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: duration
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: emissionRate
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 18
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: loop
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FParticle2D|Default%20Particle%202D%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maxParticles
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 96
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 20
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: playOnAwake
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 3
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: Scalar
+          type: System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: Spark
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startAngularVelocity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 70
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startColor
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1,0.67999999993480741977691650390625,0.19999999995343387126922607421875,0.799999999813735485076904296875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startDirection
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: -0.2799999997951090335845947265625,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startLifetime
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 2.799999999813735485076904296875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startRotation
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startSize
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.21999999997206032276153564453125,0.21999999997206032276153564453125
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: startSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.69999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: a5dfd720-14f2-4fc9-a9f2-a9a26333cf41
   name: Foreground Glass Left
   active: true
@@ -642,6 +3245,7 @@ gameObjects:
       color: 0.17999999993480741977691650390625,0.71999999997206032276153564453125,0.67999999993480741977691650390625,0.17999999993480741977691650390625
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 0.6499999999068677425384521484375
       orderInLayer: 5
       pivot: 0.5,0.5
@@ -649,6 +3253,152 @@ gameObjects:
       size: 1.19999999995343387126922607421875,8.799999999813735485076904296875
       sortingLayer: 3
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.17999999993480741977691650390625,0.71999999997206032276153564453125,0.67999999993480741977691650390625,0.17999999993480741977691650390625
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.6499999999068677425384521484375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.19999999995343387126922607421875,8.799999999813735485076904296875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 3
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: cdf33a6a-4d5c-40cf-99db-df232a00d342
   name: Foreground Glass Right
   active: true
@@ -675,6 +3425,7 @@ gameObjects:
       color: 1,0.61999999987892806529998779296875,0.19999999995343387126922607421875,0.15999999991618096828460693359375
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 0.6499999999068677425384521484375
       orderInLayer: 6
       pivot: 0.5,0.5
@@ -682,6 +3433,152 @@ gameObjects:
       size: 1.19999999995343387126922607421875,8.799999999813735485076904296875
       sortingLayer: 3
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1,0.61999999987892806529998779296875,0.19999999995343387126922607421875,0.15999999991618096828460693359375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.6499999999068677425384521484375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 6
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.19999999995343387126922607421875,8.799999999813735485076904296875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 3
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 5bfbd8f2-b699-4b39-9500-2ccc4e28e8e4
   name: Inset Backdrop
   active: true
@@ -708,6 +3605,7 @@ gameObjects:
       color: 0.03999999980442225933074951171875,0.05499999993480741977691650390625,0.07499999995343387126922607421875,1
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: -10
       pivot: 0.5,0.5
@@ -715,6 +3613,152 @@ gameObjects:
       size: 6.5,5
       sortingLayer: 4
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.03999999980442225933074951171875,0.05499999993480741977691650390625,0.07499999995343387126922607421875,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: -10
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 6.5,5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 4
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: NullValue
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: a985c0e8-8cd1-40e8-a7a5-ffcbbf408daa
   name: Inset Brand
   active: true
@@ -741,6 +3785,7 @@ gameObjects:
       color: 1,1,1,1
       flipX: false
       flipY: false
+      maskInteraction: None
       opacity: 1
       orderInLayer: 0
       pivot: 0.5,0.5
@@ -749,6 +3794,152 @@ gameObjects:
       sortingLayer: 4
       sprite: guid:ff11351b2c3044aa8c77107eb2f6b942#subasset=21300000
       useSpritePivot: true
+    graph:
+      version: 1
+      members:
+      - name: color
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1,1,1,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipX
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: flipY
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: maskInteraction
+        value:
+          kind: Enum
+          type: BEngine.SpriteMaskInteraction, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: None
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: material
+        value:
+          kind: EngineObject
+          type: BEngine.Material, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: builtin-material:BEngine%2FSprite|Default%20Sprite%20Material
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: opacity
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: orderInLayer
+        value:
+          kind: Scalar
+          type: System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 0
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: pivot
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.5,0.5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 2.19999999995343387126922607421875,2.19999999995343387126922607421875
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sortingLayer
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 4
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: sprite
+        value:
+          kind: EngineObject
+          type: BEngine.Sprite, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: guid:ff11351b2c3044aa8c77107eb2f6b942#subasset=21300000
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: useSpritePivot
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
   - id: 6ace5840-2b1b-4d3f-a1f4-d6d3bb3f9790
     type: Game.ShowcaseMotion
     enabled: true
@@ -758,6 +3949,64 @@ gameObjects:
       phaseOffset: 0
       rotationSpeed: -18
       runInEditMode: false
+    graph:
+      version: 1
+      members:
+      - name: movementAmplitude
+        value:
+          kind: Scalar
+          type: BEngine.Vector2, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.6499999999068677425384521484375,0.2799999997951090335845947265625
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: movementSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1.1499999999068677425384521484375
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: phaseOffset
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: rotationSpeed
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: -18
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: runInEditMode
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: 45ed0c79-9365-4621-b0f4-74e76c3119de
   name: Inset Camera Content
   active: true
@@ -805,6 +4054,97 @@ gameObjects:
       priority: 0
       size: 5
       viewportRect: 0,0,1,1
+    graph:
+      version: 1
+      members:
+      - name: backgroundColor
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.03499999991618096828460693359375,0.0469999997876584529876708984375,0.06599999987520277500152587890625,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: clearMode
+        value:
+          kind: Enum
+          type: BEngine.CameraClearMode, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: Color
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: cullingMask
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 7
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: isMain
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: True
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: priority
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 5
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: targetTexture
+        value:
+          kind: NullValue
+          type: BEngine.RenderTexture, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: viewportRect
+        value:
+          kind: Scalar
+          type: BEngine.Rect, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0,0,1,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
 - id: e14f88c7-2518-4fec-b60e-e714885c56df
   name: Inset Camera
   active: true
@@ -834,3 +4174,166 @@ gameObjects:
       priority: 20
       size: 3
       viewportRect: 0.71999999997206032276153564453125,0.65999999991618096828460693359375,0.25,0.2799999997951090335845947265625
+    graph:
+      version: 1
+      members:
+      - name: backgroundColor
+        value:
+          kind: Scalar
+          type: BEngine.Color, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 1,0,0,1
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: clearMode
+        value:
+          kind: Enum
+          type: BEngine.CameraClearMode, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: Color
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: cullingMask
+        value:
+          kind: Scalar
+          type: System.UInt64, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: 8
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: isMain
+        value:
+          kind: Scalar
+          type: System.Boolean, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+          value: False
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: priority
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 20
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: size
+        value:
+          kind: Scalar
+          type: BEngine.Fix64, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 3
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: targetTexture
+        value:
+          kind: NullValue
+          type: BEngine.RenderTexture, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: ''
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+      - name: viewportRect
+        value:
+          kind: Scalar
+          type: BEngine.Rect, BEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+          value: 0.71999999997206032276153564453125,0.65999999991618096828460693359375,0.25,0.2799999997951090335845947265625
+          objectId: 0
+          referenceId: 0
+          dimensions: []
+          items: []
+          members: []
+          entries: []
+- id: 37d82ae4-02a3-417c-bd09-2a2558d48c1a
+  name: GameObject
+  active: true
+  tag: Untagged
+  layer: 1
+  isStatic: false
+  transform:
+    id: d13b96fc-343f-484a-8295-7d251c864d3a
+    type: BEngine.Transform
+    localPosition:
+      x: 0
+      y: 0
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components: []
+- id: 33264eb2-1ad8-49bc-b435-691a49c65acf
+  name: GameObject
+  active: true
+  tag: Untagged
+  layer: 1
+  isStatic: false
+  transform:
+    id: 41d50c61-00f9-4681-b705-e8cc2dd3fe09
+    type: BEngine.Transform
+    localPosition:
+      x: 0
+      y: 0
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components: []
+- id: e3817080-a6ed-4cb1-aaed-e2e08b106962
+  name: GameObject
+  active: true
+  tag: Untagged
+  layer: 1
+  isStatic: false
+  transform:
+    id: 6fb38acb-28d5-479f-96da-d0440e87679a
+    type: BEngine.Transform
+    localPosition:
+      x: 0
+      y: 0
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components: []
+- id: 0400e454-dcd1-434b-aa87-5c9b6a7ba84d
+  name: GameObject
+  active: true
+  tag: Untagged
+  layer: 1
+  isStatic: false
+  transform:
+    id: c3d6a375-3362-4c76-a69c-3b59261e57b5
+    type: BEngine.Transform
+    localPosition:
+      x: 0
+      y: 0
+    localRotation: 0
+    localScale:
+      x: 1
+      y: 1
+    fields: {}
+  components: []

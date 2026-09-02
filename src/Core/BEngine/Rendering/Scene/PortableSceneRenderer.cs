@@ -33,6 +33,10 @@ public sealed class PortableSceneRenderer : IDisposable
     private readonly Dictionary<GameObject, long> _hierarchyOrder = new(ReferenceEqualityComparer.Instance);
     private readonly List<SpriteRenderer> _spriteRenderers = [];
     private readonly List<ParticleSystem2D> _particleSystems = [];
+    private readonly List<LineRenderer2D> _lineRenderers = [];
+    private readonly List<TrailRenderer2D> _trailRenderers = [];
+    private readonly List<SpriteMask> _spriteMasks = [];
+    private readonly List<LineSegment2D> _lineSegments = [];
     private readonly List<Camera2D> _gizmoCameras = [];
     private readonly List<CameraRenderItem> _orderedCameras = [];
     private readonly List<float> _triangleVertices = [];
@@ -144,11 +148,24 @@ public sealed class PortableSceneRenderer : IDisposable
         foreach (var item in _orderedCameras)
         {
             var camera = RenderCamera.From(item.Camera);
-            var viewport = ResolveViewport(targetViewport, camera.ViewportRect, _device.Backend);
-            if (viewport.Width <= 0 || viewport.Height <= 0) continue;
+            var renderTexture = item.Camera.targetTexture;
+            var renderTarget = renderTexture?.GetOrCreateTarget(_device);
+            using var targetScope = renderTarget is null ? null : _device.PushRenderTarget(renderTarget);
+            RenderTexture.active = renderTexture;
+            var destination = renderTarget is null
+                ? targetViewport
+                : new GraphicsRect(0, 0, renderTarget.Width, renderTarget.Height);
+            var destinationWidth = renderTarget?.Width ?? targetWidth;
+            var destinationHeight = renderTarget?.Height ?? targetHeight;
+            var viewport = ResolveViewport(destination, camera.ViewportRect, _device.Backend);
+            if (viewport.Width <= 0 || viewport.Height <= 0)
+            {
+                if (ReferenceEquals(RenderTexture.active, renderTexture)) RenderTexture.active = null;
+                continue;
+            }
             renderedCameraCount++;
             var logicalViewport = ResolveViewport(
-                new GraphicsRect(0, 0, targetWidth, targetHeight),
+                new GraphicsRect(0, 0, destinationWidth, destinationHeight),
                 camera.ViewportRect, _device.Backend);
             var markedCamera = _debugAnnotations?.DebugMarkersEnabled == true;
             if (markedCamera)
@@ -183,6 +200,7 @@ public sealed class PortableSceneRenderer : IDisposable
             finally
             {
                 if (markedCamera) _debugAnnotations!.PopDebugMarker();
+                if (ReferenceEquals(RenderTexture.active, renderTexture)) RenderTexture.active = null;
             }
         }
         LastRenderStatistics = CompleteStatistics(renderedCameraCount,
@@ -366,6 +384,7 @@ public sealed class PortableSceneRenderer : IDisposable
         {
             if (scene is null || !scene.isLoaded) continue;
             HierarchyOrder2D.Fill(scene, _hierarchyOrder);
+            scene.FillComponents(_spriteMasks);
             scene.FillComponents(_spriteRenderers);
             foreach (var renderer in _spriteRenderers)
             {
@@ -384,6 +403,7 @@ public sealed class PortableSceneRenderer : IDisposable
                 var renderedSize = Vector2.Scale(renderer.size, worldScale);
                 var center = worldPosition + Transform.RotateVector(
                     Vector2.Scale(worldScale, localCenter), worldRotation);
+                if (!IsVisibleThroughMasks(renderer, center, _spriteMasks)) continue;
                 var quad = new Quad(center, worldRotation,
                     Abs(renderedSize), color,
                     visual.Texture, visual.Uv,
@@ -432,6 +452,28 @@ public sealed class PortableSceneRenderer : IDisposable
                         quad));
                 }
             }
+            scene.FillComponents(_lineRenderers);
+            foreach (var renderer in _lineRenderers)
+            {
+                if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+                if (objectFilter is not null && !objectFilter(renderer.gameObject)) continue;
+                if (!camera.ContainsLayer(renderer.sortingLayer)) continue;
+                _lineSegments.Clear();
+                renderer.FillSegments(_lineSegments);
+                sequence = CollectLineSegments(renderer, renderer.material, _lineSegments,
+                    camera, width, height, sequence);
+            }
+            scene.FillComponents(_trailRenderers);
+            foreach (var renderer in _trailRenderers)
+            {
+                if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+                if (objectFilter is not null && !objectFilter(renderer.gameObject)) continue;
+                if (!camera.ContainsLayer(renderer.sortingLayer)) continue;
+                _lineSegments.Clear();
+                renderer.FillSegments(_lineSegments);
+                sequence = CollectLineSegments(renderer, renderer.material, _lineSegments,
+                    camera, width, height, sequence);
+            }
             if (drawExtensions)
                 sequence = SceneRenderContributor2DRegistry.Collect(
                     _device, scene, camera, width, height, _submissions, sequence, drawUi, objectFilter);
@@ -447,6 +489,47 @@ public sealed class PortableSceneRenderer : IDisposable
         if (visibleCount < _submissions.Count)
             _submissions.RemoveRange(visibleCount, _submissions.Count - visibleCount);
         return _submissions;
+    }
+
+    private static bool IsVisibleThroughMasks(
+        SpriteRenderer renderer,
+        Vector2 center,
+        IReadOnlyList<SpriteMask> masks)
+    {
+        if (renderer.maskInteraction == SpriteMaskInteraction.None) return true;
+        var inside = false;
+        foreach (var mask in masks)
+        {
+            if (!mask.enabled || !mask.gameObject.activeInHierarchy || !mask.AppliesTo(renderer)) continue;
+            if (!mask.Contains(center)) continue;
+            inside = true;
+            break;
+        }
+        return renderer.maskInteraction == SpriteMaskInteraction.VisibleInsideMask ? inside : !inside;
+    }
+
+    private long CollectLineSegments(
+        Renderer2D renderer,
+        Material material,
+        IReadOnlyList<LineSegment2D> segments,
+        RenderCamera camera,
+        int width,
+        int height,
+        long sequence)
+    {
+        var hierarchyOrder = _hierarchyOrder.GetValueOrDefault(renderer.gameObject);
+        foreach (var segment in segments)
+        {
+            var color = WithOpacity(segment.Color, renderer.opacity);
+            if (!camera.IsVisible(segment.Center, segment.Rotation, segment.Size, width, height)) continue;
+            _submissions.Add(new RenderSubmission2D(
+                new RenderSortKey2D(renderer.sortingLayer, renderer.orderInLayer, hierarchyOrder,
+                    renderer.TransparencyUnchecked(color), sequence++),
+                new RenderBatchKey2D(material, string.Empty),
+                new Quad(segment.Center, segment.Rotation, segment.Size, color,
+                    string.Empty, new Rect(0, 0, 1, 1), false, false, false)));
+        }
+        return sequence;
     }
 
     private void DrawBatch(RenderBatch2D batch, RenderCamera camera, int width, int height)
@@ -734,6 +817,10 @@ public sealed class PortableSceneRenderer : IDisposable
         _hierarchyOrder.Clear();
         _spriteRenderers.Clear();
         _particleSystems.Clear();
+        _lineRenderers.Clear();
+        _trailRenderers.Clear();
+        _spriteMasks.Clear();
+        _lineSegments.Clear();
         _gizmoCameras.Clear();
         _orderedCameras.Clear();
         foreach (var batch in _batches) batch.Clear();
@@ -754,6 +841,10 @@ public sealed class PortableSceneRenderer : IDisposable
         _hierarchyOrder.Clear();
         _spriteRenderers.Clear();
         _particleSystems.Clear();
+        _lineRenderers.Clear();
+        _trailRenderers.Clear();
+        _spriteMasks.Clear();
+        _lineSegments.Clear();
         _gizmoCameras.Clear();
         _orderedCameras.Clear();
         foreach (var batch in _batches) batch.Clear();

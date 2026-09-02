@@ -11,9 +11,11 @@ public interface IRuntimeSceneManager
     int SceneCount { get; }
 
     Scene LoadScene(string sceneNameOrPath, LoadSceneMode mode = LoadSceneMode.Single);
+    SceneLoadOperation LoadSceneAsync(string sceneNameOrPath, LoadSceneMode mode = LoadSceneMode.Single);
     void RegisterScene(Scene scene, bool setActive = false);
     bool UnregisterScene(Scene scene, bool disposeScene = false);
     bool UnloadScene(Scene scene);
+    SceneUnloadOperation UnloadSceneAsync(Scene scene);
     bool SetActiveScene(Scene scene);
     void MoveGameObjectToScene(GameObject gameObject, Scene destination);
     void MarkDontDestroyOnLoad(BObject target);

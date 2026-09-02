@@ -11,7 +11,7 @@ internal sealed class SaveLayoutWindow : EditorWindow
     public static void Open(string currentName, Action<string> accepted) =>
         OpenCore("Save Layout", "Save editor layout", "Save",
             currentName.Equals(EditorLayoutStore.LastSessionName, StringComparison.OrdinalIgnoreCase)
-                ? "Layout" : currentName,
+                ? "Custom Layout" : currentName,
             accepted);
 
     public static void OpenRename(string currentName, Action<string> accepted) =>

@@ -5,91 +5,6 @@ using BEngine.Rendering;
 
 namespace BEngine.Editor;
 
-/// <summary>Top-level editor frame phases recorded by <see cref="EditorProfiler"/>.</summary>
-public enum EditorProfilerArea
-{
-    Update,
-    Runtime,
-    Render,
-    IMGUI,
-    Present
-}
-
-/// <summary>Separates editor-host work from code that belongs to the running game.</summary>
-public enum EditorProfilerDomain
-{
-    Editor,
-    Runtime
-}
-
-/// <summary>One nested method marker captured during an editor frame.</summary>
-public readonly record struct EditorProfilerMethodSample(
-    int Id,
-    int ParentId,
-    EditorProfilerDomain Domain,
-    string TypeName,
-    string MethodName,
-    double TotalMilliseconds,
-    double SelfMilliseconds,
-    int Calls,
-    long AllocatedBytes,
-    long SelfAllocatedBytes,
-    int ThreadId,
-    string ThreadName,
-    string[] CallStack)
-{
-    public string DisplayName => string.IsNullOrWhiteSpace(TypeName)
-        ? MethodName
-        : $"{TypeName}.{MethodName}";
-}
-
-/// <summary>One custom module counter value captured during an editor frame.</summary>
-public readonly record struct EditorProfilerCounterSample(
-    string ModuleId,
-    string CounterName,
-    double Value);
-
-/// <summary>A completed editor frame held in the profiler history.</summary>
-public readonly record struct EditorProfilerFrame(
-    long FrameIndex,
-    DateTimeOffset TimestampUtc,
-    double FrameMilliseconds,
-    double UpdateMilliseconds,
-    double RuntimeMilliseconds,
-    double RenderMilliseconds,
-    double ImGuiMilliseconds,
-    double PresentMilliseconds,
-    long ManagedAllocatedBytes,
-    long ManagedHeapBytes,
-    long ManagedFragmentedBytes,
-    long WorkingSetBytes,
-    long PrivateBytes,
-    int Gen0Collections,
-    int Gen1Collections,
-    int Gen2Collections,
-    SceneRenderStatistics RenderStatistics)
-{
-    public EditorProfilerMethodSample[] MethodSamples { get; init; } = [];
-    public EditorProfilerCounterSample[] CounterSamples { get; init; } = [];
-}
-
-/// <summary>An immutable, oldest-to-newest view of the profiler history.</summary>
-public readonly record struct EditorProfilerSnapshot(
-    long Version,
-    bool Recording,
-    int Capacity,
-    EditorProfilerFrame[] Frames)
-{
-    public EditorProfilerFrame? Latest => Frames is { Length: > 0 } ? Frames[^1] : null;
-}
-
-/// <summary>Allocation-free state used to size and synchronize caller-owned history buffers.</summary>
-public readonly record struct EditorProfilerMetadata(
-    long Version,
-    bool Recording,
-    int Capacity,
-    int FrameCount);
-
 /// <summary>
 /// Thread-safe, fixed-capacity editor profiler. Recording scopes are allocation-free after startup;
 /// snapshots intentionally copy the ring so consumers cannot mutate live history.
@@ -234,6 +149,34 @@ public static class EditorProfiler
             if (_recording == 0 || _activeFrameToken == 0) return;
             _activeFrame.Counters ??= new Dictionary<CounterKey, double>();
             _activeFrame.Counters[new CounterKey(moduleId, counterName)] = value;
+        }
+    }
+
+    internal static void ReportRuntimeMethodSample(BEngine.Profiling.ProfilerSample sample)
+    {
+        if (Volatile.Read(ref _recording) == 0 || sample.token <= 0) return;
+        var ticks = sample.elapsedMilliseconds <= 0
+            ? 0
+            : Math.Max(1, (long)Math.Round(sample.elapsedMilliseconds * Stopwatch.Frequency / 1000d));
+        lock (Gate)
+        {
+            if (_recording == 0 || _activeFrameToken == 0) return;
+            _activeFrame.ExternalMethodIds ??= [];
+            var id = ExternalMethodId(sample.token);
+            var parentId = sample.parentToken > 0 ? ExternalMethodId(sample.parentToken) : 0;
+            _activeFrame.MethodSamples ??= [];
+            _activeFrame.MethodSamples.Add(new PendingMethodSample(
+                id, parentId, EditorProfilerDomain.Runtime, sample.category, sample.name, ticks,
+                Math.Max(0, sample.allocatedBytes), sample.threadId, sample.threadName,
+                sample.callStack ?? []));
+        }
+
+        int ExternalMethodId(long token)
+        {
+            if (_activeFrame.ExternalMethodIds!.TryGetValue(token, out var existing)) return existing;
+            var created = ++_activeFrame.NextMethodId;
+            _activeFrame.ExternalMethodIds[token] = created;
+            return created;
         }
     }
 
@@ -621,6 +564,7 @@ public static class EditorProfiler
         internal SceneRenderStatistics RenderStatistics;
         internal int NextMethodId;
         internal List<PendingMethodSample>? MethodSamples;
+        internal Dictionary<long, int>? ExternalMethodIds;
         internal Dictionary<CounterKey, double>? Counters;
     }
 
@@ -645,87 +589,4 @@ public static class EditorProfiler
         long ManagedFragmentedBytes,
         long WorkingSetBytes,
         long PrivateBytes);
-}
-
-/// <summary>Completes an editor frame when disposed.</summary>
-public readonly struct EditorProfilerFrameScope : IDisposable
-{
-    private readonly long _token;
-
-    internal EditorProfilerFrameScope(long token) => _token = token;
-
-    public void Dispose() => EditorProfiler.EndFrame(_token);
-}
-
-/// <summary>Completes a profiler phase sample when disposed.</summary>
-public readonly struct EditorProfilerSampleScope : IDisposable
-{
-    private readonly long _frameToken;
-    private readonly EditorProfilerArea _area;
-    private readonly long _startedTimestamp;
-
-    internal EditorProfilerSampleScope(
-        long frameToken, EditorProfilerArea area, long startedTimestamp)
-    {
-        _frameToken = frameToken;
-        _area = area;
-        _startedTimestamp = startedTimestamp;
-    }
-
-    public void Dispose() => EditorProfiler.EndSample(_frameToken, _area, _startedTimestamp);
-}
-
-/// <summary>Completes a nested method marker and publishes its duration, allocation, and call stack.</summary>
-public readonly struct EditorProfilerMethodScope : IDisposable
-{
-    private readonly long _frameToken;
-    private readonly int _id;
-    private readonly int _parentId;
-    private readonly EditorProfilerDomain _domain;
-    private readonly string? _typeName;
-    private readonly string? _methodName;
-    private readonly long _startedTimestamp;
-    private readonly long _allocatedBytesAtStart;
-    private readonly int _threadId;
-    private readonly string? _threadName;
-    private readonly string[]? _callStack;
-
-    internal EditorProfilerMethodScope(
-        long frameToken,
-        int id,
-        int parentId,
-        EditorProfilerDomain domain,
-        string typeName,
-        string methodName,
-        long startedTimestamp,
-        long allocatedBytesAtStart,
-        int threadId,
-        string threadName,
-        string[] callStack)
-    {
-        _frameToken = frameToken;
-        _id = id;
-        _parentId = parentId;
-        _domain = domain;
-        _typeName = typeName;
-        _methodName = methodName;
-        _startedTimestamp = startedTimestamp;
-        _allocatedBytesAtStart = allocatedBytesAtStart;
-        _threadId = threadId;
-        _threadName = threadName;
-        _callStack = callStack;
-    }
-
-    public void Dispose() => EditorProfiler.EndMethodSample(
-        _frameToken,
-        _id,
-        _parentId,
-        _domain,
-        _typeName ?? string.Empty,
-        _methodName ?? string.Empty,
-        _startedTimestamp,
-        _allocatedBytesAtStart,
-        _threadId,
-        _threadName ?? string.Empty,
-        _callStack ?? []);
 }

@@ -4,18 +4,6 @@ using BEngine.Rendering;
 
 namespace BEngine.Editor;
 
-public readonly record struct ScenePickCandidate(GameObject GameObject, RenderSortKey2D SortKey);
-
-public delegate long ScenePickingProvider(
-    Scene scene,
-    RenderCamera camera,
-    Vector2 viewportPoint,
-    int viewportWidth,
-    int viewportHeight,
-    ICollection<ScenePickCandidate> candidates,
-    long submissionOrder,
-    Predicate<GameObject>? objectFilter);
-
 /// <summary>Registry for package-defined Scene view picking contributors.</summary>
 public static class ScenePickingProviderRegistry
 {

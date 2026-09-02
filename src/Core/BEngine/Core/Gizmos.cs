@@ -92,17 +92,3 @@ public static class Gizmos
         }
     }
 }
-
-internal sealed class GizmoDrawList
-{
-    private readonly List<GizmoLine2D> _lines = [];
-
-    internal IReadOnlyList<GizmoLine2D> Lines => _lines;
-    internal void Add(GizmoLine2D line) => _lines.Add(line);
-}
-
-internal readonly record struct GizmoLine2D(
-    Vector2 From,
-    Vector2 To,
-    Color Color,
-    Fix64 LineWidth);

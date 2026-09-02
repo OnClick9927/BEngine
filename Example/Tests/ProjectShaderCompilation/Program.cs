@@ -12,7 +12,7 @@ internal static class Program
             var workspace = ProjectWorkspaceFactory.Create(root, "Shader Compilation");
             var shaderDirectory = Path.Combine(workspace.AssetsPath, "Shaders");
             Directory.CreateDirectory(shaderDirectory);
-            var shaderPath = Path.Combine(shaderDirectory, "Color.frag.glsl");
+            var shaderPath = Path.Combine(shaderDirectory, "Color.frag.cg");
             File.WriteAllText(shaderPath, Fragment("1.0, 0.0, 0.0, 1.0"));
 
             var first = ProjectShaderCompiler.CompileChanged(workspace, [shaderPath]);
@@ -25,15 +25,21 @@ internal static class Program
             Require(reused.Succeeded && reused.CompiledArtifacts.Single().Value == firstArtifact,
                 "An unchanged shader did not reuse its content-addressed artifact.");
 
+            WriteImporterSettings(shaderPath, optimizationLevel: 0);
+            var configured = ProjectShaderCompiler.CompileChanged(workspace, [shaderPath]);
+            var configuredArtifact = configured.CompiledArtifacts.Single().Value;
+            Require(configured.Succeeded && configuredArtifact != firstArtifact && IsSpirv(configuredArtifact),
+                "Shader importer settings did not participate in compilation or the artifact cache key.");
+
             File.WriteAllText(shaderPath, Fragment("0.0, 1.0, 0.0, 1.0"));
             var changed = ProjectShaderCompiler.CompileChanged(workspace, [shaderPath]);
             var changedArtifact = changed.CompiledArtifacts.Single().Value;
             Require(changedArtifact != firstArtifact && IsSpirv(changedArtifact),
                 "A changed shader did not produce a new SPIR-V artifact.");
 
-            File.WriteAllText(shaderPath, "#pragma stage fragment\nthis is not valid glsl");
+            File.WriteAllText(shaderPath, "#pragma stage fragment\nthis is not valid cg");
             var failed = ProjectShaderCompiler.CompileChanged(workspace, [shaderPath]);
-            Require(!failed.Succeeded && failed.Errors.ContainsKey("Assets/Shaders/Color.frag.glsl"),
+            Require(!failed.Succeeded && failed.Errors.ContainsKey("Assets/Shaders/Color.frag.cg"),
                 "An invalid shader was not reported as a per-asset compilation error.");
             Require(ProjectShaderCompiler.ResolveCurrentArtifact(workspace, shaderPath) == changedArtifact,
                 "A failed shader compilation replaced the last valid artifact.");
@@ -43,7 +49,8 @@ internal static class Program
             Require(ProjectShaderCompiler.ResolveCurrentArtifact(workspace, shaderPath) is null,
                 "Deleting a shader did not invalidate its current artifact pointer.");
 
-            Console.WriteLine("PROJECT_SHADER_COMPILATION_OK|spirv,cache,changed,rollback,delete");
+            Console.WriteLine(
+                "PROJECT_SHADER_COMPILATION_OK|spirv,cache,importer-settings,changed,rollback,delete");
             return 0;
         }
         catch (Exception exception)
@@ -58,8 +65,8 @@ internal static class Program
     }
 
     private static string Fragment(string color) =>
-        "#version 450\nlayout(location = 0) out vec4 OutputColor;\n" +
-        $"void main() {{ OutputColor = vec4({color}); }}\n";
+        "#pragma stage fragment\n" +
+        $"float4 main() : SV_Target {{ return float4({color}); }}\n";
 
     private static bool IsSpirv(string path)
     {
@@ -67,6 +74,19 @@ internal static class Program
         return bytes.Length >= 4 && bytes[0] == 0x03 && bytes[1] == 0x02 &&
                bytes[2] == 0x23 && bytes[3] == 0x07;
     }
+
+    private static void WriteImporterSettings(string shaderPath, int optimizationLevel) =>
+        File.WriteAllText(shaderPath + ".meta", $$"""
+            format: BEngine.AssetMeta
+            version: 1
+            guid: {{Guid.NewGuid():N}}
+            importer: ShaderImporter
+            assetType: Shader
+            sourceHash: ''
+            settings:
+              strictCompilation: true
+              optimizationLevel: '{{optimizationLevel}}'
+            """);
 
     private static void Require(bool condition, string message)
     {

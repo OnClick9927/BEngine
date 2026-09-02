@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine.Audio</RootNamespace>
+    <AssemblyName>BEngine.Audio</AssemblyName>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>
