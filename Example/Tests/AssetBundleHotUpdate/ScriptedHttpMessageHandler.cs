@@ -11,12 +11,19 @@ internal sealed class ScriptedHttpMessageHandler : HttpMessageHandler
         new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, int> _requests =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, ConcurrentQueue<IReadOnlyDictionary<string, string[]>>>
+        _requestHeaders = new(StringComparer.OrdinalIgnoreCase);
 
     internal void Add(string path, byte[] bytes) => _content[Normalize(path)] = (byte[])bytes.Clone();
 
     internal void FailNext(string path, int count = 1) => _remainingFailures[Normalize(path)] = count;
 
     internal int RequestCount(string path) => _requests.GetValueOrDefault(Normalize(path));
+
+    internal IReadOnlyList<IReadOnlyDictionary<string, string[]>> RequestHeaders(string path) =>
+        _requestHeaders.TryGetValue(Normalize(path), out var requests)
+            ? requests.ToArray()
+            : [];
 
     internal void Replace(string path, byte[] bytes) => Add(path, bytes);
 
@@ -27,6 +34,11 @@ internal sealed class ScriptedHttpMessageHandler : HttpMessageHandler
         cancellationToken.ThrowIfCancellationRequested();
         var path = Normalize(request.RequestUri?.AbsolutePath ?? string.Empty);
         _requests.AddOrUpdate(path, 1, static (_, count) => count + 1);
+        _requestHeaders.GetOrAdd(path, static _ => new()).Enqueue(
+            request.Headers.ToDictionary(
+                static header => header.Key,
+                static header => header.Value.ToArray(),
+                StringComparer.OrdinalIgnoreCase));
         if (_remainingFailures.TryGetValue(path, out var remaining) && remaining > 0)
         {
             _remainingFailures[path] = remaining - 1;

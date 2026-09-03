@@ -40,19 +40,41 @@ public abstract class NetworkClientBase : IDisposable, IAsyncDisposable
 
     protected void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
-    protected async Task RunAsync(
-        Func<CancellationToken, Task> operation,
+    protected BValueTask RunAsync(
+        Func<CancellationToken, BValueTask> operation,
+        CancellationToken cancellationToken) => RunCoreAsync(operation, cancellationToken);
+
+    protected BValueTask<T> RunAsync<T>(
+        Func<CancellationToken, BValueTask<T>> operation,
+        CancellationToken cancellationToken) => RunCoreAsync(operation, cancellationToken);
+
+    protected BValueTask RunValueAsync(
+        Func<CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken) =>
+        RunCoreAsync(
+            token => new BValueTask(operation(token)),
+            cancellationToken);
+
+    protected BValueTask<T> RunValueAsync<T>(
+        Func<CancellationToken, ValueTask<T>> operation,
+        CancellationToken cancellationToken) =>
+        RunCoreAsync(
+            token => new BValueTask<T>(operation(token)),
+            cancellationToken);
+
+    private async BValueTask RunCoreAsync(
+        Func<CancellationToken, BValueTask> operation,
         CancellationToken cancellationToken)
     {
-        await RunAsync(async token =>
+        await RunCoreAsync(async token =>
         {
             await operation(token).ConfigureAwait(false);
             return true;
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    protected async Task<T> RunAsync<T>(
-        Func<CancellationToken, Task<T>> operation,
+    private async BValueTask<T> RunCoreAsync<T>(
+        Func<CancellationToken, BValueTask<T>> operation,
         CancellationToken cancellationToken)
     {
         ThrowIfDisposed();

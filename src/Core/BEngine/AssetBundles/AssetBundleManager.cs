@@ -2,6 +2,7 @@ using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using BEngine.Networking;
 
 namespace BEngine.AssetBundles;
@@ -12,6 +13,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
     private const string VersionFileName = "version.json";
     private const string ActiveFileName = "active.json";
     private const string PreviousFileName = "previous.json";
+    private const string PendingFileName = "pending.json";
 
     private readonly AssetBundleRuntimeOptions _options;
     private readonly string _cacheRoot;
@@ -29,6 +31,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
     private RuntimeState? _builtIn;
     private volatile bool _initialized;
     private volatile bool _disposed;
+    private volatile bool _hasPendingActivation;
 
     public AssetBundleManager(AssetBundleRuntimeOptions options)
     {
@@ -65,6 +68,8 @@ public sealed class AssetBundleManager : IAssetBundleManager
     public string StagingDirectory => Path.Combine(_cacheRoot, "staging");
     public string ActivePointerPath => Path.Combine(_cacheRoot, ActiveFileName);
     public string PreviousPointerPath => Path.Combine(_cacheRoot, PreviousFileName);
+    internal string PendingPointerPath => Path.Combine(_cacheRoot, PendingFileName);
+    internal bool HasPendingActivation => _hasPendingActivation;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -76,6 +81,16 @@ public sealed class AssetBundleManager : IAssetBundleManager
         {
             ThrowIfDisposed();
             if (IsInitialized) return;
+            if (!_options.UsePersistentCache)
+            {
+                _builtIn = await LoadBuiltInStateAsync(linked.Token).ConfigureAwait(false) ??
+                           throw new InvalidDataException(
+                               "The read-only built-in AssetBundle release is missing.");
+                Volatile.Write(ref _active, _builtIn);
+                _hasPendingActivation = false;
+                _initialized = true;
+                return;
+            }
             CreateCacheLayout();
             CleanupStagingFiles();
 
@@ -108,6 +123,8 @@ public sealed class AssetBundleManager : IAssetBundleManager
             }
             selected ??= _builtIn;
             Volatile.Write(ref _active, selected);
+            _hasPendingActivation = await IsPendingActivationAsync(selected, linked.Token)
+                .ConfigureAwait(false);
             _initialized = true;
         }
         finally
@@ -132,12 +149,12 @@ public sealed class AssetBundleManager : IAssetBundleManager
                 active.Version, active.Catalog, (byte[])active.CatalogBytes.Clone(), [], false);
         }
 
-        var versionBytes = await FetchRemoteVersionAsync(operationToken).ConfigureAwait(false);
-        var version = AssetBundleCatalogSerializer.DeserializeVersion(versionBytes);
+        var version = await FetchRemoteVersionAsync(operationToken).ConfigureAwait(false);
         ValidatePackage(version.PackageName);
         var catalogUri = BuildRemoteUri(version.Version, version.CatalogFile);
         var catalogBytes = await FetchBytesWithRetryAsync(
-            catalogUri, _options.MaximumCatalogSize, operationToken).ConfigureAwait(false);
+            catalogUri, AssetBundleHttpResourceKind.Catalog,
+            _options.MaximumCatalogSize, operationToken).ConfigureAwait(false);
         VerifyPayload(catalogBytes, version.CatalogSize, version.CatalogSha256, "remote catalog");
         var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes);
         ValidateCatalogPair(version, catalog);
@@ -172,6 +189,9 @@ public sealed class AssetBundleManager : IAssetBundleManager
         {
             EnsureInitialized();
             ThrowIfDisposed();
+            if (!_options.UsePersistentCache)
+                throw new InvalidOperationException(
+                    "AssetBundle updates require a persistent cache.");
             var targetVersion = plan.CreateTargetVersionSnapshot();
             VerifyPayload(plan.CatalogBytes.Span, targetVersion.CatalogSize,
                 targetVersion.CatalogSha256, "update catalog");
@@ -258,6 +278,12 @@ public sealed class AssetBundleManager : IAssetBundleManager
                 await WritePointerAsync(PreviousPointerPath, current.Version, linked.Token)
                     .ConfigureAwait(false);
             }
+            else if (File.Exists(PreviousPointerPath))
+            {
+                File.Delete(PreviousPointerPath);
+            }
+            await WritePointerAsync(PendingPointerPath, targetVersion, linked.Token)
+                .ConfigureAwait(false);
             await WritePointerAsync(ActivePointerPath, targetVersion, linked.Token)
                 .ConfigureAwait(false);
             var activated = new RuntimeState(
@@ -265,6 +291,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
                 targetCatalog,
                 plan.CatalogBytes.ToArray());
             Volatile.Write(ref _active, activated);
+            _hasPendingActivation = true;
             progress?.Report(new AssetBundleUpdateProgress(
                 AssetBundleUpdatePhase.Completed,
                 downloads.Count,
@@ -293,6 +320,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
         {
             EnsureInitialized();
             ThrowIfDisposed();
+            if (!_options.UsePersistentCache) return false;
             RuntimeState? previous;
             try
             {
@@ -301,9 +329,18 @@ public sealed class AssetBundleManager : IAssetBundleManager
             }
             catch (Exception exception) when (IsRecoverableContentFailure(exception))
             {
-                return false;
+                previous = null;
             }
-            if (previous is null) return false;
+            if (previous is null)
+            {
+                if (!_hasPendingActivation) return false;
+                if (File.Exists(ActivePointerPath)) File.Delete(ActivePointerPath);
+                if (File.Exists(PreviousPointerPath)) File.Delete(PreviousPointerPath);
+                if (File.Exists(PendingPointerPath)) File.Delete(PendingPointerPath);
+                Volatile.Write(ref _active, null);
+                _hasPendingActivation = false;
+                return true;
+            }
 
             var current = Volatile.Read(ref _active);
             await WritePointerAsync(ActivePointerPath, previous.Version, linked.Token)
@@ -319,12 +356,33 @@ public sealed class AssetBundleManager : IAssetBundleManager
                 File.Delete(PreviousPointerPath);
             }
             Volatile.Write(ref _active, previous);
+            if (File.Exists(PendingPointerPath)) File.Delete(PendingPointerPath);
+            _hasPendingActivation = false;
             return true;
         }
         finally
         {
             _stateGate.Release();
         }
+    }
+
+    internal async Task CommitPendingActivationAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        using var linked = CreateLinkedTokenSource(cancellationToken);
+        await _stateGate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            EnsureInitialized();
+            if (!_options.UsePersistentCache)
+            {
+                _hasPendingActivation = false;
+                return;
+            }
+            if (File.Exists(PendingPointerPath)) File.Delete(PendingPointerPath);
+            _hasPendingActivation = false;
+        }
+        finally { _stateGate.Release(); }
     }
 
     public async Task<AssetBundleHandle<byte[]>> LoadBytesAsync(
@@ -436,6 +494,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
             EnsureInitialized();
             ThrowIfDisposed();
             _ = UnloadUnused();
+            if (!_options.UsePersistentCache) return 0;
             var keepBundles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var keepCatalogs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             AddState(Volatile.Read(ref _active), keepBundles, keepCatalogs);
@@ -618,7 +677,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
         CancellationToken cancellationToken)
     {
         var objectPath = GetObjectPath(descriptor);
-        if (File.Exists(objectPath))
+        if (_options.UsePersistentCache && File.Exists(objectPath))
         {
             await AssetBundleFileVerifier.VerifyAsync(objectPath, descriptor.Size, descriptor.Sha256,
                 _options.MaximumBundleSize, cancellationToken).ConfigureAwait(false);
@@ -657,7 +716,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
 
     private IEnumerable<string> BundleCandidates(AssetBundleDescriptor descriptor)
     {
-        yield return GetObjectPath(descriptor);
+        if (_options.UsePersistentCache) yield return GetObjectPath(descriptor);
         if (_builtInBundlePaths.TryGetValue(descriptor.Sha256, out var path)) yield return path;
     }
 
@@ -669,6 +728,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
         if (await HasValidBundleAsync(descriptor, cancellationToken).ConfigureAwait(false)) return false;
         var uri = BuildRemoteUri(version.Version, "bundles", descriptor.FileName);
         var destination = GetObjectPath(descriptor);
+        Directory.CreateDirectory(StagingDirectory);
         var part = Path.Combine(StagingDirectory, descriptor.Sha256.ToLowerInvariant() + ".part");
         Exception? failure = null;
         try
@@ -679,7 +739,8 @@ public sealed class AssetBundleManager : IAssetBundleManager
                 try
                 {
                     if (File.Exists(part)) File.Delete(part);
-                    await DownloadOnceAsync(uri, part, descriptor, cancellationToken).ConfigureAwait(false);
+                    await DownloadOnceAsync(
+                        uri, part, descriptor, attempt + 1, cancellationToken).ConfigureAwait(false);
                     if (File.Exists(destination))
                     {
                         if (await HasValidBundleAsync(descriptor, cancellationToken).ConfigureAwait(false))
@@ -709,6 +770,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
         finally
         {
             if (File.Exists(part)) File.Delete(part);
+            DeleteStagingDirectoryIfEmpty();
         }
         cancellationToken.ThrowIfCancellationRequested();
         if (failure is InvalidDataException invalidData)
@@ -720,11 +782,13 @@ public sealed class AssetBundleManager : IAssetBundleManager
         Uri uri,
         string destination,
         AssetBundleDescriptor descriptor,
+        int attempt,
         CancellationToken cancellationToken)
     {
-        await SendHttpStreamingAsync(uri, async (response, token) =>
+        await SendHttpStreamingAsync(
+            uri, AssetBundleHttpResourceKind.Bundle, attempt, async (response, token) =>
         {
-            if (!response.IsSuccessStatusCode) return;
+            if (!response.IsSuccessStatusCode) return 0;
             if (response.Content.Headers.ContentLength is { } contentLength &&
                 contentLength != descriptor.Size)
                 throw new InvalidDataException(
@@ -754,27 +818,62 @@ public sealed class AssetBundleManager : IAssetBundleManager
                 !actualHash.Equals(descriptor.Sha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException(
                     $"Remote bundle '{descriptor.Name}' failed content verification.");
+            return total;
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<byte[]> FetchRemoteVersionAsync(CancellationToken cancellationToken)
+    private async Task<AssetBundleVersion> FetchRemoteVersionAsync(CancellationToken cancellationToken)
+    {
+        var latestBytes = await FetchBytesWithRetryAsync(
+                BuildRemoteUri(LatestFileName), AssetBundleHttpResourceKind.VersionPointer,
+                _options.MaximumCatalogSize, cancellationToken)
+            .ConfigureAwait(false);
+
+        // Existing servers publish a complete version manifest as latest.json.
+        // Keep accepting that contract while new servers use the small mutable pointer.
+        if (TryDeserializeVersion(latestBytes, out var legacyVersion))
+        {
+            ValidatePackage(legacyVersion.PackageName);
+            return legacyVersion;
+        }
+
+        var pointer = AssetBundleCatalogSerializer.DeserializeLatestPointer(latestBytes);
+        var versionBytes = await FetchBytesWithRetryAsync(
+                BuildRemoteUri(pointer.Version, VersionFileName),
+                AssetBundleHttpResourceKind.VersionMetadata,
+                _options.MaximumCatalogSize,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var version = AssetBundleCatalogSerializer.DeserializeVersion(versionBytes);
+        ValidatePackage(version.PackageName);
+        if (!version.Version.Equals(pointer.Version, StringComparison.Ordinal))
+            throw new InvalidDataException(
+                "Asset bundle latest pointer and version metadata versions do not match.");
+        return version;
+    }
+
+    private static bool IsMetadataDeserializationFailure(Exception exception) =>
+        exception is InvalidDataException or JsonException or NotSupportedException;
+
+    private static bool TryDeserializeVersion(
+        ReadOnlySpan<byte> bytes,
+        out AssetBundleVersion version)
     {
         try
         {
-            return await FetchBytesWithRetryAsync(
-                BuildRemoteUri(LatestFileName), _options.MaximumCatalogSize, cancellationToken)
-                .ConfigureAwait(false);
+            version = AssetBundleCatalogSerializer.DeserializeVersion(bytes);
+            return true;
         }
-        catch (HttpRequestException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+        catch (Exception exception) when (IsMetadataDeserializationFailure(exception))
         {
-            return await FetchBytesWithRetryAsync(
-                BuildRemoteUri(VersionFileName), _options.MaximumCatalogSize, cancellationToken)
-                .ConfigureAwait(false);
+            version = null!;
+            return false;
         }
     }
 
     private async Task<byte[]> FetchBytesWithRetryAsync(
         Uri uri,
+        AssetBundleHttpResourceKind resourceKind,
         long maximumSize,
         CancellationToken cancellationToken)
     {
@@ -785,9 +884,9 @@ public sealed class AssetBundleManager : IAssetBundleManager
             try
             {
                 using var output = new MemoryStream();
-                await SendHttpStreamingAsync(uri, async (response, token) =>
+                await SendHttpStreamingAsync(uri, resourceKind, attempt + 1, async (response, token) =>
                 {
-                    if (!response.IsSuccessStatusCode) return;
+                    if (!response.IsSuccessStatusCode) return 0;
                     if (response.Content.Headers.ContentLength is { } length && length > maximumSize)
                         throw new InvalidDataException($"Remote content '{uri}' exceeds its size limit.");
                     await using var source = await response.Content.ReadAsStreamAsync(token)
@@ -804,6 +903,7 @@ public sealed class AssetBundleManager : IAssetBundleManager
                                 $"Remote content '{uri}' exceeds its size limit.");
                         await output.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
                     }
+                    return total;
                 }, cancellationToken).ConfigureAwait(false);
                 return output.ToArray();
             }
@@ -829,14 +929,32 @@ public sealed class AssetBundleManager : IAssetBundleManager
 
     private async Task SendHttpStreamingAsync(
         Uri uri,
-        Func<HttpResponseMessage, CancellationToken, Task> responseHandler,
+        AssetBundleHttpResourceKind resourceKind,
+        int attempt,
+        Func<HttpResponseMessage, CancellationToken, Task<long>> responseHandler,
         CancellationToken cancellationToken)
     {
+        long receivedBytes = 0;
         using var request = new HttpNetworkRequest(uri, HttpMethod.Get, _httpClient)
         {
             Timeout = System.Threading.Timeout.InfiniteTimeSpan
         };
-        await request.SendAsync(responseHandler, cancellationToken).ConfigureAwait(false);
+        if (resourceKind == AssetBundleHttpResourceKind.VersionPointer)
+        {
+            request.SetRequestHeader("Cache-Control", "no-cache, no-store, max-age=0");
+            request.SetRequestHeader("Pragma", "no-cache");
+        }
+        await request.SendAsync(async (response, token) =>
+        {
+            receivedBytes = await responseHandler(response, token).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
+        ReportHttpTransfer(new AssetBundleHttpTransferDiagnostic(
+            resourceKind,
+            RedactEndpoint(uri),
+            attempt,
+            request.ResponseCode is { } statusCode ? (int)statusCode : null,
+            receivedBytes,
+            request.Result));
         if (request.Result == NetworkRequestResult.Success) return;
         if (request.Result == NetworkRequestResult.ProtocolError)
             throw new HttpRequestException(request.Error, request.Exception, request.ResponseCode);
@@ -845,16 +963,61 @@ public sealed class AssetBundleManager : IAssetBundleManager
         throw new IOException(request.Error ?? $"HTTP request '{uri}' failed.");
     }
 
+    private void ReportHttpTransfer(AssetBundleHttpTransferDiagnostic diagnostic)
+    {
+        try { _options.HttpTransferObserver?.Invoke(diagnostic); }
+        catch
+        {
+            // Diagnostics must never change update behavior.
+        }
+    }
+
+    private static string RedactEndpoint(Uri uri)
+    {
+        var endpoint = new UriBuilder(uri)
+        {
+            UserName = string.Empty,
+            Password = string.Empty,
+            Query = string.Empty,
+            Fragment = string.Empty
+        }.Uri;
+        return endpoint.GetComponents(
+            UriComponents.SchemeAndServer | UriComponents.Path,
+            UriFormat.UriEscaped);
+    }
+
     private async Task<RuntimeState?> LoadBuiltInStateAsync(CancellationToken cancellationToken)
     {
         if (_builtInRoot is null || !Directory.Exists(_builtInRoot)) return null;
-        var pointer = new[] { LatestFileName, VersionFileName }
+        var metadataPointerPath = new[] { LatestFileName, VersionFileName }
             .Select(file => Path.Combine(_builtInRoot, file))
             .FirstOrDefault(File.Exists);
-        if (pointer is null) return null;
+        if (metadataPointerPath is null) return null;
         var versionBytes = await ReadLimitedFileAsync(
-            pointer, _options.MaximumCatalogSize, cancellationToken).ConfigureAwait(false);
-        var version = AssetBundleCatalogSerializer.DeserializeVersion(versionBytes);
+            metadataPointerPath, _options.MaximumCatalogSize, cancellationToken).ConfigureAwait(false);
+        AssetBundleVersion version;
+        if (TryDeserializeVersion(versionBytes, out version))
+        {
+            // Legacy built-in releases store the complete manifest in latest.json or version.json.
+        }
+        else if (Path.GetFileName(metadataPointerPath)
+                 .Equals(LatestFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            var latest = AssetBundleCatalogSerializer.DeserializeLatestPointer(versionBytes);
+            var pointedVersionRoot = Path.Combine(
+                _builtInRoot, NormalizeVersionSegment(latest.Version));
+            var pointedVersionPath = ResolveInside(pointedVersionRoot, VersionFileName);
+            var pointedVersionBytes = await ReadLimitedFileAsync(
+                pointedVersionPath, _options.MaximumCatalogSize, cancellationToken).ConfigureAwait(false);
+            version = AssetBundleCatalogSerializer.DeserializeVersion(pointedVersionBytes);
+            if (!version.Version.Equals(latest.Version, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    "Asset bundle latest pointer and version metadata versions do not match.");
+        }
+        else
+        {
+            version = AssetBundleCatalogSerializer.DeserializeVersion(versionBytes);
+        }
         ValidatePackage(version.PackageName);
         var versionSegment = NormalizeVersionSegment(version.Version);
         var versionRoot = Path.Combine(_builtInRoot, versionSegment);
@@ -950,10 +1113,8 @@ public sealed class AssetBundleManager : IAssetBundleManager
 
     private static string NormalizeVersionSegment(string version)
     {
-        var normalized = AssetBundleValidation.NormalizeRelativePath(version, "asset bundle version");
-        if (normalized.Contains('/'))
-            throw new InvalidDataException("Asset bundle version must be a single path segment.");
-        return normalized;
+        AssetBundleVersionLabel.ValidatePortable(version, "asset bundle version");
+        return version;
     }
 
     private static string NormalizePrefix(string prefix)
@@ -985,7 +1146,6 @@ public sealed class AssetBundleManager : IAssetBundleManager
         Directory.CreateDirectory(_cacheRoot);
         Directory.CreateDirectory(ObjectsDirectory);
         Directory.CreateDirectory(CatalogsDirectory);
-        Directory.CreateDirectory(StagingDirectory);
     }
 
     private void CleanupStagingFiles()
@@ -996,6 +1156,52 @@ public sealed class AssetBundleManager : IAssetBundleManager
             try { File.Delete(path); }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
+        }
+        DeleteStagingDirectoryIfEmpty();
+    }
+
+    private void DeleteStagingDirectoryIfEmpty()
+    {
+        if (!Directory.Exists(StagingDirectory)) return;
+        try
+        {
+            if (Directory.EnumerateFileSystemEntries(StagingDirectory).Any()) return;
+            Directory.Delete(StagingDirectory);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private async Task<bool> IsPendingActivationAsync(
+        RuntimeState? active,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(PendingPointerPath)) return false;
+        if (active is null)
+        {
+            try { File.Delete(PendingPointerPath); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return false;
+        }
+        try
+        {
+            var bytes = await ReadLimitedFileAsync(
+                PendingPointerPath, _options.MaximumCatalogSize, cancellationToken).ConfigureAwait(false);
+            var pending = AssetBundleCatalogSerializer.DeserializeVersion(bytes);
+            var matches = pending.PackageName.Equals(active.Version.PackageName, StringComparison.Ordinal) &&
+                          pending.Version.Equals(active.Version.Version, StringComparison.Ordinal) &&
+                          pending.CatalogSha256.Equals(
+                              active.Version.CatalogSha256, StringComparison.OrdinalIgnoreCase);
+            if (!matches) File.Delete(PendingPointerPath);
+            return matches;
+        }
+        catch (Exception exception) when (IsRecoverableContentFailure(exception))
+        {
+            try { File.Delete(PendingPointerPath); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return false;
         }
     }
 

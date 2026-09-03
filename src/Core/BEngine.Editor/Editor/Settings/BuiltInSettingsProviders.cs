@@ -1,4 +1,5 @@
 using BEngine.Rendering.Rhi;
+using BEngine.Build;
 using BEngine.Editor.Documents;
 
 namespace BEngine.Editor;
@@ -13,6 +14,9 @@ internal static class BuiltInSettingsProviders
     private static string _scriptingDefineSymbols = string.Empty;
     private static string _scriptingError = string.Empty;
     private static bool _scriptingDirty;
+    private static string _playerBuildProjectPath = string.Empty;
+    private static PlayerBuildSettings? _playerBuildSettings;
+    private static string _playerBuildError = string.Empty;
 
     [SettingsProvider]
     private static SettingsProvider GeneralPreferences() => new("Preferences/General", SettingsScope.User,
@@ -59,7 +63,8 @@ internal static class BuiltInSettingsProviders
 
     [SettingsProvider]
     private static SettingsProvider PlayerProjectSettings() => new("Project/Player", SettingsScope.Project,
-        ["company", "product", "resolution", "公司", "产品", "分辨率"])
+        ["company", "product", "resolution", "platform", "build", "splash", "hot update",
+            "cache", "公司", "产品", "分辨率", "平台", "构建", "热更新"])
     {
         label = EditorLocalization.Tr("Player"),
         guiHandler = _ => DrawPlayerSettings()
@@ -108,19 +113,321 @@ internal static class BuiltInSettingsProviders
     private static void DrawPlayerSettings()
     {
         var value = EditorProjectSettings.current;
-        var changed = false;
+        var projectChanged = false;
+        var buildChanged = false;
+        var build = GetPlayerBuildSettings();
+
+        GUILayout.Label("Identification", EditorStyles.boldLabel);
         var company = EditorGUILayout.TextField(EditorLocalization.Tr("Company Name"), value.CompanyName);
-        if (company != value.CompanyName && !string.IsNullOrWhiteSpace(company)) { value.CompanyName = company; changed = true; }
+        if (company != value.CompanyName && !string.IsNullOrWhiteSpace(company))
+        {
+            value.CompanyName = company;
+            projectChanged = true;
+        }
         var product = EditorGUILayout.TextField(EditorLocalization.Tr("Product Name"), value.ProductName);
-        if (product != value.ProductName && !string.IsNullOrWhiteSpace(product)) { value.ProductName = product; changed = true; }
-        var width = Math.Max(320, EditorGUILayout.IntField(EditorLocalization.Tr("Default Width"), value.DefaultScreenWidth));
-        if (width != value.DefaultScreenWidth) { value.DefaultScreenWidth = width; changed = true; }
-        var height = Math.Max(200, EditorGUILayout.IntField(EditorLocalization.Tr("Default Height"), value.DefaultScreenHeight));
-        if (height != value.DefaultScreenHeight) { value.DefaultScreenHeight = height; changed = true; }
-        var fullscreen = EditorGUILayout.Toggle(EditorLocalization.Tr("Full Screen"), value.FullScreen);
-        if (fullscreen != value.FullScreen) { value.FullScreen = fullscreen; changed = true; }
-        if (changed) EditorProjectSettings.Save();
+        if (product != value.ProductName && !string.IsNullOrWhiteSpace(product))
+        {
+            value.ProductName = product;
+            projectChanged = true;
+        }
+        var buildVersion = EditorGUILayout.TextField("Version", build.BuildVersion);
+        if (!buildVersion.Equals(build.BuildVersion, StringComparison.Ordinal))
+        {
+            build.BuildVersion = buildVersion;
+            buildChanged = true;
+        }
+
+        GUILayout.Space(10);
+        GUILayout.Label("Build Platform", EditorStyles.boldLabel);
+        var platforms = BuildTargetCatalog.Platforms;
+        var platformIndex = Math.Max(0, platforms.ToList().FindIndex(platform =>
+            platform.PlatformId.Equals(build.TargetId, StringComparison.OrdinalIgnoreCase)));
+        var platformLabels = platforms.Select(platform => PlatformLabel(platform.Platform)).ToArray();
+        var nextPlatformIndex = EditorGUILayout.Popup("Platform", platformIndex, platformLabels);
+        if (nextPlatformIndex != platformIndex)
+        {
+            build.TargetId = platforms[nextPlatformIndex].PlatformId;
+            buildChanged = true;
+        }
+        var selectedPlatform = BuildTargetCatalog.GetPlatform(build.TargetId).Platform;
+
+        GUILayout.Space(7);
+        projectChanged |= DrawPlatformPlayerSettings(
+            value, build, selectedPlatform, out var platformBuildChanged);
+        buildChanged |= platformBuildChanged;
+
+        GUILayout.Space(10);
+        GUILayout.Label("Build", EditorStyles.boldLabel);
+        var development = EditorGUILayout.Toggle("Development Build", build.DevelopmentBuild);
+        if (development != build.DevelopmentBuild)
+        {
+            build.DevelopmentBuild = development;
+            buildChanged = true;
+        }
+        var debugSymbols = EditorGUILayout.Toggle("Debug Symbols", build.IncludeDebugSymbols);
+        if (debugSymbols != build.IncludeDebugSymbols)
+        {
+            build.IncludeDebugSymbols = debugSymbols;
+            buildChanged = true;
+        }
+        if (selectedPlatform is BuildTargetPlatform.Windows or BuildTargetPlatform.Linux or
+            BuildTargetPlatform.MacOS)
+        {
+            var selfContained = EditorGUILayout.Toggle("Self Contained Player", build.SelfContained);
+            if (selfContained != build.SelfContained)
+            {
+                build.SelfContained = selfContained;
+                buildChanged = true;
+            }
+        }
+        else if (!build.SelfContained)
+        {
+            build.SelfContained = true;
+            buildChanged = true;
+        }
+        var managedStripping = (PlayerManagedStrippingLevel)EditorGUILayout.EnumPopup(
+            "Managed Stripping", build.ManagedStripping);
+        if (managedStripping != build.ManagedStripping)
+        {
+            build.ManagedStripping = managedStripping;
+            buildChanged = true;
+        }
+
+        GUILayout.Space(10);
+        GUILayout.Label("Splash Screen", EditorStyles.boldLabel);
+        var splashEnabled = EditorGUILayout.Toggle("Show Splash Screen", build.SplashScreenEnabled);
+        if (splashEnabled != build.SplashScreenEnabled)
+        {
+            build.SplashScreenEnabled = splashEnabled;
+            buildChanged = true;
+        }
+        using (new EditorGUI.DisabledScope(!splashEnabled))
+        {
+            var splashImage = EditorGUILayout.TextField("Image (Assets PNG)", build.SplashImage);
+            if (!splashImage.Equals(build.SplashImage, StringComparison.Ordinal))
+            {
+                build.SplashImage = splashImage;
+                buildChanged = true;
+            }
+            var splashColor = EditorGUILayout.TextField("Background", build.SplashBackgroundColor);
+            if (!splashColor.Equals(build.SplashBackgroundColor, StringComparison.Ordinal))
+            {
+                build.SplashBackgroundColor = splashColor;
+                buildChanged = true;
+            }
+            var splashDuration = EditorGUILayout.FloatField(
+                "Minimum Seconds", build.SplashMinimumDurationSeconds);
+            if (!splashDuration.Equals(build.SplashMinimumDurationSeconds))
+            {
+                build.SplashMinimumDurationSeconds = splashDuration;
+                buildChanged = true;
+            }
+        }
+
+        GUILayout.Space(10);
+        GUILayout.Label("Content Delivery", EditorStyles.boldLabel);
+        var hotUpdate = EditorGUILayout.Toggle("C# Hot Update", build.EnableHotUpdate);
+        if (hotUpdate != build.EnableHotUpdate)
+        {
+            build.EnableHotUpdate = hotUpdate;
+            buildChanged = true;
+        }
+        var hotResourceVersion = EditorGUILayout.TextField(
+            "Hot Resource Version", build.HotResourceVersion);
+        if (!hotResourceVersion.Equals(build.HotResourceVersion, StringComparison.Ordinal))
+        {
+            build.HotResourceVersion = hotResourceVersion;
+            buildChanged = true;
+        }
+        var updatePolicy = (PlayerContentUpdatePolicy)EditorGUILayout.EnumPopup(
+            "Startup Update", build.ContentUpdatePolicy);
+        if (updatePolicy != build.ContentUpdatePolicy)
+        {
+            build.ContentUpdatePolicy = updatePolicy;
+            buildChanged = true;
+        }
+        var compressBundles = EditorGUILayout.Toggle("Compress AssetBundles",
+            build.CompressAssetBundles);
+        if (compressBundles != build.CompressAssetBundles)
+        {
+            build.CompressAssetBundles = compressBundles;
+            buildChanged = true;
+        }
+        var cacheDirectory = EditorGUILayout.TextField("Player Cache (Relative)", build.CacheDirectory);
+        if (!cacheDirectory.Equals(build.CacheDirectory, StringComparison.Ordinal))
+        {
+            build.CacheDirectory = cacheDirectory;
+            buildChanged = true;
+        }
+
+        GUILayout.Space(10);
+        GUILayout.Label("Diagnostics", EditorStyles.boldLabel);
+        var writePlayerLog = EditorGUILayout.Toggle("Write Player Log", build.WritePlayerLog);
+        if (writePlayerLog != build.WritePlayerLog)
+        {
+            build.WritePlayerLog = writePlayerLog;
+            buildChanged = true;
+        }
+
+        if (projectChanged) EditorProjectSettings.Save();
+        if (buildChanged) SavePlayerBuildSettings(build);
+        if (_playerBuildError.Length > 0)
+        {
+            GUILayout.Space(8);
+            EditorGUILayout.HelpBox(_playerBuildError, MessageType.Error);
+        }
     }
+
+    private static bool DrawPlatformPlayerSettings(
+        BEngine.ProjectSystem.ProjectSettingsData value,
+        PlayerBuildSettings build,
+        BuildTargetPlatform platform,
+        out bool buildChanged)
+    {
+        var changed = false;
+        buildChanged = false;
+        if (platform is BuildTargetPlatform.Windows or BuildTargetPlatform.Linux or
+            BuildTargetPlatform.MacOS)
+        {
+            GUILayout.Label("Desktop Display", EditorStyles.boldLabel);
+            var width = Math.Max(320, EditorGUILayout.IntField(
+                EditorLocalization.Tr("Default Width"), value.DefaultScreenWidth));
+            if (width != value.DefaultScreenWidth)
+            {
+                value.DefaultScreenWidth = width;
+                changed = true;
+            }
+            var height = Math.Max(200, EditorGUILayout.IntField(
+                EditorLocalization.Tr("Default Height"), value.DefaultScreenHeight));
+            if (height != value.DefaultScreenHeight)
+            {
+                value.DefaultScreenHeight = height;
+                changed = true;
+            }
+            var fullscreen = EditorGUILayout.Toggle(
+                EditorLocalization.Tr("Full Screen"), value.FullScreen);
+            if (fullscreen != value.FullScreen)
+            {
+                value.FullScreen = fullscreen;
+                changed = true;
+            }
+        }
+        else if (platform == BuildTargetPlatform.Web)
+        {
+            GUILayout.Label("Web Canvas", EditorStyles.boldLabel);
+            var width = Math.Max(320, EditorGUILayout.IntField("Canvas Width",
+                value.DefaultScreenWidth));
+            if (width != value.DefaultScreenWidth)
+            {
+                value.DefaultScreenWidth = width;
+                changed = true;
+            }
+            var height = Math.Max(200, EditorGUILayout.IntField("Canvas Height",
+                value.DefaultScreenHeight));
+            if (height != value.DefaultScreenHeight)
+            {
+                value.DefaultScreenHeight = height;
+                changed = true;
+            }
+        }
+        else
+        {
+            if (platform == BuildTargetPlatform.Android)
+            {
+                GUILayout.Label("Android", EditorStyles.boldLabel);
+                var identifier = EditorGUILayout.TextField(
+                    "Application Identifier", build.AndroidApplicationIdentifier);
+                if (!identifier.Equals(build.AndroidApplicationIdentifier,
+                        StringComparison.Ordinal))
+                {
+                    build.AndroidApplicationIdentifier = identifier;
+                    buildChanged = true;
+                }
+                var minimumApi = EditorGUILayout.IntField(
+                    "Minimum API Level", build.AndroidMinimumApiLevel);
+                if (minimumApi != build.AndroidMinimumApiLevel)
+                {
+                    build.AndroidMinimumApiLevel = minimumApi;
+                    buildChanged = true;
+                }
+                var appBundle = EditorGUILayout.Toggle(
+                    "Build App Bundle", build.AndroidBuildAppBundle);
+                if (appBundle != build.AndroidBuildAppBundle)
+                {
+                    build.AndroidBuildAppBundle = appBundle;
+                    buildChanged = true;
+                }
+            }
+            else
+            {
+                GUILayout.Label("iOS", EditorStyles.boldLabel);
+                var identifier = EditorGUILayout.TextField(
+                    "Bundle Identifier", build.IosBundleIdentifier);
+                if (!identifier.Equals(build.IosBundleIdentifier, StringComparison.Ordinal))
+                {
+                    build.IosBundleIdentifier = identifier;
+                    buildChanged = true;
+                }
+                var minimumVersion = EditorGUILayout.TextField(
+                    "Minimum iOS Version", build.IosMinimumVersion);
+                if (!minimumVersion.Equals(build.IosMinimumVersion, StringComparison.Ordinal))
+                {
+                    build.IosMinimumVersion = minimumVersion;
+                    buildChanged = true;
+                }
+            }
+        }
+        return changed;
+    }
+
+    private static PlayerBuildSettings GetPlayerBuildSettings()
+    {
+        var projectPath = EditorApplication.projectPath;
+        if (_playerBuildSettings is not null && _playerBuildProjectPath.Equals(
+                projectPath, StringComparison.OrdinalIgnoreCase))
+            return _playerBuildSettings;
+
+        _playerBuildProjectPath = projectPath;
+        _playerBuildError = string.Empty;
+        if (string.IsNullOrWhiteSpace(projectPath))
+            return _playerBuildSettings = new PlayerBuildSettings
+            {
+                TargetId = BuildTargetCatalog.InferCurrentDesktopPlatformId()
+            };
+        try
+        {
+            return _playerBuildSettings = PlayerBuildSettingsStore.Load(projectPath);
+        }
+        catch (Exception exception)
+        {
+            _playerBuildError = exception.Message;
+            return _playerBuildSettings = new PlayerBuildSettings
+            {
+                TargetId = BuildTargetCatalog.InferCurrentDesktopPlatformId()
+            };
+        }
+    }
+
+    private static void SavePlayerBuildSettings(PlayerBuildSettings settings)
+    {
+        if (string.IsNullOrWhiteSpace(_playerBuildProjectPath)) return;
+        try
+        {
+            PlayerBuildSettingsStore.Save(_playerBuildProjectPath, settings);
+            _playerBuildError = string.Empty;
+        }
+        catch (Exception exception)
+        {
+            _playerBuildError = exception.Message;
+        }
+    }
+
+    private static string PlatformLabel(BuildTargetPlatform platform) => platform switch
+    {
+        BuildTargetPlatform.MacOS => "macOS",
+        BuildTargetPlatform.IOS => "iOS",
+        _ => platform.ToString()
+    };
 
     private static void DrawGraphicsSettings()
     {

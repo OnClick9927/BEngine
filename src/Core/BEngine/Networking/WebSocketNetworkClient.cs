@@ -22,7 +22,7 @@ public sealed class WebSocketNetworkClient : NetworkClientBase
     public string? CloseStatusDescription => _transport.CloseStatusDescription;
     public bool IsConnected => State == WebSocketState.Open;
 
-    public Task ConnectAsync(Uri uri, CancellationToken cancellationToken = default)
+    public BValueTask ConnectAsync(Uri uri, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(uri);
         if (!uri.IsAbsoluteUri || uri.Scheme is not ("ws" or "wss"))
@@ -32,18 +32,18 @@ public sealed class WebSocketNetworkClient : NetworkClientBase
         return RunAsync(token => _transport.ConnectAsync(uri, token), cancellationToken);
     }
 
-    public Task SendTextAsync(string text, CancellationToken cancellationToken = default)
+    public BValueTask SendTextAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         return SendAsync(Encoding.UTF8.GetBytes(text), WebSocketMessageType.Text, cancellationToken);
     }
 
-    public Task SendBinaryAsync(
+    public BValueTask SendBinaryAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default) =>
         SendAsync(data, WebSocketMessageType.Binary, cancellationToken);
 
-    public Task SendAsync(
+    public BValueTask SendAsync(
         ReadOnlyMemory<byte> data,
         WebSocketMessageType messageType,
         CancellationToken cancellationToken = default)
@@ -58,7 +58,7 @@ public sealed class WebSocketNetworkClient : NetworkClientBase
             cancellationToken);
     }
 
-    public async Task<WebSocketMessage> ReceiveAsync(
+    public async BValueTask<WebSocketMessage> ReceiveAsync(
         int maximumMessageSize = 1024 * 1024,
         CancellationToken cancellationToken = default)
     {
@@ -89,13 +89,13 @@ public sealed class WebSocketNetworkClient : NetworkClientBase
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task CloseAsync(
+    public BValueTask CloseAsync(
         WebSocketCloseStatus closeStatus = WebSocketCloseStatus.NormalClosure,
         string? statusDescription = null,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        if (State is WebSocketState.Closed or WebSocketState.Aborted) return Task.CompletedTask;
+        if (State is WebSocketState.Closed or WebSocketState.Aborted) return BValueTask.CompletedTask;
         return RunAsync(
             token => _transport.CloseAsync(closeStatus, statusDescription, token),
             cancellationToken);

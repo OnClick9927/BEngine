@@ -177,9 +177,19 @@ internal sealed class EditorApplicationHarness : IDisposable
 
     public void EnterPlay()
     {
-        EditorApplication.isPlaying = true;
+        LogEntry? failure = null;
+        Debug.MessageLogged += CaptureFailure;
+        try { EditorApplication.isPlaying = true; }
+        finally { Debug.MessageLogged -= CaptureFailure; }
         if (!EditorApplication.isPlaying)
-            throw new InvalidOperationException("The editor did not enter Play Mode.");
+            throw new InvalidOperationException(failure is { } entry
+                ? $"The editor did not enter Play Mode.{Environment.NewLine}{entry.ToDetailedString()}"
+                : "The editor did not enter Play Mode.");
+
+        void CaptureFailure(LogEntry entry)
+        {
+            if (entry.Type == LogType.Error) failure = entry;
+        }
     }
 
     public void ExitPlay()

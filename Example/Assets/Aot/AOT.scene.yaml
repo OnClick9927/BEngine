@@ -1,0 +1,60 @@
+format: BEngine.Scene
+version: 2
+id: a0700100-0000-4000-8000-000000000001
+name: AOT
+gameObjects:
+- id: a0700100-0000-4000-8000-000000000010
+  name: AOT UI
+  active: true
+  tag: Untagged
+  layer: 5
+  isStatic: false
+  transform:
+    id: a0700100-0000-4000-8000-000000000011
+    type: BEngine.Transform
+    localPosition: { x: 0, y: 0 }
+    localRotation: 0
+    localScale: { x: 1, y: 1 }
+    fields: {}
+  components:
+  - id: a0700100-0000-4000-8000-000000000012
+    type: BEngine.UIElements.UIDocument
+    enabled: true
+    fields:
+      atlas: ''
+      interactable: true
+      referenceHeight: 720
+      referenceWidth: 1280
+      scaleMode: ScaleWithScreenSize
+      sortingLayer: 5
+      sortingOrder: 100
+      sourceAsset: Assets/Aot/UI/AOT.uxml
+  - id: a0700100-0000-4000-8000-000000000013
+    type: AOT.AotStartupView
+    enabled: true
+    fields: {}
+- id: a0700100-0000-4000-8000-000000000020
+  name: AOT Camera
+  active: true
+  tag: MainCamera
+  layer: 2
+  isStatic: false
+  transform:
+    id: a0700100-0000-4000-8000-000000000021
+    type: BEngine.Transform
+    localPosition: { x: 0, y: 0 }
+    localRotation: 0
+    localScale: { x: 1, y: 1 }
+    fields: {}
+  components:
+  - id: a0700100-0000-4000-8000-000000000022
+    type: BEngine.Camera2D
+    enabled: true
+    fields:
+      backgroundColor: 0.063,0.086,0.102,1
+      clearMode: Color
+      cullingMask: 18446744073709551614
+      isMain: true
+      priority: 0
+      size: 5
+      viewportRect: 0,0,1,1

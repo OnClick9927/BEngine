@@ -19,9 +19,11 @@ internal static class CatalogValidationTests
         DependenciesMustExistAndRemainAcyclic();
         IdentityAndContentMetadataMustBeUniqueAndValid();
         FileSubAssetIdentityMustResolveToItsOwner();
+        IndependentPayloadEntriesAreVersioned();
         BundleFilesMustBeContentAddressedLeafNames();
         AssetPayloadPathsMustBeCanonicalAndContained();
         VersionCatalogPathsMustBeCanonicalAndContained();
+        VersionLabelsMustBePortableAndCanonical();
     }
 
     private static void ValidCatalogAndVersionAreAccepted()
@@ -87,6 +89,7 @@ internal static class CatalogValidationTests
         TestAssert.Throws<InvalidDataException>(orphan.Validate, "missing owner GUID");
 
         var wrongEntry = CreateCatalog();
+        wrongEntry.SchemaVersion = 3;
         var childWithWrongEntry = CreateFileSubAsset(wrongEntry.Assets[0].Guid,
             wrongEntry.Assets[0].Bundle);
         childWithWrongEntry.Entry = "Assets/__BEngineSubAssets/wrong/2800000.png";
@@ -96,6 +99,28 @@ internal static class CatalogValidationTests
         var wrongBundle = CreateCatalog();
         wrongBundle.Assets.Add(CreateFileSubAsset(wrongBundle.Assets[0].Guid, "main"));
         TestAssert.Throws<InvalidDataException>(wrongBundle.Validate, "same bundle as its owner");
+    }
+
+    private static void IndependentPayloadEntriesAreVersioned()
+    {
+        var current = CreateCatalog();
+        current.Assets[0].Entry = $"objects/{current.Assets[0].Sha256}.bin";
+        current.Validate();
+
+        var legacy = CreateCatalog();
+        legacy.SchemaVersion = 3;
+        legacy.Assets[0].Entry = $"objects/{legacy.Assets[0].Sha256}.bin";
+        TestAssert.Throws<InvalidDataException>(legacy.Validate, "canonical payload path");
+
+        var sharedPayload = CreateCatalog();
+        sharedPayload.Assets[1].Bundle = sharedPayload.Assets[0].Bundle;
+        sharedPayload.Assets[1].Entry = sharedPayload.Assets[0].Entry;
+        sharedPayload.Assets[1].Sha256 = sharedPayload.Assets[0].Sha256;
+        sharedPayload.Assets[1].Size = sharedPayload.Assets[0].Size;
+        sharedPayload.Validate();
+
+        sharedPayload.Assets[1].Size++;
+        TestAssert.Throws<InvalidDataException>(sharedPayload.Validate, "Duplicate asset payload entry");
     }
 
     private static AssetBundleAsset CreateFileSubAsset(Guid ownerGuid, string bundle) => new()
@@ -151,8 +176,26 @@ internal static class CatalogValidationTests
         }
 
         var mismatchedEntry = CreateCatalog();
+        mismatchedEntry.Assets[0].Entry = "objects/config.bin";
+        mismatchedEntry.Validate();
+
+        mismatchedEntry.SchemaVersion = 3;
         mismatchedEntry.Assets[0].Entry = "Assets/Data/other.txt";
         TestAssert.Throws<InvalidDataException>(mismatchedEntry.Validate, "canonical Assets path");
+
+        foreach (var entry in new[]
+                 {
+                     "../outside.bin",
+                     "objects/../outside.bin",
+                     "/outside.bin",
+                     "C:/outside.bin",
+                     "objects//payload.bin"
+                 })
+        {
+            var catalog = CreateCatalog();
+            catalog.Assets[0].Entry = entry;
+            TestAssert.Throws<InvalidDataException>(catalog.Validate, "payload");
+        }
     }
 
     private static void VersionCatalogPathsMustBeCanonicalAndContained()
@@ -172,6 +215,33 @@ internal static class CatalogValidationTests
             var version = CreateVersion();
             version.CatalogFile = catalogFile;
             TestAssert.Throws<InvalidDataException>(version.Validate, "catalog file");
+        }
+    }
+
+    private static void VersionLabelsMustBePortableAndCanonical()
+    {
+        foreach (var label in new[] { "v1", "1.2.3", "managed-code-ab-1" })
+        {
+            var catalog = CreateCatalog();
+            catalog.Version = label;
+            catalog.Validate();
+            var version = CreateVersion();
+            version.Version = label;
+            version.Validate();
+        }
+
+        foreach (var label in new[]
+                 {
+                     "V1", "V2", "Release-2", "con", "con.release", "prn", "aux", "nul", "com1",
+                     "lpt9.cache", "v1.", ".v1", "v1/next", "v1\\next", "v 1", "v1 ", "*"
+                 })
+        {
+            var catalog = CreateCatalog();
+            catalog.Version = label;
+            TestAssert.Throws<InvalidDataException>(catalog.Validate, nameof(catalog.Version));
+            var version = CreateVersion();
+            version.Version = label;
+            TestAssert.Throws<InvalidDataException>(version.Validate, nameof(version.Version));
         }
     }
 

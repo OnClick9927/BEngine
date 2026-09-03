@@ -1,0 +1,14 @@
+format: BEngine.AssetMeta
+version: 1
+guid: 1ab30e2631d4400fb9cf5ddf7f05cf1e
+importer: ShaderImporter
+assetType: Shader
+sourceHash: b3d2ec654e1ec5a52c0c0e30804efb5b5c00aa9e36f38c411abb4b704ba63e35
+importFingerprint: 3da65843b5b2f77bdf55e0fe83644c0060ffed88b6a15d5249a49f720e3c7c62
+settings:
+  strictCompilation: true
+  optimizationLevel: 2
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

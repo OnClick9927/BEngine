@@ -55,14 +55,14 @@ internal static class WebSocketNetworkTests
         public void Enqueue(string data, WebSocketMessageType type, bool endOfMessage) =>
             _frames.Enqueue(new Frame(Encoding.UTF8.GetBytes(data), type, endOfMessage));
 
-        public Task ConnectAsync(Uri uri, CancellationToken cancellationToken)
+        public BValueTask ConnectAsync(Uri uri, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             State = WebSocketState.Open;
-            return Task.CompletedTask;
+            return BValueTask.CompletedTask;
         }
 
-        public Task SendAsync(
+        public BValueTask SendAsync(
             ArraySegment<byte> buffer,
             WebSocketMessageType messageType,
             bool endOfMessage,
@@ -71,10 +71,10 @@ internal static class WebSocketNetworkTests
             cancellationToken.ThrowIfCancellationRequested();
             SentData = buffer.ToArray();
             SentMessageType = messageType;
-            return Task.CompletedTask;
+            return BValueTask.CompletedTask;
         }
 
-        public Task<WebSocketReceiveResult> ReceiveAsync(
+        public BValueTask<WebSocketReceiveResult> ReceiveAsync(
             ArraySegment<byte> buffer,
             CancellationToken cancellationToken)
         {
@@ -83,11 +83,11 @@ internal static class WebSocketNetworkTests
             if (frame.Data.Length > buffer.Count)
                 throw new InvalidOperationException("Scripted frame exceeds the receive buffer.");
             frame.Data.CopyTo(buffer.Array!, buffer.Offset);
-            return Task.FromResult(new WebSocketReceiveResult(
+            return BValueTask<WebSocketReceiveResult>.FromResult(new WebSocketReceiveResult(
                 frame.Data.Length, frame.MessageType, frame.EndOfMessage));
         }
 
-        public Task CloseAsync(
+        public BValueTask CloseAsync(
             WebSocketCloseStatus closeStatus,
             string? statusDescription,
             CancellationToken cancellationToken)
@@ -96,7 +96,7 @@ internal static class WebSocketNetworkTests
             CloseStatus = closeStatus;
             CloseStatusDescription = statusDescription;
             State = WebSocketState.Closed;
-            return Task.CompletedTask;
+            return BValueTask.CompletedTask;
         }
 
         public void Abort() => State = WebSocketState.Aborted;

@@ -27,7 +27,7 @@ internal static class UdpNetworkTests
 
         receiver.Timeout = TimeSpan.FromMilliseconds(50);
         await TestAssert.ThrowsAsync<TimeoutException>(
-            () => receiver.ReceiveAsync(),
+            () => receiver.ReceiveAsync().AsTask(),
             "UDP receive timeout was not reported.").ConfigureAwait(false);
         TestAssert.Equal(NetworkRequestResult.TimedOut, receiver.LastResult,
             "UDP timeout did not update the error status.");

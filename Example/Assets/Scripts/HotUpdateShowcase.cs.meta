@@ -1,0 +1,12 @@
+format: BEngine.AssetMeta
+version: 1
+guid: f0e91e4101904407a22867e9badf6944
+importer: ScriptImporter
+assetType: Script
+sourceHash: 109accc22990a6dade4f4c0b1b9855dac681492a26de75116cdbaa0ea3553a2e
+importFingerprint: e5df7e6e750aa53f40f85705b87238ce666ffd9e2300984fec179a6e7ce3c5f0
+settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

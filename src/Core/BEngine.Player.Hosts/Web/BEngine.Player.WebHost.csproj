@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <Import Project="..\BEngine.Player.Hosts.props" />
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BEngine.Player.WebHost</AssemblyName>
+    <RootNamespace>BEngine.Player.Hosts.Web</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmMainJSPath>wwwroot\main.js</WasmMainJSPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <WasmExtraFilesToDeploy Include="wwwroot\index.html" TargetPath="index.html" />
+    <WasmExtraFilesToDeploy Include="wwwroot\main.js" TargetPath="main.js" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEngineContentRoot)' != '' and '$(BEngineDataDirectoryName)' != ''">
+    <WasmFilesToIncludeInFileSystem Include="$(BEngineContentRoot)\$(BEngineDataDirectoryName)\**\*">
+      <Link>$(BEngineDataDirectoryName)\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </WasmFilesToIncludeInFileSystem>
+  </ItemGroup>
+</Project>

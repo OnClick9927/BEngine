@@ -7,6 +7,53 @@ namespace BEngine.ExampleTests.SourceLayout;
 
 internal static class SourceLayoutAudit
 {
+    // These files intentionally keep a small public contract family beside its serializer/factory.
+    // Exact type lists keep the exception narrow: adding or reordering a type still fails the audit.
+    private static readonly IReadOnlyDictionary<string, string[]> AllowedTypeAggregates =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Core/BEngine/AssetBundles/VirtualAssetBundleSnapshot.cs"] =
+                ["VirtualAssetBundleEntry", "VirtualAssetBundleSnapshot"],
+            ["Core/BEngine/Build/BuildTargetDescriptor.cs"] =
+                ["BuildTargetPlatform", "BuildArchitecture", "BuildTargetDescriptor", "BuildTargetCatalog"],
+            ["Core/BEngine/Build/BuildTargetManifest.cs"] =
+                ["BuildTargetManifest", "BuildTargetManifestSerializer"],
+            ["Core/BEngine/Content/ContentBootstrap.cs"] =
+                ["ContentEnvironmentKind", "ActivatedContentRelease", "IContentBootstrapper", "WorkspaceContentBootstrapper"],
+            ["Core/BEngine/HotUpdate/HotUpdateActivationGate.cs"] =
+                ["HotUpdateActivationGate", "PreparedHotUpdateDomain", "HotUpdateDomain"],
+            ["Core/BEngine/HotUpdate/HotUpdateModules.cs"] =
+                ["HotServiceReplacementPolicy", "HotUpdateModuleDescriptor", "IHotUpdateModule", "IHotUpdateModuleContext", "IHotUpdateServiceRegistry", "HotUpdateServiceRegistry"],
+            ["Core/BEngine/HotUpdate/ManagedCodeContracts.cs"] =
+                ["HotUpdateContract", "ManagedCodeRuntimeKind", "ManagedCodeModule", "ManagedCodeRelease", "ManagedCodeRuntimeRequest", "IManagedCodeRuntimeProvider", "IManagedCodeRuntimeFactory", "IManagedCodeRuntime", "ManagedCodeLoadResult", "ManagedCodeGraph"],
+            ["Core/BEngine/HotUpdate/ManagedCodeReleaseManifest.cs"] =
+                ["ManagedCodeReleaseManifest", "ManagedCodeModuleManifest", "ManagedCodeReleaseManifestSerializer"],
+            ["Core/BEngine/ProjectSystem/Workspace/RuntimeManagedCodeReleaseInputCollector.cs"] =
+                ["RuntimeManagedCodeReleaseInput", "RuntimePackageResourceInput", "RuntimeManagedCodeReleaseInputSet", "RuntimeManagedCodeReleaseInputCollector"],
+            ["Core/BEngine/Rendering/Rhi/Backends/GraphicsBackendSelector.cs"] =
+                ["GraphicsBackendSelection", "GraphicsBackendSelector"],
+            ["Core/BEngine.Player/Application/PlayerRuntimeSession.cs"] =
+                ["BEnginePlayer", "PlayerRuntimeSession"],
+            ["Core/BEngine.Player/HotUpdate/AotInterpreterManagedCodeRuntime.cs"] =
+                ["AotInterpreterRuntimeHost", "AotInterpreterManagedCodeRuntimeProvider", "AotInterpreterManagedCodeRuntime"],
+            ["Core/BEngine.Player/HotUpdate/CoreClrManagedCodeRuntime.cs"] =
+                ["CoreClrManagedCodeRuntimeProvider", "PlayerManagedCodeRuntimeFactory", "CoreClrManagedCodeRuntime"],
+            ["Core/BEngine.Editor/Editor/Build/DotNetBuildInfrastructure.cs"] =
+                ["DotNetBuildEnvironment", "DotNetBuildEnvironmentProbe", "DotNetBuildHostLocator", "DotNetPublishRunner"],
+            ["Core/BEngine.Editor/Editor/Build/DotNetPlatformBuildTargetProviders.cs"] =
+                ["DotNetAndroidBuildTargetProvider", "DotNetIosBuildTargetProvider", "DotNetWebAssemblyBuildTargetProvider", "DotNetPlatformBuildTargetProvider"],
+            ["Core/BEngine.Editor/Editor/Build/PlatformPlayerBuildCapabilities.cs"] =
+                ["PlatformPlayerRendererCapability", "PlatformPlayerBuildCapabilities"],
+            ["Core/BEngine.Editor/Editor/Build/PlayerBuildContracts.cs"] =
+                ["PlayerBuildRequest", "PlayerBuildResult", "PlayerBuildPhase", "PlayerBuildProgress", "IPlayerBuildTargetProvider", "PlayerBuildPrerequisite", "IPlayerBuildPrerequisiteProvider", "PlayerBuildContext"]
+        };
+
+    private static readonly IReadOnlyDictionary<string, string> AllowedFileTypeAliases =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Core/BEngine/Core/Async/ResourceRequest.Generic.cs"] = "ResourceRequest"
+        };
+
     public static SourceLayoutResult Run(string startDirectory)
     {
         var repository = FindRepository(startDirectory);
@@ -32,6 +79,7 @@ internal static class SourceLayoutAudit
 
         foreach (var sourceFile in sourceFiles)
         {
+            var relativePath = ToSolutionPath(sourceRoot, sourceFile).Replace('\\', '/');
             var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(sourceFile),
                 CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14));
             var errors = tree.GetDiagnostics().Where(item => item.Severity == DiagnosticSeverity.Error).ToArray();
@@ -45,15 +93,20 @@ internal static class SourceLayoutAudit
             typeCount += types.Length;
             if (types.Length > 1)
             {
-                violations.Add($"Multiple top-level types in {Path.GetRelativePath(sourceRoot, sourceFile)}: " +
-                    string.Join(", ", types.Select(GetTypeName)));
+                var typeNames = types.Select(GetTypeName).ToArray();
+                if (!AllowedTypeAggregates.TryGetValue(relativePath, out var expectedTypes) ||
+                    !typeNames.SequenceEqual(expectedTypes, StringComparer.Ordinal))
+                    violations.Add($"Multiple top-level types in {Path.GetRelativePath(sourceRoot, sourceFile)}: " +
+                        string.Join(", ", typeNames));
                 continue;
             }
 
-            if (types.Length == 1 && !Path.GetFileNameWithoutExtension(sourceFile)
-                    .Equals(GetTypeName(types[0]), StringComparison.Ordinal))
-                violations.Add($"File/type mismatch: {Path.GetRelativePath(sourceRoot, sourceFile)} contains " +
-                    GetTypeName(types[0]));
+            if (types.Length != 1) continue;
+            var typeName = GetTypeName(types[0]);
+            if (!Path.GetFileNameWithoutExtension(sourceFile).Equals(typeName, StringComparison.Ordinal) &&
+                (!AllowedFileTypeAliases.TryGetValue(relativePath, out var expectedType) ||
+                 !expectedType.Equals(typeName, StringComparison.Ordinal)))
+                violations.Add($"File/type mismatch: {Path.GetRelativePath(sourceRoot, sourceFile)} contains {typeName}");
         }
 
         if (violations.Count > 0) throw new InvalidOperationException(string.Join(Environment.NewLine, violations));

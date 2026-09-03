@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BEngine.Serialization;
 
 namespace BEngine.AssetBundles;
 
@@ -16,22 +17,34 @@ public static class AssetBundleCatalogSerializer
         NumberHandling = JsonNumberHandling.Strict,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
+    private static readonly BEngineRuntimeJsonSerializerContext JsonContext = new(Options);
 
     public static byte[] Serialize(AssetBundleCatalog catalog) => SerializeCatalog(catalog);
     public static byte[] Serialize(AssetBundleVersion version) => SerializeVersion(version);
+    public static byte[] Serialize(AssetBundleLatestPointer pointer) => SerializeLatestPointer(pointer);
 
     public static byte[] SerializeCatalog(AssetBundleCatalog catalog)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         catalog.Validate();
-        return JsonSerializer.SerializeToUtf8Bytes(Canonicalize(catalog), Options);
+        return JsonSerializer.SerializeToUtf8Bytes(
+            Canonicalize(catalog), JsonContext.AssetBundleCatalog);
     }
 
     public static byte[] SerializeVersion(AssetBundleVersion version)
     {
         ArgumentNullException.ThrowIfNull(version);
         version.Validate();
-        return JsonSerializer.SerializeToUtf8Bytes(Canonicalize(version), Options);
+        return JsonSerializer.SerializeToUtf8Bytes(
+            Canonicalize(version), JsonContext.AssetBundleVersion);
+    }
+
+    public static byte[] SerializeLatestPointer(AssetBundleLatestPointer pointer)
+    {
+        ArgumentNullException.ThrowIfNull(pointer);
+        pointer.Validate();
+        return JsonSerializer.SerializeToUtf8Bytes(
+            Canonicalize(pointer), JsonContext.AssetBundleLatestPointer);
     }
 
     public static AssetBundleCatalog DeserializeCatalog(string json) =>
@@ -40,7 +53,7 @@ public static class AssetBundleCatalogSerializer
     public static AssetBundleCatalog DeserializeCatalog(ReadOnlySpan<byte> json)
     {
         RejectDuplicateProperties(json);
-        var catalog = JsonSerializer.Deserialize<AssetBundleCatalog>(json, Options) ??
+        var catalog = JsonSerializer.Deserialize(json, JsonContext.AssetBundleCatalog) ??
                       throw new InvalidDataException("Asset bundle catalog JSON is empty.");
         catalog.Validate();
         return catalog;
@@ -52,10 +65,23 @@ public static class AssetBundleCatalogSerializer
     public static AssetBundleVersion DeserializeVersion(ReadOnlySpan<byte> json)
     {
         RejectDuplicateProperties(json);
-        var version = JsonSerializer.Deserialize<AssetBundleVersion>(json, Options) ??
+        var version = JsonSerializer.Deserialize(json, JsonContext.AssetBundleVersion) ??
                       throw new InvalidDataException("Asset bundle version JSON is empty.");
         version.Validate();
         return version;
+    }
+
+    public static AssetBundleLatestPointer DeserializeLatestPointer(string json) =>
+        DeserializeLatestPointer(Encoding.UTF8.GetBytes(
+            json ?? throw new ArgumentNullException(nameof(json))));
+
+    public static AssetBundleLatestPointer DeserializeLatestPointer(ReadOnlySpan<byte> json)
+    {
+        RejectDuplicateProperties(json);
+        var pointer = JsonSerializer.Deserialize(json, JsonContext.AssetBundleLatestPointer) ??
+                      throw new InvalidDataException("Asset bundle latest pointer JSON is empty.");
+        pointer.Validate();
+        return pointer;
     }
 
     public static string ComputeSha256(ReadOnlySpan<byte> data) =>
@@ -128,6 +154,11 @@ public static class AssetBundleCatalogSerializer
         CatalogFile = source.CatalogFile,
         CatalogSha256 = source.CatalogSha256.ToLowerInvariant(),
         CatalogSize = source.CatalogSize
+    };
+
+    private static AssetBundleLatestPointer Canonicalize(AssetBundleLatestPointer source) => new()
+    {
+        Version = source.Version
     };
 
     private static void RejectDuplicateProperties(ReadOnlySpan<byte> json)

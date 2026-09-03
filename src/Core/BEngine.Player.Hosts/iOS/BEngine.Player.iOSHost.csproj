@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\BEngine.Player.Hosts.props" />
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BEngine.Player.iOSHost</AssemblyName>
+    <RootNamespace>BEngine.Player.Hosts.iOS</RootNamespace>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifier>ios-arm64</RuntimeIdentifier>
+    <MtouchInterpreter>BEngine.Player.iOSHost</MtouchInterpreter>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(BEngineContentRoot)' != '' and '$(BEngineDataDirectoryName)' != ''">
+    <BundleResource Include="$(BEngineContentRoot)\$(BEngineDataDirectoryName)\**\*">
+      <LogicalName>BEnginePayload/$(BEngineDataDirectoryName)/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </BundleResource>
+  </ItemGroup>
+</Project>

@@ -44,7 +44,20 @@ internal sealed class LoadedAssetBundle : IDisposable
         try
         {
             archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
-            var expected = assets.ToDictionary(asset => asset.Entry, StringComparer.OrdinalIgnoreCase);
+            var expected = new Dictionary<string, AssetBundleAsset>(StringComparer.OrdinalIgnoreCase);
+            foreach (var asset in assets)
+            {
+                if (expected.TryGetValue(asset.Entry, out var existing))
+                {
+                    if (!asset.Entry.Equals(existing.Entry, StringComparison.Ordinal) ||
+                        !asset.Sha256.Equals(existing.Sha256, StringComparison.OrdinalIgnoreCase) ||
+                        asset.Size != existing.Size)
+                        throw new InvalidDataException(
+                            $"Asset bundle entry '{asset.Entry}' maps to conflicting catalog payloads.");
+                    continue;
+                }
+                expected.Add(asset.Entry, asset);
+            }
             var entries = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
             foreach (var entry in archive.Entries)
             {

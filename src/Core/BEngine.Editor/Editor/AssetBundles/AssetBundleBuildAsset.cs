@@ -7,7 +7,8 @@ internal sealed class AssetBundleBuildAsset
     internal required long LocalIdentifier { get; init; }
     internal required string Address { get; init; }
     internal required string Entry { get; init; }
-    internal required string ArtifactPath { get; init; }
+    internal string? ArtifactPath { get; init; }
+    internal byte[]? Content { get; init; }
     internal required string AssetType { get; init; }
     internal required string Importer { get; init; }
     internal required IReadOnlyDictionary<string, string> ImporterSettings { get; init; }

@@ -2,6 +2,7 @@ using BEngine.Rendering;
 using BEngine.Rendering.Rhi;
 using BEngine.Rendering.Rhi.OpenGL;
 using BEngine.Rendering.Rhi.Vulkan;
+using BEngine.Build;
 using BEngine.ProjectSystem;
 using BEngine.Serialization;
 using BEngine.Documents;
@@ -18,12 +19,15 @@ namespace BEngine.Player;
 internal sealed class PlayerApplication : IDisposable
 {
     private readonly IWindow _window;
-    private readonly ISceneRuntimeFactory _sceneRuntimeFactory;
-    private readonly IRuntimeSceneManager _sceneManager;
+    private ISceneRuntimeFactory _sceneRuntimeFactory;
+    private IRuntimeSceneManager _sceneManager;
     private readonly List<SceneRuntime> _runtimes = [];
     private Scene _scene = null!;
     private readonly bool _uiElementsEnabled;
     private readonly GraphicsBackend _preferredBackend;
+    private readonly BuildTargetManifest _buildTarget;
+    private readonly PlayerAssetBundleBootstrap? _assetBundles;
+    private readonly PlayerStagedRuntimeCoordinator? _stagedRuntime;
     private GL? _gl;
     private EngineRenderer? _renderer;
     private PortableSceneRenderer? _portableRenderer;
@@ -35,7 +39,10 @@ internal sealed class PlayerApplication : IDisposable
     private bool? _appliedCursorVisible;
     private CursorLockMode? _appliedCursorLockState;
     private bool _runtimeStarted;
+    private bool _isAotStage;
+    private bool _transitioning;
     private ServiceProvider? _ownedServices;
+    private Action? _windowReady;
     private bool _disposed;
 
     public PlayerApplication(string projectPath) : this(CreateStandaloneServices(projectPath)) { }
@@ -46,28 +53,53 @@ internal sealed class PlayerApplication : IDisposable
         IServiceProvider services,
         ISceneRuntimeFactory sceneRuntimeFactory,
         IRuntimeSceneManager sceneManager,
-        PlayerAssetBundleBootstrap? assetBundles = null)
+        PlayerAssetBundleBootstrap? assetBundles = null,
+        PlayerHotUpdateSession? hotUpdate = null,
+        bool initializeContent = true,
+        string? startupScene = null,
+        bool sceneAlreadyLoaded = false,
+        bool isAotStage = false,
+        PlayerStagedRuntimeCoordinator? stagedRuntime = null,
+        PlayerBuiltInResourceProvider? packagedResources = null)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(services);
         _sceneRuntimeFactory = sceneRuntimeFactory ?? throw new ArgumentNullException(nameof(sceneRuntimeFactory));
         _sceneManager = sceneManager ?? throw new ArgumentNullException(nameof(sceneManager));
-        PlayerAssetEnvironment.Initialize(workspace);
+        _assetBundles = assetBundles;
+        _stagedRuntime = stagedRuntime;
+        _isAotStage = isAotStage;
+        if (stagedRuntime is null)
+            PlayerAssetEnvironment.Initialize(workspace, packagedResources);
         Directory.SetCurrentDirectory(workspace.RootPath);
-        RegisterCoreResourceRoot();
         _uiElementsEnabled = true;
         _preferredBackend = GraphicsBackendDefaults.Parse(projectSettings.GraphicsBackend);
+        _buildTarget = BuildTargetManifestSerializer.LoadCurrent();
         Application.companyName = projectSettings.CompanyName;
         Application.productName = projectSettings.ProductName;
         Application.isEditor = false;
         Application.isPlaying = true;
         GraphicsBackendSettings.PreferredBackend = _preferredBackend;
         Time.fixedDeltaTime = Fix64.Parse(workspace.Project.FixedDeltaTime);
-        assetBundles?.InitializeAsync().ConfigureAwait(false).GetAwaiter().GetResult();
-        _sceneManager.SceneLoaded += OnSceneLoaded;
-        _sceneManager.SceneUnloaded += OnSceneUnloaded;
-        _sceneManager.ActiveSceneChanged += OnActiveSceneChanged;
-        _sceneManager.LoadScene(workspace.StartupScenePath, LoadSceneMode.Single);
+        try
+        {
+            if (initializeContent)
+                assetBundles?.InitializeAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+            hotUpdate?.Activate(services);
+            AttachSceneManager();
+            var requestedScene = startupScene ?? workspace.Project.StartupScene;
+            if (!sceneAlreadyLoaded)
+                _sceneManager.LoadScene(requestedScene, LoadSceneMode.Single);
+            else
+                foreach (var loaded in _sceneManager.LoadedScenes.ToArray()) OnSceneLoaded(loaded, LoadSceneMode.Single);
+            if (!_isAotStage)
+                PlayerStartupDiagnostics.Phase("06_SCENE_LOADED", $"scene={requestedScene}");
+        }
+        catch (Exception exception)
+        {
+            assetBundles?.RollbackAfterStartupFailure(exception);
+            throw;
+        }
 
         var options = WindowOptions.Default;
         options.Title = workspace.Project.Window.Title;
@@ -84,6 +116,21 @@ internal sealed class PlayerApplication : IDisposable
         _window.FocusChanged += Application.SetFocus;
     }
 
+    internal PlayerApplication(PlayerStagedRuntimeCoordinator stagedRuntime)
+        : this(
+            stagedRuntime.Workspace,
+            stagedRuntime.ProjectSettings,
+            stagedRuntime.AotStage.Services,
+            stagedRuntime.AotStage.SceneRuntimeFactory,
+            stagedRuntime.AotStage.SceneManager,
+            stagedRuntime.UpdateBootstrap,
+            hotUpdate: null,
+            initializeContent: false,
+            startupScene: stagedRuntime.AotStage.ScenePath,
+            sceneAlreadyLoaded: true,
+            isAotStage: true,
+            stagedRuntime: stagedRuntime) { }
+
     private PlayerApplication((ProjectWorkspace Workspace, ServiceProvider Services) startup)
         : this(
             startup.Workspace,
@@ -91,7 +138,8 @@ internal sealed class PlayerApplication : IDisposable
             startup.Services,
             startup.Services.GetRequiredService<ISceneRuntimeFactory>(),
             startup.Services.GetRequiredService<IRuntimeSceneManager>(),
-            startup.Services.GetService<PlayerAssetBundleBootstrap>()) =>
+            startup.Services.GetService<PlayerAssetBundleBootstrap>(),
+            startup.Services.GetService<PlayerHotUpdateSession>()) =>
         _ownedServices = startup.Services;
 
     private static (ProjectWorkspace Workspace, ServiceProvider Services) CreateStandaloneServices(
@@ -106,38 +154,27 @@ internal sealed class PlayerApplication : IDisposable
         return (provider.GetRequiredService<ProjectWorkspace>(), provider);
     }
 
-    private static void RegisterCoreResourceRoot()
-    {
-        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
-        {
-            for (var directory = new DirectoryInfo(Path.GetFullPath(start)); directory is not null;
-                 directory = directory.Parent)
-            {
-                var coreRoot = Path.Combine(directory.FullName, "src", "Core");
-                if (!Directory.Exists(Path.Combine(coreRoot, "Resources"))) continue;
-                Resources.RegisterResourceRoot(coreRoot);
-                return;
-            }
-        }
-    }
-
     public void Run() => _window.Run();
+
+    internal void Run(Action windowReady)
+    {
+        _windowReady = windowReady ?? throw new ArgumentNullException(nameof(windowReady));
+        _window.Run();
+    }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _sceneManager.SceneLoaded -= OnSceneLoaded;
-        _sceneManager.SceneUnloaded -= OnSceneUnloaded;
-        _sceneManager.ActiveSceneChanged -= OnActiveSceneChanged;
+        DetachSceneManager();
         StopAllRuntimes();
         _portableRenderer?.Dispose();
         _presentationDevice = null;
         _renderer?.Dispose();
         _input?.Dispose();
         _window.Dispose();
-        foreach (var scene in _sceneManager.LoadedScenes.ToArray())
-            _sceneManager.UnregisterScene(scene, disposeScene: true);
+        DisposeLoadedScenes();
+        _stagedRuntime?.Dispose();
         var ownedServices = _ownedServices;
         _ownedServices = null;
         ownedServices?.Dispose();
@@ -147,25 +184,68 @@ internal sealed class PlayerApplication : IDisposable
     private void OnLoad()
     {
         WindowIcon.Apply(_window);
-        if (_preferredBackend == GraphicsBackend.Vulkan)
+        var failures = new List<string>();
+        foreach (var backend in GraphicsBackendSelector.GetCandidates(_buildTarget, _preferredBackend))
         {
             try
             {
-                CreateVulkanRenderer();
+                switch (backend)
+                {
+                    case GraphicsBackend.Vulkan:
+                        CreateVulkanRenderer();
+                        break;
+                    case GraphicsBackend.OpenGL:
+                        CreateOpenGlRenderer();
+                        break;
+                    default:
+                        failures.Add($"{GraphicsBackendCatalog.Get(backend).DisplayName}: " +
+                                     "no Player provider is installed");
+                        continue;
+                }
+                break;
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"Vulkan player initialization failed; falling back to OpenGL: {exception.Message}");
+                failures.Add($"{backend}: {exception.Message}");
                 _portableRenderer?.Dispose();
                 _portableRenderer = null;
                 _presentationDevice = null;
+                _renderer?.Dispose();
+                _renderer = null;
             }
         }
-        if (_portableRenderer is null) CreateOpenGlRenderer();
+        if (_renderer is null && _portableRenderer is null)
+            throw new PlatformNotSupportedException(
+                $"No renderer could start for '{_buildTarget.TargetId}': {string.Join("; ", failures)}");
+        if (failures.Count != 0)
+            Debug.LogWarning("Graphics backend fallback: " + string.Join("; ", failures));
         Debug.Log($"Active graphics API: {SystemInfo.graphicsDeviceType} ({SystemInfo.graphicsDeviceName})");
         InitializeInput();
         _runtimeStarted = true;
-        foreach (var runtime in _runtimes.ToArray()) runtime.Start();
+        try
+        {
+            foreach (var runtime in _runtimes.ToArray()) runtime.Start();
+            if (_isAotStage)
+            {
+                PlayerStartupDiagnostics.Phase("03_AOT_SCENE_STARTED",
+                    $"graphics={SystemInfo.graphicsDeviceType};scene={_scene.path}");
+                _stagedRuntime!.Flow.Start();
+            }
+            else
+            {
+                _assetBundles?.CommitStartup();
+                PlayerStartupDiagnostics.Phase("07_GAME_STARTED",
+                    $"graphics={SystemInfo.graphicsDeviceType};scene={_scene.path}");
+            }
+            Interlocked.Exchange(ref _windowReady, null)?.Invoke();
+        }
+        catch (Exception exception)
+        {
+            try { StopAllRuntimes(); }
+            catch (Exception stopFailure) { PlayerStartupDiagnostics.Failure("GAME_STOP", stopFailure); }
+            _assetBundles?.RollbackAfterStartupFailure(exception);
+            throw;
+        }
     }
 
     private void CreateVulkanRenderer()
@@ -232,11 +312,17 @@ internal sealed class PlayerApplication : IDisposable
     {
         try
         {
+            if (_isAotStage) _stagedRuntime!.Flow.Pump();
             ApplyCursorState();
             PollMouseInput();
             PollGamepadInput();
             if (!Application.isFocused && !Application.runInBackground) return;
             foreach (var runtime in _runtimes.ToArray()) runtime.Tick((Fix64)deltaSeconds);
+            if (_isAotStage)
+            {
+                _stagedRuntime!.Flow.Pump();
+                TryEnterGame();
+            }
         }
         finally { Input.EndFrame(); }
     }
@@ -296,6 +382,68 @@ internal sealed class PlayerApplication : IDisposable
     {
         for (var index = _runtimes.Count - 1; index >= 0; index--) _runtimes[index].Stop();
         _runtimeStarted = false;
+    }
+
+    private void TryEnterGame()
+    {
+        if (_transitioning || !_stagedRuntime!.Flow.EnterGameRequested) return;
+        _transitioning = true;
+        PlayerApplicationStage next;
+        try { next = _stagedRuntime.CreateGameStage(); }
+        catch (Exception exception)
+        {
+            PlayerStartupDiagnostics.Failure("HOTUPDATE_STAGE", exception);
+            _stagedRuntime.Flow.ReportTransitionFailure(exception);
+            _transitioning = false;
+            return;
+        }
+
+        try
+        {
+            StopAllRuntimes();
+            DetachSceneManager();
+            DisposeLoadedScenes();
+            _runtimes.Clear();
+            _sceneRuntimeFactory = next.SceneRuntimeFactory;
+            _sceneManager = next.SceneManager;
+            AttachSceneManager();
+            foreach (var loaded in _sceneManager.LoadedScenes.ToArray())
+                OnSceneLoaded(loaded, LoadSceneMode.Single);
+            _runtimeStarted = true;
+            foreach (var runtime in _runtimes.ToArray()) runtime.Start();
+            _isAotStage = false;
+            _assetBundles?.CommitStartup();
+            _stagedRuntime.CompleteTransition();
+            PlayerStartupDiagnostics.Phase("06_SCENE_LOADED", $"scene={next.ScenePath}");
+            PlayerStartupDiagnostics.Phase("07_GAME_STARTED",
+                $"graphics={SystemInfo.graphicsDeviceType};scene={_scene.path}");
+        }
+        catch (Exception exception)
+        {
+            _assetBundles?.RollbackAfterStartupFailure(exception);
+            throw;
+        }
+        finally { _transitioning = false; }
+    }
+
+    private void AttachSceneManager()
+    {
+        _sceneManager.SceneLoaded += OnSceneLoaded;
+        _sceneManager.SceneUnloaded += OnSceneUnloaded;
+        _sceneManager.ActiveSceneChanged += OnActiveSceneChanged;
+    }
+
+    private void DetachSceneManager()
+    {
+        _sceneManager.SceneLoaded -= OnSceneLoaded;
+        _sceneManager.SceneUnloaded -= OnSceneUnloaded;
+        _sceneManager.ActiveSceneChanged -= OnActiveSceneChanged;
+    }
+
+    private void DisposeLoadedScenes()
+    {
+        foreach (var scene in _sceneManager.LoadedScenes.ToArray())
+            _sceneManager.UnregisterScene(scene, disposeScene: true);
     }
 
     private void OnKeyDown(IKeyboard _, Key key, int __)

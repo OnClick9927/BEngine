@@ -29,6 +29,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private readonly bool _ownsProjectDependencies;
     private readonly ISceneRuntimeFactory _sceneRuntimeFactory;
     private readonly IRuntimeSceneManager _runtimeSceneManager;
+    private IRuntimeSceneManager? _playRuntimeSceneManager;
     private readonly IEditorTaskScheduler _tasks;
     private readonly bool _ownsTaskScheduler;
     private readonly ProjectAssetDatabase _assets;
@@ -85,6 +86,8 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     private bool _dirty;
     private bool _mainSceneDirty;
     private EditorPlayModeSession? _playModeSession;
+    private EditorVirtualContentBootstrapper? _playContent;
+    private EditorHotUpdateSession? _playHotUpdate;
     private bool _scriptCompilationFailed;
     private bool _consoleClearedForPackageReload;
     private int _errorPauseRequested;
@@ -166,6 +169,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         EditorLogStore.Initialize();
         var projectPath = Path.GetFullPath(options.ProjectPath);
         var initialWorkspace = workspace ?? ProjectWorkspace.Open(projectPath);
+        if (workspace is null) ProjectWorkspaceFactory.EnsureRequiredAotInvariants(initialWorkspace);
         ProjectRuntimeSettings.LoadAndApply(initialWorkspace);
         var openEditorStatusOnStart = options.OpenEditorStatusOnStart;
         var openUiBuilderOnStart = options.OpenUiBuilderOnStart;
@@ -303,6 +307,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (_disposed) return;
         if (_playing || _playModeSession is not null)
             ExitPlayMode(raiseStateEvents: false, processDeferredCompilation: false);
+        DisposePlayModeContent();
         CloseTransientMenus();
         _disposed = true;
         SaveLastLayout();
@@ -1503,6 +1508,23 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         InvalidateProjectWindows();
     }
 
+    private IRuntimeSceneManager ActiveRuntimeSceneManager =>
+        _playRuntimeSceneManager ?? _runtimeSceneManager;
+
+    private void AttachRuntimeSceneManager(IRuntimeSceneManager sceneManager)
+    {
+        sceneManager.SceneLoaded += OnRuntimeSceneLoaded;
+        sceneManager.SceneUnloaded += OnRuntimeSceneUnloaded;
+        sceneManager.ActiveSceneChanged += OnRuntimeActiveSceneChanged;
+    }
+
+    private void DetachRuntimeSceneManager(IRuntimeSceneManager sceneManager)
+    {
+        sceneManager.SceneLoaded -= OnRuntimeSceneLoaded;
+        sceneManager.SceneUnloaded -= OnRuntimeSceneUnloaded;
+        sceneManager.ActiveSceneChanged -= OnRuntimeActiveSceneChanged;
+    }
+
     private void OnRuntimeSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         if (!_playing) return;
@@ -2577,8 +2599,19 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         EditorPlayModeSession? session = null;
         try
         {
+            _playContent = EditorVirtualContentBootstrapper.Create(_workspace, _assets);
+            _ = _playContent.PrepareAsync().AsTask()
+                .ConfigureAwait(false).GetAwaiter().GetResult();
+            _playHotUpdate = EditorHotUpdateSession.CreateAsync(
+                    _workspace, _playContent.AssetBundles)
+                .AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+            if (_playHotUpdate is not null)
+            {
+                _playRuntimeSceneManager = _playHotUpdate.Services.GetRequiredService<IRuntimeSceneManager>();
+                AttachRuntimeSceneManager(_playRuntimeSceneManager);
+            }
             session = EditorPlayModeSession.Create(
-                _services,
+                _playHotUpdate?.Services ?? _services,
                 _openScenes,
                 _scene,
                 _scenePath,
@@ -2606,18 +2639,19 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             Application.isPlaying = true;
 
             var playScenes = LoadedScenes().ToArray();
+            var runtimeSceneManager = ActiveRuntimeSceneManager;
             _registeringPlayModeScenes = true;
             try
             {
                 foreach (var scene in playScenes)
-                    _runtimeSceneManager.RegisterScene(scene);
+                    runtimeSceneManager.RegisterScene(scene);
             }
             finally { _registeringPlayModeScenes = false; }
-            _runtimeSceneManager.SetActiveScene(_scene);
+            runtimeSceneManager.SetActiveScene(_scene);
             session.InvokeAfterDeserializeCallbacks();
             foreach (var scene in playScenes)
             {
-                if (!scene.isCreated || !_runtimeSceneManager.LoadedScenes.Contains(scene)) continue;
+                if (!scene.isCreated || !runtimeSceneManager.LoadedScenes.Contains(scene)) continue;
                 StartRuntime(scene);
             }
             FocusGameViewIfOpen();
@@ -2625,24 +2659,34 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
         catch (Exception exception)
         {
-            if (session is not null)
+            Exception failure = exception;
+            try
             {
-                _exitingPlayMode = true;
-                try { RestoreEditModeSession(session); }
-                finally { _exitingPlayMode = false; }
+                if (session is not null)
+                {
+                    _exitingPlayMode = true;
+                    try { RestoreEditModeSession(session); }
+                    finally { _exitingPlayMode = false; }
+                }
+                else
+                {
+                    Undo.Restore(undoHistory);
+                    ComponentClipboard.Restore(componentClipboard);
+                    EditorUtility.RestoreDirtyState(dirtyState);
+                    runtimeState.Restore();
+                    _copiedGameObject = copiedGameObject;
+                    _playing = false;
+                    _paused = false;
+                    Application.isPlaying = false;
+                }
             }
-            else
+            catch (Exception restoreFailure)
             {
-                Undo.Restore(undoHistory);
-                ComponentClipboard.Restore(componentClipboard);
-                EditorUtility.RestoreDirtyState(dirtyState);
-                runtimeState.Restore();
-                _copiedGameObject = copiedGameObject;
-                _playing = false;
-                _paused = false;
-                Application.isPlaying = false;
+                failure = new AggregateException("Enter Play Mode and edit-state restoration failed.",
+                    exception, restoreFailure);
             }
-            EditorFeatureGuard.Report("Enter Play Mode", exception);
+            finally { DisposePlayModeContent(); }
+            EditorFeatureGuard.Report("Enter Play Mode", failure);
             EditorApplication.RaisePlayModeStateChanged(PlayModeStateChange.EnteredEditMode);
         }
     }
@@ -2679,9 +2723,25 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         }
         finally
         {
+            DisposePlayModeContent();
             _exitingPlayMode = false;
             if (_closePendingAfterPlayModeTransition) CompleteClose();
         }
+    }
+
+    private void DisposePlayModeContent()
+    {
+        var playRuntimeSceneManager = _playRuntimeSceneManager;
+        _playRuntimeSceneManager = null;
+        if (playRuntimeSceneManager is not null) DetachRuntimeSceneManager(playRuntimeSceneManager);
+        var hotUpdate = _playHotUpdate;
+        _playHotUpdate = null;
+        var content = _playContent;
+        _playContent = null;
+        if (hotUpdate is not null)
+            EditorFeatureGuard.Invoke("Dispose Editor HotUpdate domain", hotUpdate.Dispose);
+        if (content is not null)
+            EditorFeatureGuard.Invoke("Dispose Editor virtual AssetBundles", content.Dispose);
     }
 
     private void ApplyPlayModeSession(EditorPlayModeSession session)
@@ -2709,6 +2769,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private void RestoreEditModeSession(EditorPlayModeSession session)
     {
+        var runtimeSceneManager = ActiveRuntimeSceneManager;
         var editScenes = session.EditOpenScenes.Select(item => item.Scene)
             .Append(session.EditScene)
             .Concat(session.EditMainScene is null ? [] : [session.EditMainScene])
@@ -2716,7 +2777,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             .ToArray();
         foreach (var scene in _openScenes.Select(item => item.Scene)
                      .Append(_scene)
-                     .Concat(_runtimeSceneManager.LoadedScenes)
+                     .Concat(runtimeSceneManager.LoadedScenes)
                      .Where(scene => !editScenes.Any(editScene => ReferenceEquals(editScene, scene))))
             session.RuntimeScenes.Add(scene);
 
@@ -2727,7 +2788,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
             while (true)
             {
                 var runtimeScenes = session.RuntimeScenes
-                    .Concat(_runtimeSceneManager.LoadedScenes)
+                    .Concat(runtimeSceneManager.LoadedScenes)
                     .Where(runtimeScene =>
                         !editScenes.Any(editScene => ReferenceEquals(editScene, runtimeScene)) &&
                         runtimeScene.isCreated && disposedRuntimeScenes.Add(runtimeScene))
@@ -2737,10 +2798,10 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
                     EditorFeatureGuard.Invoke(runtimeScene, "Dispose Play Mode Scene", runtimeScene.Dispose);
             }
 
-            foreach (var scene in _runtimeSceneManager.LoadedScenes.ToArray())
+            foreach (var scene in runtimeSceneManager.LoadedScenes.ToArray())
                 if (!editScenes.Any(editScene => ReferenceEquals(editScene, scene)))
                     EditorFeatureGuard.Invoke(scene, "Unregister Play Mode Scene",
-                        () => _runtimeSceneManager.UnregisterScene(scene));
+                        () => runtimeSceneManager.UnregisterScene(scene));
 
             _playing = false;
             _paused = false;
@@ -2884,7 +2945,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (_playing)
         {
             StartRuntime(scene);
-            _runtimeSceneManager.SetActiveScene(scene);
+            ActiveRuntimeSceneManager.SetActiveScene(scene);
         }
         EditorSceneManager.RaiseSceneOpened(scene, mode);
         EditorApplication.RaiseHierarchyChanged();
@@ -2939,8 +3000,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         _scenePath = entry.SourcePath;
         _dirty = entry.IsDirty;
         _mainWindow.SetTitle(BuildTitle());
-        if (_playing && _services.GetService<IRuntimeSceneManager>() is { } sceneManager)
-            sceneManager.SetActiveScene(scene);
+        if (_playing) ActiveRuntimeSceneManager.SetActiveScene(scene);
         if (!ReferenceEquals(previous, scene)) EditorSceneManager.RaiseActiveSceneChanged(previous, scene);
         return true;
     }
@@ -2952,7 +3012,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
     private SceneRuntime StartRuntime(Scene scene)
     {
-        var runtime = _sceneRuntimeFactory.Create(scene);
+        var runtimeFactory = scene.Services.GetService(typeof(ISceneRuntimeFactory)) as ISceneRuntimeFactory ??
+                             _sceneRuntimeFactory;
+        var runtime = runtimeFactory.Create(scene);
         _runtimes.Add(runtime);
         try
         {
@@ -2972,8 +3034,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (runtime is null) return;
         EditorFeatureGuard.Invoke(runtime, "SceneRuntime.Stop", runtime.Stop);
         _runtimes.Remove(runtime);
-        if (_services.GetService<IRuntimeSceneManager>() is { } sceneManager)
-            sceneManager.UnregisterScene(scene);
+        ActiveRuntimeSceneManager.UnregisterScene(scene);
     }
 
     private void StopAllRuntimes(bool unregisterScenes = true)
@@ -2985,7 +3046,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
         if (!unregisterScenes) return;
         foreach (var scene in runtimes.Select(item => item.Scene).Distinct())
             EditorFeatureGuard.Invoke(scene, "Unregister Runtime Scene",
-                () => _runtimeSceneManager.UnregisterScene(scene));
+                () => ActiveRuntimeSceneManager.UnregisterScene(scene));
     }
 
     private void PingSceneAsset(EditorOpenScene entry)
@@ -3696,6 +3757,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     }
     bool IEditorHost.DeleteAsset(string assetPath)
     {
+        if (AotProjectLayout.IsProtectedAssetPath(assetPath)) return false;
         EditorAssetWritePolicy.EnsureCanWrite("Deleting project assets");
         var path = ResolveAssetPath(assetPath);
         if (File.Exists(path)) File.Delete(path); else if (Directory.Exists(path)) Directory.Delete(path, true); else return false;
@@ -3705,6 +3767,9 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
     }
     string IEditorHost.MoveAsset(string oldPath, string newPath)
     {
+        if (AotProjectLayout.IsProtectedAssetPath(oldPath) ||
+            AotProjectLayout.IsProtectedAssetPath(newPath))
+            return "The BEngine AOT bootstrap folder and AOT.scene identity cannot be moved or replaced.";
         EditorAssetWritePolicy.EnsureCanWrite("Moving project assets");
         var result = AssetFileOperations.Move(ResolveAssetPath(oldPath), ResolveAssetPath(newPath));
         if (result.Length == 0) RefreshAssets();
@@ -8420,7 +8485,7 @@ internal sealed class GpuEditorApplication : IDisposable, IEditorHost
 
         private static bool CanEdit(ProjectBrowserItem item) => !item.IsPackage && !item.IsSubAsset &&
             item.Asset is not null &&
-            !item.VirtualPath.Equals("Assets", StringComparison.OrdinalIgnoreCase);
+            !AotProjectLayout.IsProtectedAssetPath(item.VirtualPath);
 
         private static bool CanStartObjectDrag(ProjectBrowserItem item) =>
             !item.NormalizedPath.Equals("Assets", StringComparison.OrdinalIgnoreCase) &&

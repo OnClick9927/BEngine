@@ -1,20 +1,41 @@
 using BEngine.ProjectSystem;
 using BEngine.SceneManagement;
 using BEngine.AssetBundles;
+using System.Text;
 
 namespace BEngine.Player;
 
 internal sealed class PlayerProjectSceneLoader(
     ProjectWorkspace workspace,
-    IAssetBundleManager? assetBundles = null) : ISceneLoader
+    IAssetBundleManager? assetBundles = null,
+    PlayerBuiltInResourceProvider? builtInResources = null) : ISceneLoader
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
     public Scene LoadScene(string sceneNameOrPath, IServiceProvider services)
     {
+        if (TryLoadBuiltInScene(sceneNameOrPath, services, out var builtInScene)) return builtInScene;
         if (TryLoadBundledScene(sceneNameOrPath, services, out var bundledScene)) return bundledScene;
         var sourcePath = ResolveScenePath(sceneNameOrPath);
         var scene = SceneAssetSerialization.Load(sourcePath, services);
         scene.path = sourcePath;
         return scene;
+    }
+
+    private bool TryLoadBuiltInScene(
+        string sceneNameOrPath,
+        IServiceProvider services,
+        out Scene scene)
+    {
+        scene = null!;
+        if (builtInResources is null) return false;
+        var address = ResolveSceneAddress(
+            sceneNameOrPath, builtInResources.EnumerateAddresses("Assets"), "built-in AOT archive");
+        if (address is null) return false;
+        var yaml = StrictUtf8.GetString(builtInResources.ReadBytes(address));
+        scene = SceneAssetSerialization.Deserialize(yaml, services);
+        scene.path = address;
+        return true;
     }
 
     private bool TryLoadBundledScene(
@@ -24,21 +45,10 @@ internal sealed class PlayerProjectSceneLoader(
     {
         scene = null!;
         if (assetBundles is not { IsInitialized: true, ActiveCatalog: not null }) return false;
-        var requested = ToProjectRelativePath(sceneNameOrPath);
-        var addresses = assetBundles.EnumerateAddresses("Assets")
-            .Where(address => address.EndsWith(".scene.yaml", StringComparison.OrdinalIgnoreCase));
-        var matches = addresses.Where(address =>
-                address.Equals(requested, StringComparison.OrdinalIgnoreCase) ||
-                Path.GetFileName(address).Equals(Path.GetFileName(requested), StringComparison.OrdinalIgnoreCase) ||
-                SceneName(address).Equals(sceneNameOrPath, StringComparison.OrdinalIgnoreCase))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(2)
-            .ToArray();
-        if (matches.Length == 0) return false;
-        if (matches.Length > 1)
-            throw new InvalidOperationException(
-                $"Scene name '{sceneNameOrPath}' is ambiguous in the active AssetBundle catalog.");
-        using var handle = assetBundles.LoadTextAsync(matches[0]).ConfigureAwait(false).GetAwaiter().GetResult();
+        var address = ResolveSceneAddress(
+            sceneNameOrPath, assetBundles.EnumerateAddresses("Assets"), "active AssetBundle catalog");
+        if (address is null) return false;
+        using var handle = assetBundles.LoadTextAsync(address).ConfigureAwait(false).GetAwaiter().GetResult();
         var document = YamlUtility.Deserialize<SceneAssetData>(handle.Value);
         scene = SceneAssetSerialization.Restore(document, services);
         try { RestoreBundledSprites(document, scene); }
@@ -47,8 +57,36 @@ internal sealed class PlayerProjectSceneLoader(
             scene.Dispose();
             throw;
         }
-        scene.path = matches[0];
+        scene.path = address;
         return true;
+    }
+
+    private string? ResolveSceneAddress(
+        string sceneNameOrPath,
+        IEnumerable<string> addresses,
+        string sourceDescription)
+    {
+        var requested = ToProjectRelativePath(sceneNameOrPath);
+        var candidates = addresses
+            .Where(address => address.EndsWith(".scene.yaml", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var exact = candidates.FirstOrDefault(address =>
+            address.Equals(requested, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null) return exact;
+        var matches = candidates
+            .Where(address =>
+                Path.GetFileName(address).Equals(Path.GetFileName(requested), StringComparison.OrdinalIgnoreCase) ||
+                SceneName(address).Equals(sceneNameOrPath, StringComparison.OrdinalIgnoreCase))
+            .Take(2)
+            .ToArray();
+        return matches.Length switch
+        {
+            0 => null,
+            1 => matches[0],
+            _ => throw new InvalidOperationException(
+                $"Scene name '{sceneNameOrPath}' is ambiguous in the {sourceDescription}.")
+        };
     }
 
     private void RestoreBundledSprites(SceneAssetData document, Scene scene)
@@ -59,11 +97,12 @@ internal sealed class PlayerProjectSceneLoader(
         {
             if (!renderers.TryGetValue(component.Id, out var renderer) ||
                 !component.Fields.TryGetValue(nameof(SpriteRenderer.sprite), out var reference) ||
-                string.IsNullOrWhiteSpace(reference) ||
-                !Path.GetExtension(reference).Equals(".png", StringComparison.OrdinalIgnoreCase)) continue;
-            renderer.sprite = AssetBundleAssetLoader.LoadSprite(assetBundles!, reference) ??
-                              throw new InvalidDataException(
-                                  $"AssetBundle scene Sprite '{reference}' is not a bundled TextureImporter Sprite.");
+                string.IsNullOrWhiteSpace(reference)) continue;
+            var bundled = AssetBundleAssetLoader.LoadSprite(assetBundles!, reference);
+            if (bundled is not null) renderer.sprite = bundled;
+            else if (renderer.sprite is null)
+                throw new InvalidDataException(
+                    $"AssetBundle scene Sprite '{reference}' is not a bundled TextureImporter Sprite.");
         }
     }
 

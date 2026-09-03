@@ -15,6 +15,8 @@ internal static class ResourceLoader
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (typeof(BAsset).IsAssignableFrom(type) && ResolveProviderAsset(path, folderName, type) is { } asset)
             return asset;
+        if (typeof(BObject).IsAssignableFrom(type) && ResolveProviderObject(path, folderName, type) is { } value)
+            return value;
         var providerContent = ResolveProvider(path, folderName);
         if (providerContent is not null)
             return Decode(providerContent.Bytes, providerContent.Path, type);
@@ -175,6 +177,25 @@ internal static class ResourceLoader
                     $"Resource asset provider '{provider.GetType().FullName}' returned " +
                     $"{asset.GetType().FullName}, expected {assetType.FullName}.");
             return asset;
+        }
+        return null;
+    }
+
+    private static BObject? ResolveProviderObject(string path, string folderName, Type objectType)
+    {
+        var normalized = NormalizeResourcePath(path);
+        foreach (var provider in Volatile.Read(ref _registeredProviders))
+        {
+            if (provider is not IResourceObjectProvider objectProvider ||
+                !objectProvider.TryLoadObject(normalized, folderName, objectType, out var value)) continue;
+            if (value is null)
+                throw new InvalidDataException(
+                    $"Resource object provider '{provider.GetType().FullName}' returned a null object.");
+            if (!objectType.IsInstanceOfType(value))
+                throw new InvalidDataException(
+                    $"Resource object provider '{provider.GetType().FullName}' returned " +
+                    $"{value.GetType().FullName}, expected {objectType.FullName}.");
+            return value;
         }
         return null;
     }

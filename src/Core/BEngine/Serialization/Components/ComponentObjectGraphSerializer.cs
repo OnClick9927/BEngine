@@ -168,6 +168,8 @@ internal static class ComponentObjectGraphSerializer
                 data.Value = FormatScalar(value, type);
                 return data;
             }
+            if (value is Delegate && allowTransientObjects)
+                return New(ValueKind.NullValue, declaredType);
             if (value is Type or Delegate)
                 throw new NotSupportedException($"Member '{path}' uses unsupported type '{type.FullName}'.");
 

@@ -66,11 +66,13 @@ public sealed class UIDocument : MonoBehaviour
 
         try
         {
-            _root = VisualTreeAsset.Load(ResolveSourcePath(sourceAsset)).Instantiate();
+            var filePath = ResolveSourcePath(sourceAsset);
+            _root = VisualTreeAsset.Load(File.Exists(filePath) ? filePath : sourceAsset).Instantiate();
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
         {
-            Debug.LogError($"Could not load UI document '{sourceAsset}': {exception.Message}");
+            Debug.LogError($"Could not load UI document '{sourceAsset}': " +
+                           $"{exception.GetType().FullName}: {exception}");
             _root = CreateFallbackRoot();
         }
     }

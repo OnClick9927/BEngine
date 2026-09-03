@@ -1,0 +1,12 @@
+format: BEngine.AssetMeta
+version: 1
+guid: 1af7c0b193cb40258d64a32cf6b89b67
+importer: DefaultImporter
+assetType: UI Style Sheet
+sourceHash: f26ebba976ae1fcc18e6cd5d58138a28ea09aa45c939d1dd8e0a54271bb4a168
+importFingerprint: eadc3c0b56432a80adb7fd5e813fc64f4a50cda6de4d7151727a070949acebfe
+settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

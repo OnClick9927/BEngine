@@ -6,8 +6,10 @@ public sealed class AssetBundleRuntimeOptions
     public string CacheDirectory { get; init; } = string.Empty;
     public string? BuiltInDirectory { get; init; }
     public Uri? RemoteBaseUri { get; init; }
+    public bool UsePersistentCache { get; init; } = true;
     public int MaxRetries { get; init; } = 3;
     public HttpClient? HttpClient { get; init; }
+    public Action<AssetBundleHttpTransferDiagnostic>? HttpTransferObserver { get; init; }
     public bool RequireHttps { get; init; } = true;
     public int MaximumBundleCount { get; init; } = 10_000;
     public int MaximumAssetCount { get; init; } = 1_000_000;
@@ -21,6 +23,17 @@ public sealed class AssetBundleRuntimeOptions
             throw new ArgumentException("Asset bundle package name is required.", nameof(PackageName));
         if (string.IsNullOrWhiteSpace(CacheDirectory))
             throw new ArgumentException("Asset bundle cache directory is required.", nameof(CacheDirectory));
+        if (!UsePersistentCache)
+        {
+            if (string.IsNullOrWhiteSpace(BuiltInDirectory))
+                throw new ArgumentException(
+                    "Persistent-cache-free AssetBundles require a built-in directory.",
+                    nameof(BuiltInDirectory));
+            if (RemoteBaseUri is not null)
+                throw new ArgumentException(
+                    "Persistent-cache-free AssetBundles cannot use a remote source.",
+                    nameof(RemoteBaseUri));
+        }
         if (MaxRetries < 0) throw new ArgumentOutOfRangeException(nameof(MaxRetries));
         if (MaximumBundleCount <= 0 || MaximumAssetCount <= 0 || MaximumBundleSize <= 0 ||
             MaximumAssetSize < 0 || MaximumCatalogSize <= 0)

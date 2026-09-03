@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using BEngine.Build;
 using BEngine.Editor.Diagnostics;
 using BEngine.Editor.Rendering;
 using BEngine.Rendering;
@@ -309,18 +310,22 @@ internal sealed class ImGuiNativeWindow : IDisposable
 
     private static GraphicsBackend ResolveWindowBackend(GraphicsBackend preferred)
     {
-        if (preferred != GraphicsBackend.Vulkan) return GraphicsBackend.OpenGL;
-        try
+        var target = BuildTargetManifestSerializer.LoadCurrent();
+        foreach (var candidate in GraphicsBackendSelector.GetCandidates(target, preferred))
         {
-            if (Veldrid.GraphicsDevice.IsBackendSupported(Veldrid.GraphicsBackend.Vulkan))
-                return GraphicsBackend.Vulkan;
+            if (candidate == GraphicsBackend.OpenGL) return GraphicsBackend.OpenGL;
+            if (candidate != GraphicsBackend.Vulkan) continue;
+            try
+            {
+                if (Veldrid.GraphicsDevice.IsBackendSupported(Veldrid.GraphicsBackend.Vulkan))
+                    return GraphicsBackend.Vulkan;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"Vulkan support could not be queried: {exception.Message}");
+            }
         }
-        catch (Exception exception)
-        {
-            Debug.LogWarning($"Vulkan support could not be queried; using OpenGL: {exception.Message}");
-            return GraphicsBackend.OpenGL;
-        }
-        Debug.LogWarning("Vulkan is unavailable; using OpenGL for the editor window.");
+        Debug.LogWarning("No preferred editor backend is available; using OpenGL.");
         return GraphicsBackend.OpenGL;
     }
 

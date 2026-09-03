@@ -1,0 +1,21 @@
+format: BEngine.BuildSettings
+version: 1
+scenes:
+- path: Assets/Aot/AOT.scene.yaml
+  enabled: true
+targetId: windows-x64
+developmentBuild: false
+includeDebugSymbols: false
+selfContained: true
+buildVersion: 1.0.0
+hotResourceVersion: v1
+enableHotUpdate: true
+contentUpdatePolicy: FallbackToLastValid
+compressAssetBundles: true
+managedStripping: Conservative
+writePlayerLog: true
+splashScreenEnabled: true
+splashImage: Assets/Aot/UI/BEngine.png
+splashBackgroundColor: '#10161A'
+splashMinimumDurationSeconds: 1.5
+cacheDirectory: sandbox

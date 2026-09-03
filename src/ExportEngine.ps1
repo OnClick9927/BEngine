@@ -14,6 +14,7 @@ $launcherProject = Join-Path $PSScriptRoot 'Hub\BEngine.Launcher\BEngine.Launche
 $playerProject = Join-Path $PSScriptRoot 'Core\BEngine.Player\BEngine.Player.csproj'
 $coreResources = Join-Path $PSScriptRoot 'Core\Resources'
 $coreEditor = Join-Path $PSScriptRoot 'Core\Editor'
+$playerBuildHosts = Join-Path $PSScriptRoot 'Core\BEngine.Player.Hosts'
 $engineDefines = Join-Path $PSScriptRoot 'BEngine.Defines.targets'
 
 function Remove-DirectoryWithRetry {
@@ -104,14 +105,62 @@ if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed with exit code $LASTEX
     -p:BEngineEngineExportOwner=false
 if ($LASTEXITCODE -ne 0) { throw "Player publish failed with exit code $LASTEXITCODE." }
 
+# Build Hosts must not reference the mixed Launcher/Editor export directory. In particular, mobile AOT
+# must never see the Windows-only Editor closure, so publish a clean Player runtime dependency set.
+$buildRuntimeOutput = Join-Path $stageOutput 'BuildRuntime'
+New-Item -ItemType Directory -Path $buildRuntimeOutput | Out-Null
+& dotnet publish $playerProject -c $Configuration --no-restore -o $buildRuntimeOutput -m:1 `
+    -p:BEngineEngineExportOwner=false
+if ($LASTEXITCODE -ne 0) { throw "BuildRuntime publish failed with exit code $LASTEXITCODE." }
+
 Copy-Item -LiteralPath $coreResources -Destination (Join-Path $stageOutput 'Resources') -Recurse
 Copy-Item -LiteralPath $coreEditor -Destination (Join-Path $stageOutput 'Editor') -Recurse
+$buildHostsOutput = Join-Path $stageOutput 'BuildHosts'
+New-Item -ItemType Directory -Path $buildHostsOutput | Out-Null
+$buildHostRoot = [System.IO.Path]::GetFullPath($playerBuildHosts).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+foreach ($hostFile in Get-ChildItem -LiteralPath $playerBuildHosts -Recurse -File | Where-Object {
+        $_.Name -notlike '*.tmp' -and
+        $_.FullName -notmatch '[\\/](bin|obj)[\\/]'
+    }) {
+    $relativeHostPath = [System.IO.Path]::GetFullPath($hostFile.FullName).Substring($buildHostRoot.Length)
+    $hostDestination = Join-Path $buildHostsOutput $relativeHostPath
+    $hostDestinationParent = Split-Path -Parent $hostDestination
+    if (-not (Test-Path -LiteralPath $hostDestinationParent)) {
+        New-Item -ItemType Directory -Path $hostDestinationParent | Out-Null
+    }
+    Copy-Item -LiteralPath $hostFile.FullName -Destination $hostDestination
+}
 Copy-Item -LiteralPath $engineDefines -Destination (Join-Path $stageOutput 'BEngine.Defines.targets')
 
 foreach ($required in @('BEngine.Launcher.exe', 'BEngine.Editor.exe', 'BEngine.Player.exe',
         'BEngine.Defines.targets')) {
     if (-not (Test-Path -LiteralPath (Join-Path $stageOutput $required))) {
         throw "Engine export is missing $required."
+    }
+}
+
+foreach ($requiredRuntime in @('BEngine.dll', 'BEngine.Player.dll',
+        'BEngine.Player.runtimeconfig.json', 'BEngine.Player.deps.json')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $buildRuntimeOutput $requiredRuntime))) {
+        throw "Engine BuildRuntime is missing $requiredRuntime."
+    }
+}
+if (Test-Path -LiteralPath (Join-Path $buildRuntimeOutput 'BEngine.Editor.dll')) {
+    throw 'Engine BuildRuntime must not contain BEngine.Editor.dll.'
+}
+if (Test-Path -LiteralPath (Join-Path $buildRuntimeOutput 'BEngine.Launcher.dll')) {
+    throw 'Engine BuildRuntime must not contain BEngine.Launcher.dll.'
+}
+
+foreach ($buildHost in @(
+        'BEngine.Player.Hosts.props',
+        'Desktop\BEngine.Player.DesktopHost.csproj',
+        'Android\BEngine.Player.AndroidHost.csproj',
+        'iOS\BEngine.Player.iOSHost.csproj',
+        'Web\BEngine.Player.WebHost.csproj')) {
+    if (-not (Test-Path -LiteralPath (Join-Path (Join-Path $stageOutput 'BuildHosts') $buildHost))) {
+        throw "Engine export is missing Player BuildHost template $buildHost."
     }
 }
 

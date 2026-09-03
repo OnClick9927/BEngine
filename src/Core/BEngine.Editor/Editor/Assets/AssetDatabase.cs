@@ -455,6 +455,11 @@ public static class AssetDatabase
 
     public static bool DeleteAsset(string path)
     {
+        if (AotProjectLayout.IsProtectedAssetPath(path))
+        {
+            Debug.LogWarning($"'{path}' is reserved by the BEngine AOT bootstrap and cannot be deleted.");
+            return false;
+        }
         EditorAssetWritePolicy.EnsureCanWrite("Deleting project assets");
         var result = AssetModificationProcessorDispatcher.OnWillDeleteAsset(path, RemoveAssetOptions.None);
         if (result == AssetDeleteResult.FailedDelete) return false;
@@ -487,6 +492,9 @@ public static class AssetDatabase
 
     public static string MoveAsset(string oldPath, string newPath)
     {
+        if (AotProjectLayout.IsProtectedAssetPath(oldPath) ||
+            AotProjectLayout.IsProtectedAssetPath(newPath))
+            return "The BEngine AOT bootstrap folder and AOT.scene identity cannot be moved or replaced.";
         EditorAssetWritePolicy.EnsureCanWrite("Moving project assets");
         var result = AssetModificationProcessorDispatcher.OnWillMoveAsset(oldPath, newPath);
         if (result == AssetMoveResult.FailedMove) return "Asset move was rejected by a processor.";

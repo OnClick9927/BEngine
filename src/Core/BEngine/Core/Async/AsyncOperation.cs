@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 namespace BEngine;
 
 public class AsyncOperation
@@ -7,6 +5,7 @@ public class AsyncOperation
     private readonly object _gate = new();
     private readonly CancellationTokenSource _cancellation = new();
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly BTask _task;
     private TaskCompletionSource _activation = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Action<AsyncOperation>? _completed;
     private Action<AsyncOperation>? _progressChanged;
@@ -60,7 +59,7 @@ public class AsyncOperation
         set { lock (_gate) _priority = value; }
     }
 
-    public Task task => _completion.Task;
+    public BTask task => _task;
 
     public event Action<AsyncOperation>? completed
     {
@@ -96,6 +95,7 @@ public class AsyncOperation
 
     protected AsyncOperation()
     {
+        _task = BTask.FromTask(_completion.Task);
         _activation.TrySetResult();
     }
 
@@ -110,7 +110,7 @@ public class AsyncOperation
         }
     }
 
-    public TaskAwaiter GetAwaiter() => _completion.Task.GetAwaiter();
+    public BTaskAwaiter GetAwaiter() => _task.GetAwaiter();
 
     protected void Start(Func<CancellationToken, Task> operation)
     {

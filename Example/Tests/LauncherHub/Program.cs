@@ -24,7 +24,7 @@ internal static class Program
             await VerifyEditorStartupMonitoring(temporaryRoot).ConfigureAwait(false);
             Console.WriteLine(
                 "LAUNCHER_HUB_OK|projects,history-migration,packages-tab,output-catalog,target-path,ioc," +
-                "default-none,source-boundary,no-reverse-core-dependency,startup-ready," +
+                "default-aot,source-boundary,no-reverse-core-dependency,startup-ready," +
                 "startup-reported-failure,startup-unexpected-exit,startup-timeout");
         }
         finally
@@ -187,11 +187,12 @@ internal static class Program
         var target = projectService.ResolveTargetPath(root, "Clean Project");
         Require(target.Equals(Path.Combine(root, "Clean Project"), StringComparison.OrdinalIgnoreCase),
             "The Hub did not combine Location and Project name into a dedicated project folder.");
-        var workspace = projectService.Create(root, "Core Only");
+        var workspace = projectService.Create(root, "AOT Project");
         var manifest = BEngine.YamlUtility.Load<BEngine.Editor.Documents.PackageManifestDocument>(
             workspace.PackageManifestPath);
-        Require(manifest.Packages.Count == 0,
-            "A project created by the Hub must contain no extension packages.");
+        Require(manifest.Packages.Where(package => package.Enabled).Select(package => package.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(["com.bengine.ui-elements"]),
+            "A project created by the Hub must enable exactly the UIElements package required by AOT.");
         try
         {
             projectService.ResolveTargetPath(root, "../Outside");

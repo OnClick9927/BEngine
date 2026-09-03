@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UXML>
+  <Style src="AOT.uss" />
+  <VisualElement name="AotRoot" class="aot-root">
+    <VisualElement class="aot-panel">
+      <Image name="Logo" src="Assets/Aot/UI/BEngine.png" class="aot-logo" />
+      <Label name="Status" text="Check for updates to continue" class="aot-status" />
+      <ProgressBar name="UpdateProgress" title="Waiting for update check" value="0" visible="false"
+                   low-value="0" high-value="100" class="aot-progress" />
+      <Button name="CheckForUpdatesButton" text="Check for Updates"
+              tooltip="Check the content server for its active game version" class="aot-action" />
+      <Button name="EnterGameButton" text="Enter Game" visible="false"
+              tooltip="Enter the game after valid content is installed" class="aot-action" />
+    </VisualElement>
+    <VisualElement name="UpdateConfirmDialog" visible="false" class="aot-confirm-overlay">
+      <VisualElement class="aot-confirm-dialog">
+        <Label text="REMOTE VERSION AVAILABLE" class="aot-confirm-title" />
+        <Label name="UpdateConfirmMessage" text="A remote game version is available."
+               class="aot-confirm-message" />
+        <VisualElement class="aot-confirm-actions">
+          <Button name="CancelUpdateButton" text="Not Now"
+                  tooltip="Continue with the installed game version" class="aot-confirm-button" />
+          <Button name="ConfirmUpdateButton" text="Switch" class="aot-confirm-button" />
+        </VisualElement>
+      </VisualElement>
+    </VisualElement>
+  </VisualElement>
+</UXML>

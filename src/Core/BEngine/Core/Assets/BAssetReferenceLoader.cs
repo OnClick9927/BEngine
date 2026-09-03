@@ -13,7 +13,6 @@ internal static class BAssetReferenceLoader
     private static readonly Lock Gate = new();
     private static readonly Dictionary<CacheKey, AssetCacheEntry> Cache = [];
     private static readonly Dictionary<SubAssetCacheKey, WeakReference<BAsset>> SubAssetCache = [];
-    private static readonly Dictionary<BundledSubAssetCacheKey, WeakReference<BAsset>> BundledSubAssetCache = [];
     private static readonly Dictionary<SubAssetCacheKey, WeakReference<Sprite>> SpriteSubAssetCache = [];
     private static readonly Dictionary<Guid, string> GuidPaths = [];
     private static readonly Dictionary<FileSubAssetKey, string> FileSubAssetPaths = [];
@@ -29,7 +28,8 @@ internal static class BAssetReferenceLoader
         if (TryParseSubAssetReference(path, out var mainPath, out var localIdentifier))
             return LoadSubAsset(mainPath, localIdentifier, assetType);
         var fullPath = AssetReferencePath.Resolve(path);
-        if (!File.Exists(fullPath)) return null;
+        var fileBacked = File.Exists(fullPath);
+        if (!fileBacked) return ResourceLoader.LoadAsset(path, assetType, "Resources");
         var key = new CacheKey(CanonicalPath(fullPath), assetType);
         AssetCacheEntry pending;
         lock (Gate)
@@ -98,11 +98,16 @@ internal static class BAssetReferenceLoader
         if (path.StartsWith("guid:", StringComparison.OrdinalIgnoreCase))
         {
             if (!Guid.TryParse(path.AsSpan("guid:".Length), out var ownerGuid) ||
-                ResolveGuidPath(ownerGuid) is not { } resolvedPath) return null;
+                ResolveGuidPath(ownerGuid) is not { } resolvedPath)
+                return LoadBundledSprite(ownerGuid, localIdentifier);
             mainFullPath = resolvedPath;
         }
         else mainFullPath = AssetReferencePath.Resolve(path);
-        if (!File.Exists(mainFullPath)) return null;
+        if (!File.Exists(mainFullPath))
+            return path.StartsWith("guid:", StringComparison.OrdinalIgnoreCase) &&
+                   Guid.TryParse(path.AsSpan("guid:".Length), out var missingOwnerGuid)
+                ? LoadBundledSprite(missingOwnerGuid, localIdentifier)
+                : null;
 
         var mainMeta = ReadSubAssetMeta(mainFullPath + ".meta");
         if (mainMeta is null || !Guid.TryParse(mainMeta.Guid, out var parentGuid) ||
@@ -123,6 +128,18 @@ internal static class BAssetReferenceLoader
             if (TryGetTarget(SpriteSubAssetCache, cacheKey, out var existing)) return existing;
             SpriteSubAssetCache[cacheKey] = new WeakReference<Sprite>(sprite);
             return sprite;
+        }
+    }
+
+    private static Sprite? LoadBundledSprite(Guid ownerGuid, long localIdentifier)
+    {
+        if (ownerGuid == Guid.Empty || localIdentifier <= 0) return null;
+        var reference = $"guid:{ownerGuid:N}#subasset={localIdentifier}";
+        try { return ResourceLoader.Load(reference, typeof(Sprite), "Resources") as Sprite; }
+        catch (Exception exception) when (exception is InvalidDataException or InvalidOperationException or
+                                          ArgumentException or IOException or NotSupportedException)
+        {
+            return null;
         }
     }
 
@@ -185,10 +202,6 @@ internal static class BAssetReferenceLoader
 
     private static BAsset? LoadBundledSubAsset(Guid ownerGuid, long localIdentifier, Type assetType)
     {
-        var cacheKey = new BundledSubAssetCacheKey(ownerGuid, localIdentifier, assetType);
-        lock (Gate)
-            if (TryGetTarget(BundledSubAssetCache, cacheKey, out var cached)) return cached;
-
         var reference = $"guid:{ownerGuid:N}#subasset={localIdentifier}";
         BAsset? asset;
         try { asset = ResourceLoader.LoadAsset(reference, assetType, "Resources"); }
@@ -205,12 +218,7 @@ internal static class BAssetReferenceLoader
                 localIdentifier,
                 asset.Id);
         if (string.IsNullOrWhiteSpace(asset.assetType)) asset.assetType = assetType.Name;
-        lock (Gate)
-        {
-            if (TryGetTarget(BundledSubAssetCache, cacheKey, out var existing)) return existing;
-            BundledSubAssetCache[cacheKey] = new WeakReference<BAsset>(asset);
-            return asset;
-        }
+        return asset;
     }
 
     private static bool IsKnownImportedRepresentation(
@@ -256,7 +264,6 @@ internal static class BAssetReferenceLoader
             // A sub-asset cache key is rooted at the main asset, so invalidating either a
             // file-backed child or its owner must discard the resolved representation.
             SubAssetCache.Clear();
-            BundledSubAssetCache.Clear();
             SpriteSubAssetCache.Clear();
             ResetMetadataIndex();
         }
@@ -270,8 +277,6 @@ internal static class BAssetReferenceLoader
             RemoveCachedValue(Cache, target, static pending =>
                 pending.TryGetTarget(out var asset) ? asset : null);
             RemoveCachedValue(SubAssetCache, target, static reference =>
-                reference.TryGetTarget(out var asset) ? asset : null);
-            RemoveCachedValue(BundledSubAssetCache, target, static reference =>
                 reference.TryGetTarget(out var asset) ? asset : null);
             RemoveCachedValue(SpriteSubAssetCache, target, static reference =>
                 reference.TryGetTarget(out var asset) ? asset : null);
@@ -287,7 +292,6 @@ internal static class BAssetReferenceLoader
             RemoveMissingPaths(SpriteSubAssetCache, static key => key.Path);
             RemoveDeadReferences(Cache, static entry => entry.TryGetTarget(out _));
             RemoveDeadReferences(SubAssetCache, static reference => reference.TryGetTarget(out _));
-            RemoveDeadReferences(BundledSubAssetCache, static reference => reference.TryGetTarget(out _));
             RemoveDeadReferences(SpriteSubAssetCache, static reference => reference.TryGetTarget(out _));
             ResetMetadataIndex();
         }
@@ -299,7 +303,6 @@ internal static class BAssetReferenceLoader
         {
             Cache.Clear();
             SubAssetCache.Clear();
-            BundledSubAssetCache.Clear();
             SpriteSubAssetCache.Clear();
             ResetMetadataIndex();
         }
@@ -512,9 +515,11 @@ internal static class BAssetReferenceLoader
 
     internal static Type? ResolveType(string assemblyQualifiedName)
     {
+        var fullName = assemblyQualifiedName.Split(',')[0].Trim();
+        var preferred = RuntimeTypeCache.FindType(assemblyQualifiedName) ?? RuntimeTypeCache.FindType(fullName);
+        if (preferred is not null) return preferred;
         var resolved = Type.GetType(assemblyQualifiedName, throwOnError: false);
         if (resolved is not null) return resolved;
-        var fullName = assemblyQualifiedName.Split(',')[0].Trim();
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
             try
@@ -677,10 +682,6 @@ internal static class BAssetReferenceLoader
 
     private readonly record struct CacheKey(string Path, Type AssetType);
     private readonly record struct SubAssetCacheKey(string Path, long LocalIdentifier, Type AssetType);
-    private readonly record struct BundledSubAssetCacheKey(
-        Guid OwnerGuid,
-        long LocalIdentifier,
-        Type AssetType);
     private readonly record struct FileSubAssetKey(Guid OwnerGuid, long LocalIdentifier);
 
     private sealed class AssetCacheEntry

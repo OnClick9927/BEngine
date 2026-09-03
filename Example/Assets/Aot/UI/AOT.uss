@@ -1,0 +1,79 @@
+.aot-root {
+    flex-grow: 1;
+    align-items: center;
+    justify-content: center;
+    background-color: #10161AFF;
+}
+
+.aot-panel {
+    width: 440px;
+    padding: 24px;
+    align-items: center;
+}
+
+.aot-logo {
+    width: 256px;
+    height: 128px;
+    margin-bottom: 24px;
+}
+
+.aot-status {
+    width: 392px;
+    height: 52px;
+    color: #F4F7F8FF;
+}
+
+.aot-progress {
+    width: 392px;
+    height: 26px;
+    margin-top: 8px;
+}
+
+.aot-action {
+    width: 220px;
+    height: 36px;
+    margin-top: 16px;
+}
+
+.aot-confirm-overlay {
+    align-items: center;
+    justify-content: center;
+    background-color: #000000B8;
+}
+
+.aot-confirm-dialog {
+    width: 380px;
+    height: 210px;
+    padding: 24px;
+    align-items: center;
+    background-color: #20282DFF;
+    border-width: 1px;
+    border-color: #5B6A72FF;
+}
+
+.aot-confirm-title {
+    width: 332px;
+    height: 28px;
+    color: #FFFFFFFF;
+    font-size: 18px;
+}
+
+.aot-confirm-message {
+    width: 332px;
+    height: 72px;
+    margin-top: 12px;
+    color: #D8E0E4FF;
+}
+
+.aot-confirm-actions {
+    width: 332px;
+    height: 40px;
+    margin-top: 10px;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.aot-confirm-button {
+    width: 150px;
+    height: 36px;
+}

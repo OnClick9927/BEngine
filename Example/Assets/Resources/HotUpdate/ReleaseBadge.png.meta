@@ -1,0 +1,15 @@
+format: BEngine.AssetMeta
+version: 1
+guid: 2d2e3d7a80f844979904e95e45f2f1c0
+importer: TextureImporter
+assetType: Texture
+sourceHash: a34742e1559e9526eb682e7e1b94cba3290e26337b5d80329bdb6c888f964e68
+importFingerprint: 686130057a58cc4075118556f73958f06a1159b1698aa8ba1b908cb84c64480b
+settings:
+  textureType: Sprite
+  spritePivotX: 0.5
+  spritePivotY: 0.5
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

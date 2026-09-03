@@ -1,0 +1,7 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<UXML>
+  <VisualElement name="Root" style="flex-grow: 1; padding-left: 32px; padding-top: 32px; padding-right: 32px; padding-bottom: 32px">
+    <Label name="Title" text="BEngine UI" />
+    <Button name="StartButton" text="Start" />
+  </VisualElement>
+</UXML>

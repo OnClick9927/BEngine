@@ -16,3 +16,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.EditorProgress")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.EditorKeyboardCommands")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.FrameDebugger")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.EditorHotUpdateDomain")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.HotUpdateArchitecture")]

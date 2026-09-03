@@ -36,34 +36,34 @@ public sealed class UdpNetworkClient : NetworkClientBase
         State = NetworkClientState.Connected;
     }
 
-    public Task<int> SendAsync(
+    public BValueTask<int> SendAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         if (State != NetworkClientState.Connected)
             throw new InvalidOperationException("Connect the UDP client or provide a remote endpoint.");
-        return RunAsync(
-            token => _client.SendAsync(data, token).AsTask(),
+        return RunValueAsync(
+            token => _client.SendAsync(data, token),
             cancellationToken);
     }
 
-    public Task<int> SendAsync(
+    public BValueTask<int> SendAsync(
         ReadOnlyMemory<byte> data,
         IPEndPoint remoteEndPoint,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(remoteEndPoint);
-        return RunAsync(
-            token => _client.SendAsync(data, remoteEndPoint, token).AsTask(),
+        return RunValueAsync(
+            token => _client.SendAsync(data, remoteEndPoint, token),
             cancellationToken);
     }
 
-    public async Task<NetworkDatagram> ReceiveAsync(CancellationToken cancellationToken = default)
+    public async BValueTask<NetworkDatagram> ReceiveAsync(CancellationToken cancellationToken = default)
     {
-        var result = await RunAsync(
-            token => _client.ReceiveAsync(token).AsTask(),
+        var result = await RunValueAsync(
+            token => _client.ReceiveAsync(token),
             cancellationToken).ConfigureAwait(false);
         return new NetworkDatagram(result.Buffer, result.RemoteEndPoint);
     }

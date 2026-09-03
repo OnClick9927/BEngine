@@ -1,0 +1,6 @@
+Title=REMOTE V1
+Subtitle=DOWNLOADED AND ACTIVATED
+Background=0B1726
+Panel=123B5A
+Accent=4EC8F5
+Foreground=F5FBFF

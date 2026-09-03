@@ -7,6 +7,8 @@ internal static class Program
         using var workspace = new AssetBundleTestWorkspace();
         try
         {
+            TrimSafeJsonSerializationTests.Run();
+            await BuiltInResourceArchiveTests.RunAsync().ConfigureAwait(false);
             CatalogValidationTests.Run();
             CatalogSerializationTests.Run();
             ArtifactBundleBoundaryTests.Run(workspace);
@@ -16,14 +18,18 @@ internal static class Program
             await ArchiveTraversalTests.RunAsync(workspace).ConfigureAwait(false);
             await RemoteUpdateTests.RunAsync(workspace, builds).ConfigureAwait(false);
             Console.WriteLine(
-                "ASSET_BUNDLE_HOT_UPDATE_OK|catalog,deterministic-manifest,deterministic-bundle,strict-json," +
+                "ASSET_BUNDLE_HOT_UPDATE_OK|trim-safe-json,built-in-resource-archive,catalog,deterministic-manifest,deterministic-bundle,strict-json," +
                 "artifact-input,artifact-snapshot,artifact-catalog-integrity," +
                 "library-file-subasset,subasset-owner-localid,guid-subasset-runtime," +
-                "dependencies,cycles,content-addressing,catalog-index,index-performance,concurrent-init-load," +
+                "dependencies,cycles,content-addressing,opaque-compressed-entries,catalog-index,index-performance,concurrent-init-load," +
                 "path-traversal,archive-entry-safety,async-load,cache,refcount,unload," +
                 "remote-version,retry,hash-verification,immutable-update-plan,atomic-activation,rollback," +
+                "remote-authoritative-reverse-version,minimal-latest-pointer,version-metadata-validation," +
+                "no-cache-version-pointer,latest-required," +
                 "offline-cache,staging-cleanup," +
-                "resources-provider,player-scene-priority,bundled-sprite-import,bundled-sprite-render");
+                "resources-provider,versioned-object-cache,player-scene-priority," +
+                "bundled-main-assets,generic-bundled-references," +
+                "bundled-sprite-import,bundled-sprite-render");
             return 0;
         }
         catch (Exception exception)

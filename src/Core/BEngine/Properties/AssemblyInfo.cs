@@ -12,6 +12,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.SceneRuntimeArchitecture")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.HierarchyMultiScene")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.AssetBundleHotUpdate")]
+[assembly: InternalsVisibleTo("BEngine.ExampleTests.HotUpdateArchitecture")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.EditorKeyboardCommands")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.EditorSettingsWindows")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.FrameDebugger")]

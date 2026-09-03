@@ -1,0 +1,12 @@
+format: BEngine.AssetMeta
+version: 1
+guid: 89603c58ae3c49f3b76eb2e1e2675341
+importer: DefaultImporter
+assetType: DefaultAsset
+sourceHash: 2cb31fb1268cd761d22de1007beec4f19505775e203d2c13210dfd038935effe
+importFingerprint: b7d1eb92c01437427e6f59d1f481b7455a58b5860fd2e7ec78e3cce8b694f433
+settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

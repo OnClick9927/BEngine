@@ -26,7 +26,7 @@ public sealed class TcpNetworkClient : NetworkClientBase
         set => _client.NoDelay = value;
     }
 
-    public async Task ConnectAsync(
+    public async BValueTask ConnectAsync(
         string host,
         int port,
         CancellationToken cancellationToken = default)
@@ -40,8 +40,8 @@ public sealed class TcpNetworkClient : NetworkClientBase
         State = NetworkClientState.Connecting;
         try
         {
-            await RunAsync(
-                token => _client.ConnectAsync(host, port, token).AsTask(),
+            await RunValueAsync(
+                token => _client.ConnectAsync(host, port, token),
                 cancellationToken).ConfigureAwait(false);
             State = NetworkClientState.Connected;
         }
@@ -52,37 +52,37 @@ public sealed class TcpNetworkClient : NetworkClientBase
         }
     }
 
-    public Task SendAsync(
+    public BValueTask SendAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default)
     {
         EnsureConnected();
-        return RunAsync(
-            token => _client.GetStream().WriteAsync(data, token).AsTask(),
+        return RunValueAsync(
+            token => _client.GetStream().WriteAsync(data, token),
             cancellationToken);
     }
 
-    public Task<int> ReceiveAsync(
+    public BValueTask<int> ReceiveAsync(
         Memory<byte> buffer,
         CancellationToken cancellationToken = default)
     {
         EnsureConnected();
         if (buffer.IsEmpty) throw new ArgumentException("The receive buffer cannot be empty.", nameof(buffer));
-        return RunAsync(
-            token => _client.GetStream().ReadAsync(buffer, token).AsTask(),
+        return RunValueAsync(
+            token => _client.GetStream().ReadAsync(buffer, token),
             cancellationToken);
     }
 
-    public async Task CloseAsync(CancellationToken cancellationToken = default)
+    public BValueTask CloseAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         cancellationToken.ThrowIfCancellationRequested();
-        if (State is NetworkClientState.Closed) return;
+        if (State is NetworkClientState.Closed) return BValueTask.CompletedTask;
         State = NetworkClientState.Closing;
         _client.Close();
         State = NetworkClientState.Closed;
         SetClosedResult();
-        await Task.CompletedTask.ConfigureAwait(false);
+        return BValueTask.CompletedTask;
     }
 
     protected override void Dispose(bool disposing)

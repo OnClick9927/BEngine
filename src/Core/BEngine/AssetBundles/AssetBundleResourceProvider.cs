@@ -1,10 +1,13 @@
 namespace BEngine.AssetBundles;
 
 /// <summary>Exposes an active asset bundle catalog through the Resources API.</summary>
-public sealed class AssetBundleResourceProvider : IResourceProvider, IResourceAssetProvider
+public sealed class AssetBundleResourceProvider : IResourceProvider, IResourceAssetProvider, IResourceObjectProvider
 {
     internal const string VirtualPathPrefix = "@bundle/";
     private readonly IAssetBundleManager _manager;
+    private readonly Lock _cacheGate = new();
+    private readonly Dictionary<ProviderObjectCacheKey, WeakReference<BObject>> _objectCache = [];
+    private string _cacheRevision = string.Empty;
 
     public AssetBundleResourceProvider(IAssetBundleManager manager) =>
         _manager = manager ?? throw new ArgumentNullException(nameof(manager));
@@ -23,11 +26,72 @@ public sealed class AssetBundleResourceProvider : IResourceProvider, IResourceAs
     {
         ArgumentNullException.ThrowIfNull(assetType);
         asset = null!;
-        if (!_manager.IsInitialized || assetType != typeof(Texture)) return false;
+        if (!_manager.IsInitialized) return false;
         var address = ResolveAddress(path, folderName);
         if (address is null) return false;
-        asset = AssetBundleAssetLoader.LoadTexture(_manager, address)!;
+        asset = LoadCached(address, assetType,
+            () => AssetBundleAssetLoader.LoadAsset(_manager, address, assetType))!;
         return asset is not null;
+    }
+
+    public bool TryLoadObject(string path, string folderName, Type objectType, out BObject value)
+    {
+        ArgumentNullException.ThrowIfNull(objectType);
+        value = null!;
+        if (!_manager.IsInitialized || objectType != typeof(Sprite)) return false;
+        var requested = Normalize(path);
+        if (requested.StartsWith(VirtualPathPrefix, StringComparison.OrdinalIgnoreCase))
+            requested = requested[VirtualPathPrefix.Length..];
+        var address = AssetBundleValidation.TryParseSubAssetAddress(requested, out _, out _)
+            ? requested
+            : ResolveAddress(path, folderName);
+        if (address is null) return false;
+        value = LoadCached(address, objectType,
+            () => AssetBundleAssetLoader.LoadSprite(_manager, address))!;
+        return value is not null;
+    }
+
+    private T? LoadCached<T>(string address, Type objectType, Func<T?> loader) where T : BObject
+    {
+        var revision = CurrentRevision();
+        var key = new ProviderObjectCacheKey(
+            AssetBundleValidation.NormalizeAddress(address).ToUpperInvariant(), objectType);
+        lock (_cacheGate)
+        {
+            EnsureRevision(revision);
+            if (_objectCache.TryGetValue(key, out var reference) &&
+                reference.TryGetTarget(out var cached) && cached is T typed) return typed;
+        }
+
+        var loaded = loader();
+        if (loaded is null) return null;
+        var currentRevision = CurrentRevision();
+        lock (_cacheGate)
+        {
+            EnsureRevision(currentRevision);
+            if (!currentRevision.Equals(revision, StringComparison.Ordinal)) return loaded;
+            if (_objectCache.TryGetValue(key, out var reference) &&
+                reference.TryGetTarget(out var cached) && cached is T typed) return typed;
+            _objectCache[key] = new WeakReference<BObject>(loaded);
+            return loaded;
+        }
+    }
+
+    private string CurrentRevision()
+    {
+        if (_manager.ActiveVersion is { } version)
+            return $"{version.PackageName}\0{version.Version}\0{version.CatalogSha256}";
+        return _manager.ActiveCatalog is { } catalog
+            ? $"{catalog.PackageName}\0{catalog.Version}\0" +
+              System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(catalog)
+            : "uninitialized";
+    }
+
+    private void EnsureRevision(string revision)
+    {
+        if (_cacheRevision.Equals(revision, StringComparison.Ordinal)) return;
+        _objectCache.Clear();
+        _cacheRevision = revision;
     }
 
     public IEnumerable<string> Enumerate(string path, string folderName)
@@ -117,4 +181,6 @@ public sealed class AssetBundleResourceProvider : IResourceProvider, IResourceAs
             throw new ArgumentException("A resource folder name cannot contain path separators.", nameof(folderName));
         return normalized;
     }
+
+    private readonly record struct ProviderObjectCacheKey(string Address, Type ObjectType);
 }

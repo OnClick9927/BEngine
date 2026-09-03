@@ -56,7 +56,7 @@ internal static class AssetBundleValidation
         ValidateAcyclic(bundles);
 
         var addresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var entries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var entries = new Dictionary<string, AssetBundleAsset>(StringComparer.OrdinalIgnoreCase);
         var guids = new HashSet<Guid>();
         var identities = new Dictionary<AssetIdentity, AssetBundleAsset>();
         foreach (var asset in catalog.Assets)
@@ -66,7 +66,8 @@ internal static class AssetBundleValidation
             if (!string.Equals(address, asset.Address, StringComparison.Ordinal))
                 throw new InvalidDataException(
                     $"Asset address '{asset.Address}' is not canonical; expected '{address}'.");
-            var entry = NormalizePayloadEntry(asset.Entry);
+            var supportsIndependentEntries = catalog.SchemaVersion >= 4;
+            var entry = NormalizePayloadEntry(asset.Entry, supportsIndependentEntries);
             if (!string.Equals(entry, asset.Entry, StringComparison.Ordinal))
                 throw new InvalidDataException(
                     $"Asset '{asset.Address}' entry is not a canonical payload path.");
@@ -81,7 +82,10 @@ internal static class AssetBundleValidation
                 if (ownerGuid != asset.Guid)
                     throw new InvalidDataException(
                         $"Main asset '{asset.Address}' owner GUID must match its asset GUID.");
-                if (IsSubAssetAddress(address) || !string.Equals(entry, address, StringComparison.Ordinal))
+                if (IsSubAssetAddress(address))
+                    throw new InvalidDataException(
+                        $"Main asset '{asset.Address}' cannot use a sub-asset address.");
+                if (!supportsIndependentEntries && !string.Equals(entry, address, StringComparison.Ordinal))
                     throw new InvalidDataException(
                         $"Main asset '{asset.Address}' entry must be its canonical Assets path.");
             }
@@ -94,17 +98,20 @@ internal static class AssetBundleValidation
                 if (!string.Equals(address, expectedAddress, StringComparison.Ordinal))
                     throw new InvalidDataException(
                         $"Sub-asset address '{asset.Address}' must be '{expectedAddress}'.");
-                var extension = Path.GetExtension(entry);
-                string expectedEntry;
-                try { expectedEntry = CreateSubAssetEntry(ownerGuid, asset.LocalIdentifier, extension); }
-                catch (ArgumentException exception)
+                if (!supportsIndependentEntries)
                 {
-                    throw new InvalidDataException(
-                        $"Sub-asset '{asset.Address}' has an invalid payload extension.", exception);
+                    var extension = Path.GetExtension(entry);
+                    string expectedEntry;
+                    try { expectedEntry = CreateSubAssetEntry(ownerGuid, asset.LocalIdentifier, extension); }
+                    catch (ArgumentException exception)
+                    {
+                        throw new InvalidDataException(
+                            $"Sub-asset '{asset.Address}' has an invalid payload extension.", exception);
+                    }
+                    if (!string.Equals(entry, expectedEntry, StringComparison.Ordinal))
+                        throw new InvalidDataException(
+                            $"Sub-asset '{asset.Address}' entry must be '{expectedEntry}'.");
                 }
-                if (!string.Equals(entry, expectedEntry, StringComparison.Ordinal))
-                    throw new InvalidDataException(
-                        $"Sub-asset '{asset.Address}' entry must be '{expectedEntry}'.");
             }
             ValidateIdentifier(asset.Bundle, $"bundle of '{asset.Address}'");
             if (!bundles.ContainsKey(asset.Bundle))
@@ -116,8 +123,19 @@ internal static class AssetBundleValidation
             if (asset.Size < 0) throw new InvalidDataException($"Asset '{asset.Address}' size cannot be negative.");
             if (!addresses.Add(asset.Address))
                 throw new InvalidDataException($"Duplicate asset address '{asset.Address}'.");
-            if (!entries.Add(asset.Entry))
-                throw new InvalidDataException($"Duplicate asset payload entry '{asset.Entry}'.");
+            var entryKey = supportsIndependentEntries
+                ? $"{asset.Bundle}\0{asset.Entry}"
+                : asset.Entry;
+            if (entries.TryGetValue(entryKey, out var existingEntry))
+            {
+                if (!supportsIndependentEntries ||
+                    !existingEntry.Bundle.Equals(asset.Bundle, StringComparison.OrdinalIgnoreCase) ||
+                    !existingEntry.Entry.Equals(asset.Entry, StringComparison.Ordinal) ||
+                    !existingEntry.Sha256.Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase) ||
+                    existingEntry.Size != asset.Size)
+                    throw new InvalidDataException($"Duplicate asset payload entry '{asset.Entry}'.");
+            }
+            else entries.Add(entryKey, asset);
             if (!guids.Add(asset.Guid))
                 throw new InvalidDataException($"Duplicate asset GUID '{asset.Guid:D}'.");
             var identity = new AssetIdentity(ownerGuid, asset.LocalIdentifier);
@@ -157,6 +175,12 @@ internal static class AssetBundleValidation
             throw new InvalidDataException("Catalog size must be positive.");
     }
 
+    internal static void ValidateLatestPointer(AssetBundleLatestPointer pointer)
+    {
+        ArgumentNullException.ThrowIfNull(pointer);
+        ValidateVersionText(pointer.Version, nameof(pointer.Version));
+    }
+
     internal static string NormalizeAddress(string address)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
@@ -189,6 +213,12 @@ internal static class AssetBundleValidation
                $"{localIdentifier.ToString(System.Globalization.CultureInfo.InvariantCulture)}{extension}";
     }
 
+    internal static string CreateOpaquePayloadEntry(string sha256)
+    {
+        ValidateSha256(sha256, "asset payload SHA256");
+        return $"objects/{sha256.ToLowerInvariant()}.bin";
+    }
+
     internal static bool TryParseSubAssetAddress(
         string address,
         out Guid ownerGuid,
@@ -209,12 +239,14 @@ internal static class AssetBundleValidation
                localIdentifier > 0;
     }
 
-    private static string NormalizePayloadEntry(string entry)
+    private static string NormalizePayloadEntry(string entry, bool supportsIndependentEntries)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(entry);
         if (entry.StartsWith("guid:", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Asset payload entries must be canonical Assets paths.");
+            throw new InvalidDataException("Asset payload entries must be canonical relative paths.");
         var normalized = entry.Replace('\\', '/').Trim('/');
+        if (supportsIndependentEntries)
+            return NormalizeRelativePath(normalized, "asset payload entry");
         if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
             normalized = normalized["Assets/".Length..];
         return $"Assets/{NormalizeRelativePath(normalized, "asset payload entry")}";
@@ -268,12 +300,7 @@ internal static class AssetBundleValidation
     }
 
     private static void ValidateVersionText(string value, string fieldName)
-    {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > 128 ||
-            value.Any(character => character > 127 || char.IsControl(character) ||
-                char.IsWhiteSpace(character) || character is '/' or '\\' or ':'))
-            throw new InvalidDataException($"{fieldName} is invalid.");
-    }
+        => AssetBundleVersionLabel.ValidatePortable(value, fieldName);
 
     private static void ValidateType(string value, string address)
     {

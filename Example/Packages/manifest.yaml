@@ -1,3 +1,6 @@
 format: BEngine.Packages
 version: 1
-packages: []
+packages:
+- id: com.bengine.ui-elements
+  version: 1.0.0
+  enabled: true

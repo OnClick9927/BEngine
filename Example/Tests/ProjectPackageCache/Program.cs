@@ -1,4 +1,5 @@
 using BEngine.Editor.Documents;
+using BEngine.Editor;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
 
@@ -12,26 +13,21 @@ internal static class Program
         var previousRepository = Environment.GetEnvironmentVariable("BENGINE_PACKAGES_PATH");
         try
         {
-            var brokenRepository = Path.Combine(temporaryRoot, "BrokenRepository");
-            Directory.CreateDirectory(brokenRepository);
-            File.WriteAllText(Path.Combine(brokenRepository, "package.yaml"), "not: a-package-definition");
-            Environment.SetEnvironmentVariable("BENGINE_PACKAGES_PATH", brokenRepository);
-            var emptyWorkspace = ProjectWorkspaceFactory.Create(
-                Path.Combine(temporaryRoot, "Empty"), "Empty");
-            var emptyManifest = BEngine.YamlUtility.Load<PackageManifestDocument>(emptyWorkspace.PackageManifestPath);
-            Require(emptyManifest.Packages.Count == 0,
-                "A default project manifest contains extension packages.");
-            Require(!Directory.EnumerateDirectories(emptyWorkspace.PackagesPath).Any(),
-                "A default project copied extension packages into Packages.");
-
             var repository = Path.Combine(FindRepositoryRoot(), "Output", "Packages");
             Environment.SetEnvironmentVariable("BENGINE_PACKAGES_PATH", repository);
+            var defaultWorkspace = ProjectWorkspaceFactory.Create(
+                Path.Combine(temporaryRoot, "Default"), "Default");
+            VerifyDefaultAotProject(defaultWorkspace);
+            VerifyAotRecovery(defaultWorkspace);
+
             var selectedWorkspace = ProjectWorkspaceFactory.Create(
                 Path.Combine(temporaryRoot, "Selected"), "Selected", ["com.bengine.navigation2d"]);
             var selectedManifest = BEngine.YamlUtility.Load<PackageManifestDocument>(selectedWorkspace.PackageManifestPath);
             var enabled = selectedManifest.Packages.Where(package => package.Enabled)
                 .Select(package => package.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            Require(enabled.IsSupersetOf(["com.bengine.navigation2d", "com.bengine.physics2d"]),
+            Require(enabled.IsSupersetOf([
+                    "com.bengine.ui-elements", "com.bengine.navigation2d", "com.bengine.physics2d"
+                ]),
                 "Selected package dependencies were not enabled.");
             foreach (var packageId in enabled)
             {
@@ -60,6 +56,8 @@ internal static class Program
             Require(BPackageRepository.rootPath.Equals(repository, StringComparison.OrdinalIgnoreCase),
                 "The package repository did not resolve to Output/Packages.");
 
+            VerifyCommandLineBuildPreparation(defaultWorkspace);
+
             var failedRoot = Path.Combine(temporaryRoot, "Failed");
             try
             {
@@ -75,7 +73,8 @@ internal static class Program
                     .Any(),
                 "A failed project creation left a staging directory behind.");
             Console.WriteLine(
-                "PROJECT_PACKAGE_CACHE_OK|default-none,repository-independent,selection,dependencies,copy,delete,restore,transaction");
+                "PROJECT_PACKAGE_CACHE_OK|default-aot,aot-layout,aot-recovery,uielements-required," +
+                "selection,dependencies,copy,delete,restore,cli-build,transaction");
             return 0;
         }
         catch (Exception exception)
@@ -93,6 +92,111 @@ internal static class Program
                 catch (UnauthorizedAccessException) { }
             }
         }
+    }
+
+    private static void VerifyCommandLineBuildPreparation(ProjectWorkspace workspace)
+    {
+        var packageRoot = Path.Combine(workspace.PackagesPath, "com.bengine.ui-elements");
+        Directory.Delete(packageRoot, true);
+        Require(File.Exists(workspace.PackageManifestPath) && !Directory.Exists(packageRoot),
+            "The command-line build fixture was not reduced to a manifest-only package configuration.");
+
+        BEngine.Editor.Program.PrepareProjectForCommandLineBuild(workspace);
+
+        Require(File.Exists(Path.Combine(packageRoot, "package.yaml")),
+            "Command-line build preparation did not synchronize UIElements from Output/Packages.");
+        Require(Directory.EnumerateFiles(packageRoot, "*.cs", SearchOption.AllDirectories).Any(),
+            "Command-line build preparation restored no UIElements source files.");
+        Require(ScriptAssemblyStore.ResolveCurrentPath(workspace, "AOT") is { } assemblyPath &&
+                File.Exists(assemblyPath),
+            "Command-line build preparation did not compile the AOT project assembly.");
+    }
+
+    private static void VerifyDefaultAotProject(ProjectWorkspace workspace)
+    {
+        var manifest = BEngine.YamlUtility.Load<PackageManifestDocument>(workspace.PackageManifestPath);
+        Require(manifest.Packages.Where(package => package.Enabled).Select(package => package.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(["com.bengine.ui-elements"]),
+            "A default project did not enable exactly the UIElements package required by AOT.");
+        Require(File.Exists(Path.Combine(workspace.PackagesPath,
+                "com.bengine.ui-elements", "package.yaml")),
+            "A default project did not cache its required UIElements package.");
+
+        var aotRoot = Path.Combine(workspace.AssetsPath, "Aot");
+        var expectedRootAssets = new[]
+        {
+            "AOT.scene.yaml", "AOT.asmdef.yaml"
+        };
+        var aotUiRoot = Path.Combine(aotRoot, "UI");
+        var expectedUiAssets = new[] { "AOT.uxml", "AOT.uss", "AotStartupView.cs", "BEngine.png" };
+        Require(File.Exists(aotRoot + ".meta") && File.Exists(aotUiRoot + ".meta") &&
+                expectedRootAssets.All(asset =>
+                 File.Exists(Path.Combine(aotRoot, asset)) &&
+                 File.Exists(Path.Combine(aotRoot, asset) + ".meta")) &&
+                expectedUiAssets.All(asset =>
+                 File.Exists(Path.Combine(aotUiRoot, asset)) &&
+                 File.Exists(Path.Combine(aotUiRoot, asset) + ".meta")),
+            "A default project did not create the complete AOT asset set and metadata.");
+        var aotView = File.ReadAllText(Path.Combine(aotUiRoot, "AotStartupView.cs"));
+        var aotUxml = File.ReadAllText(Path.Combine(aotUiRoot, "AOT.uxml"));
+        Require(File.ReadAllText(Path.Combine(aotRoot, "AOT.asmdef.yaml"))
+                .Contains("BEngine.UIElements", StringComparison.Ordinal) &&
+                File.ReadAllText(Path.Combine(aotRoot, "AOT.scene.yaml")) is var aotScene &&
+                aotScene.Contains("version: 2", StringComparison.Ordinal) &&
+                aotScene.Contains("AOT.AotStartupView", StringComparison.Ordinal) &&
+                aotView.Contains("IAotStartupFlow", StringComparison.Ordinal) &&
+                aotView.Contains("CheckForUpdates()", StringComparison.Ordinal) &&
+                aotView.Contains("ConfirmUpdate()", StringComparison.Ordinal) &&
+                aotView.Contains("DeclineUpdate()", StringComparison.Ordinal) &&
+                aotView.Contains("CanDeclineUpdate", StringComparison.Ordinal) &&
+                aotView.Contains("Remote target version:", StringComparison.Ordinal) &&
+                new[] { "CheckForUpdatesButton", "UpdateConfirmDialog", "ConfirmUpdateButton",
+                    "CancelUpdateButton", "EnterGameButton" }.All(name =>
+                    aotUxml.Contains($"name=\"{name}\"", StringComparison.Ordinal)),
+            "The generated AOT assembly, scene, and startup controller are not wired together.");
+
+        var settings = PlayerBuildSettingsStore.Load(workspace.RootPath);
+        Require(PlayerBuildSettingsStore.GetEnabledScenes(settings) is
+                    ["Assets/Aot/AOT.scene.yaml"] &&
+                settings.SplashImage == AotProjectLayout.LogoAssetPath &&
+                settings.HotResourceVersion == "v1" &&
+                File.ReadAllText(Path.Combine(workspace.ProjectSettingsPath,
+                        PlayerBuildSettingsStore.FileName))
+                    .Contains("hotResourceVersion: v1", StringComparison.Ordinal),
+            "A default project must build only AOT, use its logo, and persist Hot Resources v1.");
+        Require(workspace.Project.StartupScene == "Assets/Scenes/Main.scene.yaml",
+            "The source project startup scene must remain the hot-update game entry scene.");
+
+        var sourceLogo = Path.Combine(FindRepositoryRoot(), "src", "Core", "Editor", "Icons", "BEngine.png");
+        Require(File.ReadAllBytes(sourceLogo).SequenceEqual(
+                File.ReadAllBytes(Path.Combine(aotUiRoot, "BEngine.png"))),
+            "The generated AOT logo does not match the engine-provided BEngine logo.");
+    }
+
+    private static void VerifyAotRecovery(ProjectWorkspace workspace)
+    {
+        var scenePath = workspace.ResolveInside(AotProjectLayout.SceneAssetPath);
+        var uiPath = workspace.ResolveInside(AotProjectLayout.UiDocumentAssetPath);
+        File.Delete(scenePath);
+        File.Delete(scenePath + ".meta");
+        File.Delete(uiPath);
+        File.Delete(uiPath + ".meta");
+        var customUiPath = workspace.ResolveInside(AotProjectLayout.AssetRoot + "/CustomBootstrap.uxml");
+        const string customUi = "<UXML><Label text=\"Custom AOT\" /></UXML>";
+        File.WriteAllText(customUiPath, customUi);
+
+        ProjectWorkspaceFactory.EnsureRequiredAotInvariants(workspace);
+
+        Require(File.Exists(scenePath) && File.Exists(scenePath + ".meta") &&
+                !File.Exists(uiPath) && !File.Exists(uiPath + ".meta") &&
+                File.ReadAllText(scenePath).Contains("gameObjects: []", StringComparison.Ordinal) &&
+                File.ReadAllText(customUiPath) == customUi,
+            "AOT invariant repair did not restore the fixed scene or unexpectedly restored/changed custom UI.");
+        Require(AotProjectLayout.IsProtectedAssetPath("assets/AOT") &&
+                AotProjectLayout.IsProtectedAssetPath("Assets\\Aot\\AOT.scene.yaml") &&
+                AotProjectLayout.IsProtectedAssetPath("Assets/Aot/../Aot/AOT.scene.yaml") &&
+                !AotProjectLayout.IsProtectedAssetPath(AotProjectLayout.UiDocumentAssetPath),
+            "The AOT protected-path policy is not normalized or is broader than the fixed identities.");
     }
 
     private static string FindRepositoryRoot()

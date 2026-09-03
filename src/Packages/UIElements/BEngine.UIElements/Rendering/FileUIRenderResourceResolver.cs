@@ -15,9 +15,12 @@ public sealed class FileUIRenderResourceResolver : IUIRenderResourceResolver
         try
         {
             var path = ResolvePath(source);
-            if (!File.Exists(path)) return false;
-            var bytes = File.ReadAllBytes(path);
-            return Path.GetExtension(path).ToLowerInvariant() switch
+            var bytes = File.Exists(path)
+                ? File.ReadAllBytes(path)
+                : Resources.Load<byte[]>(source);
+            if (bytes is null) return false;
+            var extension = Path.GetExtension(File.Exists(path) ? path : source).ToLowerInvariant();
+            return extension switch
             {
                 ".png" => PortablePngDecoder.TryDecode(bytes, out texture),
                 ".rgba" => TryDecodeRawRgba(bytes, out texture),
@@ -25,7 +28,8 @@ public sealed class FileUIRenderResourceResolver : IUIRenderResourceResolver
             };
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
-                                          InvalidDataException or OverflowException)
+                                          InvalidDataException or InvalidOperationException or
+                                          ArgumentException or NotSupportedException or OverflowException)
         {
             return false;
         }

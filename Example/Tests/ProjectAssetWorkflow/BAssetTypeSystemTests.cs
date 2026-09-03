@@ -6,6 +6,7 @@ using BEngine.ProjectSystem;
 using BEngine.Rendering;
 using BEngine.Serialization;
 using System.Reflection;
+using AotProjectLayout = BEngine.ProjectSystem.Editor.AotProjectLayout;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
 using ProjectAssetChange = BEngine.ProjectSystem.Editor.AssetChange;
 using InspectorEditor = BEngine.Editor.Editor;
@@ -50,6 +51,7 @@ internal static class BAssetTypeSystemTests
             VerifyTextureImporterRoundTrip(workspace);
             VerifyManagedAssetPersistence();
             VerifySubAssetPersistence(workspace, projectAssets);
+            VerifyAotAssetProtection(workspace, host);
             VerifyTextureAtlasGuidReferencesAndGeneratedSubAsset(workspace, projectAssets, host);
             VerifyBAssetReferenceRoundTrip();
             VerifyPackageReference(workspace);
@@ -60,8 +62,8 @@ internal static class BAssetTypeSystemTests
                               "managed-save-reload,subasset-guid-localid,file-subasset-reference," +
                               "atlas-guid-sources,atlas-library-artifact,atlas-importer,atlas-png-subasset," +
                               "atlas-incremental-subasset,atlas-stable-import,atlas-empty-sources-cleanup," +
-                              "subasset-cache-invalidation,subasset-identity-collision,atlas-stable-move," +
-                              "subasset-delete-guard," +
+                               "subasset-cache-invalidation,subasset-identity-collision,atlas-stable-move," +
+                               "subasset-delete-guard,aot-asset-protection," +
                               "basset-reference-roundtrip,package-reference," +
                               "no-loader-registry,editor-icon-inheritance,registry-unload");
             return 0;
@@ -83,6 +85,41 @@ internal static class BAssetTypeSystemTests
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
+    }
+
+    private static void VerifyAotAssetProtection(ProjectWorkspace workspace, TestEditorHost host)
+    {
+        var aotRoot = workspace.ResolveInside(AotProjectLayout.AssetRoot);
+        var scenePath = workspace.ResolveInside(AotProjectLayout.SceneAssetPath);
+        Directory.CreateDirectory(aotRoot);
+        File.WriteAllText(scenePath, "format: BEngine.Scene\nversion: 2\nname: AOT\ngameObjects: []\n");
+
+        var hostDeleteReached = false;
+        host.DeleteAssetFailure = _ =>
+        {
+            hostDeleteReached = true;
+            return false;
+        };
+        var sceneDeleteRejected = !AssetDatabase.DeleteAsset("assets\\AOT\\AOT.scene.yaml");
+        var rootDeleteRejected = !AssetDatabase.DeleteAsset("Assets/Aot");
+        host.DeleteAssetFailure = null;
+
+        var hostMoveReached = false;
+        host.MoveAssetFailure = (_, _) =>
+        {
+            hostMoveReached = true;
+            return null;
+        };
+        var sceneMoveRejected = AssetDatabase.MoveAsset(
+            AotProjectLayout.SceneAssetPath, "Assets/Scenes/Renamed.scene.yaml");
+        var rootMoveRejected = AssetDatabase.MoveAsset(AotProjectLayout.AssetRoot, "Assets/Bootstrap");
+        host.MoveAssetFailure = null;
+
+        Require(sceneDeleteRejected && rootDeleteRejected && !hostDeleteReached &&
+                sceneMoveRejected.Contains("AOT", StringComparison.Ordinal) &&
+                rootMoveRejected.Contains("AOT", StringComparison.Ordinal) && !hostMoveReached &&
+                File.Exists(scenePath) && Directory.Exists(aotRoot),
+            "The public AssetDatabase allowed deleting or moving the reserved AOT folder/scene identity.");
     }
 
     private static void VerifyRequiredRuntimeTypes()

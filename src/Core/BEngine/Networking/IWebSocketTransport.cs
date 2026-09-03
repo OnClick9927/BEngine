@@ -9,16 +9,16 @@ public interface IWebSocketTransport : IDisposable
     WebSocketCloseStatus? CloseStatus { get; }
     string? CloseStatusDescription { get; }
 
-    Task ConnectAsync(Uri uri, CancellationToken cancellationToken);
-    Task SendAsync(
+    BValueTask ConnectAsync(Uri uri, CancellationToken cancellationToken);
+    BValueTask SendAsync(
         ArraySegment<byte> buffer,
         WebSocketMessageType messageType,
         bool endOfMessage,
         CancellationToken cancellationToken);
-    Task<WebSocketReceiveResult> ReceiveAsync(
+    BValueTask<WebSocketReceiveResult> ReceiveAsync(
         ArraySegment<byte> buffer,
         CancellationToken cancellationToken);
-    Task CloseAsync(
+    BValueTask CloseAsync(
         WebSocketCloseStatus closeStatus,
         string? statusDescription,
         CancellationToken cancellationToken);

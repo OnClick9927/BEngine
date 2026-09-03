@@ -1,0 +1,12 @@
+format: BEngine.AssetMeta
+version: 1
+guid: 69e266c9481948aa88a174435b2f31ee
+importer: DefaultImporter
+assetType: Scene
+sourceHash: aaa7c1e1c2b4f70563cd528c2ff117d8679453a693a1c62b4825b6c8f9019f32
+importFingerprint: b05d84d8ee69096bf5e42e126ebeb6a39c5bf2f92206f99e4938645fe8f5ced8
+settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

@@ -18,6 +18,9 @@ internal static class Program
             var repository = Path.Combine(temporaryRoot, "Output", "Packages");
             var fixture = new SourcePackageFixture(repository);
             fixture.Create();
+            CopyDirectory(
+                Path.Combine(FindRepositoryRoot(), "Output", "Packages", "UIElements"),
+                Path.Combine(repository, "UIElements"));
             Environment.SetEnvironmentVariable("BENGINE_PACKAGES_PATH", repository);
 
             var workspace = ProjectWorkspaceFactory.Create(
@@ -93,6 +96,19 @@ internal static class Program
                 catch (IOException) { }
                 catch (UnauthorizedAccessException) { }
             }
+        }
+    }
+
+    private static void CopyDirectory(string source, string destination)
+    {
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+        Directory.CreateDirectory(destination);
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: true);
         }
     }
 

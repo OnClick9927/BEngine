@@ -325,9 +325,13 @@ internal sealed class EditorPlayModeSession
             return PrefabAssetSerialization.Deserialize(PrefabAssetSerialization.Serialize(prefab),
                 prefab.assetPath);
         }
-        if (source is ScriptableObject scriptable)
-            return ScriptableObject.CreateInstance(scriptable.GetType());
-        if (RuntimeTypeCache.GetFactory(source.GetType())?.Invoke() is BObject runtimeObject)
+        var sourceType = source.GetType();
+        var runtimeType = RuntimeTypeCache.FindType(sourceType.AssemblyQualifiedName ?? string.Empty) ??
+                          RuntimeTypeCache.FindType(sourceType.FullName ?? string.Empty) ?? sourceType;
+        if (!typeof(BObject).IsAssignableFrom(runtimeType)) runtimeType = sourceType;
+        if (source is ScriptableObject)
+            return ScriptableObject.CreateInstance(runtimeType);
+        if (RuntimeTypeCache.GetFactory(runtimeType)?.Invoke() is BObject runtimeObject)
             return runtimeObject;
         throw new NotSupportedException(
             $"Play Mode cannot isolate referenced object type '{source.GetType().FullName}'.");
@@ -349,12 +353,18 @@ internal sealed class EditorPlayModeSession
         Dictionary<object, object> visited)
     {
         CopyObjectMetadata(source, destination);
+        var destinationMembers = ObjectState.GetSerializableMembers(destination)
+            .GroupBy(member => member.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         foreach (var member in ObjectState.GetSerializableMembers(source))
         {
-            var accessor = RuntimeTypeCache.GetMemberAccessor(member);
-            if (accessor.Setter is null) continue;
-            var value = EditorValueCloner.CloneValue(accessor.Getter(source), objectMapper, visited);
-            accessor.Setter(destination, value);
+            if (!destinationMembers.TryGetValue(member.Name, out var destinationMember)) continue;
+            var sourceAccessor = RuntimeTypeCache.GetMemberAccessor(member);
+            var destinationAccessor = RuntimeTypeCache.GetMemberAccessor(destinationMember);
+            if (destinationAccessor.Setter is null) continue;
+            var value = EditorValueCloner.CloneValue(
+                sourceAccessor.Getter(source), destinationAccessor.ValueType, objectMapper, visited);
+            destinationAccessor.Setter(destination, value);
         }
     }
 

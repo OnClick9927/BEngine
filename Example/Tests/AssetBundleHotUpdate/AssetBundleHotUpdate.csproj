@@ -5,6 +5,7 @@
     <RootNamespace>BEngine.ExampleTests.AssetBundleHotUpdate</RootNamespace>
     <AssemblyName>BEngine.ExampleTests.AssetBundleHotUpdate</AssemblyName>
     <NuGetAudit>false</NuGetAudit>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../src/Core/BEngine.Editor/BEngine.Editor.csproj" />

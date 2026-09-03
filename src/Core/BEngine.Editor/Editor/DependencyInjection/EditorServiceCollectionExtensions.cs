@@ -18,6 +18,7 @@ public static class EditorServiceCollectionExtensions
         var projectPath = Path.GetFullPath(options.ProjectPath);
         options = options with { ProjectPath = projectPath };
         var workspace = ProjectWorkspace.Open(projectPath);
+        BEngine.ProjectSystem.Editor.ProjectWorkspaceFactory.EnsureRequiredAotInvariants(workspace);
         ProjectRuntimeSettings.LoadAndApply(workspace);
         services.AddBEngine(new EngineServiceContext(
             EngineHostKind.Editor, projectPath, $"Editor:{Path.GetFileName(projectPath)}"),

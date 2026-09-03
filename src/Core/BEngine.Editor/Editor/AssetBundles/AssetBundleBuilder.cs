@@ -1,8 +1,10 @@
 using System.Buffers;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using BEngine.AssetBundles;
 using BEngine.Documents;
+using BEngine.HotUpdate;
 using BEngine.ProjectSystem;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
 using ProjectAssetMetaDocument = BEngine.ProjectSystem.Editor.AssetMetaDocument;
@@ -63,6 +65,7 @@ public static class AssetBundleBuilder
 
         ValidateIdentifier(options.PackageName, nameof(options.PackageName));
         ValidateVersion(options.Version);
+        ValidateCompressionMode(options.CompressionMode);
         if (string.IsNullOrWhiteSpace(options.OutputDirectory))
             throw new ArgumentException("Asset bundle output directory is required.", nameof(options));
 
@@ -143,6 +146,63 @@ public static class AssetBundleBuilder
             });
         }
 
+        var releaseInputs = options.ReleaseInputs;
+        if ((options.IncludeHotUpdateAssemblies || options.IncludePackageRuntimeResources) &&
+            releaseInputs is null)
+            releaseInputs = RuntimeManagedCodeReleaseInputCollector.Collect(
+                workspace, EditorInstanceContext.current?.scriptAssembliesPath);
+        if (options.IncludePackageRuntimeResources)
+        {
+            const string packageBundleName = "bengine-packages";
+            if (definitionsByName.ContainsKey(packageBundleName))
+                throw new InvalidDataException(
+                    $"Asset bundle name '{packageBundleName}' is reserved for package runtime resources.");
+            var packageAssets = CapturePackageResourceAssets(
+                releaseInputs!.PackageResources, cancellationToken);
+            if (packageAssets.Count != 0)
+            {
+                foreach (var asset in packageAssets)
+                {
+                    if (!assignedAssets.TryAdd(asset.Address, packageBundleName) ||
+                        !capturedAssets.TryAdd(asset.Address, asset))
+                        throw new InvalidDataException(
+                            $"Package resource address '{asset.Address}' collides with another runtime asset.");
+                }
+                expandedDefinitions.Add(new AssetBundleBuildDefinition
+                {
+                    Name = packageBundleName,
+                    AssetPaths = packageAssets.Select(asset => asset.Address).ToArray(),
+                    Dependencies = []
+                });
+            }
+        }
+
+        if (options.IncludeHotUpdateAssemblies)
+        {
+            const string codeBundleName = "bengine-hotupdate";
+            if (definitionsByName.ContainsKey(codeBundleName))
+                throw new InvalidDataException(
+                    $"Asset bundle name '{codeBundleName}' is reserved for managed-code hot updates.");
+            var codeAssets = CaptureHotUpdateAssets(
+                releaseInputs!.Assemblies, options.IncludeManagedSymbols, cancellationToken);
+            if (codeAssets.Count != 0)
+            {
+                foreach (var asset in codeAssets)
+                {
+                    if (!assignedAssets.TryAdd(asset.Address, codeBundleName) ||
+                        !capturedAssets.TryAdd(asset.Address, asset))
+                        throw new InvalidDataException(
+                            $"HotUpdate asset address '{asset.Address}' collides with a project asset.");
+                }
+                expandedDefinitions.Add(new AssetBundleBuildDefinition
+                {
+                    Name = codeBundleName,
+                    AssetPaths = codeAssets.Select(asset => asset.Address).ToArray(),
+                    Dependencies = []
+                });
+            }
+        }
+
         var outputPath = Path.GetFullPath(options.OutputDirectory);
         if (IsSameOrChildPath(outputPath, assetsRoot))
             throw new InvalidDataException("Asset bundles cannot be built inside the project's Assets directory.");
@@ -150,11 +210,116 @@ public static class AssetBundleBuilder
         {
             PackageName = options.PackageName,
             Version = options.Version,
-            OutputDirectory = outputPath
+            OutputDirectory = outputPath,
+            CompressionMode = options.CompressionMode,
+            IncludeHotUpdateAssemblies = options.IncludeHotUpdateAssemblies,
+            IncludeManagedSymbols = options.IncludeManagedSymbols,
+            IncludePackageRuntimeResources = options.IncludePackageRuntimeResources,
+            ReleaseInputs = releaseInputs
         };
         progress?.Report(new AssetBundleBuildProgress(AssetBundleBuildPhase.Preparing, 1, 1,
             $"Captured {capturedAssets.Count} assets"));
         return (workspace, expandedDefinitions.ToArray(), capturedAssets.Values.ToArray(), capturedOptions);
+    }
+
+    private static IReadOnlyList<AssetBundleBuildAsset> CaptureHotUpdateAssets(
+        IReadOnlyList<RuntimeManagedCodeReleaseInput> inputs,
+        bool includeManagedSymbols,
+        CancellationToken cancellationToken)
+    {
+        if (inputs.Count == 0) return [];
+
+        using var releaseHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var manifest = new ManagedCodeReleaseManifest();
+        var assets = new List<AssetBundleBuildAsset>(inputs.Count * 2 + 1);
+        foreach (var input in inputs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var assembly = File.ReadAllBytes(input.AssemblyPath);
+            var assemblyHash = AssetBundleCatalogSerializer.ComputeSha256(assembly);
+            if (assembly.LongLength != input.AssemblySize ||
+                !assemblyHash.Equals(input.AssemblySha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(
+                    $"Runtime assembly '{input.Name}' changed after the release input snapshot was captured.");
+            var symbols = includeManagedSymbols && input.SymbolsPath is not null
+                ? File.ReadAllBytes(input.SymbolsPath)
+                : null;
+            var assemblyAddress = $"Assets/__BEngine/HotUpdate/{input.Name}.dll";
+            var symbolsAddress = symbols is { Length: > 0 }
+                ? $"Assets/__BEngine/HotUpdate/{input.Name}.pdb"
+                : null;
+            releaseHash.AppendData(Encoding.UTF8.GetBytes($"{input.Name}\0{input.BuildId}\0"));
+            releaseHash.AppendData(SHA256.HashData(assembly));
+            assets.Add(CreateMemoryAsset(assemblyAddress, assembly, "ManagedAssembly"));
+            if (symbolsAddress is not null)
+                assets.Add(CreateMemoryAsset(symbolsAddress, symbols!, "ManagedSymbols"));
+            manifest.Modules.Add(new ManagedCodeModuleManifest
+            {
+                Name = input.Name,
+                BuildId = input.BuildId,
+                AssemblyAddress = assemblyAddress,
+                SymbolsAddress = symbolsAddress,
+                Dependencies = input.Dependencies.ToList()
+            });
+        }
+        manifest.ReleaseId = "code-" +
+                             Convert.ToHexString(releaseHash.GetHashAndReset()).ToLowerInvariant()[..24];
+        assets.Add(CreateMemoryAsset(
+            ManagedCodeReleaseManifest.DefaultAddress,
+            ManagedCodeReleaseManifestSerializer.Serialize(manifest),
+            "ManagedCodeReleaseManifest"));
+        return assets;
+    }
+
+    private static IReadOnlyList<AssetBundleBuildAsset> CapturePackageResourceAssets(
+        IReadOnlyList<RuntimePackageResourceInput> inputs,
+        CancellationToken cancellationToken)
+    {
+        var assets = new List<AssetBundleBuildAsset>(inputs.Count);
+        foreach (var input in inputs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var guidBytes = SHA256.HashData(Encoding.UTF8.GetBytes(input.Address));
+            var guid = new Guid(guidBytes.AsSpan(0, 16));
+            assets.Add(new AssetBundleBuildAsset
+            {
+                Guid = guid,
+                OwnerGuid = guid,
+                LocalIdentifier = 0,
+                Address = input.Address,
+                Entry = AssetBundleValidation.CreateOpaquePayloadEntry(input.Sha256),
+                ArtifactPath = input.FilePath,
+                AssetType = "PackageResource",
+                Importer = "BEnginePackageResource",
+                ImporterSettings = new Dictionary<string, string>(),
+                ArtifactHash = input.Sha256,
+                Size = input.Size
+            });
+        }
+        return assets;
+    }
+
+    private static AssetBundleBuildAsset CreateMemoryAsset(
+        string address,
+        byte[] content,
+        string assetType)
+    {
+        var hash = AssetBundleCatalogSerializer.ComputeSha256(content);
+        var guidBytes = SHA256.HashData(Encoding.UTF8.GetBytes(address));
+        return new AssetBundleBuildAsset
+        {
+            Guid = new Guid(guidBytes.AsSpan(0, 16)),
+            OwnerGuid = new Guid(guidBytes.AsSpan(0, 16)),
+            LocalIdentifier = 0,
+            Address = address,
+            Entry = AssetBundleValidation.CreateOpaquePayloadEntry(hash),
+            Content = (byte[])content.Clone(),
+            AssetType = assetType,
+            Importer = "BEngineHotUpdate",
+            ImporterSettings = new Dictionary<string, string>(),
+            ArtifactHash = hash,
+            Size = content.LongLength
+        };
     }
 
     private static AssetBundleBuildAsset CaptureAsset(ProjectAssetRecord record, string artifactsRoot)
@@ -193,10 +358,7 @@ public static class AssetBundleBuilder
         var address = localIdentifier > 0
             ? AssetBundleValidation.CreateSubAssetAddress(ownerGuid, localIdentifier)
             : projectAddress;
-        var entry = localIdentifier > 0
-            ? AssetBundleValidation.CreateSubAssetEntry(ownerGuid, localIdentifier,
-                Path.GetExtension(artifactPath))
-            : projectAddress;
+        var entry = AssetBundleValidation.CreateOpaquePayloadEntry(record.ArtifactHash);
         return new AssetBundleBuildAsset
         {
             Guid = record.Guid,
@@ -272,7 +434,8 @@ public static class AssetBundleBuilder
                     definitions.Count, definition.Name));
                 var bundleAssets = definition.AssetPaths.Select(address => assetsByAddress[address])
                     .OrderBy(asset => asset.Address, StringComparer.Ordinal).ToArray();
-                var descriptor = WriteBundle(stagingBundles, index, definition, bundleAssets, cancellationToken);
+                var descriptor = WriteBundle(stagingBundles, index, definition, bundleAssets,
+                    ToCompressionLevel(options.CompressionMode), cancellationToken);
                 catalog.Bundles.Add(descriptor);
                 catalog.Assets.AddRange(bundleAssets.Select(asset => new AssetBundleAsset
                 {
@@ -308,6 +471,12 @@ public static class AssetBundleBuilder
                 CatalogSize = catalogBytes.LongLength
             };
             var versionBytes = AssetBundleCatalogSerializer.SerializeVersion(version);
+            var latestPointerBytes = AssetBundleCatalogSerializer.SerializeLatestPointer(
+                new AssetBundleLatestPointer
+                {
+                    PackageName = version.PackageName,
+                    Version = version.Version
+                });
             File.WriteAllBytes(Path.Combine(stagingDirectory, "version.json"), versionBytes);
             progress?.Report(new AssetBundleBuildProgress(AssetBundleBuildPhase.WritingCatalog, 1, 1,
                 "version.json"));
@@ -320,7 +489,7 @@ public static class AssetBundleBuilder
             {
                 reusedExistingVersion = PublishVersion(stagingDirectory, versionDirectory, catalog, catalogBytes,
                     versionBytes, cancellationToken);
-                PublishLatestPointer(packageDirectory, versionBytes);
+                PublishLatestPointer(packageDirectory, latestPointerBytes);
             }
             progress?.Report(new AssetBundleBuildProgress(AssetBundleBuildPhase.Publishing, 1, 1,
                 options.Version));
@@ -332,6 +501,7 @@ public static class AssetBundleBuilder
         finally
         {
             TryDeleteDirectory(stagingDirectory);
+            TryDeleteEmptyDirectory(stagingRoot);
         }
     }
 
@@ -340,20 +510,34 @@ public static class AssetBundleBuilder
         int index,
         AssetBundleBuildDefinition definition,
         IReadOnlyList<AssetBundleBuildAsset> assets,
+        CompressionLevel compressionLevel,
         CancellationToken cancellationToken)
     {
         var temporaryPath = Path.Combine(bundleDirectory, $"{index:D6}.tmp");
         using (var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: false))
         {
+            var writtenEntries = new Dictionary<string, AssetBundleBuildAsset>(StringComparer.OrdinalIgnoreCase);
             foreach (var asset in assets)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var entry = archive.CreateEntry(asset.Entry, CompressionLevel.NoCompression);
+                if (writtenEntries.TryGetValue(asset.Entry, out var existing))
+                {
+                    if (!asset.Entry.Equals(existing.Entry, StringComparison.Ordinal) ||
+                        !asset.ArtifactHash.Equals(existing.ArtifactHash, StringComparison.OrdinalIgnoreCase) ||
+                        asset.Size != existing.Size)
+                        throw new InvalidDataException(
+                            $"Asset bundle entry '{asset.Entry}' maps to conflicting payloads.");
+                    using Stream duplicateSource = OpenAssetPayload(asset);
+                    CopyAndVerifyAsset(duplicateSource, Stream.Null, asset, cancellationToken);
+                    continue;
+                }
+
+                writtenEntries.Add(asset.Entry, asset);
+                var entry = archive.CreateEntry(asset.Entry, compressionLevel);
                 entry.LastWriteTime = StableArchiveTimestamp;
                 entry.ExternalAttributes = 0;
-                using var source = new FileStream(asset.ArtifactPath, FileMode.Open, FileAccess.Read, FileShare.Read,
-                    64 * 1024, FileOptions.SequentialScan);
+                using Stream source = OpenAssetPayload(asset);
                 using var destination = entry.Open();
                 CopyAndVerifyAsset(source, destination, asset, cancellationToken);
             }
@@ -386,6 +570,13 @@ public static class AssetBundleBuilder
             Dependencies = definition.Dependencies.OrderBy(value => value, StringComparer.Ordinal).ToList()
         };
     }
+
+    private static Stream OpenAssetPayload(AssetBundleBuildAsset asset) =>
+        asset.Content is { } content
+            ? new MemoryStream(content, writable: false)
+            : new FileStream(asset.ArtifactPath ??
+                             throw new InvalidDataException($"Asset '{asset.Address}' has no payload."),
+                FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.SequentialScan);
 
     private static void CopyAndVerifyAsset(
         Stream source,
@@ -599,14 +790,25 @@ public static class AssetBundleBuilder
     }
 
     private static void ValidateVersion(string version)
+        => AssetBundleVersionLabel.ValidatePortable(version, "Asset bundle version");
+
+    private static void ValidateCompressionMode(AssetBundleCompressionMode compressionMode)
     {
-        if (string.IsNullOrWhiteSpace(version) || version.Length > 128 || version is "." or ".." ||
-            version.Any(character => character > 127 || char.IsControl(character) || char.IsWhiteSpace(character) ||
-                                     character is '/' or '\\' or ':' ||
-                                     Array.IndexOf(Path.GetInvalidFileNameChars(), character) >= 0) ||
-            !version.Equals(version.TrimEnd(' ', '.'), StringComparison.Ordinal))
-            throw new InvalidDataException("Asset bundle version must be a safe, non-empty path segment.");
+        if (compressionMode is not (AssetBundleCompressionMode.None or AssetBundleCompressionMode.Fast or
+            AssetBundleCompressionMode.Optimal))
+            throw new ArgumentOutOfRangeException(nameof(compressionMode), compressionMode,
+                "Unsupported asset bundle compression mode.");
     }
+
+    private static CompressionLevel ToCompressionLevel(AssetBundleCompressionMode compressionMode) =>
+        compressionMode switch
+        {
+            AssetBundleCompressionMode.None => CompressionLevel.NoCompression,
+            AssetBundleCompressionMode.Fast => CompressionLevel.Fastest,
+            AssetBundleCompressionMode.Optimal => CompressionLevel.Optimal,
+            _ => throw new ArgumentOutOfRangeException(nameof(compressionMode), compressionMode,
+                "Unsupported asset bundle compression mode.")
+        };
 
     private static void ValidateSha256(string value, string fieldName)
     {
@@ -630,4 +832,13 @@ public static class AssetBundleBuilder
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
     }
+
+    private static void TryDeleteEmptyDirectory(string path)
+    {
+        if (!Directory.Exists(path)) return;
+        try { Directory.Delete(path, recursive: false); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
 }

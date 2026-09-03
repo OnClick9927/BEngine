@@ -1,0 +1,12 @@
+format: BEngine.AssetMeta
+version: 1
+guid: 01b39a7804dc4dbeb27acb94c697fa01
+importer: FolderImporter
+assetType: Folder
+sourceHash: ''
+importFingerprint: ''
+settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

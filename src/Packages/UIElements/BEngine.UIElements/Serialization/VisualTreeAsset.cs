@@ -16,8 +16,19 @@ public sealed class VisualTreeAsset : ScriptableObject
         return new VisualTreeAsset { _document = UIAssetSerializer.ToDocument(root), _sourceRoot = root };
     }
 
-    public static VisualTreeAsset Load(string path) =>
-        Document<VisualTreeAsset>.Read(path, LoadAsset).ToAsset();
+    public static VisualTreeAsset Load(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (File.Exists(path)) return Document<VisualTreeAsset>.Read(path, LoadAsset).ToAsset();
+        if (!Path.GetExtension(path).Equals(".uxml", StringComparison.OrdinalIgnoreCase))
+            throw new FileNotFoundException("UI document was not found.", path);
+        return new VisualTreeAsset
+        {
+            _uxml = true,
+            _sourcePath = path.Replace('\\', '/'),
+            _uxmlTemplate = UxmlSerializer.LoadTemplate(path)
+        };
+    }
 
     private static VisualTreeAsset LoadAsset(string path)
     {

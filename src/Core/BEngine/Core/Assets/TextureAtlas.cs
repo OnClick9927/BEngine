@@ -60,6 +60,15 @@ public sealed class TextureAtlas : BAsset
         })
         .ToAsset();
 
+    internal static TextureAtlas Deserialize(string yaml) => Document<TextureAtlas>
+        .Parse(yaml, static contents =>
+        {
+            var atlas = YamlUtility.Deserialize<TextureAtlas>(contents);
+            atlas.Validate();
+            return atlas;
+        })
+        .ToAsset();
+
     public void Save(string path) => Document<TextureAtlas>.FromAsset(this)
         .Write(TextureAtlasPath.Resolve(path), static (atlas, destination) =>
         {

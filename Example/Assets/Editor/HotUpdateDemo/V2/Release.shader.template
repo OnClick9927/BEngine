@@ -1,0 +1,6 @@
+#pragma stage fragment
+// SHADER-V2
+float4 main() : SV_Target
+{
+    return float4(0.18, 0.78, 0.42, 1.0);
+}

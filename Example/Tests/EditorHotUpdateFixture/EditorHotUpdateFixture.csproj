@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>BEngine.ExampleTests.EditorHotUpdateFixture</RootNamespace>
+    <AssemblyName>BEngine.ExampleTests.EditorHotUpdateFixture</AssemblyName>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>

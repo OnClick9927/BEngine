@@ -9,10 +9,18 @@ internal static class UxmlSerializer
 {
     internal static UxmlTemplate LoadTemplate(string path)
     {
-        var fullPath = Path.GetFullPath(path);
-        var document = XDocument.Load(fullPath, LoadOptions.SetLineInfo);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var fileBacked = File.Exists(path);
+        var sourcePath = fileBacked ? Path.GetFullPath(path) : path.Replace('\\', '/').TrimStart('/');
+        var document = fileBacked
+            ? XDocument.Load(sourcePath, LoadOptions.SetLineInfo)
+            : XDocument.Parse(Resources.Load<string>(sourcePath) ??
+                              throw new FileNotFoundException("Bundled UXML document was not found.", sourcePath),
+                LoadOptions.SetLineInfo);
         var documentRoot = document.Root ?? throw new InvalidDataException("UXML document has no root element.");
-        var baseDirectory = Path.GetDirectoryName(fullPath)!;
+        var baseDirectory = fileBacked
+            ? Path.GetDirectoryName(sourcePath)!
+            : ResourceDirectory(sourcePath);
         var rootNode = documentRoot.Name.LocalName.Equals("UXML", StringComparison.OrdinalIgnoreCase)
             ? documentRoot.Elements().FirstOrDefault(element =>
                 !element.Name.LocalName.Equals("Style", StringComparison.OrdinalIgnoreCase))
@@ -25,10 +33,16 @@ internal static class UxmlSerializer
         {
             var source = Attribute(styleElement, "src");
             if (string.IsNullOrWhiteSpace(source)) continue;
-            var stylePath = Path.GetFullPath(Path.Combine(baseDirectory, source));
-            styles.Add((stylePath, StyleSheet.Load(stylePath)));
+            var stylePath = fileBacked
+                ? Path.GetFullPath(Path.Combine(baseDirectory, source))
+                : CombineResourcePath(baseDirectory, source);
+            var sheet = fileBacked
+                ? StyleSheet.Load(stylePath)
+                : StyleSheet.Parse(Resources.Load<string>(stylePath) ??
+                                   throw new FileNotFoundException("Bundled USS document was not found.", stylePath));
+            styles.Add((stylePath, sheet));
         }
-        return new UxmlTemplate(fullPath, new XElement(rootNode), styles);
+        return new UxmlTemplate(sourcePath, new XElement(rootNode), styles, fileBacked);
     }
 
     internal static VisualElement Load(string path) => LoadTemplate(path).Instantiate();
@@ -42,15 +56,18 @@ internal static class UxmlSerializer
         internal UxmlTemplate(
             string path,
             XElement rootNode,
-            IReadOnlyList<(string Path, StyleSheet Sheet)> styles)
+            IReadOnlyList<(string Path, StyleSheet Sheet)> styles,
+            bool fileBacked = true)
         {
             _rootNode = rootNode;
             _styles = styles;
-            _writeTimes = styles.Select(style => style.Path).Append(path).Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(file => file, File.GetLastWriteTimeUtc, StringComparer.OrdinalIgnoreCase);
+            _writeTimes = fileBacked
+                ? styles.Select(style => style.Path).Append(path).Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(file => file, File.GetLastWriteTimeUtc, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         }
 
-        internal bool IsCurrent => _writeTimes.All(pair =>
+        internal bool IsCurrent => _writeTimes.Count == 0 || _writeTimes.All(pair =>
             File.Exists(pair.Key) && File.GetLastWriteTimeUtc(pair.Key) == pair.Value);
 
         internal VisualElement Instantiate()
@@ -63,6 +80,33 @@ internal static class UxmlSerializer
                 StyleSheet.ApplyDeclarations(element.style, StyleSheet.ParseDeclarations(declarations));
             return root;
         }
+    }
+
+    private static string ResourceDirectory(string path)
+    {
+        var separator = path.LastIndexOf('/');
+        return separator < 0 ? string.Empty : path[..separator];
+    }
+
+    private static string CombineResourcePath(string directory, string relative)
+    {
+        var normalized = relative.Replace('\\', '/').Trim();
+        if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) return normalized;
+        var combined = string.IsNullOrEmpty(directory) ? normalized : $"{directory}/{normalized}";
+        var segments = new List<string>();
+        foreach (var segment in combined.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment == ".") continue;
+            if (segment == "..")
+            {
+                if (segments.Count == 0)
+                    throw new InvalidDataException("USS path escapes the bundled UXML directory.");
+                segments.RemoveAt(segments.Count - 1);
+                continue;
+            }
+            segments.Add(segment);
+        }
+        return string.Join('/', segments);
     }
 
     internal static void Save(VisualElement root, string path)

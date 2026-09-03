@@ -11,7 +11,7 @@ ValidateArchives(repositoryRoot);
 ValidateCompiledExamples(repositoryRoot);
 
 Console.WriteLine(
-    "PACKAGE_EXAMPLES_OK|default-project-empty,on-demand-import,partial-repair,reimport-preserve," +
+    "PACKAGE_EXAMPLES_OK|default-project-aot,on-demand-import,partial-repair,reimport-preserve," +
     "reimport-overwrite," +
     "no-duplicate-import,readme,scene,asmdef,tools-menuitems,core-no-ecs,runtime-editor-compilation");
 
@@ -23,7 +23,9 @@ static void ValidateDefaultProject(string repositoryRoot)
 
     var packages = BEngine.YamlUtility.Load<PackageManifestDocument>(
         Path.Combine(projectRoot, "Packages", "manifest.yaml"));
-    Require(packages.Packages.Count == 0, "The default Example project must not enable extension packages.");
+    Require(packages.Packages.Where(package => package.Enabled).Select(package => package.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(["com.bengine.ui-elements"]),
+        "The default Example project must enable exactly the UIElements package required by AOT.");
 
     var project = BEngine.YamlUtility.Load<ProjectData>(Path.Combine(projectRoot, "Project.yaml"));
     Require(!project.StartupScene.Contains("Examples", StringComparison.OrdinalIgnoreCase),

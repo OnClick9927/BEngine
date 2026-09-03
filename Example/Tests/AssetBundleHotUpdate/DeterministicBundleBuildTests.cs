@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using BEngine.AssetBundles;
 using BEngine.Editor;
 
@@ -58,5 +59,29 @@ internal static class DeterministicBundleBuildTests
         TestAssert.That(!first.Catalog.Assets.Any(item =>
                 item.Address.Contains("/Editor/", StringComparison.OrdinalIgnoreCase)),
             "Editor-only content was included in a runtime asset bundle.");
+        VerifyPayloadEntriesAreOpaque(first);
+    }
+
+    private static void VerifyPayloadEntriesAreOpaque(AssetBundleBuildResult build)
+    {
+        var compressedPayloadFound = false;
+        foreach (var asset in build.Catalog.Assets)
+            TestAssert.That(asset.Entry == $"objects/{asset.Sha256.ToLowerInvariant()}.bin",
+                $"Asset '{asset.Address}' exposed its logical address as the physical payload entry.");
+
+        foreach (var descriptor in build.Catalog.Bundles)
+        {
+            using var stream = File.OpenRead(Path.Combine(build.VersionDirectory, "bundles", descriptor.FileName));
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
+            TestAssert.That(archive.Entries.All(entry =>
+                    entry.FullName.StartsWith("objects/", StringComparison.Ordinal) &&
+                    entry.FullName.EndsWith(".bin", StringComparison.Ordinal) &&
+                    !entry.FullName.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) &&
+                    !entry.FullName.EndsWith(".yml", StringComparison.OrdinalIgnoreCase)),
+                $"Bundle '{descriptor.Name}' contains a non-opaque or YAML archive entry.");
+            compressedPayloadFound |= archive.Entries.Any(entry => entry.CompressedLength < entry.Length);
+        }
+        TestAssert.That(compressedPayloadFound,
+            "The default Optimal compression mode did not compress any asset payload.");
     }
 }

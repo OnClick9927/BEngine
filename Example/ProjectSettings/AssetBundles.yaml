@@ -1,0 +1,12 @@
+format: BEngine.AssetBundleSettings
+version: 1
+enabled: true
+packageName: bengine-2d-showcase
+builtInDirectory: ''
+remoteBaseUrl: http://127.0.0.1:8080/bengine-2d-showcase
+cacheDirectory: ''
+checkForUpdatesOnStartup: false
+applyUpdatesOnStartup: false
+failStartupWhenUpdateFails: false
+requireHttps: false
+maxRetries: 1

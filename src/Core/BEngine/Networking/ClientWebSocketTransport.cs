@@ -12,26 +12,26 @@ public sealed class ClientWebSocketTransport : IWebSocketTransport
     public string? CloseStatusDescription => _socket.CloseStatusDescription;
     public ClientWebSocketOptions Options => _socket.Options;
 
-    public Task ConnectAsync(Uri uri, CancellationToken cancellationToken) =>
-        _socket.ConnectAsync(uri, cancellationToken);
+    public BValueTask ConnectAsync(Uri uri, CancellationToken cancellationToken) =>
+        new(_socket.ConnectAsync(uri, cancellationToken));
 
-    public Task SendAsync(
+    public BValueTask SendAsync(
         ArraySegment<byte> buffer,
         WebSocketMessageType messageType,
         bool endOfMessage,
         CancellationToken cancellationToken) =>
-        _socket.SendAsync(buffer, messageType, endOfMessage, cancellationToken);
+        new(_socket.SendAsync(buffer, messageType, endOfMessage, cancellationToken));
 
-    public Task<WebSocketReceiveResult> ReceiveAsync(
+    public BValueTask<WebSocketReceiveResult> ReceiveAsync(
         ArraySegment<byte> buffer,
         CancellationToken cancellationToken) =>
-        _socket.ReceiveAsync(buffer, cancellationToken);
+        new(_socket.ReceiveAsync(buffer, cancellationToken));
 
-    public Task CloseAsync(
+    public BValueTask CloseAsync(
         WebSocketCloseStatus closeStatus,
         string? statusDescription,
         CancellationToken cancellationToken) =>
-        _socket.CloseAsync(closeStatus, statusDescription, cancellationToken);
+        new(_socket.CloseAsync(closeStatus, statusDescription, cancellationToken));
 
     public void Abort() => _socket.Abort();
     public void Dispose() => _socket.Dispose();

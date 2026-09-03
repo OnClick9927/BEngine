@@ -49,11 +49,15 @@ internal static class AssetBundleMenuCommands
                 Name = "main",
                 AssetPaths = selectedPaths
             };
+            var releaseInputs = RuntimeManagedCodeReleaseInputCollector.Collect(
+                workspace, EditorInstanceContext.current?.scriptAssembliesPath);
             var options = new AssetBundleBuildOptions
             {
                 PackageName = MakePackageIdentifier(workspace.Project.Name),
-                Version = ComputeContentVersion(database.assets, selectedPaths),
-                OutputDirectory = outputDirectory
+                Version = ComputeContentVersion(database.assets, selectedPaths, releaseInputs),
+                OutputDirectory = outputDirectory,
+                IncludePackageRuntimeResources = true,
+                ReleaseInputs = releaseInputs
             };
             buildTask = AssetBundleBuilder.BuildAsync(workspace, database, [definition], options,
                 new AssetBundleBuildProgressReporter(cancellation), cancellation.Token);
@@ -125,7 +129,8 @@ internal static class AssetBundleMenuCommands
 
     private static string ComputeContentVersion(
         IEnumerable<ProjectAssetRecord> records,
-        IReadOnlyList<string> selections)
+        IReadOnlyList<string> selections,
+        RuntimeManagedCodeReleaseInputSet releaseInputs)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         foreach (var record in records.Where(record => IsRuntimeAsset(record) &&
@@ -136,6 +141,12 @@ internal static class AssetBundleMenuCommands
                 $"{record.Guid:N}\0{record.AssetPath.Replace('\\', '/')}\0" +
                 $"{record.ArtifactHash}\0{record.ArtifactSize}\0"));
         }
+        foreach (var assembly in releaseInputs.Assemblies)
+            hash.AppendData(Encoding.UTF8.GetBytes(
+                $"{assembly.Name}\0{assembly.BuildId}\0{assembly.AssemblySha256}\0{assembly.AssemblySize}\0"));
+        foreach (var resource in releaseInputs.PackageResources)
+            hash.AppendData(Encoding.UTF8.GetBytes(
+                $"{resource.Address}\0{resource.Sha256}\0{resource.Size}\0"));
         var value = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
         return $"content-{value[..24]}";
     }

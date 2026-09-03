@@ -17,17 +17,26 @@ internal static class SceneAssetSerialization
             .ToAsset();
 
     internal static Scene Clone(Scene source, IServiceProvider? services = null) =>
-        Deserialize(Serialize(source), services);
+        Deserialize(Document<Scene>.FromAsset(source)
+            .Serialize(asset => YamlUtility.Serialize(Capture(asset, allowTransientObjects: true))), services);
 
     internal static string Serialize(Scene scene) => Document<Scene>.FromAsset(scene)
-        .Serialize(asset => YamlUtility.Serialize(Capture(asset)));
+        .Serialize(asset => YamlUtility.Serialize(Capture(asset, allowTransientObjects: false)));
 
     internal static void Save(Scene scene, string path) => Document<Scene>.FromAsset(scene)
-        .Write(path, static (asset, destination) => YamlUtility.Save(Capture(asset), destination));
+        .Write(path, static (asset, destination) =>
+            YamlUtility.Save(Capture(asset, allowTransientObjects: false), destination));
 
     internal static void UnregisterAssembly(Assembly assembly) => Types.UnregisterAssembly(assembly);
 
     internal static SceneAssetData Capture(Scene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        return Capture(scene, allowTransientObjects:
+            scene.IsRuntimeOnly || SceneRuntime.IsRunningScene(scene));
+    }
+
+    private static SceneAssetData Capture(Scene scene, bool allowTransientObjects)
     {
         ArgumentNullException.ThrowIfNull(scene);
         return new SceneAssetData
@@ -35,11 +44,14 @@ internal static class SceneAssetSerialization
             IsRuntimeSnapshot = scene.IsRuntimeOnly || SceneRuntime.IsRunningScene(scene),
             Id = scene.Id,
             Name = scene.name,
-            GameObjects = [.. scene.gameObjects.Select(FromGameObject)]
+            GameObjects = [.. scene.gameObjects.Select(gameObject =>
+                FromGameObject(gameObject, allowTransientObjects))]
         };
     }
 
-    internal static GameObjectData FromGameObject(GameObject gameObject)
+    internal static GameObjectData FromGameObject(
+        GameObject gameObject,
+        bool allowTransientObjects = false)
     {
         SerializationCallbackUtility.BeforeSerialize(gameObject.transform);
         var document = new GameObjectData
@@ -63,7 +75,7 @@ internal static class SceneAssetSerialization
                 LocalRotation = gameObject.transform.localRotation.ToString(),
                 LocalScale = new FixedVector2Data(gameObject.transform.localScale),
                 Fields = SerializeDerivedTransformFields(gameObject.transform),
-                Graph = SerializeDerivedTransformGraph(gameObject.transform)
+                Graph = SerializeDerivedTransformGraph(gameObject.transform, allowTransientObjects)
             }
         };
 
@@ -80,7 +92,8 @@ internal static class SceneAssetSerialization
                 PrefabAsset = component.PrefabAssetId,
                 PrefabSource = component.PrefabSourceId,
                 Fields = ComponentFieldSerializer.Serialize(component),
-                Graph = ComponentObjectGraphSerializer.Capture(component)
+                Graph = ComponentObjectGraphSerializer.Capture(
+                    component, allowTransientObjects: allowTransientObjects)
             });
         }
 
@@ -210,13 +223,16 @@ internal static class SceneAssetSerialization
         return fields;
     }
 
-    private static ComponentGraphData? SerializeDerivedTransformGraph(Transform transform)
+    private static ComponentGraphData? SerializeDerivedTransformGraph(
+        Transform transform,
+        bool allowTransientObjects)
     {
         if (transform.GetType() == typeof(Transform)) return null;
         var baseMemberNames = ComponentFieldSerializer.GetSerializableMembers(typeof(Transform))
             .Select(member => member.Name).ToHashSet(StringComparer.Ordinal);
         var members = ComponentFieldSerializer.GetSerializableMembers(transform.GetType())
             .Where(member => !baseMemberNames.Contains(member.Name));
-        return ComponentObjectGraphSerializer.Capture(transform, members);
+        return ComponentObjectGraphSerializer.Capture(
+            transform, members, allowTransientObjects);
     }
 }

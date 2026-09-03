@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\BEngine.Player.Hosts.props" />
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>BEngine.Game</AssemblyName>
+    <RootNamespace>BEngine.Player.Hosts.Desktop</RootNamespace>
+  </PropertyGroup>
+</Project>

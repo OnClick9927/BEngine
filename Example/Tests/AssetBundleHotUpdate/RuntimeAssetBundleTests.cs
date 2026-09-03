@@ -14,10 +14,41 @@ internal static class RuntimeAssetBundleTests
         AssetBundleTestWorkspace workspace,
         AssetBundleBuildResult build)
     {
+        await ReadOnlyBuiltInModeDoesNotCreateCache(workspace, build).ConfigureAwait(false);
         await SerialLoadsAreCachedAndReferenceCounted(workspace, build).ConfigureAwait(false);
         await FileBackedSubAssetsLoadByOwnerIdentity(workspace, build).ConfigureAwait(false);
         await ResourcesAndPlayerPreferActiveBundles(workspace, build).ConfigureAwait(false);
         await ValidOfflineCacheSurvivesRestartAndRecoversPointer(workspace, build).ConfigureAwait(false);
+    }
+
+    private static async Task ReadOnlyBuiltInModeDoesNotCreateCache(
+        AssetBundleTestWorkspace workspace,
+        AssetBundleBuildResult build)
+    {
+        var cache = Path.Combine(workspace.Root, "Caches", "read-only-built-in");
+        TestAssert.That(!Directory.Exists(cache),
+            "The read-only built-in cache fixture was not initially empty.");
+        await using var manager = CreateManager(
+            cache, build.PackageDirectory, usePersistentCache: false);
+        await manager.InitializeAsync().ConfigureAwait(false);
+        TestAssert.That(manager.ActiveVersion?.Version == build.Version.Version &&
+                        !Directory.Exists(cache),
+            "Read-only built-in initialization created a persistent cache.");
+
+        await using (var handle = await manager.LoadTextAsync(
+                         AssetBundleTestWorkspace.SharedAddress).ConfigureAwait(false))
+            TestAssert.That(handle.Value == "shared-v1",
+                "Read-only built-in mode did not load its packaged bundle.");
+        var plan = await manager.CheckForUpdatesAsync().ConfigureAwait(false);
+        TestAssert.That(!plan.HasUpdates && !Directory.Exists(cache),
+            "Read-only built-in update inspection created a persistent cache.");
+        await TestAssert.ThrowsAsync<InvalidOperationException>(
+                () => manager.ApplyUpdateAsync(plan), "persistent cache")
+            .ConfigureAwait(false);
+        TestAssert.That(!await manager.RollbackAsync().ConfigureAwait(false) &&
+                        await manager.CleanupAsync().ConfigureAwait(false) == 0 &&
+                        !Directory.Exists(cache),
+            "Read-only built-in maintenance created or mutated a persistent cache.");
     }
 
     private static async Task FileBackedSubAssetsLoadByOwnerIdentity(
@@ -32,13 +63,9 @@ internal static class RuntimeAssetBundleTests
         TestAssert.That(atlas.Address == AssetBundleTestWorkspace.AtlasAddress &&
                         textureEntry.Address == workspace.AtlasTextureAddress &&
                         textureEntry.Guid != workspace.AtlasOwnerGuid &&
-                        textureEntry.Entry.Contains($"/{workspace.AtlasOwnerGuid:N}/",
-                            StringComparison.Ordinal) &&
-                        textureEntry.Entry.EndsWith(
-                            $"/{AssetBundleTestWorkspace.AtlasTextureLocalIdentifier}.png",
-                            StringComparison.Ordinal) &&
+                        textureEntry.Entry == $"objects/{textureEntry.Sha256}.bin" &&
                         textureEntry.Bundle == atlas.Bundle,
-            "The generated TextureAtlas Texture did not retain owner/local identity without changing its owner address.");
+            "The generated TextureAtlas Texture did not retain owner/local identity with an opaque payload entry.");
 
         var cache = Path.Combine(workspace.Root, "Caches", "file-subassets");
         await using var manager = CreateManager(cache, build.PackageDirectory);
@@ -202,6 +229,19 @@ internal static class RuntimeAssetBundleTests
 
             workspace.WriteScene("Disk Scene", "Disk Root", includeBundledSprite: false);
             workspace.DeleteSpriteSource();
+            var spriteReference = $"guid:{bundledSpriteAsset.Guid:N}#subasset=21300000";
+            var bundledTexture = BAsset.Load<Texture>(AssetBundleTestWorkspace.SpriteAddress);
+            var cachedTexture = BAsset.Load<Texture>(AssetBundleTestWorkspace.SpriteAddress);
+            var directSprite = BEngine.Resources.Load<Sprite>(spriteReference);
+            TestAssert.That(bundledTexture is not null &&
+                            ReferenceEquals(bundledTexture, cachedTexture) &&
+                            bundledTexture.assetPath == AssetBundleTestWorkspace.SpriteAddress &&
+                            bundledTexture.width == 2 && bundledTexture.height == 2 &&
+                            directSprite is not null &&
+                            directSprite.Texture == "@bundle/" + AssetBundleTestWorkspace.SpriteAddress &&
+                            directSprite.OwnerGuid.Equals(bundledSpriteAsset.Guid.ToString("N"),
+                                StringComparison.OrdinalIgnoreCase),
+                "Main Texture and Sprite references were not restored from bundles after source removal.");
             var services = new ServiceCollection();
             services.AddSingleton<IAssetBundleManager>(manager);
             services.AddBEnginePlayer(workspace.Workspace.RootPath);
@@ -217,6 +257,9 @@ internal static class RuntimeAssetBundleTests
                     "The Player scene loader did not prefer the active bundle over the project scene file.");
                 TestAssert.That(sprite is not null &&
                                 sprite.assetPath == AssetBundleTestWorkspace.SpriteAddress &&
+                                sprite.OwnerGuid.Equals(bundledSpriteAsset.Guid.ToString("N"),
+                                    StringComparison.OrdinalIgnoreCase) &&
+                                sprite.LocalIdentifier == 21300000 &&
                                 sprite.Texture == "@bundle/" + AssetBundleTestWorkspace.SpriteAddress &&
                                 Math.Abs((double)sprite.pivot.x - 0.25) < 0.0001 &&
                                 Math.Abs((double)sprite.pivot.y - 0.75) < 0.0001,
@@ -253,6 +296,14 @@ internal static class RuntimeAssetBundleTests
             {
                 scene.Dispose();
             }
+            workspace.DeleteAtlasSource();
+            var bundledAtlas = BAsset.Load<TextureAtlas>(AssetBundleTestWorkspace.AtlasAddress);
+            TestAssert.That(bundledAtlas is not null &&
+                            bundledAtlas.assetPath == AssetBundleTestWorkspace.AtlasAddress &&
+                            bundledAtlas.Sources.Length == 1 &&
+                            bundledAtlas.Sources[0].Texture ==
+                            "@bundle/" + AssetBundleTestWorkspace.SpriteAddress,
+                "A nested Sprite reference in a bundled TextureAtlas was not restored without project files.");
         }
         finally
         {
@@ -290,7 +341,7 @@ internal static class RuntimeAssetBundleTests
         await using var manager = CreateManager(cache, builtInDirectory: null);
         await manager.InitializeAsync().ConfigureAwait(false);
         TestAssert.That(manager.ActiveVersion?.Version == build.Version.Version &&
-                        !File.Exists(abandonedPart),
+                        !File.Exists(abandonedPart) && !Directory.Exists(staging),
             "Offline initialization did not recover the previous valid cache or clean staging.");
         await using (var handle = await manager.LoadTextAsync(
                          AssetBundleTestWorkspace.SharedAddress).ConfigureAwait(false))
@@ -312,15 +363,25 @@ internal static class RuntimeAssetBundleTests
             "Cache cleanup removed active content.");
     }
 
-    internal static AssetBundleManager CreateManager(string cache, string? builtInDirectory, HttpClient? http = null) =>
+    internal static AssetBundleManager CreateManager(
+        string cache,
+        string? builtInDirectory,
+        HttpClient? http = null,
+        Action<AssetBundleHttpTransferDiagnostic>? transferObserver = null,
+        Uri? remoteBaseUri = null,
+        bool usePersistentCache = true) =>
         new(new AssetBundleRuntimeOptions
         {
             PackageName = AssetBundleTestWorkspace.PackageName,
             CacheDirectory = cache,
             BuiltInDirectory = builtInDirectory,
             HttpClient = http,
-            RemoteBaseUri = http is null ? null : new Uri("https://asset-bundle.test/content/"),
-            MaxRetries = 2
+            RemoteBaseUri = http is null
+                ? null
+                : remoteBaseUri ?? new Uri("https://asset-bundle.test/content/"),
+            MaxRetries = 2,
+            HttpTransferObserver = transferObserver,
+            UsePersistentCache = usePersistentCache
         });
 
     private static string FindRepositoryRoot()

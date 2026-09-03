@@ -473,7 +473,8 @@ public sealed class SceneRuntime
     { try { system.Stop(scene); } catch (Exception exception) { LogSystemFailure(system, callbackName, exception); } }
 
     private static void LogSystemFailure(ISceneRuntimeSystem system, string callbackName, Exception exception) =>
-        Debug.LogError($"{system.GetType().FullName}.{callbackName} failed: {exception.Message}");
+        Debug.LogError($"{system.GetType().FullName}.{callbackName} failed: " +
+                       $"{exception.GetType().FullName}: {exception}");
 
     private static void InvokeBehaviourFixedUpdate(MonoBehaviour behaviour)
     { try { behaviour.FixedUpdate(); } catch (Exception exception) { LogBehaviourFailure(behaviour, "FixedUpdate", exception); } }
@@ -487,6 +488,7 @@ public sealed class SceneRuntime
     { try { behaviour.OnDisable(); } catch (Exception exception) { LogBehaviourFailure(behaviour, "OnDisable", exception); } }
 
     private static void LogBehaviourFailure(MonoBehaviour behaviour, string callbackName, Exception exception) =>
-        Debug.LogError($"{behaviour.GetType().FullName}.{callbackName} failed: {exception.Message}");
+        Debug.LogError($"{behaviour.GetType().FullName}.{callbackName} failed: " +
+                       $"{exception.GetType().FullName}: {exception}");
 
 }

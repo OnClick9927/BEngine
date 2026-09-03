@@ -1,0 +1,61 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <BEnginePlayerSourceProject>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\BEngine.Player\BEngine.Player.csproj'))</BEnginePlayerSourceProject>
+    <BEngineEngineRoot Condition="'$(BEngineEngineRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\BuildRuntime\BEngine.Player.dll')">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\BuildRuntime'))</BEngineEngineRoot>
+    <BEngineEngineRoot Condition="'$(BEngineEngineRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</BEngineEngineRoot>
+    <BEngineRuntimeFallbackIdentifier Condition="'$(RuntimeIdentifier)' == 'osx-x64' or '$(RuntimeIdentifier)' == 'osx-arm64'">osx</BEngineRuntimeFallbackIdentifier>
+    <PublishAot>false</PublishAot>
+    <RunAOTCompilation Condition="'$(RunAOTCompilation)' == ''">false</RunAOTCompilation>
+    <PublishTrimmed>false</PublishTrimmed>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+  <!--
+    .NET 10 ILLink registers these tasks with TaskHostFactory even when the build
+    already runs on Core MSBuild. Registering them first keeps them in-process and
+    avoids the MSB4216 task-host handshake failure seen on affected Windows SDKs.
+  -->
+  <UsingTask TaskName="ComputeManagedAssemblies"
+             AssemblyFile="$(ILLinkTasksAssembly)"
+             Condition="'$(MSBuildRuntimeType)' == 'Core' and '$(ILLinkTasksAssembly)' != ''" />
+  <UsingTask TaskName="ILLink"
+             AssemblyFile="$(ILLinkTasksAssembly)"
+             Condition="'$(MSBuildRuntimeType)' == 'Core' and '$(ILLinkTasksAssembly)' != ''" />
+  <ItemGroup Condition="Exists('$(BEnginePlayerSourceProject)')">
+    <ProjectReference Include="$(BEnginePlayerSourceProject)"
+                      AdditionalProperties="OutputType=Library"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeNativeLibrariesForSelfExtract;EnableCompressionInSingleFile;UseAppHost;PublishAot;PublishTrimmed" />
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('$(BEnginePlayerSourceProject)')">
+    <Reference Include="$(BEngineEngineRoot)\*.dll">
+      <Private>true</Private>
+    </Reference>
+    <_BEngineRuntimeNative Include="$(BEngineEngineRoot)\runtimes\$(RuntimeIdentifier)\native\*"
+                           Condition="'$(RuntimeIdentifier)' != ''" />
+    <_BEngineRuntimeNative Include="$(BEngineEngineRoot)\runtimes\$(BEngineRuntimeFallbackIdentifier)\native\*"
+                           Condition="'$(BEngineRuntimeFallbackIdentifier)' != ''" />
+    <Content Include="@(_BEngineRuntimeNative)">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="BEngine" RootMode="All" />
+    <TrimmerRootAssembly Include="BEngine.Player" RootMode="All" />
+    <!-- Hot-update service modules compile directly against this public plugin contract. -->
+    <TrimmerRootAssembly Include="Microsoft.Extensions.DependencyInjection.Abstractions" RootMode="All" />
+    <TrimmerRootAssembly Include="Microsoft.Extensions.DependencyInjection" RootMode="All" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEngineTrimmerRootDescriptor)' != ''">
+    <TrimmerRootDescriptor Include="$(BEngineTrimmerRootDescriptor)" />
+  </ItemGroup>
+</Project>

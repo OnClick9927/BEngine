@@ -1,0 +1,12 @@
+format: BEngine.AssetMeta
+version: 1
+guid: c1a9b63cf9ab421f971581fc40becf42
+importer: DefaultImporter
+assetType: AssemblyDefinition
+sourceHash: 43a75d24c5e53cce69cca284232053497bcfcea97d4601c19f76787a91f814d6
+importFingerprint: b08bd39a785585013102fda4933bf8c917995043eeccbeca8bff73b3fcde0611
+settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

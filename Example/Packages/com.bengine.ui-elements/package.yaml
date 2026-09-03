@@ -1,0 +1,28 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.ui-elements
+packageVersion: 1.0.0
+displayName: UIElements
+description: Optional retained-mode UI, UXML/USS, HTML conversion and UI Builder package.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.UIElements
+  rootNamespace: BEngine.UIElements
+  packageReferences:
+  - id: Silk.NET.OpenGL
+    version: 2.23.0
+  dependencies: []
+editor:
+  assembly: BEngine.UIElements.Editor
+  rootNamespace: BEngine.UIElements.Editor
+  packageReferences:
+  - id: AngleSharp
+    version: 1.5.2
+  - id: AngleSharp.Css
+    version: 1.0.0
+  dependencies:
+  - packageId: com.bengine.ui-elements
+    target: runtime

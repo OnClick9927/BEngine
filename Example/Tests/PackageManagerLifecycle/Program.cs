@@ -34,8 +34,9 @@ internal static class Program
             File.WriteAllText(Path.Combine(legacyLibraryCache, "legacy.txt"), "legacy Library package cache");
             using (var manager = new BPackageManager(workspace))
             {
-                Assert(manager.packages.Count == 0,
-                    "The example project must start without extension packages.");
+                Assert(manager.packages.Where(package => package.Enabled).Select(package => package.Id)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(["com.bengine.ui-elements"]),
+                    "The example project must start with exactly the UIElements package required by AOT.");
                 PackageManagerViewSmoke.Verify(workspace, manager);
                 manager.SetEnabled("com.bengine.animation", true);
                 Assert(manager.IsEnabled("com.bengine.animation"), "Animation was not enabled explicitly.");

@@ -1,5 +1,7 @@
 using System.Reflection;
-using System.Runtime.Loader;
+using BEngine.AssetBundles;
+using BEngine.Build;
+using BEngine.HotUpdate;
 using BEngine.ProjectSystem;
 using BEngine.Serialization;
 using BEngine.Documents;
@@ -8,16 +10,26 @@ namespace BEngine.Player;
 
 internal static class PlayerPackageLoader
 {
-    public static void Load(ProjectWorkspace workspace)
+    public static PlayerHotUpdateSession? Load(
+        ProjectWorkspace workspace,
+        IAssetBundleManager? assetBundles = null,
+        PlayerManagedCodeStage stage = PlayerManagedCodeStage.Legacy,
+        PlayerBuiltInResourceProvider? builtInResources = null)
     {
-        var manifest = File.Exists(workspace.PackageManifestPath)
-            ? YamlUtility.Load<PlayerPackageManifest>(workspace.PackageManifestPath)
-            : new PlayerPackageManifest();
-        var enabled = manifest.Packages
+        var phasePrefix = stage == PlayerManagedCodeStage.Aot ? "03_AOT_ASSEMBLY" : "05_HOTUPDATE";
+        PlayerStartupDiagnostics.Phase($"{phasePrefix}_PREPARE_STARTED");
+        var packages = workspace.RuntimeMetadata is { } metadata
+            ? metadata.EnabledPackages.Select(package => new PlayerPackageReference
+            {
+                Id = package.Id,
+                Enabled = true
+            }).ToArray()
+            : LoadLegacyManifest(workspace).Packages.ToArray();
+        var enabled = packages
             .Where(package => package.Enabled)
             .Select(package => package.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var package in manifest.Packages)
+        foreach (var package in packages)
             RuntimePackageState.SetEnabled(package.Id, package.Enabled);
 
         var definitions = DiscoverDefinitions(workspace)
@@ -25,73 +37,74 @@ internal static class PlayerPackageLoader
             .ToDictionary(item => item.Document.Id, StringComparer.OrdinalIgnoreCase);
         foreach (var definition in definitions.Values)
             Resources.RegisterResourceRoot(Path.GetDirectoryName(Path.GetFullPath(definition.Path))!);
-        var loaded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var packageId in definitions.Keys.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
-            LoadRuntime(workspace, packageId, definitions, loaded,
-                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
-        LoadProjectAssemblies(workspace);
+        var release = PlayerHotUpdateReleaseLoader.LoadAsync(
+                workspace, assetBundles, stage, builtInResources)
+            .ConfigureAwait(false).GetAwaiter().GetResult();
+        if (release is null)
+        {
+            PlayerStartupDiagnostics.Phase($"{phasePrefix}_PREPARE_SKIPPED", "reason=no-release");
+            return null;
+        }
+        var moduleNames = release.Modules.Select(module => module.Name).ToArray();
+        var containsAot = moduleNames.Contains("AOT", StringComparer.OrdinalIgnoreCase);
+        if (stage == PlayerManagedCodeStage.Aot && !containsAot)
+            throw new InvalidDataException(
+                "The built-in managed-code release must contain the project's AOT assembly.");
+        if (stage == PlayerManagedCodeStage.HotUpdate && containsAot)
+            throw new InvalidDataException(
+                "The remote HotUpdate managed-code release must not contain the AOT assembly.");
+        var target = BuildTargetManifestSerializer.LoadCurrent();
+        var runtimeFactory = new PlayerManagedCodeRuntimeFactory(DiscoverRuntimeProviders());
+        var gate = new HotUpdateActivationGate(runtimeFactory, CreateHostCapabilities(target));
+        var prepared = gate.PrepareAsync(
+                release,
+                new ManagedCodeRuntimeRequest(target.ManagedCodeRuntime),
+                CancellationToken.None)
+            .AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+        PlayerStartupDiagnostics.Phase($"{phasePrefix}_PREPARED",
+            $"release={release.ReleaseId};runtime={prepared.RuntimeKind};assemblies={prepared.Assemblies.Count}");
+        return new PlayerHotUpdateSession(prepared, stage);
     }
 
-    private static void LoadRuntime(
-        ProjectWorkspace workspace,
-        string packageId,
-        IReadOnlyDictionary<string, (string Path, PlayerPackageDefinition Document)> definitions,
-        ISet<string> loaded,
-        ISet<string> active)
+    private static PlayerPackageManifest LoadLegacyManifest(ProjectWorkspace workspace) =>
+        File.Exists(workspace.PackageManifestPath)
+            ? YamlUtility.Load<PlayerPackageManifest>(workspace.PackageManifestPath)
+            : new PlayerPackageManifest();
+
+    private static IEnumerable<IManagedCodeRuntimeProvider> DiscoverRuntimeProviders()
     {
-        if (loaded.Contains(packageId) || !definitions.TryGetValue(packageId, out var package)) return;
-        if (!active.Add(packageId))
-            throw new InvalidDataException($"Runtime package dependency cycle at '{packageId}'.");
-        foreach (var dependency in package.Document.Runtime!.Dependencies
-                     .Where(dependency => dependency.Target == "runtime"))
-            LoadRuntime(workspace, dependency.PackageId, definitions, loaded, active);
-        active.Remove(packageId);
-
-        var assemblyName = package.Document.Runtime.Assembly;
-        if (AppDomain.CurrentDomain.GetAssemblies().All(assembly =>
-                !string.Equals(assembly.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase)))
+        foreach (var type in AppDomain.CurrentDomain.GetAssemblies().SelectMany(GetLoadableTypes)
+                     .Where(type => type is { IsClass: true, IsAbstract: false } &&
+                                    (type.IsPublic || type.IsNestedPublic) &&
+                                    typeof(IManagedCodeRuntimeProvider).IsAssignableFrom(type) &&
+                                    type != typeof(CoreClrManagedCodeRuntimeProvider) &&
+                                    type != typeof(AotInterpreterManagedCodeRuntimeProvider))
+                     .OrderBy(type => type.FullName, StringComparer.Ordinal))
         {
-            var path = ResolveAssemblyPath(workspace, assemblyName, package.Path) ?? throw new FileNotFoundException(
-                $"Runtime assembly '{assemblyName}' for package '{packageId}' was not found.");
-            PreloadCompanions(Path.GetDirectoryName(path)!, assemblyName);
-            AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
+            if (Activator.CreateInstance(type) is not IManagedCodeRuntimeProvider provider)
+                throw new InvalidOperationException(
+                    $"Managed-code runtime provider '{type.FullName}' requires a public parameterless constructor.");
+            yield return provider;
         }
-        loaded.Add(packageId);
     }
 
-    private static void LoadProjectAssemblies(ProjectWorkspace workspace)
+    private static IEnumerable<string> CreateHostCapabilities(BuildTargetManifest target)
     {
-        var manifest = ScriptAssemblyStore.LoadProjectManifest(workspace);
-        if (manifest is null)
-        {
-            var gameScripts = ScriptAssemblyStore.ResolveCurrentPath(workspace, "GameScripts");
-            if (gameScripts is not null && !IsLoaded("GameScripts"))
-                AssemblyLoadContext.Default.LoadFromAssemblyPath(gameScripts);
-            return;
-        }
-
-        var manifestNames = manifest.Assemblies.Select(assembly => assembly.Assembly)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var loaded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var assembly in manifest.Assemblies)
-        {
-            foreach (var reference in assembly.References.Where(manifestNames.Contains))
-                if (!loaded.Contains(reference) && !IsLoaded(reference))
-                    throw new InvalidDataException(
-                        $"Project assembly manifest loads '{assembly.Assembly}' before dependency '{reference}'.");
-            if (!IsLoaded(assembly.Assembly))
-            {
-                var path = ScriptAssemblyStore.ResolveProjectAssemblyPath(workspace, assembly);
-                PreloadCompanions(Path.GetDirectoryName(path)!, assembly.Assembly);
-                AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
-            }
-            loaded.Add(assembly.Assembly);
-        }
+        yield return $"platform:{target.Platform}";
+        yield return $"architecture:{target.Architecture}";
+        yield return $"runtime:{target.ManagedCodeRuntime}";
+        foreach (var backend in target.GraphicsBackends) yield return $"graphics:{backend}";
     }
 
-    private static bool IsLoaded(string assemblyName) => AppDomain.CurrentDomain.GetAssemblies().Any(assembly =>
-        assembly.GetName().Name?.Equals(assemblyName, StringComparison.OrdinalIgnoreCase) == true);
+    private static Type[] GetLoadableTypes(Assembly assembly)
+    {
+        try { return assembly.GetTypes(); }
+        catch (ReflectionTypeLoadException exception)
+        {
+            return exception.Types.Where(type => type is not null).Cast<Type>().ToArray();
+        }
+    }
 
     private static IReadOnlyList<(string Path, PlayerPackageDefinition Document)> DiscoverDefinitions(
         ProjectWorkspace workspace)
@@ -116,32 +129,4 @@ internal static class PlayerPackageLoader
             .ToArray()
         : [];
 
-    private static string? ResolveAssemblyPath(
-        ProjectWorkspace workspace,
-        string assemblyName,
-        string definitionPath)
-    {
-        if (ScriptAssemblyStore.ResolveCurrentPath(workspace, assemblyName) is { } compiledAssembly)
-            return compiledAssembly;
-
-        var packageRoot = Path.GetDirectoryName(definitionPath)!;
-        var exportedAssembly = Path.Combine(packageRoot, $"{assemblyName}.dll");
-        return File.Exists(exportedAssembly) ? Path.GetFullPath(exportedAssembly) : null;
-    }
-
-    private static void PreloadCompanions(string directory, string packageAssemblyName)
-    {
-        foreach (var path in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly))
-        {
-            AssemblyName assemblyName;
-            try { assemblyName = AssemblyName.GetAssemblyName(path); }
-            catch (BadImageFormatException) { continue; }
-            var name = assemblyName.Name;
-            if (string.IsNullOrWhiteSpace(name) ||
-                name.Equals(packageAssemblyName, StringComparison.OrdinalIgnoreCase) ||
-                AppDomain.CurrentDomain.GetAssemblies().Any(assembly =>
-                    assembly.GetName().Name?.Equals(name, StringComparison.OrdinalIgnoreCase) == true)) continue;
-            AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(path));
-        }
-    }
 }

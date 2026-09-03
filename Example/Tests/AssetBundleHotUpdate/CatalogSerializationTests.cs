@@ -14,6 +14,7 @@ internal static class CatalogSerializationTests
         CatalogRoundTripsWithoutLosingCanonicalOrder();
         LegacyCatalogWithoutImporterDescriptionsStillLoads();
         StrictJsonRejectsAmbiguousOrUnknownProperties();
+        LatestPointerIsCanonicalAndStrict();
         HashingIsStableAcrossBufferingModes();
     }
 
@@ -102,6 +103,34 @@ internal static class CatalogSerializationTests
         TestAssert.That(catalog.SchemaVersion == 1 && catalog.Assets.All(asset =>
                             asset.Importer.Length == 0 && asset.ImporterSettings.Count == 0),
             "A schema v1 catalog without importer descriptions no longer loads.");
+    }
+
+    private static void LatestPointerIsCanonicalAndStrict()
+    {
+        var pointer = new AssetBundleLatestPointer
+        {
+            PackageName = "test-package",
+            Version = "v2"
+        };
+        var bytes = AssetBundleCatalogSerializer.SerializeLatestPointer(pointer);
+        var json = Encoding.UTF8.GetString(bytes);
+        var restored = AssetBundleCatalogSerializer.DeserializeLatestPointer(bytes);
+        TestAssert.That(restored.Version == pointer.Version && json == "{\"version\":\"v2\"}",
+            "The latest pointer did not use its canonical version-only contract.");
+
+        var legacy = AssetBundleCatalogSerializer.DeserializeLatestPointer(
+            "{\"format\":\"BEngine.AssetBundleLatest\",\"schemaVersion\":1," +
+            "\"packageName\":\"test-package\",\"version\":\"v1\"}");
+        TestAssert.That(legacy.Version == "v1",
+            "The latest pointer did not accept the former four-field format for migration.");
+        TestAssert.Throws<InvalidDataException>(
+            () => AssetBundleCatalogSerializer.DeserializeLatestPointer(
+                "{\"version\":\"v1\",\"version\":\"v2\"}"),
+            "duplicate property");
+        TestAssert.Throws<Exception>(
+            () => AssetBundleCatalogSerializer.DeserializeLatestPointer(
+                "{\"version\":\"v1\",\"catalogSha256\":\"shadow\"}"),
+            "catalogSha256");
     }
 
     private static void HashingIsStableAcrossBufferingModes()

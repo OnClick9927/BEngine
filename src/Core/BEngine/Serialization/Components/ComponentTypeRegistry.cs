@@ -23,16 +23,16 @@ public sealed class ComponentTypeRegistry
 
     public Type? Resolve(string typeName)
     {
-        if (_types.TryGetValue(typeName, out var registered))
-        {
-            return registered;
-        }
-
         var resolved = ResolveLoadedComponent(typeName);
         if (resolved is not null)
         {
-            Register(resolved);
+            _types[typeName] = resolved;
             return resolved;
+        }
+
+        if (_types.TryGetValue(typeName, out var registered))
+        {
+            return registered;
         }
 
         return null;

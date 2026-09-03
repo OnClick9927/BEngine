@@ -23,6 +23,7 @@ public static class RuntimeTypeCache
     private static readonly Dictionary<RuntimeMessageKey, Func<object, IEnumerator>> CoroutineFactories = [];
     private static readonly List<RuntimeInitializationEntry> RuntimeInitializers = [];
     private static readonly Dictionary<RuntimeInitializeLoadType, RuntimeInitializationEntry[]> InitializersByPhase = [];
+    private static readonly List<AssemblyPreference> AssemblyPreferences = [];
     private static Type[] _runtimeSystemTypes = [];
     private static Type[] _allTypes = [];
     private static bool _initialized;
@@ -68,6 +69,22 @@ public static class RuntimeTypeCache
         var removed = false;
         foreach (var assembly in assemblies) removed |= Assemblies.Remove(assembly);
         if (removed) RebuildIndexes();
+    }
+
+    /// <summary>
+    /// Temporarily makes the supplied assemblies win full-name collisions in reflection and serialization lookups.
+    /// This is used by an isolated gameplay domain while edit-time assemblies remain loaded for the editor UI.
+    /// </summary>
+    public static IDisposable PreferAssemblies(IEnumerable<Assembly> assemblies)
+    {
+        ArgumentNullException.ThrowIfNull(assemblies);
+        var preferred = assemblies.Distinct().ToArray();
+        if (preferred.Length == 0) return EmptyPreference.Instance;
+        RegisterAssemblies(preferred);
+        var preference = new AssemblyPreference(preferred);
+        AssemblyPreferences.Add(preference);
+        RebuildIndexes();
+        return preference;
     }
 
     public static Type? FindType(string fullName)
@@ -280,13 +297,29 @@ public static class RuntimeTypeCache
             do
             {
                 _rebuildRequested = false;
-                RebuildIndexesCore(Assemblies.Values.ToArray());
+                RebuildIndexesCore(GetOrderedAssemblyIndexes());
             } while (_rebuildRequested);
         }
         finally
         {
             _rebuildingIndexes = false;
         }
+    }
+
+    private static AssemblyIndex[] GetOrderedAssemblyIndexes()
+    {
+        if (AssemblyPreferences.Count == 0) return Assemblies.Values.ToArray();
+        var ordered = new List<AssemblyIndex>(Assemblies.Count);
+        var visited = new HashSet<Assembly>();
+        for (var index = AssemblyPreferences.Count - 1; index >= 0; index--)
+        foreach (var assembly in AssemblyPreferences[index].Assemblies)
+        {
+            if (!visited.Add(assembly) || !Assemblies.TryGetValue(assembly, out var assemblyIndex)) continue;
+            ordered.Add(assemblyIndex);
+        }
+        foreach (var (assembly, assemblyIndex) in Assemblies)
+            if (visited.Add(assembly)) ordered.Add(assemblyIndex);
+        return ordered.ToArray();
     }
 
     private static void RebuildIndexesCore(AssemblyIndex[] assemblyIndexes)
@@ -303,7 +336,7 @@ public static class RuntimeTypeCache
         CoroutineFactories.Clear();
         RuntimeInitializers.Clear();
         InitializersByPhase.Clear();
-        _allTypes = assemblyIndexes.SelectMany(index => index.Types).Distinct().ToArray();
+        var scannedTypes = assemblyIndexes.SelectMany(index => index.Types).Distinct().ToArray();
         foreach (var index in assemblyIndexes)
         {
             RuntimeInitializers.AddRange(index.Initializers);
@@ -335,6 +368,15 @@ public static class RuntimeTypeCache
                     CacheMessageHandlers(type);
             }
         }
+        _allTypes = scannedTypes.Where(type => type.FullName is not { } fullName ||
+                                               ReferenceEquals(TypesByName.GetValueOrDefault(fullName), type))
+            .ToArray();
+        RuntimeInitializers.RemoveAll(initializer =>
+        {
+            var owner = initializer.Callback.Method.DeclaringType;
+            return owner?.FullName is { } fullName &&
+                   !ReferenceEquals(TypesByName.GetValueOrDefault(fullName), owner);
+        });
         RuntimeInitializers.Sort((left, right) =>
         {
             var phase = left.Phase.CompareTo(right.Phase);
@@ -624,6 +666,25 @@ public static class RuntimeTypeCache
         RuntimeInitializationEntry[] Initializers,
         Dictionary<Type, MethodInfo[]> MethodsByType,
         Dictionary<Type, MemberInfo[]> MembersByType);
+
+    private sealed class AssemblyPreference(Assembly[] assemblies) : IDisposable
+    {
+        private int _disposed;
+
+        internal Assembly[] Assemblies { get; } = assemblies;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            if (AssemblyPreferences.Remove(this)) RebuildIndexes();
+        }
+    }
+
+    private sealed class EmptyPreference : IDisposable
+    {
+        internal static readonly EmptyPreference Instance = new();
+        public void Dispose() { }
+    }
 
     private readonly record struct RuntimeMessageKey(Type BehaviourType, string MethodName);
     private readonly record struct MemberLookupKey(Type OwnerType, string Name);

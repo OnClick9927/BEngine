@@ -1,0 +1,12 @@
+format: BEngine.AssetMeta
+version: 1
+guid: b2aab87d450e462aaa899fb309e8ae45
+importer: DefaultImporter
+assetType: UI Document
+sourceHash: e7d88254ffda82c5ded1f7df96e0b8fcc091e28b6a51202581c86e32c41d2869
+importFingerprint: 2fa5851e9ca1292aeda7de3204fbfc0ae332692904af5550e1f2626786d58697
+settings: {}
+parentGuid: ''
+localIdentifier: 0
+nextLocalIdentifier: 100000
+subAssets: []

@@ -1727,6 +1727,10 @@ gameObjects:
           items: []
           members: []
           entries: []
+  - id: f97d8ad8-ab90-4c11-8fc0-4a755f5f05c1
+    type: Game.HotUpdateShowcase
+    enabled: true
+    fields: {}
 - id: c696fb78-05de-4582-a0ef-6100b6324627
   name: Animation Sprite
   active: true

@@ -1,4 +1,5 @@
 using BEngine.Serialization;
+using BEngine.Content;
 
 namespace BEngine.ProjectSystem;
 
@@ -25,15 +26,63 @@ public sealed class ProjectWorkspace
     public string TempPath => Path.Combine(RootPath, "Temp");
     public string StartupScenePath => ResolveInside(Project.StartupScene);
     public ProjectData Project { get; }
+    public RuntimeMetadataDocument? RuntimeMetadata { get; }
+    public string RuntimeMetadataFilePath => Path.Combine(RootPath, RuntimeMetadataSerializer.FileName);
 
     internal ProjectWorkspace(string rootPath, ProjectData project)
+        : this(rootPath, project, ensureDirectoryLayout: true, runtimeMetadata: null) { }
+
+    private ProjectWorkspace(
+        string rootPath,
+        ProjectData project,
+        bool ensureDirectoryLayout,
+        RuntimeMetadataDocument? runtimeMetadata)
     {
         RootPath = Path.GetFullPath(rootPath);
         Project = project;
-        EnsureDirectoryLayout();
+        RuntimeMetadata = runtimeMetadata;
+        if (ensureDirectoryLayout) EnsureDirectoryLayout();
     }
 
     public static ProjectWorkspace Open(string path)
+        => OpenCore(path, ensureDirectoryLayout: true);
+
+    public static ProjectWorkspace OpenRuntime(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var fullPath = Path.GetFullPath(path);
+        if (Directory.Exists(fullPath))
+        {
+            var archivePath = Path.Combine(
+                fullPath,
+                PlayerPackagedResourceAddresses.ResourcesDirectoryName,
+                PlayerPackagedResourceAddresses.PlayerArchiveFileName);
+            if (File.Exists(archivePath))
+            {
+                var archive = BuiltInResourceArchive.Open(archivePath);
+                var metadata = RuntimeMetadataSerializer.Deserialize(
+                    archive.ReadBytes(PlayerPackagedResourceAddresses.RuntimeMetadata));
+                return new ProjectWorkspace(
+                    fullPath, metadata.Project, ensureDirectoryLayout: false, runtimeMetadata: metadata);
+            }
+        }
+        var metadataPath = Directory.Exists(fullPath)
+            ? Path.Combine(fullPath, RuntimeMetadataSerializer.FileName)
+            : fullPath;
+        if (File.Exists(metadataPath) &&
+            Path.GetFileName(metadataPath).Equals(
+                RuntimeMetadataSerializer.FileName, StringComparison.OrdinalIgnoreCase))
+        {
+            var metadata = RuntimeMetadataSerializer.Load(metadataPath);
+            var root = Path.GetDirectoryName(metadataPath) ??
+                       throw new InvalidDataException("Runtime metadata root is invalid.");
+            return new ProjectWorkspace(
+                root, metadata.Project, ensureDirectoryLayout: false, runtimeMetadata: metadata);
+        }
+        return OpenCore(path, ensureDirectoryLayout: false);
+    }
+
+    private static ProjectWorkspace OpenCore(string path, bool ensureDirectoryLayout)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var fullPath = Path.GetFullPath(path);
@@ -46,7 +95,7 @@ public sealed class ProjectWorkspace
         var project = YamlUtility.Load<ProjectData>(projectPath);
         AssetDataValidation.ValidateProject(project);
         var root = Path.GetDirectoryName(projectPath) ?? throw new InvalidDataException("Project root is invalid.");
-        return new ProjectWorkspace(root, project);
+        return new ProjectWorkspace(root, project, ensureDirectoryLayout, runtimeMetadata: null);
     }
 
     public string ResolveInside(string relativePath)

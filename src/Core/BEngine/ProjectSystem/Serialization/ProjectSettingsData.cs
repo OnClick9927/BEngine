@@ -12,7 +12,7 @@ public sealed class ProjectSettingsData
     public int DefaultScreenWidth { get; set; } = 1280;
     public int DefaultScreenHeight { get; set; } = 720;
     public bool FullScreen { get; set; }
-    public string GraphicsBackend { get; set; } = "Vulkan";
+    public string GraphicsBackend { get; set; } = "Auto";
     public List<string> ScriptingDefineSymbols { get; set; } = [];
     public List<string> Tags
     {

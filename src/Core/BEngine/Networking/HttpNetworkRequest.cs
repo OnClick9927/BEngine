@@ -82,14 +82,11 @@ public sealed class HttpNetworkRequest : IDisposable
         return ResponseHeaders.TryGetValue(name, out var values) ? string.Join(", ", values) : null;
     }
 
-    public Task<HttpNetworkRequest> SendAsync(CancellationToken cancellationToken = default) =>
-        SendAsync(async (response, token) =>
-        {
-            DownloadData = await response.Content.ReadAsByteArrayAsync(token).ConfigureAwait(false);
-        }, cancellationToken);
+    public BValueTask<HttpNetworkRequest> SendAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(ReadResponseBodyAsync, cancellationToken);
 
-    public async Task<HttpNetworkRequest> SendAsync(
-        Func<HttpResponseMessage, CancellationToken, Task> responseHandler,
+    public async BValueTask<HttpNetworkRequest> SendAsync(
+        Func<HttpResponseMessage, CancellationToken, BValueTask> responseHandler,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(responseHandler);
@@ -148,6 +145,11 @@ public sealed class HttpNetworkRequest : IDisposable
         }
         return this;
     }
+
+    private async BValueTask ReadResponseBodyAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken) =>
+        DownloadData = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
 
     public void Abort()
     {

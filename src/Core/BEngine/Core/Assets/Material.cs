@@ -179,6 +179,10 @@ public sealed class Material : BAsset
         .Read(path, static sourcePath => FromFile(YamlUtility.Load<MaterialFile>(sourcePath)))
         .ToAsset();
 
+    internal static Material Deserialize(string yaml) => Document<Material>
+        .Parse(yaml, static contents => FromFile(YamlUtility.Deserialize<MaterialFile>(contents)))
+        .ToAsset();
+
     public void Save(string path) => Document<Material>.FromAsset(this)
         .Write(path, static (material, destination) => YamlUtility.Save(material.ToFile(), destination));
 

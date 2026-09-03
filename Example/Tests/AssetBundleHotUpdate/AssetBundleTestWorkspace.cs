@@ -1,4 +1,5 @@
 using BEngine.Editor;
+using BEngine.Editor.Documents;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
 using BEngine.Serialization;
@@ -19,6 +20,7 @@ internal sealed class AssetBundleTestWorkspace : IDisposable
 
     private readonly string _sharedPath;
     private readonly string _spritePath;
+    private readonly string _atlasPath;
     private readonly string _atlasTexturePath;
     private readonly string _previousDataPath;
 
@@ -26,6 +28,7 @@ internal sealed class AssetBundleTestWorkspace : IDisposable
     {
         Root = Path.Combine(Path.GetTempPath(), $"BEngineAssetBundleHotUpdate_{Guid.NewGuid():N}");
         Workspace = ProjectWorkspaceFactory.Create(Path.Combine(Root, "Project"), "Asset Bundle Hot Update");
+        new PackageManifestDocument().Save(Workspace.PackageManifestPath);
         var dataDirectory = Path.Combine(Workspace.AssetsPath, "Data");
         var sceneDirectory = Path.Combine(Workspace.AssetsPath, "Scenes");
         var resourcesDirectory = Path.Combine(Workspace.AssetsPath, "Resources");
@@ -68,9 +71,9 @@ internal sealed class AssetBundleTestWorkspace : IDisposable
             MaxSize = 64,
             Sources = [sourceTexture.CreateSprite(new Vector2((Fix64)0.25, (Fix64)0.75))]
         };
-        var atlasPath = Path.Combine(atlasDirectory, "bundled.atlas.yaml");
-        atlas.Save(atlasPath);
-        var atlasBuild = TextureAtlasBuilder.Build(atlas, atlasPath);
+        _atlasPath = Path.Combine(atlasDirectory, "bundled.atlas.yaml");
+        atlas.Save(_atlasPath);
+        var atlasBuild = TextureAtlasBuilder.Build(atlas, _atlasPath);
         _ = AssetDatabase.Refresh();
         var atlasRecord = AssetDatabase.GetRecord(AtlasAddress) ??
                           throw new InvalidOperationException("The TextureAtlas record is missing.");
@@ -163,11 +166,24 @@ internal sealed class AssetBundleTestWorkspace : IDisposable
         using var scene = new Scene(sceneName);
         var root = scene.CreateGameObject(rootName);
         var renderer = includeBundledSprite ? root.AddComponent<SpriteRenderer>() : null;
+        if (renderer is not null)
+        {
+            var texture = BAsset.Load<Texture>(_spritePath) ??
+                          throw new InvalidOperationException("The Sprite source Texture could not be loaded.");
+            renderer.sprite = texture.CreateSprite(new Vector2((Fix64)0.25, (Fix64)0.75));
+        }
         var document = SceneAssetSerialization.Capture(scene);
         if (includeBundledSprite)
-            document.GameObjects.SelectMany(gameObject => gameObject.Components)
+        {
+            var spriteOwner = AssetDatabase.GetRecord(SpriteAddress)?.Guid ??
+                              throw new InvalidOperationException("The Sprite AssetDatabase record is missing.");
+            var reference = document.GameObjects.SelectMany(gameObject => gameObject.Components)
                 .Single(component => component.Id == renderer!.Id)
-                .Fields[nameof(SpriteRenderer.sprite)] = SpriteAddress;
+                .Fields[nameof(SpriteRenderer.sprite)];
+            if (!reference.Equals($"guid:{spriteOwner:N}#subasset=21300000", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"The serialized Sprite did not retain its stable sub-asset identity: '{reference}'.");
+        }
         BEngine.YamlUtility.Save(document, path);
     }
 
@@ -185,6 +201,13 @@ internal sealed class AssetBundleTestWorkspace : IDisposable
     {
         File.Delete(_atlasTexturePath);
         File.Delete(_atlasTexturePath + ".meta");
+        BAsset.ClearLoadedAssets();
+    }
+
+    internal void DeleteAtlasSource()
+    {
+        File.Delete(_atlasPath);
+        File.Delete(_atlasPath + ".meta");
         BAsset.ClearLoadedAssets();
     }
 

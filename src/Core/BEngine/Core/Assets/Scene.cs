@@ -39,6 +39,14 @@ public sealed class Scene : BAsset, IDisposable
     }
     public bool isCreated => !_disposed;
 
+    public T? GetService<T>() where T : class => Services.GetService(typeof(T)) as T;
+
+    public object? GetService(Type serviceType)
+    {
+        ArgumentNullException.ThrowIfNull(serviceType);
+        return Services.GetService(serviceType);
+    }
+
     internal IServiceProvider Services { get; }
     internal ReadOnlySpan<GameObject> GameObjectsSpanUnchecked => CollectionsMarshal.AsSpan(_gameObjects);
 
