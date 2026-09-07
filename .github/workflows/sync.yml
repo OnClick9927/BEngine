@@ -1,8 +1,7 @@
-name: Sync from Source
+name: Sync BEngine
 
 on:
   schedule:
-    # 每 30 分钟同步一次
     - cron: "*/30 * * * *"
 
   workflow_dispatch:
@@ -15,41 +14,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout GitHub repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Add source repository
+      - name: Clone source repository
+        env:
+          SOURCE_URL: ${{ secrets.SOURCE_REPOSITORY_URL }}
         run: |
-          git remote add source "${{ secrets.SOURCE_REPOSITORY_URL }}"
+          set -eux
 
-      - name: Fetch source
-        run: |
-          git fetch source --prune
+          echo "=== Clone source repository ==="
+          git clone "$SOURCE_URL" repo
 
-      - name: Sync main branch
+      - name: Show source information
+        working-directory: repo
         run: |
-          git checkout main
-          git reset --hard source/main
+          git branch -a
+          git remote -v
+          git log -5 --oneline
 
-      - name: Restore GitHub Actions workflow
+      - name: Push to GitHub
+        working-directory: repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p .github/workflows
-          git checkout HEAD@{1} -- .github/workflows/sync.yml || true
+          set -eux
 
-      - name: Commit workflow
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add .github/workflows/sync.yml
+          git remote add github \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/OnClick9927/BEngine.git"
 
-          if ! git diff --cached --quiet; then
-            git commit -m "ci: preserve GitHub sync workflow"
-          fi
+          SOURCE_BRANCH=$(git symbolic-ref --short HEAD)
 
-      - name: Push
-        run: |
-          git push origin main
+          echo "Source branch: $SOURCE_BRANCH"
+
+          git push github "$SOURCE_BRANCH:main"
+
+          git push github --tags
