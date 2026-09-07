@@ -1,0 +1,55 @@
+name: Sync from Source
+
+on:
+  schedule:
+    # 每 30 分钟同步一次
+    - cron: "*/30 * * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add source repository
+        run: |
+          git remote add source "${{ secrets.SOURCE_REPOSITORY_URL }}"
+
+      - name: Fetch source
+        run: |
+          git fetch source --prune
+
+      - name: Sync main branch
+        run: |
+          git checkout main
+          git reset --hard source/main
+
+      - name: Restore GitHub Actions workflow
+        run: |
+          mkdir -p .github/workflows
+          git checkout HEAD@{1} -- .github/workflows/sync.yml || true
+
+      - name: Commit workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .github/workflows/sync.yml
+
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: preserve GitHub sync workflow"
+          fi
+
+      - name: Push
+        run: |
+          git push origin main
