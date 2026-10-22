@@ -6,12 +6,23 @@ internal sealed partial class ProjectLauncherForm
 {
     private readonly LauncherEngineCatalog _engineCatalog;
     private IReadOnlyList<LauncherEngineInfo> _engines = [];
-    private readonly Button _enginesNavigation = new();
+    private readonly LauncherNavigationButton _enginesNavigation = new();
     private readonly ComboBox _engineSelector = new();
     private readonly Button _openEngineDocumentationButton = new();
     private bool _updatingEngineSelection;
+    private bool _primaryNavigationAllowed = true;
 
     private LauncherEngineInfo? SelectedEngine => _engineSelector.SelectedItem as LauncherEngineInfo;
+    private bool HasLocalEngine => _engines.Any(engine =>
+        File.Exists(Path.Combine(engine.DirectoryPath, "BEngine.Editor.exe")));
+
+    private void RefreshPrimaryNavigation(bool allowed)
+    {
+        _primaryNavigationAllowed = allowed;
+        var enabled = allowed && HasLocalEngine;
+        _projectsNavigation.Enabled = enabled;
+        _enginesNavigation.Enabled = enabled;
+    }
 
     private Control BuildEngineSelector()
     {
@@ -62,7 +73,16 @@ internal sealed partial class ProjectLauncherForm
         return header;
     }
 
-    private void ShowEnginesPage() => ShowPage(_packagesPage, "Engines & packages", _enginesNavigation);
+    private void ShowEnginesPage()
+    {
+        if (!HasLocalEngine || !_primaryNavigationAllowed)
+        {
+            RefreshPrimaryNavigation(_primaryNavigationAllowed);
+            ShowUpdatesPage();
+            return;
+        }
+        ShowPage(_packagesPage, "Engines & packages", _enginesNavigation);
+    }
 
     private void ReloadEngines()
     {
@@ -77,6 +97,9 @@ internal sealed partial class ProjectLauncherForm
             RefreshEngineSelector();
             SetStatus("Could not read installed engines: {0}", true, exception.Message);
         }
+        RefreshPrimaryNavigation(_primaryNavigationAllowed);
+        if (!HasLocalEngine && (_activeNavigation == _projectsNavigation ||
+            _activeNavigation == _enginesNavigation || _createPage.Visible)) ShowUpdatesPage();
     }
 
     private void RefreshEngineSelector()

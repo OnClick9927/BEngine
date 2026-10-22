@@ -203,6 +203,7 @@ internal static class LauncherUpdateInstaller
             progress.Report(new("completed", "The previous installation has been restored.", Percent: 100));
             return;
         }
+        var temporaryFiles = CaptureTemporaryFiles(plan);
         await VerifyOriginalFilesAsync(plan, cancellationToken);
         progress.Report(new("verifying", "Verifying downloaded files and unchanged installed files", Percent: 0));
         var changes = plan.Changes.ToDictionary(change => change.Path, StringComparer.OrdinalIgnoreCase);
@@ -310,7 +311,6 @@ internal static class LauncherUpdateInstaller
             journal.Phase = "committed";
             WriteJson(journalPath, journal);
             File.Delete(pendingPath);
-            progress.Report(new("completed", "Update complete. Your projects and preferences have been preserved.", Percent: 100));
         }
         catch (Exception installationError)
         {
@@ -343,6 +343,151 @@ internal static class LauncherUpdateInstaller
             throw new IOException($"Update failed; the previous installation was restored.\n{installationError.GetBaseException().Message}\nLog and backup: {plan.WorkspaceRoot}", installationError);
         }
         finally { restartedHub?.Dispose(); }
+
+        // Cleanup is deliberately outside the install/rollback transaction. It
+        // runs only after the new Hub has passed startup verification and the
+        // journal is committed; a busy cache file must never undo an update.
+        progress.Report(new("cleanup", "Removing temporary files from the previous engine", Percent: 100));
+        CleanupSuccessfulUpdate(plan, temporaryFiles);
+        progress.Report(new("completed", "Update complete. Your projects and preferences have been preserved.", Percent: 100));
+    }
+
+    private static TemporaryFiles CaptureTemporaryFiles(LauncherUpdatePlan plan)
+    {
+        var root = LauncherInstallationPaths.ResolveTemporaryDirectory(plan.InstallationRoot);
+        var files = new List<TemporaryFile>();
+        var directories = new List<string>();
+        try
+        {
+            EnsureNoReparsePoints(root);
+            if (!Directory.Exists(root)) return new(root, files, directories);
+            CaptureDirectory(root);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        { AppendLog(plan, $"Temporary file scan: {exception.Message}"); }
+        return new(root, files, directories);
+
+        void CaptureDirectory(string directory)
+        {
+            // A test, custom deployment, or interrupted recovery may keep its
+            // workspace under Temp. Never let cache cleanup touch that subtree.
+            if (IsWithin(plan.WorkspaceRoot, directory)) return;
+            try
+            {
+                EnsureNoReparsePoints(directory);
+                // Previous failed updates can also have recovery workspaces in
+                // Temp. Their journal owns all descendants, including backups.
+                if (File.Exists(Path.Combine(directory, "install-journal.json"))) return;
+                foreach (var path in Directory.EnumerateFileSystemEntries(directory))
+                {
+                    try
+                    {
+                        if (IsWithin(plan.WorkspaceRoot, path)) continue;
+                        var attributes = File.GetAttributes(path);
+                        if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
+                        if ((attributes & FileAttributes.Directory) != 0) CaptureDirectory(path);
+                        else
+                        {
+                            var info = new FileInfo(path);
+                            files.Add(new(path, info.Length, info.LastWriteTimeUtc.Ticks, info.CreationTimeUtc.Ticks));
+                        }
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    { AppendLog(plan, $"Temporary file scan: {path}: {exception.Message}"); }
+                }
+                directories.Add(directory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            { AppendLog(plan, $"Temporary directory scan: {directory}: {exception.Message}"); }
+        }
+    }
+
+    private static void CleanupSuccessfulUpdate(LauncherUpdatePlan plan, TemporaryFiles snapshot)
+    {
+        foreach (var file in snapshot.Files)
+        {
+            try
+            {
+                if (!IsWithin(snapshot.Root, file.Path) || IsWithin(plan.WorkspaceRoot, file.Path)) continue;
+                EnsureNoReparsePoints(file.Path);
+                var current = new FileInfo(file.Path);
+                // Restarting Hub can create or reopen logs at the same path.
+                // Keep every new or changed file from this fresh session.
+                if (!current.Exists || current.Length != file.Length || current.LastWriteTimeUtc.Ticks != file.LastWriteUtcTicks ||
+                    current.CreationTimeUtc.Ticks != file.CreationUtcTicks) continue;
+                if ((current.Attributes & FileAttributes.ReadOnly) != 0) current.IsReadOnly = false;
+                File.Delete(file.Path);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            { AppendLog(plan, $"Temporary file cleanup: {file.Path}: {exception.Message}"); }
+        }
+        foreach (var directory in snapshot.Directories)
+        {
+            try
+            {
+                if (!IsWithin(snapshot.Root, directory) || IsWithin(plan.WorkspaceRoot, directory)) continue;
+                EnsureNoReparsePoints(directory);
+                if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            { AppendLog(plan, $"Temporary directory cleanup: {directory}: {exception.Message}"); }
+        }
+
+        // Keep the tiny committed journal/log and the currently running updater.
+        // Downloads and rollback copies are no longer needed after success.
+        foreach (var relative in new[] { "staging", "partial", "backup" })
+        {
+            try { DeleteTemporaryTree(SafePath(plan.WorkspaceRoot, relative), plan, Stopwatch.StartNew()); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            { AppendLog(plan, $"Update workspace cleanup: {relative}: {exception.Message}"); }
+        }
+        try { File.Delete(SafePath(plan.WorkspaceRoot, "RECOVERY.txt")); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        { AppendLog(plan, $"Update workspace cleanup: {exception.Message}"); }
+    }
+
+    private static void DeleteTemporaryTree(string path, LauncherUpdatePlan plan, Stopwatch cleanupTimer)
+    {
+        EnsureNoReparsePoints(path);
+        if (!Directory.Exists(path)) return;
+        // Close the directory enumeration before deleting children. Windows can
+        // keep a directory busy while a parent enumerator still owns its handle.
+        foreach (var entry in Directory.GetFileSystemEntries(path))
+        {
+            try
+            {
+                var attributes = File.GetAttributes(entry);
+                // Treat a newly introduced link as an occupied cache entry.
+                // Never recurse through it or recursively delete an untrusted tree.
+                if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
+                if ((attributes & FileAttributes.Directory) != 0) DeleteTemporaryTree(entry, plan, cleanupTimer);
+                else RetryDelete(() =>
+                {
+                    EnsureNoReparsePoints(entry);
+                    if ((File.GetAttributes(entry) & FileAttributes.ReadOnly) != 0)
+                        File.SetAttributes(entry, File.GetAttributes(entry) & ~FileAttributes.ReadOnly);
+                    File.Delete(entry);
+                });
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            { AppendLog(plan, $"Update workspace cleanup: {entry}: {exception.Message}"); }
+        }
+        if (!Directory.EnumerateFileSystemEntries(path).Any()) RetryDelete(() =>
+        {
+            EnsureNoReparsePoints(path);
+            Directory.Delete(path);
+        });
+
+        void RetryDelete(Action action)
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                try { action(); return; }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException &&
+                    attempt < 3 && cleanupTimer.Elapsed < TimeSpan.FromSeconds(3))
+                { Thread.Sleep(50 * (attempt + 1)); }
+            }
+        }
     }
 
     internal static void ValidatePlan(LauncherUpdatePlan plan)
@@ -660,6 +805,8 @@ internal static class LauncherUpdateInstaller
     private sealed record ProcessIdentity(int Id, long StartTimeUtcTicks, string ExecutablePath);
     private sealed record PendingInstallation(string PlanPath);
     private sealed record InstallerReady(int ProcessId, string Token);
+    private sealed record TemporaryFile(string Path, long Length, long LastWriteUtcTicks, long CreationUtcTicks);
+    private sealed record TemporaryFiles(string Root, List<TemporaryFile> Files, List<string> Directories);
     private sealed record JournalEntry(string Path, bool Existed);
     private sealed record InstallJournal
     {

@@ -2,6 +2,20 @@ namespace BEngine.Launcher;
 
 internal static class LauncherInstallationPaths
 {
+    // Keep this mapping aligned with EditorDataPaths.ResolveTempPath. A source
+    // checkout shares its outer Temp; an exported Engine uses its sibling Temp.
+    internal static string ResolveTemporaryDirectory(string installationRoot)
+    {
+        var root = new DirectoryInfo(Path.GetFullPath(installationRoot));
+        if (root.Name.Equals("Engine", StringComparison.OrdinalIgnoreCase) && root.Parent is { } parent)
+        {
+            if (File.Exists(Path.Combine(parent.FullName, "src", "BEngine.sln")) && parent.Parent is { } repository)
+                return Path.Combine(repository.FullName, "Temp");
+            return Path.Combine(parent.FullName, "Temp");
+        }
+        return Path.Combine(root.FullName, "Temp");
+    }
+
     internal static string ResolveRoot(string? baseDirectory = null)
     {
         var executableDirectory = Environment.ProcessPath is { Length: > 0 } processPath
@@ -9,22 +23,36 @@ internal static class LauncherInstallationPaths
             : null;
         var start = new DirectoryInfo(Path.GetFullPath(
             baseDirectory ?? executableDirectory ?? AppContext.BaseDirectory));
-        if (start.Name.Equals("Hub", StringComparison.OrdinalIgnoreCase) && start.Parent is not null)
-            return start.Parent.FullName;
 
-        // Exported distributions keep the single-file Hub inside the Engine
-        // distribution directory. Resolve that layout before falling back to
-        // source-tree discovery so BEgine and Packages remain visible.
+        // A downloaded Hub is a complete bootstrapper. Its directory owns the
+        // installation even before the first engine or package is downloaded,
+        // including directories called Hub and directories inside a source tree.
         if (File.Exists(Path.Combine(start.FullName, "BEngine.Hub.exe")) ||
+            (baseDirectory is null && string.Equals(Path.GetFileName(Environment.ProcessPath),
+                "BEngine.Hub.exe", StringComparison.OrdinalIgnoreCase)) ||
             (Directory.Exists(Path.Combine(start.FullName, "BEgine")) &&
              Directory.Exists(Path.Combine(start.FullName, "Packages"))))
             return start.FullName;
+
+        // Retain the former split Hub layout only when its parent really is an
+        // installation. An arbitrary directory name must never select a parent.
+        if (start.Name.Equals("Hub", StringComparison.OrdinalIgnoreCase) && start.Parent is { } parent &&
+            Directory.Exists(Path.Combine(parent.FullName, "BEgine")) &&
+            Directory.Exists(Path.Combine(parent.FullName, "Packages")))
+            return parent.FullName;
+
         var siblingEngine = Path.Combine(start.FullName, "Engine");
         if (File.Exists(Path.Combine(siblingEngine, "BEngine.Hub.exe")) ||
             (File.Exists(Path.Combine(start.FullName, "BEngine.Launcher.exe")) &&
              Directory.Exists(Path.Combine(siblingEngine, "BEgine")) &&
              Directory.Exists(Path.Combine(siblingEngine, "Packages"))))
             return siblingEngine;
+
+        // Only a source build searches upward for the development checkout.
+        // Empty bootstrap directories are valid installation destinations.
+        if (!File.Exists(Path.Combine(start.FullName, "BEngine.Launcher.exe")) &&
+            !File.Exists(Path.Combine(start.FullName, "BEngine.Launcher.dll")))
+            return start.FullName;
 
         for (var directory = start; directory is not null; directory = directory.Parent)
         {
@@ -34,6 +62,6 @@ internal static class LauncherInstallationPaths
                 return Path.Combine(directory.FullName, "Engine");
         }
 
-        return start.Parent?.FullName ?? start.FullName;
+        return start.FullName;
     }
 }

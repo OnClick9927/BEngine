@@ -261,6 +261,7 @@ internal sealed partial class ProjectLauncherForm
         SuspendLayout();
         Recolor(this);
         ApplyLocalization();
+        ApplyUpdateAppearance();
         SetNavigationState(_activeNavigation);
         RefreshProjectList();
         _projectList.Invalidate();

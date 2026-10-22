@@ -1,4 +1,18 @@
-# 官网文档导出
+# 官网构建与文档导出
+
+## 构建可发布站点
+
+在仓库根目录执行，需要 Python 3.10+：
+
+```powershell
+python Pages/tools/build-site.py --output ..\Temp\Pages-preview
+```
+
+输出目录必须尚不存在且位于 `Pages` 外。构建器复制网页、资源与版本文档，并把当前发行的 `Engine/BEngine.Hub.exe` 复制到输出的 `downloads/BEngine.Hub.exe`；维护脚本和本说明不进入站点。Hub 缺失或不是 Windows 可执行文件时，构建失败，不发布失效的下载入口。构建日志记录下载文件的字节数和 SHA-256。
+
+GitHub Pages 工作流使用同一脚本，在临时目录准备网站后上传该输出。更新发行 Hub 会触发官网重新部署；不要把可执行文件复制进 `Pages` 源码。
+
+## 导出版本文档
 
 在仓库根目录执行，需要 Python 3.10+ 和 Node.js 18+：
 

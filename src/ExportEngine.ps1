@@ -278,7 +278,7 @@ foreach ($retired in @('Media')) {
     Remove-DirectoryWithRetry -Path $retiredPath
 }
 
-& dotnet publish $launcherProject -c $Configuration -o $hubStageOutput -m:1 `
+& dotnet publish $launcherProject -c $Configuration -r win-x64 --self-contained true -o $hubStageOutput -m:1 `
     /nodeReuse:false -p:NuGetAudit=false -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false `
     @compactHostPublishArguments
 if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed with exit code $LASTEXITCODE." }

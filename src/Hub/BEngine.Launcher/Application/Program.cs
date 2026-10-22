@@ -11,7 +11,6 @@ internal static class Program
         var updaterExitCode = LauncherUpdateInstaller.RunUpdater(args);
         if (updaterExitCode.HasValue) return updaterExitCode.Value;
         InitializeTaskbarIdentity();
-        BEngine.Platform.WindowsPlatform.Initialize();
         try
         {
             Run(args);
@@ -42,7 +41,6 @@ internal static class Program
             ? Path.GetDirectoryName(Path.GetFullPath(processPath))!
             : AppContext.BaseDirectory;
         var editorPath = ResolveEditorPath(args, launcherDirectory, requireInstalled: false);
-        BEngine.Editor.EditorResource.RegisterResourceRoot(Path.GetDirectoryName(editorPath)!);
         using var services = new ServiceCollection()
             .AddBEngineLauncher(editorPath)
             .BuildServiceProvider(new ServiceProviderOptions
@@ -58,14 +56,14 @@ internal static class Program
         var language = new HubLocalization("system");
         try
         {
-            var settings = new LauncherHistoryStore(BEngine.Editor.EditorDataPaths.launcherSettingsPath).Load();
+            var settings = new LauncherHistoryStore(LauncherDataPaths.LauncherSettingsPath).Load();
             language = new HubLocalization(settings.Personalization.Language);
         }
         catch { /* Startup diagnostics must remain available even when preferences cannot be read. */ }
         string? logPath = null;
         try
         {
-            var candidateLogPath = Path.Combine(BEngine.Editor.EditorDataPaths.logsPath, "Launcher.log");
+            var candidateLogPath = Path.Combine(LauncherDataPaths.LogsPath, "Launcher.log");
             File.AppendAllText(candidateLogPath,
                 $"[{DateTimeOffset.Now:O}] BEngine Launcher failed to start.{Environment.NewLine}" +
                 $"{exception}{Environment.NewLine}{Environment.NewLine}");

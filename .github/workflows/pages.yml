@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'Pages/**'
+      - 'Engine/BEngine.Hub.exe'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -32,10 +33,13 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
+      - name: Prepare website and Hub download
+        run: python3 Pages/tools/build-site.py --output "$RUNNER_TEMP/bengine-pages"
+
       - name: Upload website
         uses: actions/upload-pages-artifact@v4
         with:
-          path: Pages
+          path: ${{ runner.temp }}/bengine-pages
 
       - name: Deploy to GitHub Pages
         id: deployment

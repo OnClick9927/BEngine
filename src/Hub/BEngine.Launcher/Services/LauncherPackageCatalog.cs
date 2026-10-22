@@ -32,7 +32,8 @@ internal sealed class LauncherPackageCatalog(string? baseDirectory = null)
                      .Where(path => !Path.GetRelativePath(root, path).Split('/', '\\').Any(segment => segment.StartsWith('.')))
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
-            var definition = PackageDefinitionLoader.Load(definitionPath);
+            var definition = PackageDefinitionLoader.Normalize(
+                YamlUtility.Load<BEngine.Editor.Documents.PackageDefinitionDocument>(definitionPath), definitionPath);
             if (!BPackageCompatibility.SupportsEngine(definition, engineVersion)) continue;
             definitions.Add(new BPackageDefinition(definitionPath, definition));
         }

@@ -6,11 +6,29 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>BEngine.Launcher</RootNamespace>
     <AssemblyName>BEngine.Launcher</AssemblyName>
+    <!-- Hub needs metadata and WinForms, never the engine runtime or GPU host. -->
+    <SatelliteResourceLanguages>en;zh-Hans;zh-Hant</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="../../Core/Editor/Icons/BEngine.ico" LogicalName="BEngine.Launcher.BEngine.ico" />
-    <ProjectReference Include="../../Core/BEngine.Editor/BEngine.Editor.csproj" />
-    <ProjectReference Include="../../Platform/BEngine.Windows/BEngine.Windows.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Share the exact document/version/dependency rules without shipping Editor. -->
+    <Compile Include="../../Core/BEngine/Lifecycle/EngineVersion.cs" Link="Shared/EngineVersion.cs" />
+    <Compile Include="../../Core/BEngine/Math/Fix64.cs" Link="Shared/Fix64.cs" />
+    <Compile Include="../../Core/BEngine/ProjectSystem/Serialization/ProjectData.cs" Link="Shared/ProjectData.cs" />
+    <Compile Include="../../Core/BEngine/ProjectSystem/Serialization/WindowData.cs" Link="Shared/WindowData.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageDefinitionDocument.cs" Link="Shared/PackageDefinitionDocument.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageAssemblyDocument.cs" Link="Shared/PackageAssemblyDocument.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageContentDocument.cs" Link="Shared/PackageContentDocument.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageDependencyDocument.cs" Link="Shared/PackageDependencyDocument.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageExternalReferenceDocument.cs" Link="Shared/PackageExternalReferenceDocument.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/PackageDefinitionNormalization.cs" Link="Shared/PackageDefinitionNormalization.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/BPackageDefinition.cs" Link="Shared/BPackageDefinition.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/BPackageVersion.cs" Link="Shared/BPackageVersion.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/BPackageCompatibility.cs" Link="Shared/BPackageCompatibility.cs" />
+    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/BPackageReleaseResolver.cs" Link="Shared/BPackageReleaseResolver.cs" />
   </ItemGroup>
 </Project>

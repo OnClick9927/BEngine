@@ -1,5 +1,3 @@
-using BEngine.Serialization;
-
 namespace BEngine.Editor.Documents;
 
 public sealed class PackageDefinitionDocument

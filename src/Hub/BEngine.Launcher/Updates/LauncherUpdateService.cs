@@ -13,6 +13,9 @@ internal sealed class LauncherUpdateService : IDisposable
 {
     private const string DefaultRepositoryApi = "https://api.github.com/repos/OnClick9927/BEngine/";
     private const string DefaultRawBase = "https://raw.githubusercontent.com/OnClick9927/BEngine/";
+    private const int MaximumNetworkAttempts = 3;
+    private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DownloadIdleTimeout = TimeSpan.FromSeconds(60);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
     private static readonly HashSet<string> ProtectedRoots = new(StringComparer.OrdinalIgnoreCase)
         { "Preferences", "EditorData", "Temp", ".git", ".bengine-update-manifest.json" };
@@ -41,16 +44,18 @@ internal sealed class LauncherUpdateService : IDisposable
         if (!Directory.Exists(root)) throw new DirectoryNotFoundException("The Hub installation directory was not found.");
         EnsureNoReparsePoints(root, string.Empty);
 
-        progress.Report(new("Connecting", "Reading main branch"));
-        using var commit = await GetJsonAsync(new Uri(_repositoryApi, "commits/main"), cancellationToken).ConfigureAwait(false);
-        var commitSha = ReadSha(commit.RootElement.GetProperty("sha"));
-        var commitInfo = commit.RootElement.GetProperty("commit");
+        // The branch response omits commit patches, which can make commits/main unexpectedly large.
+        using var branch = await GetJsonAsync(new Uri(_repositoryApi, "branches/main"),
+            "Connecting", "Reading main branch", progress, cancellationToken).ConfigureAwait(false);
+        var commit = branch.RootElement.GetProperty("commit");
+        var commitSha = ReadSha(commit.GetProperty("sha"));
+        var commitInfo = commit.GetProperty("commit");
         var rootTree = ReadSha(commitInfo.GetProperty("tree").GetProperty("sha"));
         var commitMessage = "Snapshot commit: " + (commitInfo.GetProperty("message").GetString() ?? string.Empty);
-        var commitUrl = commit.RootElement.TryGetProperty("html_url", out var url) ? url.GetString() ?? string.Empty : string.Empty;
+        var commitUrl = commit.TryGetProperty("html_url", out var url) ? url.GetString() ?? string.Empty : string.Empty;
 
-        progress.Report(new("Listing", "Reading Engine directory"));
-        using var rootListing = await GetJsonAsync(new Uri(_repositoryApi, $"git/trees/{rootTree}"), cancellationToken).ConfigureAwait(false);
+        using var rootListing = await GetJsonAsync(new Uri(_repositoryApi, $"git/trees/{rootTree}"),
+            "Listing", "Reading Engine directory", progress, cancellationToken).ConfigureAwait(false);
         EnsureCompleteTree(rootListing.RootElement);
         var engineEntry = rootListing.RootElement.GetProperty("tree").EnumerateArray()
             .FirstOrDefault(entry => entry.GetProperty("path").GetString() == "Engine" &&
@@ -59,7 +64,8 @@ internal sealed class LauncherUpdateService : IDisposable
             throw new InvalidDataException("The main branch does not contain an Engine distribution directory.");
         var engineTree = ReadSha(engineEntry.GetProperty("sha"));
 
-        using var engineListing = await GetJsonAsync(new Uri(_repositoryApi, $"git/trees/{engineTree}?recursive=1"), cancellationToken).ConfigureAwait(false);
+        using var engineListing = await GetJsonAsync(new Uri(_repositoryApi, $"git/trees/{engineTree}?recursive=1"),
+            "Listing", "Reading Engine file list", progress, cancellationToken).ConfigureAwait(false);
         EnsureCompleteTree(engineListing.RootElement);
         var files = new List<LauncherUpdateFile>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -84,11 +90,11 @@ internal sealed class LauncherUpdateService : IDisposable
             throw new InvalidDataException("The remote Engine distribution does not contain BEngine.Hub.exe.");
         files.Sort((left, right) => StringComparer.OrdinalIgnoreCase.Compare(left.Path, right.Path));
 
-        progress.Report(new("Listing", "Reading recent Engine changes"));
         try
         {
             using var history = await GetJsonAsync(new Uri(_repositoryApi,
-                $"commits?path=Engine&sha={commitSha}&per_page=5"), cancellationToken, 15).ConfigureAwait(false);
+                $"commits?path=Engine&sha={commitSha}&per_page=5"), "Listing", "Reading recent Engine changes",
+                progress, cancellationToken, maximumAttempts: 1, timeout: TimeSpan.FromSeconds(15)).ConfigureAwait(false);
             var messages = history.RootElement.EnumerateArray().Select(entry =>
                 entry.GetProperty("commit").GetProperty("message").GetString()).Where(message => !string.IsNullOrWhiteSpace(message)).ToArray();
             if (messages.Length != 0)
@@ -213,65 +219,87 @@ internal sealed class LauncherUpdateService : IDisposable
                 var target = ResolvePath(plan.StagingRoot, file.Path);
                 EnsureNoReparsePoints(plan.WorkspaceRoot, $"staging/{file.Path}");
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                var partial = Path.Combine(plan.WorkspaceRoot, "partial", Guid.NewGuid().ToString("N") + ".part");
                 var relativeUrl = $"{plan.CommitSha}/Engine/{string.Join('/', file.Path.Split('/').Select(Uri.EscapeDataString))}";
-                using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-                requestTimeout.CancelAfter(TimeSpan.FromMinutes(10));
-                try
+                var uri = new Uri(_rawBase, relativeUrl);
+                await WithNetworkRetriesAsync(async attempt =>
                 {
-                    using var request = CreateRequest(new Uri(_rawBase, relativeUrl));
-                    using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token).ConfigureAwait(false);
-                    EnsureSuccess(response);
-                    if (response.Content.Headers.ContentLength is { } contentLength && contentLength != file.Size)
-                        throw new InvalidDataException($"The downloaded file has an unexpected size: {file.Path}");
-                    using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
-                    hash.AppendData(Encoding.ASCII.GetBytes($"blob {file.Size.ToString(CultureInfo.InvariantCulture)}\0"));
-                    await using var source = await response.Content.ReadAsStreamAsync(requestTimeout.Token).ConfigureAwait(false);
-                    await using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                    var partial = Path.Combine(plan.WorkspaceRoot, "partial", Guid.NewGuid().ToString("N") + ".part");
+                    using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    requestTimeout.CancelAfter(ResponseTimeout);
+                    var elapsed = Stopwatch.StartNew();
+                    var headersReceived = false;
+                    long received = 0;
+                    var verified = false;
+                    void Report(bool force)
                     {
-                        var buffer = new byte[81920];
-                        long received = 0;
-                        int count;
-                        while ((count = await source.ReadAsync(buffer, requestTimeout.Token).ConfigureAwait(false)) != 0)
+                        lock (progressGate)
                         {
-                            received += count;
-                            if (received > file.Size) throw new InvalidDataException($"The downloaded file exceeds its expected size: {file.Path}");
-                            hash.AppendData(buffer.AsSpan(0, count));
-                            await output.WriteAsync(buffer.AsMemory(0, count), requestTimeout.Token).ConfigureAwait(false);
-                            Interlocked.Add(ref downloaded, count);
-                            lock (progressGate)
+                            var completed = Interlocked.Read(ref downloaded);
+                            var now = Stopwatch.GetTimestamp();
+                            if (force || completed == totalBytes || Stopwatch.GetElapsedTime(lastProgressTimestamp, now).TotalMilliseconds >= 100)
                             {
-                                var completed = Interlocked.Read(ref downloaded);
-                                var now = Stopwatch.GetTimestamp();
-                                if (completed == totalBytes || Stopwatch.GetElapsedTime(lastProgressTimestamp, now).TotalMilliseconds >= 100)
-                                {
-                                    lastProgressTimestamp = now;
-                                    progress.Report(new("Downloading", file.Path, completed, totalBytes,
-                                        totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes)));
-                                }
+                                lastProgressTimestamp = now;
+                                progress.Report(new("Downloading",
+                                    NetworkMessage(file.Path, headersReceived ? "Receiving data" : "Waiting for response", uri, attempt, MaximumNetworkAttempts, elapsed.Elapsed),
+                                    completed, totalBytes, totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes)));
                             }
                         }
-                        if (received != file.Size || !Convert.ToHexString(hash.GetHashAndReset()).Equals(file.Sha, StringComparison.OrdinalIgnoreCase))
-                            throw new InvalidDataException($"File integrity verification failed: {file.Path}. No installed files were replaced.");
-                        await output.FlushAsync(requestTimeout.Token).ConfigureAwait(false);
                     }
-                    File.Move(partial, target, true);
+                    Report(true);
+                    var heartbeat = ReportHeartbeatAsync(() => Report(true), heartbeatStop.Token);
+                    try
+                    {
+                        using var request = CreateRequest(uri);
+                        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token).ConfigureAwait(false);
+                        EnsureNetworkSuccess(response);
+                        headersReceived = true;
+                        if (response.Content.Headers.ContentLength is { } contentLength && contentLength != file.Size)
+                            throw new InvalidDataException($"The downloaded file has an unexpected size: {file.Path}");
+                        requestTimeout.CancelAfter(DownloadIdleTimeout);
+                        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+                        hash.AppendData(Encoding.ASCII.GetBytes($"blob {file.Size.ToString(CultureInfo.InvariantCulture)}\0"));
+                        await using var source = await response.Content.ReadAsStreamAsync(requestTimeout.Token).ConfigureAwait(false);
+                        await using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                        {
+                            var buffer = new byte[81920];
+                            int count;
+                            while ((count = await ReadNetworkAsync(source, buffer, requestTimeout.Token).ConfigureAwait(false)) != 0)
+                            {
+                                if (received + count > file.Size) throw new InvalidDataException($"The downloaded file exceeds its expected size: {file.Path}");
+                                hash.AppendData(buffer.AsSpan(0, count));
+                                await output.WriteAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
+                                received += count;
+                                Interlocked.Add(ref downloaded, count);
+                                requestTimeout.CancelAfter(DownloadIdleTimeout);
+                                Report(false);
+                            }
+                            if (received != file.Size) throw new RetryableNetworkException("The file transfer ended before all bytes arrived.");
+                            if (!Convert.ToHexString(hash.GetHashAndReset()).Equals(file.Sha, StringComparison.OrdinalIgnoreCase))
+                                throw new InvalidDataException($"File integrity verification failed: {file.Path}. No installed files were replaced.");
+                            await output.FlushAsync(token).ConfigureAwait(false);
+                        }
+                        File.Move(partial, target, true);
+                        verified = true;
+                        Report(true);
+                        return true;
+                    }
+                    finally
+                    {
+                        heartbeatStop.Cancel();
+                        await heartbeat.ConfigureAwait(false);
+                        if (!verified) Interlocked.Add(ref downloaded, -received);
+                        if (File.Exists(partial)) File.Delete(partial);
+                    }
+                }, uri, "Downloading", file.Path, progress, token, reportRetry: message =>
+                {
                     lock (progressGate)
                     {
                         var completed = Interlocked.Read(ref downloaded);
-                        lastProgressTimestamp = Stopwatch.GetTimestamp();
-                        progress.Report(new("Downloading", file.Path, completed, totalBytes,
+                        progress.Report(new("Downloading", message, completed, totalBytes,
                             totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes)));
                     }
-                }
-                catch (OperationCanceledException exception) when (!token.IsCancellationRequested)
-                {
-                    throw new IOException($"The download timed out: {file.Path}. Retry when the network is available.", exception);
-                }
-                finally
-                {
-                    if (File.Exists(partial)) File.Delete(partial);
-                }
+                }).ConfigureAwait(false);
             }).ConfigureAwait(false);
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -282,27 +310,125 @@ internal sealed class LauncherUpdateService : IDisposable
         progress.Report(new("Ready", "Download verified; ready to install", totalBytes, totalBytes, 100));
     }
 
-    private async Task<JsonDocument> GetJsonAsync(Uri uri, CancellationToken cancellationToken, int timeoutSeconds = 90)
+    private Task<JsonDocument> GetJsonAsync(Uri uri, string stage, string label,
+        IProgress<LauncherUpdateProgress> progress, CancellationToken cancellationToken,
+        int maximumAttempts = MaximumNetworkAttempts, TimeSpan? timeout = null) =>
+        WithNetworkRetriesAsync(async attempt =>
+        {
+            using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var idleTimeout = timeout ?? ResponseTimeout;
+            requestTimeout.CancelAfter(idleTimeout);
+            var elapsed = Stopwatch.StartNew();
+            long received = 0, total = 0;
+            var headersReceived = false;
+            void Report() => progress.Report(new(stage,
+                NetworkMessage(label, headersReceived ? "Receiving data" : "Waiting for response", uri, attempt, maximumAttempts, elapsed.Elapsed),
+                Interlocked.Read(ref received), Interlocked.Read(ref total),
+                Interlocked.Read(ref total) > 0 ? Math.Min(100, 100d * Interlocked.Read(ref received) / Interlocked.Read(ref total)) : null));
+            Report();
+            var heartbeat = ReportHeartbeatAsync(Report, heartbeatStop.Token);
+            try
+            {
+                using var request = CreateRequest(uri);
+                using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token).ConfigureAwait(false);
+                EnsureNetworkSuccess(response);
+                headersReceived = true;
+                total = response.Content.Headers.ContentLength ?? 0;
+                const int maximumMetadataBytes = 32 * 1024 * 1024;
+                if (total > maximumMetadataBytes) throw new InvalidDataException("The update metadata exceeds its maximum supported size.");
+                requestTimeout.CancelAfter(idleTimeout);
+                await using var stream = await response.Content.ReadAsStreamAsync(requestTimeout.Token).ConfigureAwait(false);
+                using var payload = new MemoryStream();
+                var buffer = new byte[81920];
+                long lastProgressTimestamp = 0;
+                while (true)
+                {
+                    var count = await ReadNetworkAsync(stream, buffer, requestTimeout.Token).ConfigureAwait(false);
+                    if (count == 0) break;
+                    received += count;
+                    if (received > maximumMetadataBytes) throw new InvalidDataException("The update metadata exceeds its maximum supported size.");
+                    payload.Write(buffer.AsSpan(0, count));
+                    requestTimeout.CancelAfter(idleTimeout);
+                    var now = Stopwatch.GetTimestamp();
+                    if (received == total || Stopwatch.GetElapsedTime(lastProgressTimestamp, now).TotalMilliseconds >= 100)
+                    {
+                        lastProgressTimestamp = now;
+                        Report();
+                    }
+                }
+                if (total > 0 && received != total) throw new RetryableNetworkException("The metadata transfer ended before all bytes arrived.");
+                cancellationToken.ThrowIfCancellationRequested();
+                Report();
+                return JsonDocument.Parse(payload.GetBuffer().AsMemory(0, (int)payload.Length));
+            }
+            finally
+            {
+                heartbeatStop.Cancel();
+                await heartbeat.ConfigureAwait(false);
+            }
+        }, uri, stage, label, progress, cancellationToken, maximumAttempts);
+
+    private static async Task<T> WithNetworkRetriesAsync<T>(Func<int, Task<T>> operation, Uri uri,
+        string stage, string label, IProgress<LauncherUpdateProgress> progress, CancellationToken cancellationToken,
+        int maximumAttempts = MaximumNetworkAttempts, Action<string>? reportRetry = null)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            using var request = CreateRequest(uri);
-            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
-            EnsureSuccess(response);
-            await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
-            return await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new IOException("The update check timed out. Retry when the network is available.", exception);
-        }
-        catch (HttpRequestException exception)
-        {
-            throw new IOException("Could not contact GitHub. Check the network connection and retry.", exception);
+            cancellationToken.ThrowIfCancellationRequested();
+            Exception failure;
+            var timedOut = false;
+            try { return await operation(attempt).ConfigureAwait(false); }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                failure = exception;
+                timedOut = true;
+            }
+            catch (HttpRequestException exception) { failure = exception; }
+            catch (RetryableNetworkException exception) { failure = exception; }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (attempt == maximumAttempts)
+                throw new IOException((timedOut ? "The network request timed out." : "The network request failed after retries.") +
+                                      $" · {uri.Host} · {uri.AbsolutePath} · {attempt}/{maximumAttempts}", failure);
+            var retryMessage = $"{label} · Retrying network request · {uri.Host} · {attempt + 1}/{maximumAttempts}";
+            if (reportRetry is null) progress.Report(new(stage, retryMessage));
+            else reportRetry(retryMessage);
+            // The short, cancellable backoff also avoids hammering GitHub during transient failures.
+            await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken).ConfigureAwait(false);
         }
     }
+
+    private static async ValueTask<int> ReadNetworkAsync(Stream stream, Memory<byte> buffer, CancellationToken cancellationToken)
+    {
+        try { return await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false); }
+        catch (IOException exception) { throw new RetryableNetworkException("The network connection was interrupted.", exception); }
+    }
+
+    private static async Task ReportHeartbeatAsync(Action report, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+                report();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private static string NetworkMessage(string label, string status, Uri uri, int attempt, int maximumAttempts, TimeSpan elapsed) =>
+        $"{label} · {status} · {uri.Host} · {attempt}/{maximumAttempts} · {elapsed.TotalSeconds:F0} s";
+
+    private static void EnsureNetworkSuccess(HttpResponseMessage response)
+    {
+        if (response.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.InternalServerError or
+            HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout)
+            throw new RetryableNetworkException($"GitHub returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).");
+        EnsureSuccess(response);
+    }
+
+    private sealed class RetryableNetworkException(string message, Exception? inner = null) : IOException(message, inner);
 
     private static HttpRequestMessage CreateRequest(Uri uri)
     {

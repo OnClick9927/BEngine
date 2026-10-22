@@ -1,5 +1,4 @@
 using BEngine.ProjectSystem;
-using BEngine.Serialization;
 
 namespace BEngine.Launcher;
 
@@ -102,7 +101,7 @@ internal sealed class LauncherHistoryStore(string path)
     {
         try
         {
-            var file = System.IO.Path.Combine(path, ProjectWorkspace.ProjectFileName);
+            var file = System.IO.Path.Combine(path, LauncherProjectWorkspace.ProjectFileName);
             if (File.Exists(file) && YamlUtility.Load<ProjectData>(file).EngineVersion is { } version &&
                 !string.IsNullOrWhiteSpace(version)) return version;
         }
@@ -115,7 +114,7 @@ internal sealed class LauncherHistoryStore(string path)
     {
         try
         {
-            var projectFile = System.IO.Path.Combine(path, ProjectWorkspace.ProjectFileName);
+            var projectFile = System.IO.Path.Combine(path, LauncherProjectWorkspace.ProjectFileName);
             // The Hub only inspects metadata. Opening a workspace creates directories and migrates
             // Project.yaml, which must not happen merely because an item appears in recent projects.
             if (File.Exists(projectFile) && YamlUtility.Load<ProjectData>(projectFile).Name is { } name &&
@@ -141,7 +140,7 @@ internal sealed class LauncherHistoryStore(string path)
     private static string ResolveMovedProjectPath(string path)
     {
         var fullPath = System.IO.Path.GetFullPath(path);
-        if (File.Exists(System.IO.Path.Combine(fullPath, ProjectWorkspace.ProjectFileName))) return fullPath;
+        if (File.Exists(System.IO.Path.Combine(fullPath, LauncherProjectWorkspace.ProjectFileName))) return fullPath;
         var legacy = new DirectoryInfo(fullPath);
         if (legacy.Parent is not { } parent) return fullPath;
 
@@ -161,11 +160,11 @@ internal sealed class LauncherHistoryStore(string path)
         if (legacy.Name.Equals("Example", StringComparison.OrdinalIgnoreCase))
         {
             var projectDirectory = System.IO.Path.Combine(candidate, "Project");
-            if (File.Exists(System.IO.Path.Combine(projectDirectory, ProjectWorkspace.ProjectFileName)))
+            if (File.Exists(System.IO.Path.Combine(projectDirectory, LauncherProjectWorkspace.ProjectFileName)))
                 return projectDirectory;
         }
 
-        return File.Exists(System.IO.Path.Combine(candidate, ProjectWorkspace.ProjectFileName)) ? candidate : fullPath;
+        return File.Exists(System.IO.Path.Combine(candidate, LauncherProjectWorkspace.ProjectFileName)) ? candidate : fullPath;
     }
 
     private static bool PathsEqual(string? left, string? right)

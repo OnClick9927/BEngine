@@ -90,6 +90,7 @@ internal sealed class LauncherUpdateInstallerForm : Form
                     "installing" => T("4/6  安装更新", "4/6  Installing update"),
                     "verifying-installed" => T("5/6  校验安装结果", "5/6  Verifying installed files"),
                     "restarting" => T("6/6  启动新的 Hub", "6/6  Starting the updated Hub"),
+                    "cleanup" => T("正在清理旧版本临时文件", "Cleaning up temporary files"),
                     "rollback" => T("正在恢复原有安装", "Restoring the previous installation"),
                     "completed" => T("更新完成", "Update complete"),
                     _ => value.Stage
@@ -101,7 +102,7 @@ internal sealed class LauncherUpdateInstallerForm : Form
             await Task.Run(() => LauncherUpdateInstaller.InstallAsync(_plan, progress, recoveryOnly: _recoveryOnly));
             Succeeded = true;
             _stage.Text = _recoveryOnly ? T("原有安装已恢复，Hub 已重新启动", "The previous installation has been restored. Hub has restarted.") : T("更新完成，Hub 已重新启动", "Update complete. Hub has restarted.");
-            _result.Text = T("项目和偏好设置已保留。备份与更新日志：", "Projects and preferences have been preserved. Backup and update log: ") + Environment.NewLine + _plan.WorkspaceRoot;
+            _result.Text = T("项目和偏好设置已保留。更新日志：", "Projects and preferences have been preserved. Update log: ") + Environment.NewLine + _plan.WorkspaceRoot;
             _progress.Style = ProgressBarStyle.Continuous;
             _progress.Value = 1000;
             _finished = true;

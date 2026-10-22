@@ -1,6 +1,5 @@
 using System.Buffers;
 using BEngine.ProjectSystem;
-using BEngine.ProjectSystem.Editor;
 
 namespace BEngine.Launcher;
 
@@ -9,11 +8,11 @@ internal sealed class LauncherProjectService
     private static readonly SearchValues<char> InvalidFileNameChars =
         SearchValues.Create(Path.GetInvalidFileNameChars());
 
-    internal ProjectWorkspace Open(string projectPath) =>
-        ProjectWorkspace.Open(Path.GetFullPath(projectPath));
+    internal LauncherProjectWorkspace Open(string projectPath) =>
+        LauncherProjectWorkspace.Open(Path.GetFullPath(projectPath));
 
-    internal ProjectWorkspace Create(string locationPath, string projectName) =>
-        ProjectWorkspaceFactory.Create(ResolveTargetPath(locationPath, projectName), projectName);
+    internal LauncherProjectWorkspace Create(string locationPath, string projectName) =>
+        LauncherProjectWorkspace.Create(ResolveTargetPath(locationPath, projectName), projectName);
 
     internal string ResolveTargetPath(string locationPath, string projectName)
     {

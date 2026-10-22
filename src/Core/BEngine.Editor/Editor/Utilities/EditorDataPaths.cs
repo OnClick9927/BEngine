@@ -152,6 +152,13 @@ public static class EditorDataPaths
         var executableDirectory = Platform.ProcessPath is { Length: > 0 } processPath
             ? Paths.GetDirectoryName(Paths.GetFullPath(processPath))
             : null;
+        // A standalone Hub owns its adjacent preferences before any engine or
+        // package directories exist. Do not borrow a parent installation or the
+        // single-file bundle's extraction directory in that bootstrap state.
+        if (executableDirectory is not null &&
+            Paths.GetFileName(Platform.ProcessPath!).Equals("BEngine.Hub.exe", StringComparison.OrdinalIgnoreCase))
+            return executableDirectory;
+
         foreach (var start in new[] { executableDirectory, Platform.BaseDirectory })
         {
             if (string.IsNullOrWhiteSpace(start)) continue;

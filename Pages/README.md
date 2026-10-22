@@ -1,16 +1,17 @@
 # BEngine 官网
 
-官网是纯静态站点，网页、样式、脚本、图片与版本文档全部位于此目录，不依赖 npm、编译步骤或运行时环境变量。GitHub Actions 仅上传 `Pages` 目录，不发布引擎源码和发行包。
+官网是纯静态站点，网页、样式、脚本、图片与版本文档全部位于此目录，浏览器不依赖 npm 或运行时环境变量。发布时将这些网页和当前发行的 `Engine/BEngine.Hub.exe` 放入临时站点目录；不发布引擎源码或完整发行目录。
 
 ## 本地预览
 
-在仓库根目录 `E:\Project\_BZP\BEngine\Engine` 中执行以下命令，需要 Python 3：
+在仓库根目录 `E:\Project\_BZP\BEngine\Engine` 中执行以下命令，需要 Python 3.10+。输出目录必须尚不存在，且位于 `Pages` 外：
 
 ```powershell
-python -m http.server 4173 --bind 127.0.0.1 --directory Pages
+python Pages/tools/build-site.py --output ..\Temp\Pages-preview
+python -m http.server 4173 --bind 127.0.0.1 --directory ..\Temp\Pages-preview
 ```
 
-打开 <http://127.0.0.1:4173/>。按 `Ctrl+C` 停止服务。页面资源和站内链接使用相对路径，同样兼容 GitHub 项目站点的 `/BEngine/` 前缀。
+打开 <http://127.0.0.1:4173/>。按 `Ctrl+C` 停止服务。页面资源和站内链接使用相对路径，同样兼容 GitHub 项目站点的 `/BEngine/` 前缀。直接预览 `Pages` 也能查看网页；验证 Hub 下载时必须使用上述包含下载文件的站点输出。
 
 ## GitHub Pages 发布
 
@@ -21,7 +22,9 @@ python -m http.server 4173 --bind 127.0.0.1 --directory Pages
 
 上述配置文件已准备在仓库中；是否上线以远端工作流成功结果为准。本地修改不会自动发布。
 
-只有 `main` 分支中 `Pages/**` 或该工作流的修改会自动触发发布；其他引擎修改不会触发。手动运行也只允许 `main` 分支部署。工作流使用 GitHub 官方 Pages Actions，发布权限仅授予部署 job，不需要手动配置访问令牌。
+`main` 分支中 `Pages/**`、`Engine/BEngine.Hub.exe` 或该工作流的修改会自动触发发布；其他引擎修改不会触发。手动运行也只允许 `main` 分支部署。工作流使用 GitHub 官方 Pages Actions，发布权限仅授予部署 job，不需要手动配置访问令牌。
+
+部署前执行 `tools/build-site.py`，把当前提交的 Hub 复制到站点输出的 `downloads/BEngine.Hub.exe`。下载页通过同源链接和 `download="BEngine.Hub.exe"` 直接下载；首页及导航继续进入已有获取引擎页面。发布新 Hub 时应先更新 `Engine/BEngine.Hub.exe`，官网构建会带上该文件，不需要另存一份到 `Pages`。
 
 ## 维护
 
@@ -30,6 +33,7 @@ python -m http.server 4173 --bind 127.0.0.1 --directory Pages
 - 新增页面时同步导航与相关链接；发布前检查桌面、手机宽度、菜单、按钮和本地资源加载。
 - 文档、包、示例、许可和项目说明在官网内阅读；仅下载和必要的第三方工具入口使用外部链接。
 - 下载和文档入口应指向真实可用的发布物或文档；不要用尚未发布的版本代替已发布内容。
+- `Pages` 源码中不保存 Hub 二进制；站点构建会校验发行文件存在且为 Windows 可执行文件，缺失时停止发布。
 - 浏览器截图、测试脚本、临时服务文件、测试报告和缓存统一放在 `E:\Project\_BZP\BEngine\Temp`，不要放入 `Pages` 或仓库其他目录。
 
 ## 按版本维护文档

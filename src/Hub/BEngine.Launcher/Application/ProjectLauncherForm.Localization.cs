@@ -72,5 +72,6 @@ internal sealed partial class ProjectLauncherForm
         RefreshPackageList();
         UpdateEngineDetails();
         UpdateCreateActions();
+        ApplyUpdateAppearance();
     }
 }

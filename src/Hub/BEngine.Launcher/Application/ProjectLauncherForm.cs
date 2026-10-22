@@ -37,7 +37,7 @@ internal sealed partial class ProjectLauncherForm : Form
     private readonly Panel _createPage = new();
     private readonly Label _pageTitle = new();
     private readonly Label _statusLabel = new();
-    private readonly Button _projectsNavigation = new();
+    private readonly LauncherNavigationButton _projectsNavigation = new();
 
     private readonly TextBox _projectSearch = new();
     private readonly ListView _projectList = new();
@@ -63,7 +63,7 @@ internal sealed partial class ProjectLauncherForm : Form
 
     internal ProjectLauncherForm(string editorPath) : this(
         new LauncherOptions(editorPath),
-        new LauncherHistoryStore(BEngine.Editor.EditorDataPaths.launcherSettingsPath),
+        new LauncherHistoryStore(LauncherDataPaths.LauncherSettingsPath),
         new LauncherPackageCatalog(),
         new LauncherEngineCatalog(),
         new LauncherProjectService()) { }
@@ -100,13 +100,12 @@ internal sealed partial class ProjectLauncherForm : Form
             default: ShowProjectsPage(); break;
         }
         InitializeUpdateRecovery();
+        RefreshPrimaryNavigation(!_needsUpdateRecovery);
+        if (!HasLocalEngine && !_needsUpdateRecovery) ShowUpdatesPage();
     }
 
     private static Icon LoadWindowIcon()
     {
-        var iconPath = BEngine.Editor.EditorResource.FindPath("Icons/BEngine.ico");
-        if (iconPath is not null) return new Icon(iconPath);
-
         // The exported Hub is a single file and may be started before an
         // editor resource root is registered. Keep the taskbar icon inside
         // the launcher assembly as a fallback, so it never depends on a
@@ -206,6 +205,23 @@ internal sealed partial class ProjectLauncherForm : Form
         _pageTitle.ForeColor = PrimaryText;
         _pageTitle.Location = new Point(30, 20);
         header.Controls.Add(_pageTitle);
+        var website = CreateButton("Engine website", false);
+        website.Size = new Size(138, 34);
+        website.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        website.Top = 20;
+        website.Click += (_, _) =>
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo("https://onclick9927.github.io/BEngine/") { UseShellExecute = true });
+            }
+            catch (Exception exception)
+            {
+                SetStatus("Could not open the engine website: {0}", true, exception.Message);
+            }
+        };
+        header.Controls.Add(website);
+        header.SizeChanged += (_, _) => website.Left = header.ClientSize.Width - website.Width - 30;
         main.Controls.Add(header);
 
         _statusLabel.Dock = DockStyle.Bottom;
@@ -663,12 +679,24 @@ internal sealed partial class ProjectLauncherForm : Form
 
     private void ShowProjectsPage()
     {
+        if (!HasLocalEngine || !_primaryNavigationAllowed)
+        {
+            RefreshPrimaryNavigation(_primaryNavigationAllowed);
+            ShowUpdatesPage();
+            return;
+        }
         ShowPage(_projectsPage, "Projects", _projectsNavigation);
         RefreshProjectList();
     }
 
     private void ShowCreatePage()
     {
+        if (!HasLocalEngine || !_primaryNavigationAllowed)
+        {
+            RefreshPrimaryNavigation(_primaryNavigationAllowed);
+            ShowUpdatesPage();
+            return;
+        }
         foreach (var page in _pageHost.Controls.OfType<Control>()) page.Visible = ReferenceEquals(page, _createPage);
         SetLocalizedText(_pageTitle, "New project");
         SetNavigationState(null);
@@ -752,7 +780,7 @@ internal sealed partial class ProjectLauncherForm : Form
         }
     }
 
-    private async Task LaunchEditorAsync(ProjectWorkspace workspace)
+    private async Task LaunchEditorAsync(LauncherProjectWorkspace workspace)
     {
         if (!File.Exists(_editorPath))
             throw new FileNotFoundException(T("The editor was not found at '{0}'. Check the installed engine version.", _editorPath), _editorPath);
@@ -760,7 +788,7 @@ internal sealed partial class ProjectLauncherForm : Form
         _settings = _historyStore.Remember(_settings, workspace.RootPath, workspace.Project.Name);
         RefreshProjectList();
         var startupToken = Guid.NewGuid().ToString("N");
-        var statusPath = BEngine.Editor.EditorDataPaths.GetStartupStatusPath(
+        var statusPath = LauncherDataPaths.GetStartupStatusPath(
             workspace.RootPath, startupToken);
         EditorStartupMonitor.TryDeleteStatus(statusPath);
         using var editorProcess = Process.Start(new ProcessStartInfo
@@ -805,13 +833,13 @@ internal sealed partial class ProjectLauncherForm : Form
     }
 
     private string? WriteStartupFailureLog(
-        ProjectWorkspace workspace,
+        LauncherProjectWorkspace workspace,
         Process editorProcess,
         EditorStartupOutcome outcome)
     {
         try
         {
-            var logPath = BEngine.Editor.EditorDataPaths.GetProjectLogPath(
+            var logPath = LauncherDataPaths.GetProjectLogPath(
                 workspace.RootPath, "EditorStartup.log");
             var processId = 0;
             try { processId = editorProcess.Id; }
@@ -884,7 +912,7 @@ internal sealed partial class ProjectLauncherForm : Form
         try
         {
             var target = _projectService.ResolveTargetPath(_directoryField.Text, _nameField.Text);
-            var existingProject = File.Exists(Path.Combine(target, ProjectWorkspace.ProjectFileName));
+            var existingProject = File.Exists(Path.Combine(target, LauncherProjectWorkspace.ProjectFileName));
             var nonEmptyDirectory = Directory.Exists(target) &&
                                     Directory.EnumerateFileSystemEntries(target).Any();
             var unavailable = existingProject || nonEmptyDirectory;
@@ -969,7 +997,7 @@ internal sealed partial class ProjectLauncherForm : Form
         package.Description.Contains(search, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsProject(string path) =>
-        Directory.Exists(path) && File.Exists(Path.Combine(path, ProjectWorkspace.ProjectFileName));
+        Directory.Exists(path) && File.Exists(Path.Combine(path, LauncherProjectWorkspace.ProjectFileName));
 
     private string FormatLastOpened(string value) =>
         DateTimeOffset.TryParse(value, out var opened)
