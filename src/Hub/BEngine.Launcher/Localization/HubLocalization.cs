@@ -105,6 +105,7 @@ internal sealed class HubLocalization
         ["Update preview is ready"] = "更新预览已准备完成",
         ["The installation is up to date"] = "当前安装已是最新状态",
         ["Downloading changed files"] = "正在下载发生变更的文件",
+        ["Reusing verified file"] = "正在复用已校验的文件",
         ["Saving the verified update plan"] = "正在保存已校验的更新计划",
         ["Download verified; ready to install"] = "下载文件已校验，可以安装",
         ["Recent Engine changes (not a complete changelog):"] = "引擎近期提交：",

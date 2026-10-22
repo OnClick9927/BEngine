@@ -14,6 +14,7 @@ internal sealed class LauncherUpdateService : IDisposable
     private const string DefaultRepositoryApi = "https://api.github.com/repos/OnClick9927/BEngine/";
     private const string DefaultRawBase = "https://raw.githubusercontent.com/OnClick9927/BEngine/";
     private const int MaximumNetworkAttempts = 3;
+    private const int MaximumConcurrentDownloads = 8;
     private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DownloadIdleTimeout = TimeSpan.FromSeconds(60);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
@@ -27,7 +28,11 @@ internal sealed class LauncherUpdateService : IDisposable
     internal LauncherUpdateService(HttpClient? httpClient = null, string? repositoryApiBase = null, string? rawBase = null)
     {
         _ownsHttp = httpClient is null;
-        _http = httpClient ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        _http = httpClient ?? new HttpClient(new SocketsHttpHandler
+        {
+            MaxConnectionsPerServer = MaximumConcurrentDownloads,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+        }) { Timeout = Timeout.InfiniteTimeSpan };
         _repositoryApi = CreateBaseUri(repositoryApiBase ?? DefaultRepositoryApi);
         _rawBase = CreateBaseUri(rawBase ?? DefaultRawBase);
     }
@@ -212,12 +217,29 @@ internal sealed class LauncherUpdateService : IDisposable
         var progressGate = new object();
         long lastProgressTimestamp = 0;
         progress.Report(new("Downloading", "Downloading changed files", 0, totalBytes, totalBytes == 0 ? 100 : 0));
-        var downloads = plan.Files.Where(file => changedPaths.Contains(file.Path)).ToArray();
-        await Parallel.ForEachAsync(downloads, new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = cancellationToken },
+        // Start large transfers first so they overlap the many small package files instead of
+        // keeping the final download slot busy after all other workers have become idle.
+        var downloads = plan.Files.Where(file => changedPaths.Contains(file.Path))
+            .OrderByDescending(file => file.Size).ToArray();
+        await Parallel.ForEachAsync(downloads, new ParallelOptions { MaxDegreeOfParallelism = MaximumConcurrentDownloads, CancellationToken = cancellationToken },
             async (file, token) =>
             {
                 var target = ResolvePath(plan.StagingRoot, file.Path);
                 EnsureNoReparsePoints(plan.WorkspaceRoot, $"staging/{file.Path}");
+                if (Directory.Exists(target)) throw new IOException($"A directory occupies an expected staging file path: {file.Path}");
+                // Cancellation or a transient failure may leave complete files from this exact
+                // snapshot. Trust them only after checking both length and Git blob identity.
+                if (File.Exists(target) && new FileInfo(target).Length == file.Size &&
+                    string.Equals(await HashFileAsync(target, token).ConfigureAwait(false), file.Sha, StringComparison.OrdinalIgnoreCase))
+                {
+                    lock (progressGate)
+                    {
+                        var completed = Interlocked.Add(ref downloaded, file.Size);
+                        progress.Report(new("Downloading", $"Reusing verified file · {file.Path}", completed, totalBytes,
+                            totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes)));
+                    }
+                    return;
+                }
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 var relativeUrl = $"{plan.CommitSha}/Engine/{string.Join('/', file.Path.Split('/').Select(Uri.EscapeDataString))}";
                 var uri = new Uri(_rawBase, relativeUrl);
@@ -432,7 +454,11 @@ internal sealed class LauncherUpdateService : IDisposable
 
     private static HttpRequestMessage CreateRequest(Uri uri)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        var request = new HttpRequestMessage(HttpMethod.Get, uri)
+        {
+            Version = HttpVersion.Version20,
+            VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+        };
         request.Headers.UserAgent.ParseAdd("BEngine-Hub/0.1.0");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", "2026-03-10");

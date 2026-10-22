@@ -24,6 +24,9 @@ internal sealed partial class ProjectLauncherForm
     private readonly LauncherUpdateStatistics _updateStatistics = new();
     private readonly LauncherUpdateService _updateService = new();
     private readonly System.Windows.Forms.Timer _updateCompletionTimer = new() { Interval = 500 };
+    private readonly System.Windows.Forms.Timer _updateProgressTimer = new() { Interval = 100 };
+    private readonly LauncherUpdateProgressBuffer _updateProgressBuffer = new();
+    private readonly ToolTip _updateDetailToolTip = new() { AutoPopDelay = 30000, InitialDelay = 400, ReshowDelay = 100 };
     private CancellationTokenSource? _updateCancellation;
     private LauncherUpdatePlan? _pendingUpdate;
     private bool _startingUpdateInstaller;
@@ -90,6 +93,8 @@ internal sealed partial class ProjectLauncherForm
         _updateStage.Dock = DockStyle.Fill;
         _updateStage.Font = new DrawingFont("Segoe UI Semibold", 11f);
         _updateStage.ForeColor = PrimaryText;
+        _updateStage.AutoEllipsis = true;
+        _updateStage.UseMnemonic = false;
         _updateStage.Text = "Ready to check for updates";
         _updateStage.Margin = Padding.Empty;
         layout.Controls.Add(_updateStage, 0, 2);
@@ -100,6 +105,7 @@ internal sealed partial class ProjectLauncherForm
         _updateDetail.Dock = DockStyle.Fill;
         _updateDetail.ForeColor = SecondaryText;
         _updateDetail.AutoEllipsis = true;
+        _updateDetail.UseMnemonic = false;
         _updateDetail.Margin = new Padding(0, 5, 0, 0);
         layout.Controls.Add(_updateDetail, 0, 4);
         _updateSummary.Dock = DockStyle.Top;
@@ -169,14 +175,31 @@ internal sealed partial class ProjectLauncherForm
         _updatesPage.ClientSizeChanged += (_, _) => ResizeUpdateLayout();
         _updatesPage.FontChanged += (_, _) => ResizeUpdateLayout();
         DpiChanged += (_, _) => ResizeUpdateLayout();
-        foreach (var control in new Control[] { _updateStage, _updateSummary, _updateDetail })
-            control.TextChanged += (_, _) => ResizeUpdateLayout();
+        _updateStage.TextChanged += (_, _) =>
+        {
+            if (!HasFixedUpdateStatusRows) ResizeUpdateLayout();
+        };
+        _updateDetail.TextChanged += (_, _) =>
+        {
+            _updateDetailToolTip.SetToolTip(_updateDetail, _updateDetail.Text);
+            _updateDetail.AccessibleDescription = _updateDetail.Text;
+            if (!HasFixedUpdateStatusRows) ResizeUpdateLayout();
+        };
         FormClosing += (_, _) => _updateCancellation?.Cancel();
         _updateCompletionTimer.Tick += (_, _) => InitializeUpdateRecovery();
+        _updateProgressTimer.Tick += (_, _) =>
+        {
+            if (_updateProgressTimer.Enabled && (_updatePageMode is UpdatePageMode.Checking or UpdatePageMode.Downloading)
+                && _updateProgressBuffer.TryTake(out var progress)) ReportUpdateProgress(progress);
+        };
         FormClosed += (_, _) =>
         {
             _updateCompletionTimer.Stop();
             _updateCompletionTimer.Dispose();
+            _updateProgressTimer.Stop();
+            _updateProgressTimer.Dispose();
+            _updateProgressBuffer.Clear();
+            _updateDetailToolTip.Dispose();
             _updateService.Dispose();
         };
         ApplyUpdatePageMode(UpdatePageMode.Idle);
@@ -185,19 +208,22 @@ internal sealed partial class ProjectLauncherForm
     private void ApplyUpdatePageMode(UpdatePageMode mode)
     {
         _updatePageMode = mode;
+        if (mode is not (UpdatePageMode.Checking or UpdatePageMode.Downloading)) _updateProgressBuffer.Clear();
         var busy = mode is UpdatePageMode.Checking or UpdatePageMode.Downloading or UpdatePageMode.Installing;
         _checkUpdateButton.Visible = true;
         _installUpdateButton.Visible = true;
         _cancelUpdateButton.Visible = mode is UpdatePageMode.Checking or UpdatePageMode.Downloading;
         _recoverUpdateButton.Visible = mode == UpdatePageMode.Recovery;
-        _updateStage.Visible = mode != UpdatePageMode.Idle && !string.IsNullOrWhiteSpace(_updateStage.Text);
+        _updateStage.Visible = HasFixedUpdateStatusRows || mode != UpdatePageMode.Idle && !string.IsNullOrWhiteSpace(_updateStage.Text);
         _updateProgress.Visible = busy || mode == UpdatePageMode.Waiting;
         _updateDetail.Visible = mode is not (UpdatePageMode.Idle or UpdatePageMode.Preview);
         _updateCommit.Visible = true;
         _updateChanges.Visible = true;
-        _updatesPage.AutoScrollPosition = Point.Empty;
         ResizeUpdateLayout();
     }
+
+    private bool HasFixedUpdateStatusRows => _updatePageMode is UpdatePageMode.Checking or UpdatePageMode.Downloading
+        or UpdatePageMode.Installing or UpdatePageMode.Waiting;
 
     private void ApplyUpdateAppearance()
     {
@@ -294,14 +320,18 @@ internal sealed partial class ProjectLauncherForm
             }
             var actionHeight = new[] { _checkUpdateButton, _installUpdateButton, _cancelUpdateButton, _recoverUpdateButton }
                 .Max(button => Math.Max(button.MinimumSize.Height, button.GetPreferredSize(Size.Empty).Height)) + Scale(8);
+            // Reserve both progress lines even before the first callback. Paths
+            // may wrap or be ellipsized without moving the commit/file panes.
             float[] heights =
             [
                 TextHeight(_updateInstallation, 1, 1, 8),
                 actionHeight,
-                _updatePageMode != UpdatePageMode.Idle && !string.IsNullOrWhiteSpace(_updateStage.Text)
+                HasFixedUpdateStatusRows ? _updateStage.Font.Height + Scale(4)
+                    : _updatePageMode != UpdatePageMode.Idle && !string.IsNullOrWhiteSpace(_updateStage.Text)
                     ? TextHeight(_updateStage, 1, 2, 4) : 0,
                 busy || _updatePageMode == UpdatePageMode.Waiting ? Scale(18) : 0,
-                _updatePageMode is not (UpdatePageMode.Idle or UpdatePageMode.Preview) && !string.IsNullOrEmpty(_updateDetail.Text)
+                HasFixedUpdateStatusRows ? _updateDetail.Font.Height * 2 + Scale(8)
+                    : _updatePageMode is not (UpdatePageMode.Idle or UpdatePageMode.Preview) && !string.IsNullOrEmpty(_updateDetail.Text)
                     ? TextHeight(_updateDetail, 1, 4, 8) : 0,
                 0
             ];
@@ -332,6 +362,9 @@ internal sealed partial class ProjectLauncherForm
 
     private void SetUpdateBusy(bool busy)
     {
+        _updateProgressBuffer.Clear();
+        if (busy) _updateProgressTimer.Start();
+        else _updateProgressTimer.Stop();
         _checkUpdateButton.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery;
         _installUpdateButton.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery && _pendingUpdate?.HasUpdates == true;
         _cancelUpdateButton.Enabled = busy;
@@ -367,7 +400,9 @@ internal sealed partial class ProjectLauncherForm
             ? $"{FormatUpdateBytes(progress.Completed)} / {FormatUpdateBytes(progress.Total)} · "
             : $"{progress.Completed:N0} / {progress.Total:N0} · ";
         var percentage = progress.Percent is { } value ? $"{value:N1}% · " : string.Empty;
-        _updateDetail.Text = percentage + amount + LocalizeUpdateMessage(progress.Message);
+        var metrics = (percentage + amount).TrimEnd(' ', '·');
+        var message = LocalizeUpdateMessage(progress.Message);
+        _updateDetail.Text = string.IsNullOrEmpty(metrics) ? message : metrics + Environment.NewLine + message;
     }
 
     private string LocalizeUpdateMessage(string message) => string.Join(" · ", message.Split(" · ").Select(part => T(part)));
@@ -391,7 +426,7 @@ internal sealed partial class ProjectLauncherForm
         try
         {
             var plan = await _updateService.CheckAsync(LauncherInstallationPaths.ResolveRoot(),
-                new Progress<LauncherUpdateProgress>(ReportUpdateProgress), cancellation.Token);
+                _updateProgressBuffer, cancellation.Token);
             if (IsDisposed || Disposing) return;
             _pendingUpdate = plan;
             RenderUpdatePreview(plan);
@@ -453,11 +488,14 @@ internal sealed partial class ProjectLauncherForm
         _updateDetail.Text = string.Empty;
         try
         {
-            await _updateService.DownloadAsync(plan, new Progress<LauncherUpdateProgress>(ReportUpdateProgress), cancellation.Token);
+            await _updateService.DownloadAsync(plan, _updateProgressBuffer, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             if (IsDisposed || Disposing) return;
             _cancelUpdateButton.Enabled = false;
             ApplyUpdatePageMode(UpdatePageMode.Installing);
+            _updateProgress.Style = ProgressBarStyle.Continuous;
+            _updateProgress.Value = 1000;
+            _updateDetail.Text = string.Empty;
             SetLocalizedText(_updateStage, "Starting the update installer...");
             var language = _localization.Culture.Name;
             var started = await Task.Run(() =>
