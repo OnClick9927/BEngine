@@ -27,13 +27,18 @@ $coreEditor = Join-Path $PSScriptRoot 'Core\Editor'
 $playerBuildHosts = Join-Path $PSScriptRoot 'Platform\Hosts'
 $engineDefines = Join-Path $PSScriptRoot 'BEngine.Defines.targets'
 $runningOnWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
-# Host applications are published as compressed .NET single-file bundles. The
-# bundle self-extracts assemblies/native assets at runtime.
+# Host applications share the installed .NET runtime instead of embedding one
+# per executable. Single-file bundles still extract their own assemblies/native
+# assets; .NET does not support bundle compression for framework-dependent apps.
 $compactHostPublishArguments = @(
+    # SDK project-reference evaluation removes SelfContained. Keep its publish
+    # counterpart explicit so referenced executable projects cannot infer true.
+    '-p:PublishSelfContained=false',
+    '-p:PublishRuntimeIdentifier=win-x64',
     '-p:PublishSingleFile=true',
     '-p:IncludeAllContentForSelfExtract=true',
     '-p:IncludeNativeLibrariesForSelfExtract=true',
-    '-p:EnableCompressionInSingleFile=true',
+    '-p:EnableCompressionInSingleFile=false',
     '-p:DebugType=None',
     '-p:DebugSymbols=false'
 )
@@ -278,19 +283,21 @@ foreach ($retired in @('Media')) {
     Remove-DirectoryWithRetry -Path $retiredPath
 }
 
-& dotnet publish $launcherProject -c $Configuration -r win-x64 --self-contained true -o $hubStageOutput -m:1 `
+& dotnet publish $launcherProject -c $Configuration -r win-x64 --self-contained false -o $hubStageOutput -m:1 `
     /nodeReuse:false -p:NuGetAudit=false -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false `
     @compactHostPublishArguments
 if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed with exit code $LASTEXITCODE." }
 
-& dotnet publish $editorProject -c $Configuration -o $stageOutput -m:1 `
+# Keep the RID publish-scoped: a global RuntimeIdentifier makes transitive
+# Player references contribute both RID-specific and portable apphost metadata.
+& dotnet publish $editorProject -c $Configuration --self-contained false -o $stageOutput -m:1 `
     /nodeReuse:false -p:NuGetAudit=false -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false `
     @compactHostPublishArguments
 if ($LASTEXITCODE -ne 0) { throw "Editor publish failed with exit code $LASTEXITCODE." }
 # Keep the established executable name for the composed editor host.
 Move-Item -LiteralPath (Join-Path $stageOutput "BEngine.Editor.Host.exe") -Destination (Join-Path $stageOutput "BEngine.Editor.exe") -Force
 
-& dotnet publish $playerProject -c $Configuration -o $stageOutput -m:1 `
+& dotnet publish $playerProject -c $Configuration --self-contained false -o $stageOutput -m:1 `
     /nodeReuse:false -p:NuGetAudit=false -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false `
     @compactHostPublishArguments
 if ($LASTEXITCODE -ne 0) { throw "Player publish failed with exit code $LASTEXITCODE." }

@@ -73,5 +73,7 @@ internal sealed partial class ProjectLauncherForm
         UpdateEngineDetails();
         UpdateCreateActions();
         ApplyUpdateAppearance();
+        UpdateEnvironmentVersions();
+        if (_environmentBusy && _environmentLastProgress is { } progress) ReportEnvironmentProgress(progress);
     }
 }

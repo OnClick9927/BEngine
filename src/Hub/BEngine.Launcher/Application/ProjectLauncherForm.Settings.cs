@@ -82,6 +82,8 @@ internal sealed partial class ProjectLauncherForm
             Text = "Personalize this Hub. These preferences are independent of engine and project settings.",
             AutoSize = true, ForeColor = SecondaryText, Margin = new Padding(0, 0, 0, 4)
         });
+        AddSection("Development environment");
+        AddWide(BuildEnvironmentControls());
         AddSection("Appearance");
         AddChoice("Language", _languageSetting, ["system", "zh-CN", "en"]);
         AddChoice("Theme", _themeSetting, ["Dark", "Light"]);

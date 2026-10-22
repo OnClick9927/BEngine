@@ -782,6 +782,24 @@ internal sealed partial class ProjectLauncherForm : Form
 
     private async Task LaunchEditorAsync(LauncherProjectWorkspace workspace)
     {
+        if (_launchingEditor) return;
+        _launchingEditor = true;
+        UpdateProjectActions();
+        try
+        {
+            var environment = await EnsureEditorEnvironmentAsync();
+            if (environment is null) return;
+            await StartEditorAsync(workspace, environment);
+        }
+        finally
+        {
+            _launchingEditor = false;
+            if (!IsDisposed) UpdateProjectActions();
+        }
+    }
+
+    private async Task StartEditorAsync(LauncherProjectWorkspace workspace, DotNetEnvironmentSnapshot environment)
+    {
         if (!File.Exists(_editorPath))
             throw new FileNotFoundException(T("The editor was not found at '{0}'. Check the installed engine version.", _editorPath), _editorPath);
 
@@ -791,15 +809,16 @@ internal sealed partial class ProjectLauncherForm : Form
         var statusPath = LauncherDataPaths.GetStartupStatusPath(
             workspace.RootPath, startupToken);
         EditorStartupMonitor.TryDeleteStatus(statusPath);
-        using var editorProcess = Process.Start(new ProcessStartInfo
+        var start = new ProcessStartInfo
         {
             FileName = _editorPath,
             WorkingDirectory = workspace.RootPath,
-            UseShellExecute = true,
+            UseShellExecute = false,
             ArgumentList = { workspace.ProjectFilePath, "--startup-token", startupToken }
-        }) ?? throw new InvalidOperationException(T("BEngine Editor process could not be started."));
-        _launchingEditor = true;
-        UpdateProjectActions();
+        };
+        ConfigureEditorEnvironment(start, environment);
+        using var editorProcess = Process.Start(start)
+            ?? throw new InvalidOperationException(T("BEngine Editor process could not be started."));
         SetStatus("Starting '{0}'...", false, workspace.Project.Name);
         AllowSetForegroundWindow(editorProcess.Id);
         try
@@ -827,8 +846,6 @@ internal sealed partial class ProjectLauncherForm : Form
         finally
         {
             EditorStartupMonitor.TryDeleteStatus(statusPath);
-            _launchingEditor = false;
-            if (!IsDisposed) UpdateProjectActions();
         }
     }
 

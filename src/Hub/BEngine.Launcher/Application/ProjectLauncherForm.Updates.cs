@@ -332,13 +332,15 @@ internal sealed partial class ProjectLauncherForm
 
     private void SetUpdateBusy(bool busy)
     {
-        _checkUpdateButton.Enabled = !busy && !_needsUpdateRecovery;
-        _installUpdateButton.Enabled = !busy && !_needsUpdateRecovery && _pendingUpdate?.HasUpdates == true;
+        _checkUpdateButton.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery;
+        _installUpdateButton.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery && _pendingUpdate?.HasUpdates == true;
         _cancelUpdateButton.Enabled = busy;
         _recoverUpdateButton.Enabled = !busy;
         RefreshPrimaryNavigation(!busy && !_needsUpdateRecovery);
         _settingsNavigation.Enabled = !busy && !_needsUpdateRecovery;
         _updateProgress.Style = ProgressBarStyle.Continuous;
+        _environmentCheck.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery;
+        _environmentInstall.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery && _environmentSnapshot?.IsReady != true;
     }
 
     private void ReportUpdateProgress(LauncherUpdateProgress progress)
@@ -372,7 +374,7 @@ internal sealed partial class ProjectLauncherForm
 
     private async Task CheckForUpdatesAsync()
     {
-        if (_updateCancellation is not null || _startingUpdateInstaller || _needsUpdateRecovery) return;
+        if (_environmentBusy || _updateCancellation is not null || _startingUpdateInstaller || _needsUpdateRecovery) return;
         _pendingUpdate = null;
         _updateChanges.ClearChanges();
         UpdateCommitHistory();
@@ -435,7 +437,7 @@ internal sealed partial class ProjectLauncherForm
 
     private async Task InstallPendingUpdateAsync()
     {
-        if (_updateCancellation is not null || _pendingUpdate?.HasUpdates != true || _startingUpdateInstaller || _needsUpdateRecovery) return;
+        if (_environmentBusy || _updateCancellation is not null || _pendingUpdate?.HasUpdates != true || _startingUpdateInstaller || _needsUpdateRecovery) return;
         var plan = _pendingUpdate;
         if (MessageBox.Show(this,
                 T("After confirmation, this installation's BEngine processes will close automatically. Save your work first. Preferences and project history are kept."),
