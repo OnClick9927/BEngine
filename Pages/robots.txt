@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://onclick9927.github.io/BEngine/sitemap.xml
