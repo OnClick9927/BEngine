@@ -99,6 +99,7 @@ internal sealed partial class ProjectLauncherForm : Form
             case "Packages": ShowEnginesPage(); break;
             default: ShowProjectsPage(); break;
         }
+        InitializeUpdateRecovery();
     }
 
     private static Icon LoadWindowIcon()
@@ -169,7 +170,11 @@ internal sealed partial class ProjectLauncherForm : Form
         _enginesNavigation.Click += (_, _) => ShowEnginesPage();
         sidebar.Controls.Add(_enginesNavigation);
 
-        ConfigureNavigationButton(_settingsNavigation, "Settings", 194);
+        ConfigureNavigationButton(_updatesNavigation, "Updates", 194);
+        _updatesNavigation.Click += (_, _) => ShowUpdatesPage();
+        sidebar.Controls.Add(_updatesNavigation);
+
+        ConfigureNavigationButton(_settingsNavigation, "Settings", 242);
         _settingsNavigation.Click += (_, _) => ShowSettingsPage();
         sidebar.Controls.Add(_settingsNavigation);
 
@@ -220,10 +225,12 @@ internal sealed partial class ProjectLauncherForm : Form
         BuildPackagesPage();
         BuildCreatePage();
         BuildSettingsPage();
+        BuildUpdatesPage();
         _pageHost.Controls.Add(_projectsPage);
         _pageHost.Controls.Add(_packagesPage);
         _pageHost.Controls.Add(_createPage);
         _pageHost.Controls.Add(_settingsPage);
+        _pageHost.Controls.Add(_updatesPage);
         return main;
     }
 
@@ -683,7 +690,7 @@ internal sealed partial class ProjectLauncherForm : Form
     private void SetNavigationState(Button? active)
     {
         _activeNavigation = active;
-        foreach (var button in new[] { _projectsNavigation, _enginesNavigation, _settingsNavigation })
+        foreach (var button in new[] { _projectsNavigation, _enginesNavigation, _updatesNavigation, _settingsNavigation })
         {
             button.BackColor = ReferenceEquals(button, active) ? RaisedBackground : SidebarBackground;
             button.ForeColor = ReferenceEquals(button, active) ? PrimaryText : SecondaryText;

@@ -8,6 +8,8 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        var updaterExitCode = LauncherUpdateInstaller.RunUpdater(args);
+        if (updaterExitCode.HasValue) return updaterExitCode.Value;
         InitializeTaskbarIdentity();
         BEngine.Platform.WindowsPlatform.Initialize();
         try
