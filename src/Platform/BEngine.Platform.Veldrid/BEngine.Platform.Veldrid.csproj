@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine.Platform</RootNamespace>
+    <AssemblyName>BEngine.Platform.Veldrid</AssemblyName>
+    <BEngineRuntimeAssembly>false</BEngineRuntimeAssembly>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BEngineRuntimeShaderCompiler Condition="'$(BEngineRuntimeShaderCompiler)' == ''">true</BEngineRuntimeShaderCompiler>
+    <DefineConstants Condition="'$(BEngineRuntimeShaderCompiler)' == 'true'">$(DefineConstants);BENGINE_RUNTIME_SHADER_COMPILER</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../Tools/BEngine.VeldridSafety/BEngine.VeldridSafety.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="OutputType;RuntimeIdentifier;SelfContained;PublishSingleFile;PublishAot;PublishTrimmed" />
+    <PackageReference Include="Veldrid" />
+    <PackageReference Include="Veldrid.SPIRV" Condition="'$(BEngineRuntimeShaderCompiler)' == 'true'" />
+    <!-- Overrides NativeLibraryLoader's obsolete Newtonsoft.Json dependency. -->
+    <PackageReference Include="Newtonsoft.Json" />
+  </ItemGroup>
+</Project>

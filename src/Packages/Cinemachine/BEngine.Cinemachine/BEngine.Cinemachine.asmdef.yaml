@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Cinemachine
+rootNamespace: BEngine.Cinemachine
+references: []
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false
+allowUnsafeCode: false

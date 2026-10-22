@@ -1,0 +1,13 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.AssetBundles.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.Platform.DotNet
+- BEngine.AssetBundles
+- BEngine.HotUpdate
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

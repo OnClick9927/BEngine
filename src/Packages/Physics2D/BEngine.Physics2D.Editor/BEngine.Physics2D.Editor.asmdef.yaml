@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Physics2D.Editor
+rootNamespace: BEngine.Physics2D.Editor
+references:
+- BEngine.Physics2D
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.ArtImport2D</AssemblyName>
+    <RootNamespace>BEngine</RootNamespace>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../../Core/BEngine/BEngine.csproj" /></ItemGroup>
+</Project>

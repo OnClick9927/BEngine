@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><AllowUnsafeBlocks>true</AllowUnsafeBlocks><NoWarn>$(NoWarn);CA2255</NoWarn></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine.Platform.DotNet.Editor/BEngine.Platform.DotNet.Editor.csproj" />
+    <ProjectReference Include="../BEngine.Windows/BEngine.Windows.csproj" />
+    <PackageReference Include="Silk.NET.Windowing" /><PackageReference Include="Silk.NET.Input" /><PackageReference Include="Silk.NET.OpenGL" /><PackageReference Include="Silk.NET.Shaderc" /><PackageReference Include="Veldrid" /><PackageReference Include="Veldrid.SPIRV" />
+  </ItemGroup>
+  <ItemGroup><EmbeddedResource Include="../../Core/Editor/Icons/BEngine.ico" LogicalName="BEngine.Editor.BEngine.ico" /></ItemGroup>
+</Project>

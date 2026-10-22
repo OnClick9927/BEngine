@@ -1,0 +1,23 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.sprite-skinning2d
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Sprite Skinning 2D
+description: 2D bone authoring, CPU/GPU weighted meshes, FFD, constrained chain IK, transform constraints, reference-pose retargeting and attachment swapping.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.SpriteSkinning2D
+  rootNamespace: BEngine
+editor:
+  assembly: BEngine.SpriteSkinning2D.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.sprite-skinning2d
+    target: runtime
+  - packageId: com.bengine.player-build
+    target: editor

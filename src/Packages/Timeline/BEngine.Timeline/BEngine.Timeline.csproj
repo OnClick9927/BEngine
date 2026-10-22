@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <AssemblyName>BEngine.Timeline</AssemblyName>
+    <RootNamespace>BEngine</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Video/BEngine.Video/BEngine.Video.csproj" />
+    <ProjectReference Include="../../Audio/BEngine.Audio/BEngine.Audio.csproj" />
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../Animation/BEngine.Animation/BEngine.Animation.csproj" />
+    
+  </ItemGroup>
+</Project>

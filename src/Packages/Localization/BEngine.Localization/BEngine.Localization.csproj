@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <RootNamespace>BEngine.Localization</RootNamespace>
+    <AssemblyName>BEngine.Localization</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../Resources/CldrPluralRules.json" LogicalName="BEngine.Localization.CldrPluralRules.json" />
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+</Project>

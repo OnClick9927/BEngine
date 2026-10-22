@@ -1,0 +1,27 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.texture-atlas
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: TextureAtlas
+description: Texture atlas authoring, import and packing tools.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.TextureAtlas
+  rootNamespace: BEngine
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+editor:
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+  dependencies:
+  - packageId: com.bengine.texture-atlas
+    target: runtime
+  assembly: BEngine.TextureAtlas.Editor
+  rootNamespace: BEngine.Editor

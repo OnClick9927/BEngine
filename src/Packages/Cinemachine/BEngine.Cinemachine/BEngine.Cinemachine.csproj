@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine.Cinemachine</RootNamespace>
+    <AssemblyName>BEngine.Cinemachine</AssemblyName>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>

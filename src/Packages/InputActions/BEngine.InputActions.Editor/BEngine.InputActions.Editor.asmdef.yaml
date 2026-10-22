@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.InputActions.Editor
+rootNamespace: BEngine.InputActions.Editor
+references:
+- BEngine.InputActions
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

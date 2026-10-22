@@ -1,0 +1,41 @@
+<Project>
+  <PropertyGroup>
+    <_BEngineVulkanSafetyTool>$(ArtifactsPath)/bin/BEngine.VeldridSafety/$(Configuration.ToLowerInvariant())/BEngine.VeldridSafety.dll</_BEngineVulkanSafetyTool>
+  </PropertyGroup>
+  <!-- Patch only output copies; the NuGet cache is never modified. -->
+  <Target Name="CheckBEngineVulkanResults" AfterTargets="Build" BeforeTargets="ExportBEngineCoreExamples"
+          Condition="'$(DesignTimeBuild)' != 'true' and Exists('$(TargetDir)Veldrid.dll') and '$(MSBuildProjectName)' != 'BEngine.VeldridSafety'">
+    <Error Condition="!Exists('$(_BEngineVulkanSafetyTool)')" Text="The Veldrid Vulkan safety build tool was not built." />
+    <Exec Command="dotnet &quot;$(_BEngineVulkanSafetyTool)&quot; &quot;$(TargetDir)Veldrid.dll&quot;" />
+  </Target>
+  <!-- Publish consumes resolved dependency assets, not necessarily TargetDir.
+       Stage a private copy before trimming/R2R/bundling so all those consumers
+       receive the same patched IL without changing a package-cache file.
+       After Publish is too late for a single-file host and unsafe for trimmed IL. -->
+  <Target Name="PreparePublishedBEngineVulkanResults" AfterTargets="ComputeResolvedFilesToPublishList"
+          BeforeTargets="_ComputeManagedAssemblyToLink;ILLink;CreateReadyToRunImages;GenerateSingleFileBundle"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(MSBuildProjectName)' != 'BEngine.VeldridSafety'">
+    <ItemGroup>
+      <_BEngineVulkanPublishInput Include="@(ResolvedFileToPublish)"
+          Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'Veldrid.dll'">
+        <BEnginePatchedPath>$(IntermediateOutputPath)BEngine.VeldridSafety/%(Filename)%(Extension)</BEnginePatchedPath>
+        <!-- The SDK joins runtime assets by original path. This private path
+             must explicitly opt back into its normal ILLink/R2R processing. -->
+        <PostprocessAssembly Condition="'%(ResolvedFileToPublish.PostprocessAssembly)' == ''">true</PostprocessAssembly>
+      </_BEngineVulkanPublishInput>
+    </ItemGroup>
+    <Error Condition="'@(_BEngineVulkanPublishInput)' != '' and !Exists('$(_BEngineVulkanSafetyTool)')"
+           Text="The Veldrid Vulkan safety build tool was not built." />
+    <MakeDir Directories="$(IntermediateOutputPath)BEngine.VeldridSafety" Condition="'@(_BEngineVulkanPublishInput)' != ''" />
+    <Copy SourceFiles="@(_BEngineVulkanPublishInput)"
+          DestinationFiles="@(_BEngineVulkanPublishInput->'%(BEnginePatchedPath)')" SkipUnchangedFiles="true" />
+    <Exec Command="dotnet &quot;$(_BEngineVulkanSafetyTool)&quot; &quot;%(_BEngineVulkanPublishInput.BEnginePatchedPath)&quot; &quot;$(TargetDir).&quot;"
+          Condition="'@(_BEngineVulkanPublishInput)' != ''" />
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(_BEngineVulkanPublishInput)" />
+      <!-- Item transforms carry the original publish metadata, including
+           RelativePath, copy/bundle flags and per-assembly trimming settings. -->
+      <ResolvedFileToPublish Include="@(_BEngineVulkanPublishInput->'%(BEnginePatchedPath)')" />
+    </ItemGroup>
+  </Target>
+</Project>

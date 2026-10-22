@@ -1,0 +1,4 @@
+RichTextKit
+Copyright 2019-2020 Topten Software.
+Source: https://github.com/toptensoftware/RichTextKit/tree/main/Topten.RichTextKit/BidiAlgorithm
+BEngine adapts the bidi resolver and utility buffers, removes the thread-local cache, and provides Unicode 17 data.

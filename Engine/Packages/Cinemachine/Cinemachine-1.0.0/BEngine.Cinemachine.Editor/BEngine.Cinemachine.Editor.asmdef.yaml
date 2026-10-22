@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Cinemachine.Editor
+rootNamespace: BEngine.Cinemachine.Editor
+references:
+- BEngine.Cinemachine
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>BEngine.ShaderGraph</AssemblyName><RootNamespace>BEngine.ShaderGraph</RootNamespace><BEngineRuntimeAssembly>true</BEngineRuntimeAssembly></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../Lighting2D/BEngine.Lighting2D/BEngine.Lighting2D.csproj" />
+  </ItemGroup>
+</Project>

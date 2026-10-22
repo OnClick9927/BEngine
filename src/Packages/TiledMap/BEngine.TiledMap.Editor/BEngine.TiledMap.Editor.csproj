@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>BEngine.TiledMap.Editor</RootNamespace>
+    <AssemblyName>BEngine.TiledMap.Editor</AssemblyName>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../TextureAtlas/BEngine.TextureAtlas/BEngine.TextureAtlas.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../BEngine.TiledMap/BEngine.TiledMap.csproj" />
+    <ProjectReference Include="../../Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
+  </ItemGroup>
+</Project>

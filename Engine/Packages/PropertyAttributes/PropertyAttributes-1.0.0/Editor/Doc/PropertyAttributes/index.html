@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BEngine Property Attributes 详细文档</title>
+  <style>
+    :root{color-scheme:dark;font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;background:#17191c;color:#f1f3f5;--bg:#17191c;--surface:#22252a;--surface2:#292d32;--line:#3b4148;--muted:#b8bec5;--accent:#58c5b8;--accent2:#f2cb78;--danger:#ec8b8b}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg)}.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:12px;height:58px;padding:0 24px;background:#202328;border-bottom:1px solid var(--line)}.mark{display:grid;place-items:center;width:30px;height:30px;border:1px solid var(--accent);color:var(--accent);font-weight:800}.top strong{font-size:16px}.top small{color:var(--muted)}.shell{display:grid;grid-template-columns:230px minmax(0,900px);gap:38px;max-width:1220px;margin:auto}.nav{position:sticky;top:78px;align-self:start;display:grid;padding:26px 10px}.nav a{padding:8px 10px;border-left:2px solid transparent;color:var(--muted);text-decoration:none}.nav a:hover{color:#fff;border-left-color:var(--accent);background:var(--surface)}main{min-width:0;padding:44px 22px 96px}section{scroll-margin-top:78px;padding-bottom:38px;margin-bottom:38px;border-bottom:1px solid #30353a}h1{margin:4px 0 12px;font-size:38px;letter-spacing:0}h2{margin:0 0 16px;font-size:23px;letter-spacing:0}h3{margin:22px 0 10px;font-size:17px;letter-spacing:0}p,li,td{color:#c9ced4;line-height:1.72}.lead{font-size:18px}.eyebrow{color:var(--accent);font-weight:700;font-size:12px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.card{padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:4px}.card h3{margin:0 0 8px}.note,.warning{padding:13px 15px;margin:16px 0;background:#202a2a;border-left:3px solid var(--accent);color:#d8dcdf}.warning{background:#2b2525;border-left-color:var(--danger)}figure{margin:24px 0;background:#111315;border:1px solid var(--line);border-radius:4px;overflow:hidden}figure img{display:block;width:100%;height:auto;min-height:220px;object-fit:contain;background:#111315}figcaption{padding:11px 14px;color:var(--muted);border-top:1px solid var(--line)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:4px}table{width:100%;border-collapse:collapse;min-width:680px}th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid #353a40}th{color:#f0f2f4;background:var(--surface2)}tr:last-child td{border-bottom:0}code,pre{font-family:"Cascadia Mono",Consolas,monospace}code{color:var(--accent2)}pre{overflow:auto;padding:16px;background:#101214;border:1px solid #373c42;border-radius:4px;line-height:1.6}pre code{color:#dce1e5}.steps{counter-reset:step;list-style:none;padding:0}.steps li{position:relative;padding:4px 0 14px 42px;counter-increment:step}.steps li::before{content:counter(step);position:absolute;left:0;top:2px;display:grid;place-items:center;width:27px;height:27px;border:1px solid var(--accent);color:var(--accent);font-weight:700}kbd{padding:1px 6px;background:#30343a;border:1px solid #555c64;border-radius:3px;color:#fff}@media(max-width:780px){.shell{display:block}.nav{position:static;grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 16px;border-bottom:1px solid var(--line)}main{padding-top:28px}.grid{grid-template-columns:1fr}h1{font-size:31px}.top small{display:none}}
+  </style>
+</head>
+<body>
+  <header class="top"><span class="mark">P</span><strong>BEngine Property Attributes</strong><small>com.bengine.property-attributes</small></header>
+  <div class="shell">
+    <nav class="nav" aria-label="章节">
+      <a href="#overview">包概览</a><a href="#install">依赖与安装</a><a href="#examples">可导入示例</a>
+      <a href="#quickstart">快速开始</a><a href="#fields">组件/资源字段表</a><a href="#composition">组合代码</a>
+      <a href="#api">运行时 API 与编辑器 API</a><a href="#workflow">完整工作流</a><a href="#extend">如何扩展</a>
+      <a href="#debug">调试与常见问题</a>
+    </nav>
+    <main>
+<section id="runtime-contract"><h2>运行、分包与验证</h2><p>属性继承 ExtendedPropertyAttribute，由一个 useForChildren 的 PropertyDrawer 组合处理。ShowIf/HideIf 决定可见性，EnableIf/DisableIf/ReadOnly 决定可编辑性。Required/ValidateInput 提示计入 GetPropertyHeight；Prefix/Suffix/HorizontalLine 和 EnumFlags 实际参与绘制。InlineButton 通过 Undo.RecordObject 记录动作。</p>
+<h3>快速开始</h3><ol><li>创建可序列化 MonoBehaviour 字段或属性，先使用 Range 与 Required，在 Inspector 确认 SerializedProperty 能找到成员。</li><li>为 ShowIf 或 ValidateInput 指定对象上真实存在的条件成员/方法；分别验证条件通过与失败时的布局。</li><li>逐步组合 Title、InfoBox、Prefix/Suffix、InlineButton，调整 order；窄 Inspector 中确认输入框和提示不重叠。</li></ol>
+<h3>组件与 API</h3><p>ExtendedPropertyAttribute, ExtendedPropertyDrawer, ShowIf, Required, ValidateInput, EnumFlags, Prefix, Suffix, HorizontalLine, InlineButton</p><pre><code>[Required("Configuration is required.")]
+public string config = string.Empty;
+[Prefix("HP"), Suffix("points"), Range(0, 100)]
+public Fix64 health = (Fix64)75;
+[HorizontalLine, EnumFlags]
+public Features features;</code></pre>
+<h3>扩展与平台接口</h3><p>运行时使用 Fix64 和主线程 BTask；通过平台服务读写资源，不直接创建主机文件或网络连接。编辑器代码放在 Editor 装配，停止场景时取消请求并解除订阅。</p>
+<h3>资源分包与更新</h3><p>AssetImporter.assetBundleName/assetBundleVariant 指定资源组；BuildPipeline.BuildAssetBundles 接受导入设置或 AssetBundleBuild[]。跨包引用记录为目录依赖。RequiredBundleNames 控制首次安装，IAssetBundleDownloadManager 下载可选组和依赖。已安装可选包参与之后的版本更新。</p>
+<h3>行为边界</h3><p>这是 BEngine IMGUI PropertyDrawer 扩展，不是完整 Odin Inspector。条件和验证方法应快速且无副作用，因为布局和重绘都可能求值。运行时代码不能引用 Editor 装配；自定义 drawer 放在 Editor 目录和编辑器 asmdef 中。不同属性的约束需要保持上下界一致。</p><h3>排查与验证</h3><ul><li>字段消失：检查 ShowIf 条件名和返回值；不存在的条件会判为 false。</li><li>提示盖住下一项：使用 EditorGUI.GetPropertyHeight 分配 Rect，不能固定写死单行高度。</li><li>编辑后无法撤销：通过 SerializedProperty 写入并 ApplyModifiedProperties；直接修改目标前调用 Undo.RecordObject。</li><li>切换条件使错误提示出现/消失，验证高度与实际绘制行数一致。</li><li>在绘制失败或结束后确认 GUI.enabled 和 EditorGUI.indentLevel 恢复，避免污染后续字段。</li><li>用 Flags 枚举选择多个位，再撤销；InlineButton 修改字段后撤销并确认场景 dirty 状态。</li></ul>
+<p>Package Manager 导入示例：AttributesGallery、InspectorAttributesAndDrawer。在 Project 打开场景，检查 Hierarchy/Inspector，比较 Scene 与 Game，Play 后查看 Console，Stop 后再次运行。</p>
+<p>本包增加配置、运行时、验证三份 Skills。详细说明见 <a href="RuntimeGuide.md">运行与扩展指南</a>。</p></section>
+      <section id="overview">
+        <p class="eyebrow">GPU IMGUI INSPECTOR METADATA</p>
+        <h1>Property Attributes</h1>
+        <p class="lead">该包为 SerializedProperty Inspector 提供条件显示、验证、标签、路径、下拉、数值约束、进度条与内联操作。运行时只携带 Attribute 元数据，所有绘制位于 Editor 程序集。</p>
+        <div class="grid">
+          <article class="card"><h3>声明式 Inspector</h3><p>组件字段通过 Attribute 组合界面，无需为每个组件编写 CustomEditor。</p></article>
+          <article class="card"><h3>运行时边界清晰</h3><p>Runtime 脚本只引用 BEngine.PropertyAttributes，不引用 BEngine.Editor。</p></article>
+          <article class="card"><h3>反射契约明确</h3><p>条件、Provider、Validator 和 Action 均从目标实例解析并校验签名。</p></article>
+          <article class="card"><h3>可扩展 Drawer</h3><p>项目可定义 PropertyAttribute，并在 Editor 程序集用 CustomPropertyDrawer 自动注册。</p></article>
+        </div>
+        <figure>
+          <img src="images/overview.png" alt="Property Attributes 在 Inspector 中的标题、条件字段、进度条和路径控件">
+          <figcaption>Inspector 概览：同一组件字段可组合标题、条件、验证与专用输入控件；自定义 Drawer 仍使用统一的 SerializedProperty 与 Undo 路径。</figcaption>
+        </figure>
+      </section>
+
+      <section id="install">
+        <h2>依赖与安装</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>项目</th><th>值</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>包 ID</td><td><code>com.bengine.property-attributes</code></td><td>在 Package Manager 启用</td></tr>
+            <tr><td>运行时程序集</td><td><code>BEngine.PropertyAttributes</code></td><td>Attribute 类型，不含 UI 代码</td></tr>
+            <tr><td>编辑器程序集</td><td><code>BEngine.Editor</code></td><td>ExtendedPropertyDrawer</td></tr>
+            <tr><td>依赖</td><td><code>BEngine</code></td><td>不依赖 UIElements</td></tr>
+            <tr><td>组件/资源</td><td>无</td><td>作用于任意可序列化 Component 或 BAsset 字段</td></tr>
+          </tbody>
+        </table></div>
+        <ol class="steps">
+          <li>Window &gt; Package Manager 启用 Property Attributes。</li>
+          <li>运行时 asmdef 引用 <code>BEngine.PropertyAttributes</code>。</li>
+          <li>自定义 Drawer 的 Editor asmdef 同时引用 <code>BEngine.Editor</code> 和运行时程序集。</li>
+        </ol>
+      </section>
+
+      <section id="examples">
+        <h2>可导入示例</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>示例</th><th>导入目录</th><th>场景</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>Inspector Attributes and Drawer</td><td><code>Assets/Examples/InspectorAttributesAndDrawer</code></td><td><code>res/PropertyAttributes.scene.yaml</code></td><td>内置属性与 PercentAttribute/PercentDrawer</td></tr>
+            <tr><td>Attributes Gallery</td><td><code>Assets/Examples/AttributesGallery</code></td><td><code>res/AttributesGallery.scene.yaml</code></td><td>条件、验证、Dropdown、路径与 InlineButton 画廊</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="quickstart">
+        <h2>快速开始：从 Import 到 Play</h2>
+        <ol class="steps">
+          <li>Package Manager 选择 Property Attributes，在 Examples 页签点击一个示例的 Import。</li>
+          <li>等待程序集编译，打开对应的 <code>Assets/Examples/.../res/*.scene.yaml</code>。</li>
+          <li>Hierarchy 选择 Property Attributes Showcase 或 Attributes Gallery Bootstrap。</li>
+          <li>切换 Show Advanced/Lock Advanced，拖动 Range、ProgressBar 和 MinMax，选择 Dropdown。</li>
+          <li>把 Level 设为无效值观察验证消息，点击 Reset Example/Reset Gallery 调用 InlineButton。</li>
+          <li>点击 Play 并继续观察 Inspector 与 Console；停止后运行时值恢复。</li>
+          <li>阅读第一个示例的 runtime/PercentAttribute.cs 与 Editor/PercentDrawer.cs，理解程序集边界和注册方式。</li>
+        </ol>
+      </section>
+
+      <section id="fields">
+        <h2>组件/资源字段表与属性参数</h2>
+        <p>本包没有自有 Component、Scene System 或 BAsset 资源格式；它扩展的是任意组件或资源的可序列化字段。下表是公开字段元数据契约。</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>属性</th><th>参数/支持类型</th><th>行为</th></tr></thead>
+          <tbody>
+            <tr><td>Title</td><td><code>title, subtitle</code> / 任意</td><td>字段前显示标题和可选副标题</td></tr>
+            <tr><td>InfoBox</td><td><code>message, messageType, visibleIf</code> / 任意</td><td>显示 Info、Warning 或 Error</td></tr>
+            <tr><td>LabelText</td><td><code>label</code> / 任意</td><td>替换默认显示名</td></tr>
+            <tr><td>Indent</td><td><code>level</code> / 任意</td><td>增加非负缩进</td></tr>
+            <tr><td>ShowIf / HideIf</td><td><code>conditionMember, expectedValue</code></td><td>按实例成员显示或隐藏</td></tr>
+            <tr><td>EnableIf / DisableIf</td><td><code>conditionMember, expectedValue</code></td><td>按实例成员启用或禁用</td></tr>
+            <tr><td>ReadOnly</td><td>任意</td><td>显示但禁止编辑</td></tr>
+            <tr><td>Required</td><td>string、BObject、可空引用</td><td>null、空白或失效引用时显示错误</td></tr>
+            <tr><td>ValidateInput</td><td><code>validatorMember, message, messageType</code></td><td>调用 bool M() 或 bool M(T)</td></tr>
+            <tr><td>Clamp</td><td><code>minimum, maximum</code> / Integer、Float、Fix64</td><td>提交后限制上下界</td></tr>
+            <tr><td>MaxValue</td><td><code>maximum</code> / Integer、Float、Fix64</td><td>限制最大值</td></tr>
+            <tr><td>Core Range</td><td><code>min, max</code> / Integer、Float、Fix64</td><td>Slider 或 IntSlider</td></tr>
+            <tr><td>MinMax</td><td><code>minimum, maximum</code> / Vector2</td><td>X/Y 最小最大值并保持顺序</td></tr>
+            <tr><td>ProgressBar</td><td><code>minimum, maximum, title, editable</code> / Float、Fix64</td><td>绘制可选编辑的进度条</td></tr>
+            <tr><td>Dropdown</td><td>固定 choices 或 providerMember / string、enum</td><td>固定或动态 IEnumerable 选项</td></tr>
+            <tr><td>Password</td><td><code>mask</code> / string</td><td>遮罩输入</td></tr>
+            <tr><td>FilePath</td><td><code>title, filter, relativeToProject</code> / string</td><td>文件选择器</td></tr>
+            <tr><td>FolderPath</td><td><code>description, relativeToProject</code> / string</td><td>文件夹选择器</td></tr>
+            <tr><td>AssetPath</td><td><code>extension</code> / string</td><td>从 Assets 起始并按后缀过滤</td></tr>
+            <tr><td>InlineButton</td><td><code>methodName, label</code> / 任意</td><td>调用实例 void M() 或 void M(T)</td></tr>
+            <tr><td>HorizontalLine</td><td><code>thickness, color</code></td><td>按厚度和颜色绘制分隔线</td></tr>
+            <tr><td>Prefix / Suffix</td><td><code>text</code></td><td>按厚度和颜色绘制分隔线</td></tr>
+            <tr><td>EnumFlags</td><td>enum</td><td>菜单选择并组合枚举位</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note">Show/Hide/Enable/Disable 可以重复使用，全部条件满足后才通过。成员解析仅针对目标实例，不使用静态 Provider、Validator 或 Action。</div>
+      </section>
+
+      <section id="composition">
+        <h2>组件字段组合代码</h2>
+        <pre><code>using System.Collections.Generic;
+using BEngine;
+using BEngine;
+
+[AddComponentMenu("Gameplay/Character Settings")]
+public sealed class CharacterSettings : MonoBehaviour
+{
+    [Title("角色", "条件、验证与操作")]
+    [Required("名称不能为空")]
+    [LabelText("显示名称")]
+    public string displayName = "Hero";
+
+    public bool advanced = true;
+
+    [ShowIf(nameof(advanced))]
+    [Range(0, 20)]
+    [Clamp(1, 12)]
+    public Fix64 speed = 5;
+
+    [Dropdown(nameof(Profiles), true)]
+    public string profile = "Balanced";
+
+    [ValidateInput(nameof(IsPositive), "等级必须大于 0")]
+    public int level = 1;
+
+    [ProgressBar(0, 100, "生命")]
+    [InlineButton(nameof(Heal), "回满")]
+    public Fix64 health = 75;
+
+    private IEnumerable&lt;string&gt; Profiles =&gt;
+        new[] { "Balanced", "Quality", "Performance" };
+    private bool IsPositive(int value) =&gt; value &gt; 0;
+    private void Heal() =&gt; health = 100;
+}</code></pre>
+      </section>
+
+      <section id="api">
+        <h2>运行时 API 与编辑器 API</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>API</th><th>程序集</th><th>用途/注册</th></tr></thead>
+          <tbody>
+            <tr><td><code>ExtendedPropertyAttribute</code></td><td>Runtime</td><td>内置属性共同基类，由 ExtendedPropertyDrawer 匹配子类</td></tr>
+            <tr><td><code>ValidationMessageType</code></td><td>Runtime</td><td>Info、Warning、Error</td></tr>
+            <tr><td><code>SerializedObject.FindProperty</code></td><td>Editor</td><td>取得字段代理</td></tr>
+            <tr><td><code>SerializedProperty.propertyType/boxedValue</code></td><td>Editor</td><td>检查类型并统一读写</td></tr>
+            <tr><td><code>EditorGUI.PropertyField</code></td><td>Editor</td><td>使用 Registry 选择 Drawer</td></tr>
+            <tr><td><code>EditorGUI.DefaultPropertyField</code></td><td>Editor</td><td>不支持类型时安全回退</td></tr>
+            <tr><td><code>PropertyDrawer.OnGUI</code></td><td>Editor</td><td>绘制字段</td></tr>
+            <tr><td><code>PropertyDrawer.GetPropertyHeight</code></td><td>Editor</td><td>报告稳定布局高度</td></tr>
+            <tr><td><code>[CustomPropertyDrawer]</code></td><td>Editor</td><td>程序集加载后自动注册，无需手工 Registry 调用</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="workflow">
+        <h2>编辑器完整工作流</h2>
+        <ol class="steps">
+          <li>在运行时程序集的可序列化字段上添加一个 Attribute，禁止引用 BEngine.Editor。</li>
+          <li>等待编译并在 Inspector 验证基础字段，再逐步组合条件、验证和布局。</li>
+          <li>Provider 使用实例字段、属性或零参非 void 方法，返回 IEnumerable。</li>
+          <li>Validator 使用 bool M() 或 bool M(T value)；InlineButton 使用 void M() 或 void M(T value)。</li>
+          <li>路径字段选择后检查返回路径；relativeToProject 默认为 true。</li>
+          <li>自定义 Drawer 放在 Editor 程序集，所有不支持的 propertyType 回退 DefaultPropertyField。</li>
+          <li>GetPropertyHeight 覆盖所有额外行，并在多选、窄 Inspector、滚动和脚本重载后验证。</li>
+          <li>Play 仅用于调试；停止后在 Edit Mode 保存 Scene 或资源。</li>
+        </ol>
+      </section>
+
+      <section id="extend">
+        <h2>如何扩展：可运行 Percent Drawer</h2>
+        <h3>运行时程序集</h3>
+        <pre><code>using System;
+using BEngine;
+
+[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+public sealed class PercentAttribute : PropertyAttribute;</code></pre>
+        <h3>Editor 程序集</h3>
+        <pre><code>using System;
+using BEngine;
+using BEngine.Editor;
+
+[CustomPropertyDrawer(typeof(PercentAttribute))]
+public sealed class PercentDrawer : PropertyDrawer
+{
+    public override void OnGUI(
+        Rect position, SerializedProperty property, GUIContent label)
+    {
+        if (property.propertyType != SerializedPropertyType.Float)
+        {
+            EditorGUI.DefaultPropertyField(
+                position, property, label, includeChildren: true);
+            return;
+        }
+
+        var percent = Math.Clamp(property.floatValue * 100f, 0f, 100f);
+        property.floatValue = EditorGUI.Slider(
+            position, $"{label.text} (%)", percent, 0f, 100f) / 100f;
+    }
+}</code></pre>
+        <p><code>[CustomPropertyDrawer]</code> 是注册方式。Editor asmdef 必须引用定义 PercentAttribute 的运行时程序集；程序集重载后 Registry 会重新扫描。</p>
+      </section>
+
+      <section id="debug">
+        <h2>调试与常见问题</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>现象</th><th>检查与处理</th></tr></thead>
+          <tbody>
+            <tr><td>属性不生效</td><td>包启用、运行时 asmdef 引用、字段可被 SerializedObject 枚举</td></tr>
+            <tr><td>ShowIf 总隐藏</td><td>成员位于同一实例，名称和 expectedValue 类型正确</td></tr>
+            <tr><td>Dropdown 为空</td><td>Provider 返回 IEnumerable，且不是静态/带参数/void 方法</td></tr>
+            <tr><td>Validator 总失败</td><td>签名为 bool M() 或 bool M(T)，方法不抛异常</td></tr>
+            <tr><td>InlineButton 不执行</td><td>签名为实例 void M() 或 void M(T)</td></tr>
+            <tr><td>Clamp 不处理 Vector2</td><td>Clamp 只处理 Integer/Float/Fix64，Vector2 使用 MinMax</td></tr>
+            <tr><td>路径不是工程相对路径</td><td>检查 relativeToProject；AssetPath 默认从 Assets 打开</td></tr>
+            <tr><td>自定义 Drawer 不出现</td><td>Editor 程序集、公开无参构造、CustomPropertyDrawer 和 asmdef 引用</td></tr>
+            <tr><td>控件布局重叠</td><td>GetPropertyHeight 包含所有额外行，OnGUI 不越过分配 Rect</td></tr>
+            <tr><td>HorizontalLine/Prefix/Suffix/EnumFlags 无视觉变化</td><td>检查编辑器包版本与 Drawer 注册</td></tr>
+            <tr><td>停止 Play 后值丢失</td><td>Play 使用运行镜像；持久化修改在 Edit Mode 完成</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

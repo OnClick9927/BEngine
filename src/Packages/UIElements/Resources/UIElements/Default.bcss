@@ -1,0 +1,15 @@
+* { color: #e6ebed; font-size: 14; }
+Button, ToolbarButton, ToolbarMenu { background-color: #363d42; border-color: #69757d; border-width: 1; }
+Button:hover, ToolbarButton:hover, ToolbarMenu:hover { background-color: #48585f; border-color: #a0b7bf; }
+Button:active, ToolbarButton:active, ToolbarMenu:active { background-color: #176d5f; border-color: #85ead0; }
+TextField, SearchField, ToolbarSearchField, FloatField, IntegerField, DropdownField, Slider, ColorField { background-color: #252b2f; border-color: #69757d; border-width: 1; }
+TextField:hover, SearchField:hover, ToolbarSearchField:hover, FloatField:hover, IntegerField:hover, DropdownField:hover, Slider:hover, ColorField:hover { background-color: #303a40; border-color: #a0b7bf; }
+Toggle, Foldout { background-color: #252b2f; border-color: #8c9ba3; border-width: 1; }
+Toggle:hover, Foldout:hover { background-color: #3b4b52; border-color: #c1d5dc; }
+Toggle:checked, Foldout:checked { background-color: #16836a; border-color: #71dec0; }
+Toggle:checked:hover, Foldout:checked:hover { background-color: #21997d; border-color: #aff9e5; }
+Toggle:active, Foldout:active { background-color: #105b4a; border-color: #aff9e5; }
+*:focus { border-color: #eed078; }
+*:disabled { color: #858d92; }
+Button:disabled, ToolbarButton:disabled, ToolbarMenu:disabled, Toggle:disabled, Foldout:disabled, TextField:disabled, SearchField:disabled, ToolbarSearchField:disabled, FloatField:disabled, IntegerField:disabled, DropdownField:disabled, Slider:disabled, ColorField:disabled { background-color: #303438; border-color: #454d52; }
+Toggle:checked:disabled, Foldout:checked:disabled { background-color: #4b6059; border-color: #63776f; }

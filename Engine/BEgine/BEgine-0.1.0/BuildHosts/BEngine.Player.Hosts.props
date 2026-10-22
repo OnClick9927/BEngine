@@ -1,0 +1,127 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <BEnginePlayerPlatform Condition="'$(MSBuildProjectName)' == 'BEngine.Player.AndroidHost'">Android</BEnginePlayerPlatform>
+    <BEnginePlayerPlatform Condition="'$(MSBuildProjectName)' == 'BEngine.Player.iOSHost'">iOS</BEnginePlayerPlatform>
+    <BEnginePlayerPlatform Condition="'$(MSBuildProjectName)' == 'BEngine.Player.WebHost'">Web</BEnginePlayerPlatform>
+    <BEnginePlayerPlatform Condition="'$(BEnginePlayerPlatform)' == ''">Desktop</BEnginePlayerPlatform>
+    <BEngineDesktopGraphics Condition="'$(BEngineDesktopGraphics)' == ''">Both</BEngineDesktopGraphics>
+    <BEngineRuntimeShaderCompiler Condition="'$(BEngineRuntimeShaderCompiler)' == ''">true</BEngineRuntimeShaderCompiler>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <BEnginePlayerSourceProject Condition="'$(BEnginePlayerPlatform)' == 'Desktop'">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\Packages\Player\BEngine.Player\BEngine.Player.csproj'))</BEnginePlayerSourceProject>
+    <BEnginePlayerSourceProject Condition="'$(BEnginePlayerPlatform)' != 'Desktop'">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\Packages\Player\BEngine.Player\BEngine.Player.Portable.csproj'))</BEnginePlayerSourceProject>
+    <BEngineEngineRoot Condition="'$(BEngineEngineRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\BuildRuntime\$(BEnginePlayerPlatform)\BEngine.Player.dll')">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\BuildRuntime\$(BEnginePlayerPlatform)'))</BEngineEngineRoot>
+    <BEngineEngineRoot Condition="'$(BEngineEngineRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\BuildRuntime\BEngine.Player.dll')">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\BuildRuntime'))</BEngineEngineRoot>
+    <BEngineEngineRoot Condition="'$(BEngineEngineRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</BEngineEngineRoot>
+    <_BEngineDesktopVariant>$(BEngineDesktopGraphics)</_BEngineDesktopVariant>
+    <_BEngineDesktopVariant Condition="'$(BEngineRuntimeShaderCompiler)' != 'true' and '$(BEngineDesktopGraphics)' != 'OpenGL'">$(BEngineDesktopGraphics)Offline</_BEngineDesktopVariant>
+    <_BEngineDesktopVariantRoot>$(BEngineEngineRoot)\Desktop\$(_BEngineDesktopVariant)</_BEngineDesktopVariantRoot>
+    <BEngineResolvedRuntimeRoot>$(BEngineEngineRoot)</BEngineResolvedRuntimeRoot>
+    <BEngineResolvedRuntimeRoot Condition="'$(BEnginePlayerPlatform)' == 'Desktop' and Exists('$(_BEngineDesktopVariantRoot)\BEngine.Player.dll')">$(_BEngineDesktopVariantRoot)</BEngineResolvedRuntimeRoot>
+    <BEngineRuntimeFallbackIdentifier Condition="'$(RuntimeIdentifier)' == 'osx-x64' or '$(RuntimeIdentifier)' == 'osx-arm64'">osx</BEngineRuntimeFallbackIdentifier>
+    <PublishAot>false</PublishAot>
+    <RunAOTCompilation Condition="'$(RunAOTCompilation)' == ''">false</RunAOTCompilation>
+    <PublishTrimmed>false</PublishTrimmed>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Windows UI Automation exposes native COM providers. Trimming defaults
+         built-in COM off even when the provider interfaces are explicitly rooted. -->
+    <BuiltInComInteropSupport Condition="'$(BEnginePlayerPlatform)' == 'Desktop' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">true</BuiltInComInteropSupport>
+    <BEngineIncludeTextBindings Condition="'$(BEngineIncludeTextBindings)' == ''">true</BEngineIncludeTextBindings>
+  </PropertyGroup>
+  <Target Name="ValidateExportedGraphicsVariant" BeforeTargets="ResolveReferences"
+          Condition="!Exists('$(BEnginePlayerSourceProject)') and '$(BEnginePlayerPlatform)' == 'Desktop' and '$(_BEngineDesktopVariant)' != 'Both'">
+    <Error Condition="!Exists('$(BEngineResolvedRuntimeRoot)\graphics-variant.txt')" Text="Exported Player runtime variant $(_BEngineDesktopVariant) is missing. Re-export the engine." />
+  </Target>
+  <!--
+    .NET 10 ILLink registers these tasks with TaskHostFactory even when the build
+    already runs on Core MSBuild. Registering them first keeps them in-process and
+    avoids the MSB4216 task-host handshake failure seen on affected Windows SDKs.
+  -->
+  <UsingTask TaskName="ComputeManagedAssemblies"
+             AssemblyFile="$(ILLinkTasksAssembly)"
+             Condition="'$(MSBuildRuntimeType)' == 'Core' and '$(ILLinkTasksAssembly)' != ''" />
+  <UsingTask TaskName="ILLink"
+             AssemblyFile="$(ILLinkTasksAssembly)"
+             Condition="'$(MSBuildRuntimeType)' == 'Core' and '$(ILLinkTasksAssembly)' != ''" />
+  <ItemGroup Condition="Exists('$(BEnginePlayerSourceProject)')">
+    <ProjectReference Include="$(BEnginePlayerSourceProject)"
+                      AdditionalProperties="OutputType=Library;BEnginePlayerPlatform=$(BEnginePlayerPlatform)"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeNativeLibrariesForSelfExtract;EnableCompressionInSingleFile;UseAppHost;PublishAot;PublishTrimmed" />
+  </ItemGroup>
+  <!-- Reloadable UI packages need the target-specific managed/native text closure in the static host. -->
+  <ItemGroup Condition="'$(BEngineIncludeTextBindings)' == 'true'">
+    <PackageReference Include="SkiaSharp">
+      <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">4.153.1</Version>
+    </PackageReference>
+    <PackageReference Include="SkiaSharp.HarfBuzz">
+      <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">4.153.1</Version>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEnginePlayerPlatform)' == 'Web' and '$(BEngineIncludeTextBindings)' == 'true'">
+    <PackageReference Include="SkiaSharp.NativeAssets.WebAssembly">
+      <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">4.153.1</Version>
+    </PackageReference>
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly">
+      <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">14.2.1.301</Version>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEnginePlayerPlatform)' == 'Desktop' and '$(BEngineIncludeTextBindings)' == 'true' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux'))">
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies">
+      <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">4.153.1</Version>
+    </PackageReference>
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux">
+      <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">14.2.1.301</Version>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('$(BEnginePlayerSourceProject)')">
+    <Reference Include="$(BEngineResolvedRuntimeRoot)\*.dll">
+      <Private>true</Private>
+    </Reference>
+    <Reference Remove="$(BEngineResolvedRuntimeRoot)\SkiaSharp.dll;$(BEngineResolvedRuntimeRoot)\SkiaSharp.HarfBuzz.dll;$(BEngineResolvedRuntimeRoot)\HarfBuzzSharp.dll"
+               Condition="'$(BEngineIncludeTextBindings)' != 'true'" />
+    <_BEngineRuntimeNative Include="$(BEngineResolvedRuntimeRoot)\runtimes\$(RuntimeIdentifier)\native\*"
+                           Condition="'$(RuntimeIdentifier)' != ''" />
+    <_BEngineRuntimeNative Include="$(BEngineResolvedRuntimeRoot)\runtimes\$(BEngineRuntimeFallbackIdentifier)\native\*"
+                           Condition="'$(BEngineRuntimeFallbackIdentifier)' != ''" />
+    <_BEngineRuntimeNative Remove="@(_BEngineRuntimeNative)"
+                          Condition="'$(BEngineIncludeTextBindings)' != 'true' and ($([System.String]::Copy('%(_BEngineRuntimeNative.Filename)').ToLowerInvariant()) == 'libskiasharp' or $([System.String]::Copy('%(_BEngineRuntimeNative.Filename)').ToLowerInvariant()) == 'libharfbuzzsharp')" />
+    <Content Include="@(_BEngineRuntimeNative)">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEngineIncludeTextBindings)' == 'true'">
+    <Compile Include="$(MSBuildThisFileDirectory)Shared\PlayerTextHost.cs" Link="Application\PlayerTextHost.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEngineFullTrimming)' != 'true'">
+    <TrimmerRootAssembly Include="BEngine" RootMode="All" />
+    <TrimmerRootAssembly Include="BEngine.Player" RootMode="All" />
+    <TrimmerRootAssembly Include="BEngine.Platform.DotNet" RootMode="All" />
+    <TrimmerRootAssembly Include="BEngine.AssetBundles" RootMode="All" />
+    <TrimmerRootAssembly Include="BEngine.Diagnostics" RootMode="All" />
+    <TrimmerRootAssembly Include="BEngine.HotUpdate" RootMode="All" />
+    <TrimmerRootAssembly Include="BEngine.Networking" RootMode="All" />
+    <!-- Hot-update service modules compile directly against this public plugin contract. -->
+    <TrimmerRootAssembly Include="Microsoft.Extensions.DependencyInjection.Abstractions" RootMode="All" />
+    <TrimmerRootAssembly Include="Microsoft.Extensions.DependencyInjection" RootMode="All" />
+    <!-- UI and other reloadable packages may use LINQ to XML without a static host reference. -->
+    <TrimmerRootAssembly Include="System.Xml.XDocument" RootMode="All" />
+    <TrimmerRootAssembly Include="System.Private.Xml.Linq" RootMode="All" />
+    <TrimmerRootAssembly Include="System.Private.Xml" RootMode="All" />
+    <TrimmerRootAssembly Include="SkiaSharp" RootMode="All" />
+    <TrimmerRootAssembly Include="SkiaSharp.HarfBuzz" RootMode="All" />
+    <TrimmerRootAssembly Include="HarfBuzzSharp" RootMode="All" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEngineTrimmerRootDescriptor)' != ''">
+    <TrimmerRootDescriptor Include="$(BEngineTrimmerRootDescriptor)" />
+  </ItemGroup>
+</Project>

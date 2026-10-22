@@ -1,0 +1,29 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.animation
+packageVersion: 1.1.0
+minimumEngineVersion: 0.1.0
+displayName: Animation
+description: >-
+  Animation and Animator runtime and authoring package. UIElements supplies the retained
+  node and track editors; this package supplies the animation assets,
+  runtime components and editor windows.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Animation
+  rootNamespace: BEngine
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+editor:
+  assembly: BEngine.Animation.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.ui-elements
+    target: editor
+  - packageId: com.bengine.animation
+    target: runtime

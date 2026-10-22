@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <Import Project="..\BEngine.Player.Hosts.props" />
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BEngine.Player.WebHost</AssemblyName>
+    <RootNamespace>BEngine.Player.Hosts.Web</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmBuildNative>true</WasmBuildNative>
+    <WasmMainHTMLPath>..\WebResources\index.html</WasmMainHTMLPath>
+    <WasmMainJSPath>..\WebResources\main.js</WasmMainJSPath>
+    <!-- BEngine's managed scene/package layer relies on reflection and runtime loading. -->
+    <WasmDedup>false</WasmDedup>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(BEngineContentRoot)' != '' and '$(BEngineDataDirectoryName)' != ''">
+    <WasmFilesToIncludeInFileSystem Include="$(BEngineContentRoot)\$(BEngineDataDirectoryName)\**\*">
+      <TargetPath>$(BEngineDataDirectoryName)\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+    </WasmFilesToIncludeInFileSystem>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\WebResources\index.html"
+             Link="wwwroot\index.html"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\WebResources\main.js"
+             Link="wwwroot\main.js"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\WebResources\video.js" Link="wwwroot\video.js" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('..\..\BEngine.Web\BEngine.Web.csproj')">
+    <ProjectReference Include="..\..\BEngine.Web\BEngine.Web.csproj" />
+  </ItemGroup>
+  <Target Name="_BEngineConfigureHybridWasmRuntime"
+          AfterTargets="_GetDefaultWasmAssembliesToBundle"
+          Condition="'$(RunAOTCompilation)' == 'true'">
+    <ItemGroup>
+      <WasmAssembliesToBundle
+          Condition="'%(WasmAssembliesToBundle.FileName)' == 'BEngine' or '%(WasmAssembliesToBundle.FileName)' == 'AssetRipper.TextureDecoder' or ($([System.String]::Copy('%(WasmAssembliesToBundle.FileName)').StartsWith('BEngine.')) and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Player.WebHost' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Web' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Platform.DotNet')"
+          AOT_InternalForceToInterpret="true" />
+    </ItemGroup>
+  </Target>
+</Project>

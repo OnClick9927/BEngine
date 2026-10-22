@@ -1,0 +1,75 @@
+# Cinemachine 2D 运行与扩展指南
+
+包 ID：`com.bengine.cinemachine`。运行时命名空间：`BEngine.Cinemachine`。数值基于 Fix64；使用引擎已有的组件、资源、场景和服务接口。
+
+## 快速开始
+
+1. 在 Package Manager 启用 Cinemachine 2D，检查依赖与 Console 编译结果；导入 CameraFollow、CameraBlendImpulse 示例。
+2. 从 Project 打开示例的 res 场景，在 Hierarchy 检查对象及父子关系。
+3. 同时观察 Scene 与 Game，在 Inspector 检查引用，点击 Play；完成后 Stop，并确认编辑模式资源未被运行时状态污染。
+
+1. 在输出 Camera2D 同一对象添加 CinemachineBrain；新建独立对象添加 CinemachineCamera，避免两个组件反复写同一 Transform。
+2. 把角色 Transform 赋给 follow；从零 damping 开始检查取景，再调节 deadZone、trackedObjectOffset 和 damping。
+3. 创建第二台虚拟相机并改变 priority，设置 Brain.defaultBlend；检查初次激活直接取景，后续切换产生过渡。需要震动时再配置 Source/Listener 的层。
+
+## 组件与 API
+
+主要类型：`CinemachineBrain`、`CinemachineCamera`、`CinemachineBlendDefinition`、`CinemachineConfiner2D`、`CinemachineImpulseSource`、`CinemachineImpulseListener`。
+
+Brain 在 LateUpdate 驱动输出 Camera2D，activeVirtualCamera 与 activeBlend 提供状态；IsLive 包含正在混合的输出源和目标。CutTo(camera) 切换目标。CinemachineCamera.follow/lookAt、priority、positionDamping 与 orthographicSize 控制二维取景。GenerateImpulse(Vector2) 产生由 Listener 接收的脉冲。
+
+```csharp
+var brain = outputCamera.gameObject.AddComponent<CinemachineBrain>();
+var virtualCamera = scene.CreateGameObject("Follow").AddComponent<CinemachineCamera>();
+virtualCamera.follow = player.transform;
+virtualCamera.priority = 20;
+brain.CutTo(virtualCamera);
+```
+
+代码片段中的 scene、camera、资源和业务对象应来自当前场景。先确认资源加载成功再赋值；不要把资源失败吞掉后继续运行。运行时代码放进项目 runtime/Scripts 对应的 asmdef，编辑器工具放进 Editor 装配。
+
+## 生命周期与确定性
+
+使用 Awake 获取依赖，Start 初始化首次运行状态。启用较晚的对象仍应在首次 Update 前执行一次 Start。物理操作在 FixedUpdate，普通状态推进在 Update，相机最终跟随在 LateUpdate。通过 BTask 和 BCancellationToken 编排主线程异步流程；退出场景时取消未完成请求并解除事件订阅。
+
+多个 SceneRuntime 应使用 TickAll 共享一次全局帧推进。录制固定输入、固定步长和资源版本后再比较结果；不要使用主机墙上时钟、后台线程或网络返回时刻直接修改模拟状态。视觉与音频的硬件输出不作为确定性逻辑输入。
+
+## 资源分包与更新
+
+在 AssetImporter 设置 assetBundleName/assetBundleVariant，使用 BuildPipeline.BuildAssetBundles 或播放器构建流程产生目录。跨包序列化引用会加入依赖，公共资源应分配到稳定的共享包，避免重复归属与循环依赖。需要精确构建范围时传入 AssetBundleBuild[]。
+
+首次安装可设置 AssetBundleRuntimeOptions.RequiredBundleNames；null 表示完整安装。通过 IAssetBundleDownloadManager.GetDownloadSizeAsync 估算某组及其依赖的缺失字节，再调用 DownloadDependenciesAsync 获取可选内容。更新目录激活后，已安装可选包继续参与更新。下载完成与目录激活属于不同阶段，失败时不得先切换到不完整资源版本。
+
+本包使用的资源、着色器及其元数据必须随包导出。以相同路径替换内容后检查 BAsset 缓存代次和运行时重新绑定；已有对象持有的资源引用不等于自动替换该对象的所有字段。请在更新成功的明确时机刷新相关资源。
+
+## 平台与扩展
+
+业务代码通过 FileUtility/PathUtility 调用文件和路径能力；网络功能使用所属包的 IHttpTransport、IWebSocketTransport、ITcpTransport/IUdpTransport 或包自身的服务接口。Windows/.NET 等平台适配器处理实际文件、套接字及硬件；引擎在 Poll 中交付网络结果。扩展平台时替换服务注册，不在组件内直接创建 FileStream、HttpClient、Socket 或 Task。
+
+为 Cinemachine 2D 增加功能时，先查阅 `BEngine.Cinemachine` 与 `BEngine.Cinemachine.Editor` 的现有实现、asmdef 依赖与 Editor/Examples。保留 Unity 风格命名及本引擎二维类型；新增公共字段必须具备实际行为，暂不支持的能力应明确报错或写入限制说明。
+
+## 行为边界
+
+这是面向本引擎 Camera2D 的独立实现，不提供 Unity Cinemachine 的 3D Body/Aim 管线、Timeline 或完整扩展生态。Confiner 约束相机中心点，不保证整个可视矩形位于多边形内。混合源使用切换时的状态快照。PixelPerfectCamera 会在最终渲染阶段吸附相机，过小的震动可能被像素网格吞掉。
+
+## 排查顺序
+
+- 相机跳回：检查多个 Brain 或游戏脚本是否同时写同一 Camera2D。
+- 切换不发生：检查目标是否 enabled 且 active、priority 是否高于当前目标。
+- 像素图仍模糊：在输出相机启用 PixelPerfectCamera，纹理设 Point；不要把阻尼后的浮点渲染结果再次非整数缩放。
+
+遇到异常时记录最小场景、包版本、平台、步长、资源路径和调用顺序。在 Console 保留第一条异常及堆栈；先复现单对象问题，再逐步恢复完整场景。画面问题应同时保存原始分辨率截图与采样配置。
+
+## 验证清单
+
+- 初次激活检查没有从原点缓慢插入；随后切换在中点和终点检查相机位置。
+- 混合期间两台参与相机 IsLive 都为 true；无可用相机时 activeVirtualCamera 应清空。
+- 以不同 Game 窗口尺寸检查跟随、相机切换、震动和像素网格。
+
+- 在 Editor Play 和导出的 Windows Player 各运行一次，不以编辑器能加载资源推断包内资源完整。
+- 分别测试冷启动、重复启停、资源更新后重启、失败后重试；记录实际执行的平台，未运行的移动端不能标为通过。
+- 使用固定输入测稳态 Update/Render 的分配与耗时。首次资源解码、着色器编译和缓存预热应单独记录。
+
+## Skills 与示例
+
+本包额外提供 `bengine-cinemachine-authoring`、`bengine-cinemachine-runtime` 与 `bengine-cinemachine-validation` 三个任务入口，分别覆盖配置、实现与验证。示例通过 Package Manager 导入为独立目录；先运行原始示例，再修改一个参数观察差异，保留原始资源 GUID 以验证重复导入行为。

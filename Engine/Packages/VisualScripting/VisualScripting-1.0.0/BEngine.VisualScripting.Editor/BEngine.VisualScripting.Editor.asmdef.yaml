@@ -1,0 +1,14 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.VisualScripting.Editor
+rootNamespace: BEngine.VisualScripting.Editor
+references:
+- BEngine.VisualScripting
+- BEngine.UIElements.Editor
+includePlatforms:
+- Editor
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

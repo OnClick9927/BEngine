@@ -1,0 +1,14 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.TiledMap.Editor
+rootNamespace: BEngine.TiledMap.Editor
+references:
+- BEngine.TextureAtlas
+- BEngine.TiledMap
+- BEngine.Physics2D
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

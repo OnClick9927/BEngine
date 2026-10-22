@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sprite Skinning 2D</title>
+  <style>
+    body { max-width: 820px; margin: 36px auto; padding: 0 24px; color: #20242a; font: 16px/1.55 system-ui, sans-serif; }
+    h1, h2 { color: #101318; } code { background: #eef1f4; padding: 2px 5px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>Sprite Skinning 2D</h1>
+  <p>Author weighted 2D meshes, bone hierarchies, attachments, free-form deformation, two-bone or constrained chain IK, and transform constraints with runtime rendering.</p>
+  <h2>Workflow</h2>
+  <ol>
+    <li>Create a <code>.spriteskin.yaml</code> asset.</li>
+    <li>Edit bones, vertices, triangles, UVs, and weights in Window &gt; 2D &gt; Sprite Skinning.</li>
+    <li>Add <code>SpriteSkin2D</code> to a GameObject and create or bind its skeleton.</li>
+    <li>Animate bone transforms, add <code>LimbIK2D</code>, <code>ChainIK2D</code>, or <code>TransformConstraint2D</code> where needed, and switch attachments by name.</li>
+  </ol>
+  <p>The asset format is deterministic and supported by project assets, bundles, and exported Players.</p>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Input Actions</title>
+<style>body{max-width:850px;margin:48px auto;padding:0 24px;font:17px/1.7 system-ui;color:#263244}code,pre{background:#eef2f6;border-radius:6px}pre{padding:18px;overflow:auto}</style>
+<h1>Input Actions</h1><p>启用 com.bengine.input-actions，在 Assets/Create/Input/Actions 创建动作资产，双击或打开 Window/Input/Input Actions 编辑。三栏制作窗口支持 Maps/Actions/Bindings、搜索、复制/排序、Undo/Redo、保存、按键捕获和实时动作监听。</p>
+<p>支持按钮、轴和二维方向动作，键鼠、手柄、触摸绑定，控制方案、死区和运行时改键。每个玩家使用独立 session，覆盖配置不会修改原资产。</p>
+<pre>using BEngine.InputActions;
+using var input = new InputActionSession(actions);
+input.EnableMap("Gameplay");
+input.FindAction("Gameplay/Jump").performed += _ =&gt; Jump();
+// 手动 session 每帧更新一次；PlayerInput 组件由引擎自动更新。
+input.Update();</pre>
+<p>PlayerInput 在 MonoBehaviour.Start 之后、FixedUpdate 和 Update 之前采集本帧输入。绑定 ID 应保持稳定以支持保存和恢复改键。</p>
+<p>设备配对支持共享/独占、等待可用设备、断线/重连通知和释放；每个同机玩家有独立 session。Input.GetGamepads() 保留宿主槽位，不会因断开设备而压缩索引。</p>
+<p>触摸支持指定触点位置/位移、轻点、长按、滑动、平移、捏合和旋转。像素/角度不归一化；在资产中设置手势时间和距离。多指松开不会误触轻点，替换触点重置双指基线。Windows Player 已接入 WM_TOUCH；其他平台仍需对应宿主和设备验收。</p>
+<p>更多绑定类型、单位、配对、生命周期和兼容格式说明见包内 Editor/Readme.md。Play 中禁止改写资产，监听在失焦或关闭后停止。</p>
+<p>Button 交互支持 Press、Hold、Tap、MultiTap，可配置长按时长、短按期限、多击间隔与次数。通过 phase 和 wasPerformedThisFrame 判断交互结果；计时采用未缩放时间，禁用或改键时取消。</p></html>

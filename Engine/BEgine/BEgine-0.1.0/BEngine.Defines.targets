@@ -1,0 +1,23 @@
+<Project>
+  <PropertyGroup>
+    <BEngineEditorAssembly Condition="'$(BEngineEditorAssembly)' == '' and $([System.String]::Copy('$(MSBuildProjectName)').EndsWith('.Editor'))">true</BEngineEditorAssembly>
+    <BEngineEditorAssembly Condition="'$(BEngineEditorAssembly)' == ''">false</BEngineEditorAssembly>
+
+    <BEnginePlatformDefineConstants Condition="$([MSBuild]::IsOSPlatform('Windows'))">BENGINE_WINDOWS</BEnginePlatformDefineConstants>
+    <BEnginePlatformDefineConstants Condition="$([MSBuild]::IsOSPlatform('Linux'))">BENGINE_LINUX</BEnginePlatformDefineConstants>
+    <BEnginePlatformDefineConstants Condition="$([MSBuild]::IsOSPlatform('OSX'))">BENGINE_OSX</BEnginePlatformDefineConstants>
+
+    <BEngineArchitectureDefineConstants Condition="'$(PlatformTarget)' == 'x86'">BENGINE_X86</BEngineArchitectureDefineConstants>
+    <BEngineArchitectureDefineConstants Condition="'$(PlatformTarget)' == 'x64'">BENGINE_X64</BEngineArchitectureDefineConstants>
+    <BEngineArchitectureDefineConstants Condition="'$(PlatformTarget)' == 'arm'">BENGINE_ARM</BEngineArchitectureDefineConstants>
+    <BEngineArchitectureDefineConstants Condition="'$(PlatformTarget)' == 'arm64'">BENGINE_ARM64</BEngineArchitectureDefineConstants>
+    <BEngineArchitectureDefineConstants Condition="'$(BEngineArchitectureDefineConstants)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'x86'">BENGINE_X86</BEngineArchitectureDefineConstants>
+    <BEngineArchitectureDefineConstants Condition="'$(BEngineArchitectureDefineConstants)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'AMD64'">BENGINE_X64</BEngineArchitectureDefineConstants>
+    <BEngineArchitectureDefineConstants Condition="'$(BEngineArchitectureDefineConstants)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'ARM'">BENGINE_ARM</BEngineArchitectureDefineConstants>
+    <BEngineArchitectureDefineConstants Condition="'$(BEngineArchitectureDefineConstants)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'ARM64'">BENGINE_ARM64</BEngineArchitectureDefineConstants>
+
+    <BEngineBuiltInDefineConstants>BENGINE;BENGINE_1_0;BENGINE_1_0_OR_NEWER;$(BEnginePlatformDefineConstants);$(BEngineArchitectureDefineConstants)</BEngineBuiltInDefineConstants>
+    <BEngineBuiltInDefineConstants Condition="'$(BEngineEditorAssembly)' == 'true'">$(BEngineBuiltInDefineConstants);BENGINE_EDITOR</BEngineBuiltInDefineConstants>
+    <DefineConstants>$(DefineConstants);$(BEngineBuiltInDefineConstants)</DefineConstants>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,10 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Lighting2D
+rootNamespace: BEngine
+references: []
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false

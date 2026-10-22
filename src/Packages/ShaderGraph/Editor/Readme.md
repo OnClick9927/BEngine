@@ -1,0 +1,44 @@
+# Shader Graph
+
+启用 `com.bengine.shader-graph`。图编辑器使用 UIElements 的通用 NodeCanvas；运行时通过 Lighting2D 依赖复用灯光、轮廓和阴影计算。未向 Core 引入扩展包依赖。
+
+## 制作与材质
+
+1. 从 `Assets/Create/Rendering/Shader Graph` 创建图，或打开 `Window/Rendering/Shader Graph` 点击 New、Save。
+2. Add Node/画布右键添加节点，拖动端口连线，在右侧修改节点值。支持平移、缩放、框选、F 聚焦、Undo/Redo；Play 中禁止资产写入。
+3. 添加 `Shader Graph Renderer 2D`，设置 graph 或 shaderMaterial，再设置 sprite、size、color 和排序。显式 graph 优先于材质中的 graph。
+4. 在没有选中节点时点击 Create Material，或从 `Assets/Create/Rendering/Shader Graph Material` 创建材质。材质 Inspector 根据图列出颜色/向量和纹理属性，支持撤销、保存与重置。多个 Renderer 可以共享同一个材质。
+5. 属性优先级：Renderer 的 parameters/textures → 材质的 parameters/textures → 图节点默认值。`SetParameter`/`SetTexture` 可在运行时设置；显式 null 纹理覆盖表示白纹理。材质编辑不会改写各 Renderer 的局部覆盖。
+
+所有端口为四通道；Scalar 广播到四通道，Red/Green/Blue/Alpha 提取并广播一个通道。Output.Color 为 RGBA，Output.Alpha 额外乘到透明度。默认图仍为 Sprite 纹理乘顶点颜色。
+
+## 子图与自定义代码
+
+SubGraph 引用另一个 ShaderGraphAsset。子图内放置 SubGraphInput，选择 A/B/C/D；父节点的同名输入提供值，未连接时使用该 SubGraphInput 的 Value。子图 Output 的 Color/Alpha 形成父节点输出。子图的 Surface 设置不额外施加一遍光照。
+
+右侧 Open Subgraph 或双击子图节点进入，Back 返回。子图可嵌套、复用；子图内容变化会使使用它的图重新编译。循环引用、过深/过大的展开会报错。
+
+CustomFunction 可分别填写 GLSL、HLSL 和 WGSL 函数体，参数为四个四通道向量 A/B/C/D，返回四通道向量。例如 GLSL：`return vec4(mix(A.rgb, B.rgb, C.x), A.a);`。使用自定义 GLSL 时，应为 HLSL/WGSL 后端提供对应实现；缺失时编译明确报错。驱动语法错误会在 Console/预览中显示，并保留上次成功的着色结果。
+
+编译器已生成 Direct3D11/12 的 HLSL 和 WebGPU 的 WGSL，包含参数/纹理绑定与 Lit2D 光照。HLSL 已通过 Windows 原生编译器，WGSL 已通过真实浏览器 WebGPU 像素读回。当前引擎 RHI 尚无 Direct3D/WebGPU 设备实现，因此这些结果不表示引擎的对应后端 Player/编辑预览已经可用。
+
+## 多纹理与光照
+
+SampleTexture 使用 Renderer 的 Sprite/图集 UV。TextureParameter 使用独立纹理参数，UV 未连接时同样使用当前顶点 UV；需要不受图集矩形影响的坐标时显式连入自定义 UV。
+
+Surface 选择 Lit2D 后使用场景 Lighting2D 的环境、Global/Point/Spot/Freeform/Sprite 灯光、层掩码和阴影。勾选 Renderer.receiveLighting；关闭时输出原始图颜色。Output.Normal 接入 RGB 编码的切线空间法线（平面法线约为 `0.5,0.5,1`），通常由 TextureParameter 采样线性法线纹理。法线会随 Renderer 旋转、flip 和镜像变换。该图端口独立于普通 SpriteRenderer 的 NormalMap2D 组件；未连接 Normal 时保持传统二维灯光衰减。
+
+每次绘制最多八个纹理槽：Sprite 占一个，图的纹理参数与 Sprite 灯光纹理共享余下七个；使用同一图集的灯光共享槽。图参数最多七张，灯光最多六张；组合超出总预算明确报错。光照数据与图参数共用最多 64 KiB 的常量缓冲。
+
+## GPU 预览与验证
+
+选中节点点击 GPU Node Preview，可在独立编辑窗口中检查该节点的实际 GPU 输出、纹理输入和指定/动画时间。材质 Inspector 的 GPU Preview 带入材质覆盖。预览不修改图、场景或材质，关闭/设备释放时清理 GPU 资源。预览颜色直接显示 RGB，透明通道不进行棋盘格混合。
+
+Validate 检查图结构和两后端代码生成，GPU Preview/Scene/Game 执行驱动编译。移动节点不会重编译；修改节点、连线或引用子图内容会重新编译。限制：单图 512 节点/2048 连线，最多 16 层子图、4096 个展开节点、128 层节点依赖、16 个命名向量参数。图和材质走标准 YAML/AssetDatabase，保留旧无光照图和旧 Renderer 数据。
+
+`Validation/ShaderGraph` 验证图结构、子图/材质持久化、NodeCanvas、Inspector/Undo/Play 保护，实际 Vulkan/OpenGL 像素读回覆盖八槽纹理、局部覆盖、错误恢复、节点预览边界及法线/阴影/多场景灯光。`Validation/ShaderGraphPackage.cs` 检查源码包编译、注册、停用与重启用。独立 Player 的打包和内容更新检查另见引擎验收清单；Windows 结果不代表移动端/Web 已通过。
+
+PlayerBuild 的 Vulkan 离线构建通过本包的 ShaderGraphBuildSources 收集当前分区的图资产，包含无光照和
+32–4079 个光照向量容量、0–6 张灯光纹理的合法组合，受八纹理槽与 64 KiB 常量缓冲限制。
+生成源码与运行时使用同一个 ShaderGraphCompiler；字节码进入主包或热更资源的加密容器。
+运行时创建/修改的新图和节点预览不在发行资产变体集合内，需保留运行时编译器或自定义构建扩展。

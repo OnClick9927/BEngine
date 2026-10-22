@@ -1,0 +1,57 @@
+<Project>
+  <UsingTask TaskName="ValidateBEnginePackageCompatibility" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <DefinitionPath ParameterType="System.String" Required="true" />
+      <EngineVersion ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        const string pattern = @"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$";
+        Func<string, Match> parse = value => {
+            var match = Regex.Match(value, pattern);
+            Version numeric;
+            if (!match.Success || !Version.TryParse(match.Groups[1] + "." + match.Groups[2] + "." + match.Groups[3], out numeric) ||
+                match.Groups[4].Value.Split('.').Any(part => part.Length > 1 && part[0] == '0' && part.All(char.IsDigit)))
+                throw new InvalidDataException("Invalid semantic version '" + value + "'.");
+            return match;
+        };
+        Func<string, string, int> compare = (left, right) => {
+            var a = parse(left); var b = parse(right);
+            var result = Version.Parse(a.Groups[1] + "." + a.Groups[2] + "." + a.Groups[3])
+                .CompareTo(Version.Parse(b.Groups[1] + "." + b.Groups[2] + "." + b.Groups[3]));
+            if (result != 0) return result;
+            var ap = a.Groups[4].Value; var bp = b.Groups[4].Value;
+            if (ap.Length == 0 || bp.Length == 0) return (ap.Length == 0 ? 1 : 0).CompareTo(bp.Length == 0 ? 1 : 0);
+            var aa = ap.Split('.'); var bb = bp.Split('.');
+            for (var i = 0; i < Math.Min(aa.Length, bb.Length); i++) {
+                var an = aa[i].All(char.IsDigit); var bn = bb[i].All(char.IsDigit);
+                result = an && bn ? aa[i].Length.CompareTo(bb[i].Length) : an != bn ? (an ? -1 : 1) : 0;
+                if (result == 0) result = string.CompareOrdinal(aa[i], bb[i]);
+                if (result != 0) return result;
+            }
+            return aa.Length.CompareTo(bb.Length);
+        };
+        try {
+            var text = File.ReadAllText(DefinitionPath);
+            Func<string, string> read = name => {
+                var match = Regex.Match(text, @"(?m)^" + name + @":\s*([^\r\n#]+)");
+                if (!match.Success) throw new InvalidDataException("package.yaml must declare " + name + " before export.");
+                var value = match.Groups[1].Value.Trim().Trim('\"', '\'');
+                parse(value);
+                return value;
+            };
+            read("packageVersion");
+            var minimum = read("minimumEngineVersion");
+            if (compare(EngineVersion, minimum) < 0)
+                throw new InvalidDataException("Build engine " + EngineVersion + " is older than minimumEngineVersion " + minimum + ".");
+        }
+        catch (Exception exception) { Log.LogError("Invalid package release '{0}': {1}", DefinitionPath, exception.Message); return false; }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+</Project>

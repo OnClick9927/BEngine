@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BEngine TiledMap 使用手册</title>
+  <style>
+    :root{color-scheme:dark;--bg:#171a1e;--panel:#22262b;--panel2:#292e34;--line:#3a4148;--text:#e5e9ec;--muted:#a9b2b9;--accent:#31b9a6;--orange:#e1a142}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 "Segoe UI","Microsoft YaHei",sans-serif}
+    header{position:sticky;top:0;z-index:2;padding:17px 28px;background:#202429;border-bottom:1px solid var(--line)}header strong{font-size:20px}header span{margin-left:12px;color:var(--muted)}
+    .layout{display:grid;grid-template-columns:220px minmax(0,920px);gap:32px;max-width:1220px;margin:auto;padding:28px}nav{position:sticky;top:88px;align-self:start}
+    nav a{display:block;padding:7px 10px;color:var(--muted);text-decoration:none;border-left:2px solid transparent}nav a:hover{color:var(--text);border-color:var(--accent)}
+    section{margin-bottom:36px}h1{font-size:30px}h2{padding-bottom:8px;border-bottom:1px solid var(--line);font-size:22px}h3{font-size:17px}.lead{font-size:17px;color:#c6ced3}
+    .note{padding:13px 16px;background:#1d3431;border-left:3px solid var(--accent)}.warn{background:#3a3020;border-left-color:var(--orange)}
+    .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:6px}.card h3{margin:0 0 7px}
+    table{width:100%;border-collapse:collapse;background:var(--panel)}th,td{padding:10px 12px;border:1px solid var(--line);text-align:left;vertical-align:top}th{background:var(--panel2)}
+    code{font-family:Cascadia Code,Consolas,monospace;color:#bfeee7}pre{overflow:auto;padding:16px;background:#111418;border:1px solid var(--line);border-radius:5px}
+    figure{margin:18px 0;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}figure img{display:block;width:100%}figcaption{padding:12px 15px;color:var(--muted);border-top:1px solid var(--line)}
+    li{margin:5px 0}@media(max-width:800px){.layout{display:block;padding:18px}nav{position:static;margin-bottom:24px}.cards{grid-template-columns:1fr}header span{display:block;margin:4px 0 0}}
+  </style>
+</head><body><header><strong>TiledMap</strong><span>稀疏 Tilemap、Atlas Palette、编辑器画笔与合批渲染</span></header>
+<div class="layout"><nav>
+  <a href="#overview">概览</a><a href="#quickstart">快速开始</a><a href="#examples">完整示例</a>
+  <a href="#assets">组件与资源</a><a href="#painting">编辑器绘制</a><a href="#api">API</a>
+  <a href="#rendering">渲染与合批</a><a href="#extend">如何扩展</a><a href="#debug">排错</a>
+</nav><main>
+<section id="runtime-contract"><h2>运行、分包与验证</h2><p>TilePalette 描述贴图与 TileDefinition 的 atlas 区域。Tilemap 保存坐标与图块，TilemapRenderer 参与场景排序与相机裁剪。ITilemapTextureSource 隔离纹理字节来源；GPU 上传在缓存缺失时执行，资源缓存代次变化会释放旧贴图。</p>
+<h3>快速开始</h3><ol><li>导入无压缩像素 atlas 并建立 Palette，明确图块宽高、留边、间距和坐标原点，先只绘制一个图块核对 UV。</li><li>创建 Tilemap 与 TilemapRenderer，在 Tile Palette 窗口选择图块和绘制工具；使用实际 Sprite 的 pixelsPerUnit 配合相机 assetsPPU。</li><li>用 RuntimePainting 示例验证运行时写入和清除；在地图边界移动相机检查裁剪、图块变换和排序。</li></ol>
+<h3>组件与 API</h3><p>TilePalette, TileDefinition, Tilemap, TilemapRenderer, TileCoordinate, TileTransformFlags, ITilemapTextureSource</p><pre><code>var tilemap = scene.CreateGameObject("Map").AddComponent&lt;Tilemap&gt;();
+var renderer = tilemap.gameObject.AddComponent&lt;TilemapRenderer&gt;();
+var pixel = camera.gameObject.AddComponent&lt;PixelPerfectCamera&gt;();
+pixel.assetsPPU = 16;
+pixel.refResolutionX = 320;
+pixel.refResolutionY = 180;</code></pre>
+<h3>扩展与平台接口</h3><p>运行时使用 Fix64 和主线程 BTask；通过平台服务读写资源，不直接创建主机文件或网络连接。编辑器代码放在 Editor 装配，停止场景时取消请求并解除订阅。</p>
+<h3>资源分包与更新</h3><p>AssetImporter.assetBundleName/assetBundleVariant 指定资源组；BuildPipeline.BuildAssetBundles 接受导入设置或 AssetBundleBuild[]。跨包引用记录为目录依赖。RequiredBundleNames 控制首次安装，IAssetBundleDownloadManager 下载可选组和依赖。已安装可选包参与之后的版本更新。</p>
+<h3>行为边界</h3><p>瓦片采样固定为 Point/ClampToEdge，适合像素 atlas；没有自动透明边缘扩展或任意纹理过滤切换。旋转/非整数缩放会改变像素覆盖，PixelPerfectCamera 只吸附图块中心。地图渲染仍需处理可见格子数量，避免每帧重建整张 Palette。</p><h3>排查与验证</h3><ul><li>图块边缘出现邻图颜色：检查 atlas UV、间距和边缘填充；不要对像素图使用双线性缩放。</li><li>热更新后仍是旧图：资源更新必须通过引擎激活目录或 BAsset 缓存失效路径，自定义源更新时也应触发同一机制。</li><li>地图闪烁或排序错误：确认 TilemapRenderer 的排序层和顺序，与普通 SpriteRenderer 使用一致的层配置。</li><li>对相机施加小于半个源像素的移动，比较开启吸附前后图块边缘稳定性。</li><li>以相同路径激活新纹理，确认下一帧替换 GPU 贴图；在大小写敏感资源源上分别测试不同大小写路径。</li><li>用密集可见地图记录稳态分配；四角与 UV 使用栈内缓冲，顶点 List 保留容量供后续帧复用。</li></ul>
+<p>Package Manager 导入示例：AtlasPalette、RuntimePainting。在 Project 打开场景，检查 Hierarchy/Inspector，比较 Scene 与 Game，Play 后查看 Console，Stop 后再次运行。</p>
+<p>本包增加配置、运行时、验证三份 Skills。详细说明见 <a href="RuntimeGuide.md">运行与扩展指南</a>。</p></section>
+<section id="overview"><h1>TiledMap 使用手册</h1>
+  <p class="lead">TiledMap 提供稀疏整数网格、TilePalette YAML 资源、TextureAtlas 导入、
+  Scene 选取/Gizmos、可撤销画笔和基于相机的批量渲染。Tile ID 0 永远表示空单元。</p>
+  <figure><img src="images/overview.png" alt="TiledMap 完整示例与 Inspector">
+    <figcaption>图 1：Hierarchy 直接保存 Atlas Tilemap、Palette Preview、Painted Cells 与 Camera；
+    中央 Scene 展示规则网格，右侧 Inspector 是 Tilemap、Renderer、Palette 和排序/剔除配置。</figcaption>
+  </figure>
+  <div class="note">SpriteRenderer 只引用 Sprite；图集关系由 SpriteAtlas 资源持有 Sprite 引用决定。
+  TiledMap 的 Palette 可以导入 TextureAtlas，并把其 Sprite UV 转换为 TileDefinition。</div>
+</section>
+
+<section id="quickstart"><h2>快速开始</h2><ol>
+  <li>在 <b>Window &gt; General &gt; Package Manager</b> 启用 <b>Tiled Map</b>。</li>
+  <li>从 Examples 导入 <b>Atlas Palette</b>。</li>
+  <li>打开 <code>Assets/Examples/AtlasPalette/res/AtlasPalette.scene.yaml</code>。</li>
+  <li>打开 <b>Window &gt; 2D &gt; Tile Palette</b>，载入示例 tilepalette.yaml。</li>
+  <li>也可在 Project 右键或顶部 Assets 使用 <b>Create &gt; 2D &gt; Tile Palette</b> 新建资源。</li>
+  <li>选择 Hierarchy 中的 Atlas Tilemap；窗口右侧网格随即成为绘制目标。</li>
+  <li>选择 Tile，切换 Paint/Erase/Flood 与 Transform Flags，点击网格；操作支持 Undo。</li>
+  <li>保存 Palette 与场景，进入 Play，在 Game 验证 Camera2D 裁剪和排序。</li>
+</ol><p class="note warn">Play 中 SetTile/BoxFill 只修改运行时场景镜像，停止后会丢弃。
+要持久化地图，请在编辑模式使用 Tile Palette 窗口并保存 scene.yaml。</p></section>
+
+<section id="examples"><h2>完整展示示例</h2>
+  <table><thead><tr><th>示例</th><th>直接序列化内容</th><th>学习点</th></tr></thead><tbody>
+    <tr><td>Atlas Palette</td><td>八个 TileCell、四项 Palette、旋转/翻转 Flags、TilemapRenderer、Camera2D</td>
+      <td>2x2 Atlas 切片、TextureAtlas 导入、Tile ID 与 UV、排序与合批。</td></tr>
+    <tr><td>Runtime Painting</td><td>Tilemap、Renderer、Palette 引用、RuntimePainter、Camera2D</td>
+      <td>BoxFill、SetTile、边框房间、运行时 TransformFlags 与资源隔离。</td></tr>
+  </tbody></table>
+  <p>两个 bpackage 都包含可直接打开的场景、Palette、脚本、asmdef 和详细 Readme。TiledMap 示例
+  从一开始就包含真实 Tilemap 组件和 Camera，不以空 Bootstrap 代替场景。</p>
+</section>
+
+<section id="assets"><h2>组件与资源介绍</h2>
+  <div class="cards">
+    <article class="card"><h3>Tilemap</h3><p>paletteAsset、cellSize、cellGap、tileAnchor 与稀疏
+      TileCell 集合。提供坐标转换、读写、区域填充、洪泛、替换与 Bounds。</p></article>
+    <article class="card"><h3>TilemapRenderer</h3><p>继承 Renderer2D；配置 sortingLayer、
+      orderInLayer、opacity、material、color、sortOrder 和 cullOutsideCamera。</p></article>
+    <article class="card"><h3>TilePalette</h3><p>Name、Atlas、Columns、Rows、Tiles。
+      SliceAtlas 规则切片；ImportAtlas 从 TextureAtlas 的 Sprite 名称和 UV 生成定义。</p></article>
+    <article class="card"><h3>TileDefinition / TileCell</h3><p>Definition 保存正 ID、Name、Texture、
+      归一化 UV、RGBA Tint 和 HasCollider；Cell 保存坐标、Tile ID、Tint 与 Transform Flags。</p></article>
+  </div>
+  <table><thead><tr><th>Transform Flag</th><th>用途</th></tr></thead><tbody>
+    <tr><td>FlipX / FlipY</td><td>不增加图集 Sprite 的水平/垂直镜像。</td></tr>
+    <tr><td>Rotate90 / Rotate180</td><td>按 2D 单元中心旋转；可与 Flip 组合。</td></tr>
+    <tr><td>None</td><td>按 Palette UV 原样绘制。</td></tr>
+  </tbody></table>
+</section>
+
+<section id="painting"><h2>编辑器绘制工作流</h2><ol>
+  <li>使用 <b>GameObject &gt; 2D Object &gt; Tilemap</b> 创建带 Tilemap + TilemapRenderer 的对象。</li>
+  <li>使用 Assets/Create/2D/Tile Palette 创建 Palette，打开 Window/2D/Tile Palette。</li>
+  <li>设置 Atlas 工程路径和 Columns/Rows，点击 Slice Atlas；若路径为 .atlas.yaml，点击
+    Import Texture Atlas 直接采用图集 Sprite。</li>
+  <li>选择 Tile，修改 Tile Name 与 Collider 标记并保存 Palette。</li>
+  <li>选中 Tilemap 对象，点击 Assign Current Palette。</li>
+  <li>用 Paint、Erase、Flood 编辑单元；用 Transform 下拉设置旋转/翻转；Box Fill 批量填充。</li>
+  <li>每次绘制都会 Undo.RecordObject、SetDirty 并 Repaint Scene；Ctrl+Z 可撤销。</li>
+</ol></section>
+
+<section id="grids"><h2>等距、六边形与 Prefab 笔刷</h2>
+<p>Tilemap 的 cellLayout 支持 Rectangle、Isometric、HexagonPointTop 和 HexagonFlatTop。cellSize 是格子轮廓的包围尺寸；默认锚点为 (0.5,0.5)。非矩形原点格中心为 (0,0)，六边形使用轴坐标 (q,r)，Flood 沿六个相邻格传播。</p>
+<p>渲染、Scene 拾取和碰撞采用真实菱形/六边形轮廓，支持旋转、镜像和非等比缩放；UV 按轮廓包围矩形映射。等距和六边形碰撞不会按矩形合并。旧地图默认保持 Rectangle。</p>
+<p>Tile Palette 的 Prefab Brush 选择 Prefab 后，可用 Paint、Erase 和 Box Fill 在 Scene 创建保留来源的子对象，支持拖动补点和整笔 Undo/Redo。清空字段恢复瓦片绘制。保存重载后仍可按格子擦除；普通子对象不受影响。Prefab 笔刷不支持 Flood/Pick/Move，改变网格布局不会重新摆放既有 Prefab。</p>
+</section>
+<section id="api"><h2>运行时 API</h2>
+  <table><thead><tr><th>API</th><th>说明</th></tr></thead><tbody>
+    <tr><td>GetTile / GetCell / HasTile</td><td>读取 ID、完整 Cell 或判断坐标是否占用。</td></tr>
+    <tr><td>SetTile / ClearTile / ClearAllTiles</td><td>写入或删除稀疏单元。</td></tr>
+    <tr><td>BoxFill / FloodFill / SwapTile</td><td>批量区域、连通区域和 ID 替换。</td></tr>
+    <tr><td>GetBounds / GetTiles(sortOrder)</td><td>读取紧致边界或按渲染顺序枚举。</td></tr>
+    <tr><td>CellToLocal / CellToWorld / WorldToCell</td><td>在整数网格和 Transform 空间间转换。</td></tr>
+    <tr><td>SetPaletteOverride / TryGetPalette / RefreshAllTiles</td><td>运行时 Palette、解析资源与刷新 Revision。</td></tr>
+  </tbody></table>
+  <pre><code>using BEngine.TiledMap;
+
+public void BuildRoom(Tilemap map)
+{
+    map.ClearAllTiles();
+    map.BoxFill(new TileCoordinate(-6, -4), new TileCoordinate(6, 4), 1);
+    map.BoxFill(new TileCoordinate(-5, -3), new TileCoordinate(5, 3), 0);
+    map.SetTile(new TileCoordinate(0, 0), 2,
+        TileTransformFlags.Rotate90 | TileTransformFlags.FlipX);
+}</code></pre>
+</section>
+
+<section id="rendering"><h2>渲染顺序与合批</h2>
+  <p>Tile 单元与 Sprite、Particle、UI 一样进入统一 2D 排序：Sorting Layer → Order In Layer →
+  Hierarchy → 透明度/稳定顺序。TilemapRenderer 的 sortOrder 决定同一 Tilemap 内单元遍历方向。
+  Camera2D cullingMask 必须包含 Renderer 的世界层；cullOutsideCamera 会在提交前剔除视口外单元。</p>
+  <p>能否合批由 <b>Material + Shader + Atlas/Texture</b> 决定。相邻 Tile 使用同一 Renderer Material
+  和同一 Palette Atlas 时可共享 Batch；不同材质、Shader 或 Texture 会断开。透明度和排序约束
+  仍优先于合批，不能为减少 Draw Call 改变正确的视觉顺序。</p>
+</section>
+
+<section id="extend"><h2>如何扩展</h2>
+  <h3>自定义生成器</h3><ol><li>Runtime asmdef 引用 BEngine.TiledMap。</li>
+    <li>缓存 Tilemap，用确定性种子生成 TileCoordinate 序列。</li>
+    <li>批量使用 BoxFill/SwapTile，完成后一次 RefreshAllTiles。</li>
+    <li>需要临时 Palette 时使用 SetPaletteOverride；需要资源持久化时只在编辑模式 Save。</li></ol>
+  <h3>自定义编辑器工具</h3><p>把窗口/菜单放入 Editor asmdef。编辑前调用 Undo.RecordObject，
+  修改后 EditorUtility.SetDirty(tilemap) 与 SceneView.RepaintAll。Asset 创建命令使用
+  AssetDatabase.GenerateUniqueAssetPath，顶部 Assets 菜单与 Project 右键会自动共享外部 MenuItem。</p>
+</section>
+
+<section id="debug"><h2>排错</h2><table><tbody>
+  <tr><th>只显示检查纹理</th><td>Palette.Atlas 未设置或路径错误；指定 PNG/TextureAtlas 并保存 Palette。</td></tr>
+  <tr><th>画笔没有目标</th><td>在 Hierarchy 选择带 Tilemap 的 GameObject。</td></tr>
+  <tr><th>Tile 不显示</th><td>确认 ID 大于 0、Palette 中存在定义、Camera mask 包含 sortingLayer、opacity 非 0。</td></tr>
+  <tr><th>合批被拆开</th><td>比较 Material、Shader、Atlas/Texture 和排序连续性。</td></tr>
+  <tr><th>Play 后地图恢复</th><td>运行时隔离的预期行为；在编辑模式绘制并保存场景。</td></tr>
+</tbody></table></section>
+</main></div></body></html>

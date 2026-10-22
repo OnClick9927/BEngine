@@ -1,0 +1,13 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.SpriteSkinning2D.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.PlayerBuild.Editor
+- BEngine.SpriteSkinning2D
+includePlatforms:
+- Editor
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+    <AssemblyName>BEngine.PixelPerfect2D</AssemblyName>
+    <RootNamespace>BEngine</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>

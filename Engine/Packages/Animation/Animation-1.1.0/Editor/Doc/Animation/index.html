@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BEngine Animation 详细文档</title>
+  <style>
+    :root{color-scheme:dark;font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;background:#17191c;color:#f1f3f5;--bg:#17191c;--surface:#22252a;--surface2:#292d32;--line:#3b4148;--muted:#b8bec5;--accent:#58c5b8;--accent2:#f2cb78;--danger:#ec8b8b}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg)}.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:12px;height:58px;padding:0 24px;background:#202328;border-bottom:1px solid var(--line)}.mark{display:grid;place-items:center;width:30px;height:30px;border:1px solid var(--accent);color:var(--accent);font-weight:800}.top strong{font-size:16px}.top small{color:var(--muted)}.shell{display:grid;grid-template-columns:230px minmax(0,900px);gap:38px;max-width:1220px;margin:auto}.nav{position:sticky;top:78px;align-self:start;display:grid;padding:26px 10px}.nav a{padding:8px 10px;border-left:2px solid transparent;color:var(--muted);text-decoration:none}.nav a:hover{color:#fff;border-left-color:var(--accent);background:var(--surface)}main{min-width:0;padding:44px 22px 96px}section{scroll-margin-top:78px;padding-bottom:38px;margin-bottom:38px;border-bottom:1px solid #30353a}h1{margin:4px 0 12px;font-size:38px;letter-spacing:0}h2{margin:0 0 16px;font-size:23px;letter-spacing:0}h3{margin:22px 0 10px;font-size:17px;letter-spacing:0}p,li,td{color:#c9ced4;line-height:1.72}.lead{font-size:18px}.eyebrow{color:var(--accent);font-weight:700;font-size:12px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.card{padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:4px}.card h3{margin:0 0 8px}.note,.warning{padding:13px 15px;margin:16px 0;background:#202a2a;border-left:3px solid var(--accent);color:#d8dcdf}.warning{background:#2b2525;border-left-color:var(--danger)}figure{margin:24px 0;background:#111315;border:1px solid var(--line);border-radius:4px;overflow:hidden}figure img{display:block;width:100%;height:auto;min-height:220px;object-fit:contain;background:#111315}figcaption{padding:11px 14px;color:var(--muted);border-top:1px solid var(--line)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:4px}table{width:100%;border-collapse:collapse;min-width:680px}th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid #353a40}th{color:#f0f2f4;background:var(--surface2)}tr:last-child td{border-bottom:0}code,pre{font-family:"Cascadia Mono",Consolas,monospace}code{color:var(--accent2)}pre{overflow:auto;padding:16px;background:#101214;border:1px solid #373c42;border-radius:4px;line-height:1.6}pre code{color:#dce1e5}.steps{counter-reset:step;list-style:none;padding:0}.steps li{position:relative;padding:4px 0 14px 42px;counter-increment:step}.steps li::before{content:counter(step);position:absolute;left:0;top:2px;display:grid;place-items:center;width:27px;height:27px;border:1px solid var(--accent);color:var(--accent);font-weight:700}kbd{padding:1px 6px;background:#30343a;border:1px solid #555c64;border-radius:3px;color:#fff}@media(max-width:780px){.shell{display:block}.nav{position:static;grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 16px;border-bottom:1px solid var(--line)}main{padding-top:28px}.grid{grid-template-columns:1fr}h1{font-size:31px}.top small{display:none}}
+  </style>
+</head>
+<body>
+  <header class="top"><span class="mark">A</span><strong>BEngine Animation</strong><small>com.bengine.animation</small></header>
+  <div class="shell">
+    <nav class="nav" aria-label="章节">
+      <a href="#overview">包概览</a><a href="#install">依赖与安装</a><a href="#examples">可导入示例</a>
+      <a href="#quickstart">快速开始</a><a href="#components">组件字段</a><a href="#assets">资源字段</a>
+      <a href="#runtime">运行时 API</a><a href="#editor">编辑器 API</a><a href="#workflow">完整工作流</a>
+      <a href="#extend">如何扩展</a><a href="#debug">调试与常见问题</a>
+    </nav>
+    <main>
+<section id="runtime-contract"><h2>运行、分包与验证</h2><p>Animator.Play(name) 立即选择状态；CrossFade(name, normalizedDuration) 按源 Clip 长度计算过渡时间。SetFloat/SetInteger/SetBool/SetTrigger 更新参数，IsInTransition(0) 查询实际过渡。applyRootMotion 将根 Transform 的位移和旋转增量应用到对象；deltaPosition/deltaRotation 暴露本次增量。</p>
+<h3>快速开始</h3><ol><li>创建 Clip，绑定 Transform.localPosition.x 或 localRotation；关键帧时间、数值和切线使用 Fix64。先用两个关键帧确认插值方向。</li><li>创建 Controller，加入命名状态和默认状态。将 Controller 指向 Animator；先调用 Play 验证绑定，再添加参数条件与退出时间。</li><li>设置 CrossFade 的归一化时长，观察过渡中点和终点。为事件添加 MonoBehaviour 接收方法，跨越多个循环检查次数和顺序。</li></ol>
+<h3>组件与 API</h3><p>AnimationCurve, AnimationClip, AnimatorController, AnimatorState, Animator, Animation</p><pre><code>animator.Play("Idle");
+animator.SetFloat("Speed", Fix64.One);
+animator.CrossFade("Run", Fix64.Parse("0.2"));
+animator.applyRootMotion = true;</code></pre>
+<h3>扩展与平台接口</h3><p>运行时使用 Fix64 和主线程 BTask；通过平台服务读写资源，不直接创建主机文件或网络连接。编辑器代码放在 Editor 装配，停止场景时取消请求并解除订阅。</p>
+<h3>资源分包与更新</h3><p>AssetImporter.assetBundleName/assetBundleVariant 指定资源组；BuildPipeline.BuildAssetBundles 接受导入设置或 AssetBundleBuild[]。跨包引用记录为目录依赖。RequiredBundleNames 控制首次安装，IAssetBundleDownloadManager 下载可选组和依赖。已安装可选包参与之后的版本更新。</p>
+<h3>行为边界</h3><p>Animator 当前提供一个基础层，layer 为 0 或默认 -1；不提供 Humanoid、Avatar、BlendTree 或多层混合。根运动只解释本引擎二维根 Transform 曲线。中断正在进行的过渡时，源状态使用当前目标状态，不保存完整混合姿态。</p><h3>排查与验证</h3><ul><li>画面不动：核对 Clip 路径、绑定成员大小写、对象相对路径、组件启用状态与默认状态名称。</li><li>事件重复或缺失：记录归一化时间和播放方向，检查同一时刻是否在 Clip 内重复定义事件；事件回调调用 Play 会终止旧状态剩余回调。</li><li>CPU 读文件：Clip/Controller 应经 BAsset 缓存加载；热更新激活后缓存代次改变，下次访问重新加载，勿在 Update 手工解析 YAML。</li><li>让一次 Tick 跨越 2.5 个循环，再反向跨越 2 个循环，确认事件和根位移都连续。</li><li>对相同两个常量姿态，在过渡一半时检查数值为中间值，在结束时 IsInTransition(0) 为 false。</li><li>在独立场景和 TickAll 的多场景模式下比较同样输入的状态结果。</li></ul>
+<p>Package Manager 导入示例：AnimationGettingStarted、StateMachine。在 Project 打开场景，检查 Hierarchy/Inspector，比较 Scene 与 Game，Play 后查看 Console，Stop 后再次运行。</p>
+<p>本包增加配置、运行时、验证三份 Skills。详细说明见 <a href="RuntimeGuide.md">运行与扩展指南</a>。</p></section>
+      <section id="overview">
+        <p class="eyebrow">DETERMINISTIC 2D ANIMATION</p>
+        <h1>Animation</h1>
+        <p class="lead">Animation 包提供 Fix64 曲线、Clip、事件、单 Clip 播放组件，以及由参数、状态、条件和过渡构成的 Animator Controller。</p>
+        <div class="grid">
+          <article class="card"><h3>确定性数据</h3><p>时间、值和切线使用 Fix64，Clip 与 Controller 使用可审查的 YAML 文档。</p></article>
+          <article class="card"><h3>2D 属性绑定</h3><p>支持 Transform 的 X/Y、标量旋转，以及自定义组件上的可写 Fix64/int 成员。</p></article>
+          <article class="card"><h3>两种播放模型</h3><p>Animation 直接播放一个 Clip；Animator 根据参数、条件和退出时间选择 State。</p></article>
+          <article class="card"><h3>Scene 系统</h3><p>AnimationRuntimeSystem 通过包 DI 模块注册，在单线程 Scene Update 中以 order 50 执行。</p></article>
+        </div>
+        <figure>
+          <img src="images/overview.png" alt="Animation Clip、Animator Controller、组件与 Game 预览工作流">
+          <figcaption>Animation 工作流：创建 Clip 和 Controller，将其分配给 Animation/Animator 组件，在 Play 中通过参数驱动状态并观察 Game 与 Console。</figcaption>
+        </figure>
+      </section>
+
+      <section id="install">
+        <h2>依赖与安装</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>项目</th><th>值</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>包 ID</td><td><code>com.bengine.animation</code></td><td>用于工程包清单与 Runtime Package State</td></tr>
+            <tr><td>运行时程序集</td><td><code>BEngine.Animation</code></td><td>组件、曲线、资源和 Scene System</td></tr>
+            <tr><td>编辑器程序集</td><td><code>BEngine.Editor</code></td><td>编辑器侧包边界</td></tr>
+            <tr><td>依赖</td><td><code>BEngine</code></td><td>不依赖 Physics2D、Navigation2D 或 UIElements</td></tr>
+            <tr><td>资源后缀</td><td><code>.anim.yaml</code>, <code>.controller.yaml</code></td><td>由 Document Converter 验证和保存</td></tr>
+          </tbody>
+        </table></div>
+        <ol class="steps">
+          <li>Window &gt; Package Manager 选择 Animation 并启用。</li>
+          <li>等待运行时与编辑器程序集加载，确认 Console 无错误。</li>
+          <li>项目脚本 asmdef 引用 <code>BEngine.Animation</code>；包禁用前移除 Scene 中的 Animation 类型引用。</li>
+        </ol>
+      </section>
+
+      <section id="examples">
+        <h2>可导入示例</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>示例</th><th>导入目录</th><th>场景</th><th>输入与学习点</th></tr></thead>
+          <tbody>
+            <tr><td>Animation Getting Started</td><td><code>Assets/Examples/AnimationGettingStarted</code></td><td><code>res/Animation.scene.yaml</code></td><td>Space 暂停；Up/Down 调速；曲线与事件</td></tr>
+            <tr><td>Animator State Machine</td><td><code>Assets/Examples/StateMachine</code></td><td><code>res/StateMachine.scene.yaml</code></td><td>Space 切换 Spin；Enter 触发 Pulse；Bool/Trigger 过渡</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="quickstart">
+        <h2>快速开始：从 Import 到 Play</h2>
+        <ol class="steps">
+          <li>Package Manager 选择 Animation，进入 Examples 页签，在目标示例行点击 Import。</li>
+          <li>等待脚本编译，在 Project 打开对应的 <code>Assets/Examples/.../res/*.scene.yaml</code>。</li>
+          <li>确认 Console 无错误，点击 Play。Getting Started 会创建循环 Bounce Clip 与事件。</li>
+          <li>按 <kbd>Space</kbd> 暂停/恢复，按 <kbd>Up</kbd>/<kbd>Down</kbd> 调整 Animator speed。</li>
+          <li>打开 StateMachine 场景，按 <kbd>Space</kbd> 切换 Bool 参数，按 <kbd>Enter</kbd> 写入一次 Trigger。</li>
+          <li>停止 Play，阅读导入目录的 runtime 脚本；运行时创建的 Controller 不会写回场景或资产。</li>
+        </ol>
+      </section>
+
+      <section id="components">
+        <h2>组件字段表</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>组件</th><th>字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>Animation</td><td><code>clipPath</code></td><td>AnimationClip 的 Assets/Packages 路径</td></tr>
+            <tr><td>Animation</td><td><code>playAutomatically</code></td><td>Update 首次执行时自动 Play</td></tr>
+            <tr><td>Animation</td><td><code>isPlaying</code></td><td>只读运行状态</td></tr>
+            <tr><td>Animator</td><td><code>controllerPath</code></td><td>持久 AnimatorController 路径</td></tr>
+            <tr><td>Animator</td><td><code>runtimeAnimatorController</code></td><td>仅运行时直接引用，不在 Inspector 显示</td></tr>
+            <tr><td>Animator</td><td><code>speed</code></td><td>全局速度，与 State speed 相乘</td></tr>
+            <tr><td>Animator</td><td><code>playOnAwake</code></td><td>自动进入 defaultState</td></tr>
+            <tr><td>Animator</td><td><code>applyRootMotion</code></td><td>应用二维根 Transform 位移与旋转增量</td></tr>
+            <tr><td>Animator</td><td><code>currentStateName/normalizedTime</code></td><td>只读状态调试信息</td></tr>
+          </tbody>
+        </table></div>
+        <p>两个组件都禁止在同一 GameObject 上重复添加，Add Component 路径分别为 <strong>Animation/Animation</strong> 与 <strong>Animation/Animator</strong>。</p>
+      </section>
+
+      <section id="assets">
+        <h2>资源字段表</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>类型</th><th>字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>AnimationClip</td><td><code>frameRate/wrapMode/legacy</code></td><td>帧率信息、包装方式和兼容标记</td></tr>
+            <tr><td>AnimationClip</td><td><code>bindings/events</code></td><td>曲线绑定和按时间排序的事件</td></tr>
+            <tr><td>AnimationBinding</td><td><code>relativePath/componentType/propertyName</code></td><td>从动画根定位 GameObject、组件和成员</td></tr>
+            <tr><td>AnimationCurve</td><td><code>keys/preWrapMode/postWrapMode</code></td><td>Keyframe 与范围外求值</td></tr>
+            <tr><td>Keyframe</td><td><code>time/value/inTangent/outTangent</code></td><td>Fix64 关键帧数据</td></tr>
+            <tr><td>AnimationEvent</td><td><code>time/functionName</code></td><td>对同一 GameObject 的启用 MonoBehaviour 发送消息</td></tr>
+            <tr><td>AnimatorController</td><td><code>defaultState/parameters/states</code></td><td>状态机根数据</td></tr>
+            <tr><td>AnimatorState</td><td><code>clipPath/speed/loop/transitions</code></td><td>状态 Clip、速度和出边</td></tr>
+            <tr><td>AnimatorTransition</td><td><code>destinationState/hasExitTime/exitTime/duration</code></td><td>目标与退出配置；duration 暂不混合</td></tr>
+            <tr><td>AnimatorCondition</td><td><code>parameter/mode/threshold</code></td><td>If、IfNot、Greater、Less、Equals、NotEqual</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note">Transform 绑定使用 <code>localPosition.x/y</code>、<code>localRotation</code>、<code>localScale.x/y</code>。relativePath 为空表示动画根，非空时按子对象名称和 `/` 逐级查找。</div>
+      </section>
+
+      <section id="runtime">
+        <h2>运行时 API</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>API</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td><code>Animation.Play/Stop</code></td><td>从头播放或停止单 Clip</td></tr>
+            <tr><td><code>AnimationCurve.AddKey/MoveKey/RemoveKey/Evaluate</code></td><td>构建与求值曲线</td></tr>
+            <tr><td><code>AnimationCurve.Linear</code></td><td>创建线性曲线</td></tr>
+            <tr><td><code>AnimationClip.SetCurve</code></td><td>新增、替换；传 null 删除绑定</td></tr>
+            <tr><td><code>AnimationClip.AddEvent/SampleAnimation</code></td><td>添加事件或立即采样</td></tr>
+            <tr><td><code>Animator.Play/CrossFade/HasState</code></td><td>状态控制；CrossFade 进行有时长的姿态混合</td></tr>
+            <tr><td><code>SetFloat/Integer/Bool/Trigger</code></td><td>写入状态机参数</td></tr>
+            <tr><td><code>GetFloat/Integer/Bool/ResetTrigger</code></td><td>读取或清除参数</td></tr>
+            <tr><td><code>AnimationClip.Save/Load</code></td><td>保存和加载 `.anim.yaml`</td></tr>
+            <tr><td><code>AnimatorController.Save/Load</code></td><td>保存和加载 `.controller.yaml`</td></tr>
+          </tbody>
+        </table></div>
+        <pre><code>using BEngine;
+using BEngine;
+
+public sealed class BounceOnStart : MonoBehaviour
+{
+    public override void Start()
+    {
+        var clip = new AnimationClip
+            { frameRate = 30, wrapMode = WrapMode.Loop };
+        clip.SetCurve("", typeof(Transform), "localPosition.y",
+            new AnimationCurve(
+                new Keyframe(0, 0),
+                new Keyframe(1, 2),
+                new Keyframe(2, 0)));
+        clip.AddEvent(new AnimationEvent
+            { time = 1, functionName = nameof(OnPeak) });
+
+        var controller = new AnimatorController
+            { defaultState = "Bounce" };
+        controller.AddState(new AnimatorState
+            { name = "Bounce", clip = clip, loop = true });
+
+        var animator = gameObject.AddComponent&lt;Animator&gt;();
+        animator.runtimeAnimatorController = controller;
+        animator.Play("Bounce");
+    }
+
+    private void OnPeak(AnimationEvent value) =&gt;
+        Debug.Log("Animation peak");
+}</code></pre>
+      </section>
+
+      <section id="editor">
+        <h2>编辑器 API</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>入口/API</th><th>结果</th></tr></thead>
+          <tbody>
+            <tr><td>Assets &gt; Create &gt; Animation &gt; Animation Clip</td><td>创建 `New Animation.anim.yaml`</td></tr>
+            <tr><td>Assets &gt; Create &gt; Animation &gt; Animator Controller</td><td>创建 `.controller.yaml`</td></tr>
+            <tr><td>Add Component &gt; Animation/Animation</td><td>添加单 Clip 组件</td></tr>
+            <tr><td>Add Component &gt; Animation/Animator</td><td>添加状态机组件</td></tr>
+            <tr><td><code>AssetDatabase.LoadAssetAtPath&lt;AnimationClip&gt;</code></td><td>编辑器加载资源</td></tr>
+            <tr><td><code>EditorUtility.SetDirty + AssetDatabase.SaveAssets</code></td><td>保存编辑态工具修改</td></tr>
+            <tr><td><code>DocumentConversionRegistry</code></td><td>包内部在模块初始化时注册 Clip/Controller converter</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="workflow">
+        <h2>编辑器完整工作流</h2>
+        <ol class="steps">
+          <li>Project 创建 Animation Clip，设置 frameRate 与 wrapMode。</li>
+          <li>为 bindings 填写 relativePath、componentType、propertyName，并添加按 time 排序的 Keyframe。</li>
+          <li>需要事件时填写 time 和 functionName；目标方法位于同一 GameObject 的启用 MonoBehaviour。</li>
+          <li>简单播放添加 Animation 并填写 clipPath；复杂切换创建 Animator Controller。</li>
+          <li>Controller 先声明唯一命名参数，再添加唯一命名 State 并设置 defaultState。</li>
+          <li>Transition 的 destinationState 必须存在；Bool/Trigger 使用 If/IfNot，数值使用比较模式与 threshold。</li>
+          <li>对象添加 Animator，填写 controllerPath，进入 Play 由脚本写参数并观察 currentStateName。</li>
+          <li>停止 Play 后在编辑态保存资源；运行时 Controller 不会写回资产。</li>
+        </ol>
+      </section>
+
+      <section id="extend">
+        <h2>如何扩展</h2>
+        <p>采样器可写入自定义组件的公开或可反射写入的 Fix64/int 成员。组件通过 <code>[AddComponentMenu]</code> 自动注册，绑定使用完整组件类型和成员名。</p>
+        <pre><code>using BEngine;
+using BEngine;
+
+[AddComponentMenu("Gameplay/Pulse Target")]
+public sealed class PulseTarget : MonoBehaviour
+{
+    public Fix64 intensity { get; set; }
+
+    public override void Start()
+    {
+        var clip = new AnimationClip { wrapMode = WrapMode.Loop };
+        clip.SetCurve("", typeof(PulseTarget), nameof(intensity),
+            AnimationCurve.Linear(0, 0, 1, 1));
+        clip.SampleAnimation(gameObject, Fix64.Half);
+        Debug.Log($"Intensity = {intensity}");
+    }
+}</code></pre>
+        <p>自定义动画资源格式可在运行时程序集实现 `DocumentConverter&lt;TDocument,TObject&gt;`，由模块初始化器调用 `DocumentConversionRegistry.Register` 和 `DocumentValidationRegistry.Register`。Editor 文件型资源再通过 `AssetTypeRegistry.Register&lt;TAsset&gt;` 绑定后缀、loader 与图标。</p>
+      </section>
+
+      <section id="debug">
+        <h2>调试与常见问题</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>现象</th><th>检查与处理</th></tr></thead>
+          <tbody>
+            <tr><td>找不到组件</td><td>启用包、等待编译、检查 asmdef 是否引用 BEngine.Animation</td></tr>
+            <tr><td>Play 没有动画</td><td>组件 enabled、对象 active、路径、defaultState、playOnAwake</td></tr>
+            <tr><td>资源路径失败</td><td>使用 Assets/Packages 稳定路径及完整 `.anim.yaml`/`.controller.yaml` 后缀</td></tr>
+            <tr><td>曲线不生效</td><td>relativePath、componentType、成员名、Fix64/int 可写类型</td></tr>
+            <tr><td>事件不触发</td><td>方法位于同一对象启用 MonoBehaviour，可接收 AnimationEvent 或无参数</td></tr>
+            <tr><td>Trigger 不切换</td><td>Controller 声明同名 Trigger 参数，Transition 条件名称完全一致</td></tr>
+            <tr><td>CrossFade 没混合</td><td>检查 duration、源 Clip 长度及两个状态的绑定数值</td></tr>
+            <tr><td>IsInTransition 始终 false</td><td>当前不维护混合阶段，是已知限制</td></tr>
+            <tr><td>停止 Play 后修改丢失</td><td>Play 使用镜像；资源编辑和保存必须在 Edit Mode 完成</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

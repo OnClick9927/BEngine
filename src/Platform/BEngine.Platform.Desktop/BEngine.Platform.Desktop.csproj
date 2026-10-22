@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine.Platform</RootNamespace>
+    <AssemblyName>BEngine.Platform.Desktop</AssemblyName>
+    <BEngineRuntimeAssembly>false</BEngineRuntimeAssembly>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BEngineDesktopGraphics Condition="'$(BEngineDesktopGraphics)' == ''">Both</BEngineDesktopGraphics>
+    <DefineConstants Condition="'$(BEngineDesktopGraphics)' != 'Vulkan'">$(DefineConstants);BENGINE_DESKTOP_OPENGL</DefineConstants>
+    <DefineConstants Condition="'$(BEngineDesktopGraphics)' != 'OpenGL'">$(DefineConstants);BENGINE_DESKTOP_VULKAN</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine.Platform.DotNet/BEngine.Platform.DotNet.csproj" />
+    <ProjectReference Include="../BEngine.Platform.Veldrid/BEngine.Platform.Veldrid.csproj" Condition="'$(BEngineDesktopGraphics)' != 'OpenGL'" />
+    <PackageReference Include="Silk.NET.OpenGL" Condition="'$(BEngineDesktopGraphics)' != 'Vulkan'" />
+    <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Input" />
+    <PackageReference Include="Silk.NET.Windowing.Sdl" />
+    <PackageReference Include="Silk.NET.Input.Sdl" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEngineDesktopGraphics)' == 'Vulkan'">
+    <Compile Remove="Rendering/OpenGL/**/*.cs" />
+    <Compile Remove="Rendering/SceneFramebuffer.cs" />
+  </ItemGroup>
+  <Target Name="ValidateDesktopGraphics" BeforeTargets="BeforeBuild">
+    <Error Condition="'$(BEngineDesktopGraphics)' != 'Both' and '$(BEngineDesktopGraphics)' != 'OpenGL' and '$(BEngineDesktopGraphics)' != 'Vulkan'" Text="Unsupported BEngineDesktopGraphics: $(BEngineDesktopGraphics)" />
+  </Target>
+</Project>

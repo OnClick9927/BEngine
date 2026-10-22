@@ -1,0 +1,21 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.art-import2d
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Art Import 2D
+description: Layered PSD/PSB and tagged RGBA, grayscale or indexed Aseprite import with stable generated texture references.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.ArtImport2D
+  rootNamespace: BEngine
+editor:
+  assembly: BEngine.ArtImport2D.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.art-import2d
+    target: runtime

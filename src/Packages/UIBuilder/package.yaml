@@ -1,0 +1,18 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.ui-builder
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: UIBuilder
+description: Visual authoring, previews and samples for UIElements documents.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+editor:
+  dependencies:
+  - packageId: com.bengine.ui-elements
+    target: editor
+  assembly: BEngine.UIBuilder.Editor
+  rootNamespace: BEngine.Editor

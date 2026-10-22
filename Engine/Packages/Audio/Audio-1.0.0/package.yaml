@@ -1,0 +1,30 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.audio
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Audio
+description: >-
+  WAV, MP3 and Ogg Vorbis clips with independent streaming voices, background loading, mono conversion and normalization.
+  Author mixer buses, ordered gain, parametric EQ, filter, distortion, chorus, delay, compressor and convolution-reverb effects,
+  plus pre/post-fader sends with snapshots, Undo and persistent assets. Includes looping, one-shots, editor preview and replaceable platform output.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Audio
+  rootNamespace: BEngine.Audio
+  dependencies: []
+  packageReferences:
+  - id: NVorbis
+    version: 0.10.5
+  - id: NLayer
+    version: 3.0.0
+editor:
+  assembly: BEngine.Audio.Editor
+  rootNamespace: BEngine.Audio.Editor
+  dependencies:
+  - packageId: com.bengine.audio
+    target: runtime

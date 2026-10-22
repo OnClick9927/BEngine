@@ -1,0 +1,22 @@
+<Project>
+  <!-- The SDK embeds these runtime options in the single-file host. Other
+       platforms and projects retaining RuntimeDefault receive no override. -->
+  <PropertyGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">
+    <ServerGarbageCollection Condition="'$(BEngineWindowsGarbageCollection)' == 'Server'">true</ServerGarbageCollection>
+    <ServerGarbageCollection Condition="'$(BEngineWindowsGarbageCollection)' == 'Workstation'">false</ServerGarbageCollection>
+  </PropertyGroup>
+  <ItemGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')) and '$(BEngineWindowsGarbageCollection)' == 'Server' and '$(BEngineWindowsGcHeapCount)' != '' and '$(BEngineWindowsGcHeapCount)' != '0'">
+    <RuntimeHostConfigurationOption Include="System.GC.HeapCount" Value="$(BEngineWindowsGcHeapCount)" />
+  </ItemGroup>
+  <Target Name="ValidateBEngineWindowsGarbageCollection" BeforeTargets="GenerateBuildRuntimeConfigurationFiles"
+          Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">
+    <Error Condition="'$(BEngineWindowsGarbageCollection)' != '' and '$(BEngineWindowsGarbageCollection)' != 'RuntimeDefault' and '$(BEngineWindowsGarbageCollection)' != 'Workstation' and '$(BEngineWindowsGarbageCollection)' != 'Server'"
+           Text="Invalid Windows garbage collection mode." />
+    <Error Condition="'$(BEngineWindowsGcHeapCount)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(BEngineWindowsGcHeapCount)', '^(0|[1-9][0-9]{0,9})$'))"
+           Text="Windows GC heap count must be a nonnegative integer." />
+    <Error Condition="'$(BEngineWindowsGcHeapCount)' != '' and '$(BEngineWindowsGcHeapCount)' &gt; '2147483647'"
+           Text="Windows GC heap count exceeds Int32.MaxValue." />
+    <Error Condition="'$(BEngineWindowsGcHeapCount)' != '' and '$(BEngineWindowsGcHeapCount)' != '0' and '$(BEngineWindowsGarbageCollection)' != 'Server'"
+           Text="An explicit Windows GC heap count requires Server GC." />
+  </Target>
+</Project>

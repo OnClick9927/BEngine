@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Lighting2D.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.PlayerBuild.Editor
+- BEngine.Lighting2D
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

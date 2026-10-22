@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine</RootNamespace>
+    <AssemblyName>BEngine.ParticlePhysics2D</AssemblyName>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Particles2D/BEngine.Particles2D/BEngine.Particles2D.csproj" />
+    <ProjectReference Include="../../Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
+  </ItemGroup>
+</Project>

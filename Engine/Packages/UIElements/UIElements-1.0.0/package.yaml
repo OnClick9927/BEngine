@@ -1,0 +1,28 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.ui-elements
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: UIElements
+description: Retained UI controls, UXML/UCSS, complex HarfBuzz text, native accessibility, input, rendering and editor integration.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.UIElements
+  rootNamespace: BEngine
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+  - id: SkiaSharp
+    version: 4.153.1
+  - id: SkiaSharp.HarfBuzz
+    version: 4.153.1
+editor:
+  assembly: BEngine.UIElements.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.ui-elements
+    target: runtime

@@ -1,0 +1,15 @@
+format: BEngine.Package
+version: 2
+id: com.bengine.standardasset
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+type: project
+projectDirectory: StandardAsset
+displayName: StandardAsset
+description: >-
+  Core-only, editable starter components: top-down movement, camera follow, rotation and bobbing.
+  Imported once into Assets/3rd/StandardAsset; no optional engine packages are required.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor

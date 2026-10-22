@@ -1,0 +1,103 @@
+// Shared fragment lighting for the Vulkan and OpenGL shader entry points.
+float cross2(vec2 a, vec2 b) { return a.x * b.y - a.y * b.x; }
+
+bool occluded(vec2 origin, vec2 point, int firstEdge, int edgeCount)
+{
+    vec2 ray = point - origin;
+    for (int index = 0; index < edgeCount; index++)
+    {
+        vec4 endpoints = uLighting[firstEdge + index];
+        vec2 edge = endpoints.zw - endpoints.xy;
+        float denominator = cross2(ray, edge);
+        if (abs(denominator) <= 0.00000001) continue;
+        vec2 offset = endpoints.xy - origin;
+        float rayTime = cross2(offset, edge) / denominator;
+        float edgeTime = cross2(offset, ray) / denominator;
+        if (rayTime > 0.000001 && rayTime < 0.999999 && edgeTime >= 0.0 && edgeTime <= 1.0)
+            return true;
+    }
+    return false;
+}
+
+float shapeAt(vec2 point, int firstEdge, int edgeCount, float falloff)
+{
+    bool inside = false;
+    float nearest = 1e20;
+    for (int index = 0; index < edgeCount; index++) {
+        vec4 edge = uLighting[firstEdge + index];
+        vec2 a = edge.xy, b = edge.zw, delta = b - a;
+        float squared = dot(delta, delta);
+        if (squared <= 1e-12) continue;
+        nearest = min(nearest, length(point - (a + delta * clamp(dot(point - a, delta) / squared, 0.0, 1.0))));
+        if ((a.y > point.y) != (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    if (inside || nearest <= 0.00001) return 1.0;
+    float value = falloff <= 0.0 ? 0.0 : 1.0 - clamp(nearest / falloff, 0.0, 1.0);
+    return value * value;
+}
+
+vec3 lightAt(vec2 point, vec3 normal, int start)
+{
+    vec4 position = uLighting[start];
+    vec4 cone = uLighting[start + 2];
+    vec4 shadow = uLighting[start + 3];
+    vec4 parameters = uLighting[start + 4];
+    vec2 delta = point - position.xy;
+    float distance = length(delta);
+    float radial = 1.0;
+    vec3 cookie = vec3(1.0);
+    if (shadow.x == 3.0) {
+        radial = shapeAt(point, start + 8 + int(shadow.z), int(shadow.w), parameters.y);
+    } else if (shadow.x == 4.0) {
+        if (parameters.z < 0.0) return vec3(0.0);
+        vec2 uv = vec2(dot(uLighting[start + 5].xyz, vec3(point, 1.0)), dot(uLighting[start + 6].xyz, vec3(point, 1.0)));
+        if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec3(0.0);
+        vec4 rect = uLighting[start + 7];
+        vec4 texel = sampleCookie(int(parameters.z), rect.xy + uv * rect.zw);
+        cookie = texel.rgb * texel.a;
+    } else {
+        if (distance >= position.z) return vec3(0.0);
+        radial = distance <= position.w ? 1.0 : clamp((position.z - distance) / max(0.000001, position.z - position.w), 0.0, 1.0);
+        radial *= radial;
+    }
+    float angular = 1.0;
+    if (shadow.x == 2.0 && distance > 0.000001)
+    {
+        float alignment = dot(cone.xy, delta / distance);
+        if (alignment <= cone.z) return vec3(0.0);
+        angular = cone.w <= cone.z ? 1.0 : clamp((alignment - cone.z) / (cone.w - cone.z), 0.0, 1.0);
+    }
+    float visibility = shadow.z > 0.0 && occluded(position.xy, point, start + 8, int(shadow.z))
+        ? 1.0 - shadow.y : 1.0;
+    float diffuse = uLighting[5].y > 0.5 ? max(0.0, dot(normal, normalize(vec3(position.xy - point, parameters.x)))) : 1.0;
+    return cookie * (radial * angular * angular * visibility * diffuse);
+}
+
+vec3 lightingNormal(vec3 encoded) {
+    vec3 tangent = encoded * 2.0 - 1.0;
+    tangent.xy *= uLighting[5].x;
+    vec3 transformed = vec3(uLighting[4].xy * tangent.x + uLighting[4].zw * tangent.y, tangent.z);
+    return dot(transformed, transformed) > 1e-10 ? normalize(transformed) : vec3(0.0, 0.0, 1.0);
+}
+
+vec3 evaluateLighting(vec2 position, vec3 normal)
+{
+    vec2 axisX = uLighting[1].zw;
+    vec2 axisY = uLighting[2].xy;
+    vec2 world = uLighting[1].xy + position.x * axisX + position.y * axisY;
+    vec3 lighting = uLighting[0].rgb;
+    int start = 6;
+    // Rotated subpixel samples smooth hard shadow and spot edges in screen space at every zoom level.
+    const vec2 samples[4] = vec2[4](vec2(-0.125, -0.375), vec2(0.375, -0.125),
+        vec2(0.125, 0.375), vec2(-0.375, 0.125));
+    for (int light = 0; light < int(uLighting[0].w); light++)
+    {
+        vec3 contribution = vec3(0.0);
+        for (int sampleIndex = 0; sampleIndex < 4; sampleIndex++)
+            contribution += lightAt(world + axisX * samples[sampleIndex].x + axisY * samples[sampleIndex].y, normal, start);
+        vec4 color = uLighting[start + 1];
+        lighting += color.rgb * (color.a * contribution * 0.25);
+        start += 8 + int(uLighting[start + 3].z) + int(uLighting[start + 3].w);
+    }
+    return lighting;
+}

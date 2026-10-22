@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.PostProcessing.Editor
+rootNamespace: BEngine.PostProcessing.Editor
+references:
+- BEngine.PostProcessing
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

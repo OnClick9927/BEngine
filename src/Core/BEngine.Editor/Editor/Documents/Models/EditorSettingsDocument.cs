@@ -1,0 +1,10 @@
+using BEngine.Serialization;
+
+namespace BEngine.Editor.Documents;
+
+public sealed class EditorSettingsDocument
+{
+    public string Format { get; set; } = "BEngine.EditorSettings";
+    public int Version { get; set; } = 1;
+    public string LastScene { get; set; } = "Assets/Scenes/Main.scene.yaml";
+}

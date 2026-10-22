@@ -1,0 +1,8 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: StandardAsset
+rootNamespace: StandardAsset
+references: []
+autoReferenced: true
+editorOnly: false
+allowUnsafeCode: false

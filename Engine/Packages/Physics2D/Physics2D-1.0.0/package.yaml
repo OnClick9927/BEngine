@@ -1,0 +1,27 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.physics2d
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: 2D Physics
+description: >-
+  Deterministic Fix64 rigid bodies and 2D colliders with fixed-step simulation, collision and trigger callbacks, spatial queries and simulated-body filtering.
+  Build scenes with rigid bodies and box, circle, capsule or polygon colliders. Configure fixed-step simulation, filtering and material response; receive collision/trigger callbacks and use raycast/overlap queries. Includes inspectors, debug views and runnable collision/query examples.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Physics2D
+  rootNamespace: BEngine.Physics2D
+  dependencies: []
+  packageReferences:
+  - id: Clipper2
+    version: 2.0.0
+editor:
+  assembly: BEngine.Physics2D.Editor
+  rootNamespace: BEngine.Physics2D.Editor
+  dependencies:
+  - packageId: com.bengine.physics2d
+    target: runtime

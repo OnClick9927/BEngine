@@ -1,0 +1,27 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.particles2d
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Particles2D
+description: 2D particle simulation, rendering and edit-mode previews.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  dependencies:
+  - packageId: com.bengine.animation
+    target: runtime
+  assembly: BEngine.Particles2D
+  rootNamespace: BEngine
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+editor:
+  assembly: BEngine.Particles2D.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.particles2d
+    target: runtime

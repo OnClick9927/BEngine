@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><BEngineRuntimeAssembly>true</BEngineRuntimeAssembly><RootNamespace>BEngine</RootNamespace><AssemblyName>BEngine.Coroutines</AssemblyName><BEnginePackageExportOwner>true</BEnginePackageExportOwner></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../../Core/BEngine/BEngine.csproj" /></ItemGroup>
+</Project>

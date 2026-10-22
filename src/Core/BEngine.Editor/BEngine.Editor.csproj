@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <ApplicationIcon>../Editor/Icons/BEngine.ico</ApplicationIcon>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+    <AssemblyName>BEngine.Editor</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <BEngineEngineExportOwner>true</BEngineEngineExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine/BEngine.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../Editor/Icons/BEngine.ico" LogicalName="BEngine.Editor.BEngine.ico" />
+    <Compile Include="*.cs" />
+    <Compile Include="Properties/**/*.cs" />
+    <Compile Include="Editor/**/*.cs" Exclude="Editor/**/Properties/AssemblyInfo.cs" />
+  </ItemGroup>
+</Project>

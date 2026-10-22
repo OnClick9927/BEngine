@@ -1,0 +1,15 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.pooling
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Pooling
+description: Object and collection pools with prewarming, bounded rentals, leases and statistics.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Pooling
+  rootNamespace: BEngine

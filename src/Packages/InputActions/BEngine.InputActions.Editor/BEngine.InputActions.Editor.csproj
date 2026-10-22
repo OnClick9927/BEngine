@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>BEngine.InputActions.Editor</RootNamespace>
+    <AssemblyName>BEngine.InputActions.Editor</AssemblyName>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../BEngine.InputActions/BEngine.InputActions.csproj" />
+  </ItemGroup>
+</Project>

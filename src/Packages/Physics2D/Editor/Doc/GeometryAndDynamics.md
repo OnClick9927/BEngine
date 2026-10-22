@@ -1,0 +1,35 @@
+# 多边形与刚体求解
+
+## 制作
+
+`PolygonCollider2D.points` 是原有外轮廓，`holes` 是局部坐标孔洞列表。Inspector 的 **Add Hole** 添加中心矩形孔洞，随后在列表里调整顶点；支持撤销/重做和场景保存。外轮廓、孔洞均可为凹多边形，输入绕序不影响结果。孔洞相互重叠时合并；超出实体的部分被裁掉。自交轮廓报错，不能作为有效物理形状。选中对象时显示外轮廓和孔洞线框。
+
+`CompositeCollider2D.paths` 可以包含多个实体以及 `isHole=true` 的减去轮廓。先合并实体，再减去所有孔洞。`operation` 将这个区域与 `usedByComposite` 子碰撞器的合并区域做 Union / Intersection / Difference / Xor。Difference 的顺序是“本体 paths 减去子碰撞器”。仅合并同一刚体上的启用碰撞器；独立子刚体保留自己的碰撞。没有子碰撞器时 Intersection 为空；没有本体 paths 时 Union 可直接合并子碰撞器。
+
+`GetPaths()` 仍是制作输入（Tilemap 也使用这个入口）；`GetGeometryPaths()` 返回布尔结果在组合体局部坐标中的独立副本，**已包含 offset**，可用来检查孔洞或生成其他资源。Inspector 显示结果轮廓数，Scene Gizmo 绘制实际结果边界。修改点列表、子对象变换、启用状态后，下一次物理查询/模拟自动刷新几何。
+
+`PolygonGeometry2D.Combine(subject, clip, operation)` 可用于离线制作几何。输入 `isHole` 控制绕序，按 NonZero 填充规则解释整个区域，因此外部孔洞必须属于对应实体；互相重叠的独立带孔区域应分别规范化后再 Union。返回结果可继续参加布尔运算，包括孔洞内的岛状实体。
+
+## 几何边界
+
+布尔/带孔几何使用 Clipper2 2.0.0 的整数裁剪和三角剖分，然后合并相邻凸片。精度为 1/1048576 世界单位的局部网格，输入坐标范围 ±1000000；每个轮廓最多 4096 顶点，每组输入最多 1024 轮廓、16384 顶点。小于网格精度的边可能消失。范围限制是几何裁剪的限制，并不保证巨大坐标/质量下的 Fix64 动力学不会溢出。
+
+子 CircleCollider2D 参与布尔运算时以 `circleSegments` 个线段近似（12–256，默认 48）；独立圆碰撞器仍是解析圆。胶囊保留现有多边形近似。复杂凹体的凸片接触目前选择最深的一个接触流形；双接触点块求解器处理这个流形。Continuous / ContinuousDynamic 使用实际圆、凸多边形和复合形状做平移扫掠；旋转按每 10 度一个区间采样，并在首次重叠区间二分到达时刻，因此宽碰撞体和纯旋转碰撞体不再依赖中心射线。极端角速度可通过减小固定步长提高旋转到达时刻精度。
+
+## 质量与力
+
+`mass` 默认手动设置；启用 `useAutoMass` 后按有效碰撞器面积 × density 累加。Trigger、禁用碰撞器、独立子刚体和已并入 Composite 的源碰撞器不重复计入。Composite 使用自身 density 和布尔结果面积。同一刚体上没有合并的重叠碰撞器各自贡献质量。
+
+`automaticCenterOfMass` 默认为 true。关闭后 `centerOfMass` 使用手动局部坐标；`ResetCenterOfMass()` 恢复自动计算。`worldCenterOfMass` 为世界质心，`inertia` 是绕所选质心的转动惯性，包含缩放和偏移。没有有效面积时，手动质量的惯性回退为 mass；自动质量与惯性下限为 0.0001。
+
+`linearVelocity` 表示质心速度，`angularVelocity` 使用度/秒；`GetPointVelocity` 包含旋转速度。转动会保持质心，带 offset 的物体原点会绕质心移动。
+
+`AddForce(Impulse/VelocityChange)` 立即改变速度，不再除以 `Time.fixedDeltaTime`。`AddTorque(Force/Impulse)` 按转动惯性计算，扭矩单位为质量 × 世界单位² / 秒²，冲量为对应的秒积分；Acceleration 和 VelocityChange 模式的角量使用度。`AddForceAtPosition` 围绕质心产生扭矩。位置/旋转冻结约束同样用于接触冲量。
+
+## 接触与验收
+
+凸多边形接触通过边裁剪生成最多两个接触点；包含关系使用正确的退出距离。求解包含点速度、转动惯性、累计法向/摩擦冲量、接触热启动、双点法向块求解和角位置修正。弹性低速阈值为 0.5 单位/秒，避免静置物体持续反弹。
+
+`Validation/PhysicsEnhancements` 检查布尔面积、嵌套孔洞、射线/扫掠、实时编辑、Undo、保存重载、解析质量/惯性、偏心冲量、五层堆叠、摩擦/弹性和相同场景重放的 Fix64 原始状态。整数几何和 Fix64 运算不等于跨平台确定性已获证明；独立 Player 与平台验收以完成清单中的实际记录为准。
+
+第三方依赖：[Clipper2 2.0.0](https://www.nuget.org/packages/Clipper2/2.0.0)，作者 Angus Johnson，Boost Software License 1.0。包通过 NuGet 还原；许可随 NuGet 包提供，没有将第三方源码复制进引擎。

@@ -1,0 +1,4 @@
+interface:
+  display_name: "BEngine Audio"
+  short_description: "Build and debug BEngine 2D audio workflows"
+  default_prompt: "Use $bengine-audio to implement or edit BEngine AudioClip, AudioSource, WAV import, mixing, output, or editor workflows."

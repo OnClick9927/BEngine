@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.PropertyAttributes.Editor
+rootNamespace: BEngine.Editor
+references: 
+- BEngine.PropertyAttributes
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

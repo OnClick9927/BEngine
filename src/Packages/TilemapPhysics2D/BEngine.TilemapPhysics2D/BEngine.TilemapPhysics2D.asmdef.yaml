@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.TilemapPhysics2D
+rootNamespace: BEngine.TiledMap
+references:
+- BEngine.TiledMap
+- BEngine.Physics2D
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false

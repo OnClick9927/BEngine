@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>BEngine.TextureAtlas</AssemblyName><RootNamespace>BEngine</RootNamespace><NoWarn>$(NoWarn);CA2255</NoWarn></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../../Core/BEngine/BEngine.csproj" /><PackageReference Include="YamlDotNet" /></ItemGroup>
+</Project>

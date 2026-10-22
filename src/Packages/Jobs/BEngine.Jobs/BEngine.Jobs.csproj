@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Jobs</AssemblyName>
+    <RootNamespace>BEngine.Jobs</RootNamespace>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>

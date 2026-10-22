@@ -1,0 +1,13 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Timeline
+rootNamespace: BEngine
+references:
+- BEngine.Video
+- BEngine.Audio
+- BEngine.Animation
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false

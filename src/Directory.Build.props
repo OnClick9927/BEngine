@@ -1,0 +1,25 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors Condition="'$(PublishTrimmed)' == 'true'">$(WarningsNotAsErrors);IL2026;IL2057;IL2067;IL2070;IL2072;IL2075</WarningsNotAsErrors>
+    <Deterministic>true</Deterministic>
+    <Version>0.1.0</Version>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <!-- File-based validation apps share ArtifactsPath; keep their obj/bin caches separate. -->
+    <IncludeProjectNameInArtifactsPaths Condition="'$(FileBasedProgram)' == 'true'">true</IncludeProjectNameInArtifactsPaths>
+    <!-- Use the directory discovered by Microsoft.Common.props instead of
+         MSBuildThisFileDirectory.  During NuGet static-graph restore the
+         latter can be rebound to the project directory, which would put
+         obj/project.assets.json under Engine/src/Core/*/Temp and trip the source
+         package layout guard. -->
+    <ArtifactsPath>$([System.IO.Path]::GetFullPath('$(_DirectoryBuildPropsBasePath)\..\..\Temp\Engine\Build'))</ArtifactsPath>
+    <ArtifactsProjectName Condition="'$(MSBuildProjectName)' == 'BEngine.Player' and '$(BEnginePlayerPlatform)' != '' and '$(BEnginePlayerPlatform)' != 'Desktop'">BEngine.Player.$(BEnginePlayerPlatform)</ArtifactsProjectName>
+    <ArtifactsPivots Condition="'$(MSBuildProjectName)' == 'BEngine.Player' and '$(BEnginePlayerPlatform)' != '' and '$(BEnginePlayerPlatform)' != 'Desktop'">$(Configuration.ToLowerInvariant())_$(BEnginePlayerPlatform)</ArtifactsPivots>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+</Project>

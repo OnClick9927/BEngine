@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Particles2D</AssemblyName>
+    <RootNamespace>BEngine</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../Animation/BEngine.Animation/BEngine.Animation.csproj" />
+  </ItemGroup>
+</Project>

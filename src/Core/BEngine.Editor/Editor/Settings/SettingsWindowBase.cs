@@ -1,0 +1,360 @@
+using BEngine.Rendering.Rhi;
+
+namespace BEngine.Editor;
+
+public abstract class SettingsWindowBase : EditorWindow
+{
+    private Vector2 _navigationScroll;
+    private Vector2 _contentScroll;
+    private Fix64 _providerContentHeight;
+
+    protected SettingsWindowModel SettingsModel => (SettingsWindowModel)model;
+    protected SettingsWindowController SettingsController => (SettingsWindowController)controller;
+
+    protected abstract SettingsScope Scope { get; }
+    protected abstract string WindowTitle { get; }
+    protected abstract string IconPath { get; }
+    internal SettingsScope settingsScope => Scope;
+
+    internal void SelectPath(string path) => SettingsController.SelectPath(path);
+
+    protected override void OnEnable()
+    {
+        titleContent = new GUIContent(EditorLocalization.Tr(WindowTitle), IconPath, WindowTitle);
+        minSize = new Vector2(420, 300);
+        if (position.width <= 1 || position.height <= 1)
+            position = new Rect(position.x, position.y, 900, 620);
+        EditorLocalization.localeChanged += OnLocaleChanged;
+        SettingsProviderRegistry.changed += OnRegistryChanged;
+        SettingsController.ActivateWindow();
+    }
+
+    protected override void OnDisable()
+    {
+        EditorLocalization.localeChanged -= OnLocaleChanged;
+        SettingsProviderRegistry.changed -= OnRegistryChanged;
+        SettingsController.DeactivateWindow();
+    }
+
+    protected override void OnProjectChange() => SettingsController.RefreshProviders(force: true);
+
+    protected override void OnInspectorUpdate()
+    {
+        SettingsController.InspectorUpdate();
+    }
+
+    protected override void OnGUI()
+    {
+        SettingsController.RefreshProviders(force: false);
+        var width = Fix64.Max(1, GUIUtility.currentViewWidth);
+        var height = Fix64.Max(1, GUIUtility.currentViewHeight);
+        var toolbarHeight = Fix64.Min(
+            Fix64.Max(30, EditorGUIUtility.singleLineHeight + 8), height);
+
+        GUI.Box(new Rect(0, 0, width, height), GUIContent.none, GUI.skin.window);
+        DrawToolbar(new Rect(0, 0, width, toolbarHeight));
+        if (height <= toolbarHeight) return;
+
+        var navigationWidth = CalculateNavigationWidth(width);
+        var contentHeight = Fix64.Max(0, height - toolbarHeight);
+        var navigation = new Rect(0, toolbarHeight, navigationWidth, contentHeight);
+        var dividerX = Fix64.Min(width, navigation.xMax);
+        var content = new Rect(Fix64.Min(width, dividerX + 1), toolbarHeight,
+            Fix64.Max(0, width - dividerX - 1), contentHeight);
+
+        GUI.Box(navigation, GUIContent.none, GUI.skin.box);
+        if (dividerX < width)
+            GUI.Box(new Rect(dividerX, toolbarHeight, 1, contentHeight),
+                GUIContent.none, EditorStyles.separator);
+        GUI.Box(content, GUIContent.none, GUI.skin.window);
+
+        DrawNavigation(navigation);
+        DrawProvider(content);
+    }
+
+    private void DrawToolbar(Rect rect)
+    {
+        GUI.Box(rect, GUIContent.none, EditorStyles.toolbar);
+        if (rect.width < 24 || rect.height < 12) return;
+
+        var controlHeight = Fix64.Min(EditorGUIUtility.singleLineHeight + 2,
+            Fix64.Max(1, rect.height - 6));
+        var y = rect.y + Fix64.Max(2, (rect.height - controlHeight) / 2);
+        var showIcon = rect.width >= 64;
+        var iconWidth = showIcon ? controlHeight : Fix64.Zero;
+        if (showIcon)
+            GUI.Label(new Rect(7, y, iconWidth, controlHeight),
+                new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Search, "Search"));
+
+        var clearWidth = SettingsModel.Search.Length > 0 && rect.width >= 96
+            ? controlHeight + 2
+            : Fix64.Zero;
+        var fieldX = showIcon ? (Fix64)9 + iconWidth : (Fix64)6;
+        var fieldWidth = Fix64.Min(320,
+            Fix64.Max(0, rect.width - fieldX - clearWidth - 7));
+        if (fieldWidth >= 20)
+        {
+            GUI.SetNextControlName("SettingsSearch");
+            var next = GUI.TextField(new Rect(fieldX, y, fieldWidth, controlHeight),
+                SettingsModel.Search,
+                style: EditorStyles.toolbarSearchField);
+            if (!next.Equals(SettingsModel.Search, StringComparison.Ordinal))
+            {
+                SettingsController.SetSearch(next);
+                _navigationScroll = Vector2.zero;
+            }
+        }
+
+        if (clearWidth > 0 && GUI.Button(
+                new Rect(rect.width - clearWidth - 4, y, clearWidth, controlHeight),
+                new GUIContent(string.Empty, EditorBuiltinIcons.Toolbar.Clear, "Clear search"),
+                EditorStyles.toolbarIconButton))
+        {
+            SettingsController.SetSearch(string.Empty);
+            _navigationScroll = Vector2.zero;
+            GUI.FocusControl("SettingsSearch");
+        }
+    }
+
+    private void DrawNavigation(Rect rect)
+    {
+        if (rect.width <= 1 || rect.height <= 1) return;
+        var filter = SettingsModel.Search.Trim();
+        var visible = SettingsModel.Providers.Where(provider => Matches(provider, filter)).ToArray();
+        var metrics = NavigationMetrics();
+        var contentHeight = CalculateNavigationContentHeight(visible, metrics);
+        var viewWidth = Fix64.Max(1, rect.width - 12);
+        var viewHeight = Fix64.Max(rect.height, contentHeight);
+
+        _navigationScroll = GUI.BeginScrollView(rect, _navigationScroll,
+            new Rect(0, 0, viewWidth, viewHeight));
+        try
+        {
+            var y = (Fix64)6;
+            string? lastGroup = null;
+            foreach (var provider in visible)
+            {
+                var group = GroupName(provider);
+                if (!string.Equals(group, lastGroup, StringComparison.OrdinalIgnoreCase))
+                {
+                    GUI.Label(new Rect(10, y, Fix64.Max(0, viewWidth - 20), metrics.GroupHeight),
+                        group, EditorStyles.miniLabel);
+                    y += metrics.GroupHeight + 1;
+                    lastGroup = group;
+                }
+
+                var row = new Rect(6, y, Fix64.Max(0, viewWidth - 12), metrics.RowHeight);
+                var selected = ReferenceEquals(SettingsModel.Selected, provider);
+                var icon = provider.isPackageProvider
+                    ? EditorBuiltinIcons.Toolbar.Settings
+                    : IconPath;
+                if (GUI.Button(row,
+                        new GUIContent(provider.displayName, icon, provider.settingsPath),
+                        selected ? EditorStyles.treeViewRowSelected : EditorStyles.treeViewRow))
+                    SettingsController.Select(provider);
+                y += metrics.RowHeight + 1;
+            }
+
+            if (visible.Length == 0)
+                GUI.Label(new Rect(12, 12, Fix64.Max(0, viewWidth - 24),
+                        Fix64.Max(40, EditorGUIUtility.singleLineHeight * 2)),
+                    EditorLocalization.Tr("Search"), EditorStyles.miniLabel);
+        }
+        finally
+        {
+            GUI.EndScrollView();
+        }
+    }
+
+    private void DrawProvider(Rect rect)
+    {
+        if (rect.width <= 1 || rect.height <= 1) return;
+        var selected = SettingsModel.Selected;
+        if (selected is null)
+        {
+            GUI.Label(new Rect(rect.x + 12, rect.y + 12,
+                    Fix64.Max(0, rect.width - 24), EditorGUIUtility.singleLineHeight),
+                EditorLocalization.Tr("Search"), EditorStyles.miniLabel);
+            return;
+        }
+
+        var titleHeight = Fix64.Max(30, EditorStyles.largeLabel.fixedHeight);
+        var packageLineHeight = Fix64.Max(18, EditorGUIUtility.singleLineHeight);
+        var headerHeight = titleHeight + 14 +
+            (selected.isPackageProvider ? packageLineHeight : Fix64.Zero);
+        GUI.Label(new Rect(rect.x + 16, rect.y + 6,
+                Fix64.Max(0, rect.width - 32), titleHeight),
+            selected.displayName, EditorStyles.largeLabel);
+        if (selected.isPackageProvider && rect.height >= titleHeight + packageLineHeight + 8)
+            GUI.Label(new Rect(rect.x + 16, rect.y + titleHeight + 5,
+                    Fix64.Max(0, rect.width - 32), packageLineHeight),
+                $"{EditorLocalization.Tr("Package")}: {selected.sourceAssembly}",
+                EditorStyles.miniLabel);
+
+        var footerHeight = selected.footerBarGuiHandler is null || rect.height < headerHeight + 72
+            ? Fix64.Zero
+            : Fix64.Max(36, EditorGUIUtility.singleLineHeight + 10);
+        var bodyBottom = Fix64.Max(rect.y, rect.yMax - footerHeight);
+        var body = new Rect(rect.x + 12, Fix64.Min(rect.yMax, rect.y + headerHeight),
+            Fix64.Max(0, rect.width - 24),
+            Fix64.Max(0, bodyBottom - rect.y - headerHeight - 4));
+        DrawProviderBody(selected, body);
+
+        if (footerHeight > 0)
+            DrawProviderFooter(selected, new Rect(rect.x + 12, rect.yMax - footerHeight,
+                Fix64.Max(0, rect.width - 24), footerHeight));
+    }
+
+    private void DrawProviderBody(SettingsProvider selected, Rect body)
+    {
+        if (body.width <= 1 || body.height <= 1) return;
+        var contentWidth = Fix64.Max(1, body.width - 12);
+        var viewHeight = Fix64.Max(body.height, _providerContentHeight);
+        _contentScroll = GUI.BeginScrollView(body, _contentScroll,
+            new Rect(0, 0, contentWidth, viewHeight));
+
+        var measuredHeight = body.height;
+        GUILayout.BeginArea(new Rect(0, 0, contentWidth, viewHeight));
+        var previousLabelWidth = EditorGUI.labelWidth;
+        var previousIndent = EditorGUI.indentLevel;
+        var previousWideMode = EditorGUIUtility.wideMode;
+        try
+        {
+            EditorGUI.labelWidth = Fix64.Clamp(
+                contentWidth * Fix64.FromDecimal(0.38m), 80, 180);
+            EditorGUI.indentLevel = 0;
+            EditorGUIUtility.wideMode = contentWidth >= 360;
+
+            var succeeded = !SettingsModel.ActivationFailed && EditorFeatureGuard.Invoke(
+                $"SettingsProvider {selected.settingsPath}.OnGUI",
+                () => selected.OnGUI(SettingsModel.Search));
+            if (!succeeded)
+                EditorGUILayout.HelpBox(
+                    "This settings page failed. See Console for the full stack trace.",
+                    MessageType.Error);
+            measuredHeight = Fix64.Max(body.height, GUILayout.CurrentContentHeight + 8);
+        }
+        finally
+        {
+            EditorGUI.labelWidth = previousLabelWidth;
+            EditorGUI.indentLevel = previousIndent;
+            EditorGUIUtility.wideMode = previousWideMode;
+            GUILayout.EndArea();
+            GUI.EndScrollView();
+        }
+
+        _providerContentHeight = measuredHeight;
+    }
+
+    private void DrawProviderFooter(SettingsProvider selected, Rect footer)
+    {
+        if (footer.width <= 1 || footer.height <= 1) return;
+        GUI.Box(new Rect(footer.x, footer.y, footer.width, 1),
+            GUIContent.none, EditorStyles.separator);
+        GUILayout.BeginArea(new Rect(footer.x, footer.y + 2, footer.width,
+            Fix64.Max(0, footer.height - 2)));
+        try
+        {
+            EditorFeatureGuard.Invoke(
+                $"SettingsProvider {selected.settingsPath}.OnFooterBarGUI",
+                selected.OnFooterBarGUI);
+        }
+        finally
+        {
+            GUILayout.EndArea();
+        }
+    }
+
+    internal void ResetProviderView()
+    {
+        _contentScroll = Vector2.zero;
+        _providerContentHeight = 0;
+    }
+
+    private static bool Matches(SettingsProvider provider, string search)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return true;
+        return provider.settingsPath.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+               provider.displayName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+               provider.keywords.Any(keyword => keyword.Contains(search,
+                   StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static Fix64 CalculateNavigationWidth(Fix64 windowWidth)
+    {
+        var desired = Fix64.Clamp(windowWidth * Fix64.FromDecimal(0.29m), 150, 250);
+        var maximum = Fix64.Max(80, windowWidth - 180);
+        return Fix64.Min(windowWidth, Fix64.Min(desired, maximum));
+    }
+
+    private static NavigationSize NavigationMetrics()
+    {
+        var rowHeight = Fix64.Max(EditorGUIUtility.singleLineHeight + 4,
+            EditorStyles.toolbarButton.fixedHeight);
+        var groupHeight = Fix64.Max(EditorGUIUtility.singleLineHeight,
+            EditorStyles.miniLabel.fixedHeight);
+        return new NavigationSize(rowHeight, groupHeight);
+    }
+
+    private static Fix64 CalculateNavigationContentHeight(
+        IReadOnlyList<SettingsProvider> providers,
+        NavigationSize metrics)
+    {
+        var height = (Fix64)12;
+        string? lastGroup = null;
+        foreach (var provider in providers)
+        {
+            var group = GroupName(provider);
+            if (!string.Equals(group, lastGroup, StringComparison.OrdinalIgnoreCase))
+            {
+                height += metrics.GroupHeight + 1;
+                lastGroup = group;
+            }
+            height += metrics.RowHeight + 1;
+        }
+        return height;
+    }
+
+    private static string GroupName(SettingsProvider provider)
+    {
+        var segments = provider.settingsPath.Split('/');
+        return segments.Length > 2 ? segments[^2] : provider.isPackageProvider
+            ? EditorLocalization.Tr("Package")
+            : "BEngine";
+    }
+
+    private void OnLocaleChanged()
+    {
+        titleContent = new GUIContent(EditorLocalization.Tr(WindowTitle), IconPath, WindowTitle);
+        SettingsController.LocaleChanged();
+    }
+
+    private void OnRegistryChanged() => SettingsController.RegistryChanged();
+
+    private readonly record struct NavigationSize(Fix64 RowHeight, Fix64 GroupHeight);
+}
+
+public abstract class SettingsWindowBase<TModel, TController> : SettingsWindowBase,
+    IEditorWindowMvcContract<TModel, TController>
+    where TModel : SettingsWindowModel
+    where TController : SettingsWindowController
+{
+    public new TModel model => (TModel)base.model;
+    public TModel Model => model;
+    public new TController controller => (TController)base.controller;
+    public TController Controller => controller;
+
+    protected sealed override IEditorWindowModel CreateModel(EditorWindowMvcContext context) =>
+        CreateSettingsModel(context);
+
+    protected sealed override IEditorWindowController CreateController(
+        EditorWindowMvcContext context,
+        IEditorWindowModel windowModel) =>
+        CreateSettingsController(context, (TModel)windowModel);
+
+    protected abstract TModel CreateSettingsModel(EditorWindowMvcContext context);
+
+    protected abstract TController CreateSettingsController(
+        EditorWindowMvcContext context,
+        TModel windowModel);
+}

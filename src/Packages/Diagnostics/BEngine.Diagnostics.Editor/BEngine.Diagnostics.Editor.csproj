@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+    <AssemblyName>BEngine.Diagnostics.Editor</AssemblyName>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" />
+    <ProjectReference Include="../BEngine.Diagnostics/BEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+  </ItemGroup>
+</Project>

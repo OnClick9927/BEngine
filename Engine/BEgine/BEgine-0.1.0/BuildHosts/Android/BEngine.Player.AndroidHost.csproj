@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\BEngine.Player.Hosts.props" />
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BEngine.Player.AndroidHost</AssemblyName>
+    <RootNamespace>BEngine.Player.Hosts.Android</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <PublishTrimmed Condition="'$(RunAOTCompilation)' == 'true'">true</PublishTrimmed>
+    <SuppressTrimAnalysisWarnings Condition="'$(RunAOTCompilation)' == 'true'">true</SuppressTrimAnalysisWarnings>
+    <ILLinkTreatWarningsAsErrors Condition="'$(RunAOTCompilation)' == 'true'">false</ILLinkTreatWarningsAsErrors>
+    <AndroidEnableMarshalMethods>false</AndroidEnableMarshalMethods>
+    <AndroidPackageFormat>aab</AndroidPackageFormat>
+    <AndroidManifest Condition="'$(BEngineTestPlayer)' == 'true'">..\AndroidResources\TestAndroidManifest.xml</AndroidManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="BEngine.Android" RootMode="All" />
+    <ProjectReference Include="..\..\BEngine.Android\BEngine.Android.csproj"
+                      Condition="Exists('..\..\BEngine.Android\BEngine.Android.csproj')" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEngineContentRoot)' != '' and '$(BEngineDataDirectoryName)' != ''">
+    <AndroidAsset Include="$(BEngineContentRoot)\$(BEngineDataDirectoryName)\**\*">
+      <Link>BEnginePayload\$(BEngineDataDirectoryName)\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </AndroidAsset>
+  </ItemGroup>
+</Project>

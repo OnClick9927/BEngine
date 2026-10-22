@@ -1,0 +1,18 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Player
+rootNamespace: BEngine.Player
+references:
+- BEngine.Platform.Desktop
+- BEngine.Platform.DotNet
+- BEngine.Windows
+- BEngine.Linux
+- BEngine.macOS
+- BEngine.AssetBundles
+- BEngine.HotUpdate
+- BEngine.Diagnostics
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false

@@ -1,0 +1,28 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.testing
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Test Framework
+description: Edit, Play and packaged Player tests with source navigation and opt-in statement coverage.
+enabledByDefault: true
+commandLineOptions:
+- --run-tests
+- --instrument-coverage
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Testing
+  rootNamespace: BEngine.Testing
+editor:
+  hostReferences:
+  - Mono.Cecil
+  assembly: BEngine.Testing.Editor
+  rootNamespace: BEngine.Testing.Editor
+  dependencies:
+  - packageId: com.bengine.testing
+    target: runtime
+  - packageId: com.bengine.player-build
+    target: editor

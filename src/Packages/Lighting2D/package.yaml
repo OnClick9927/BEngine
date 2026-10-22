@@ -1,0 +1,26 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.lighting2d
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Lighting2D
+description: 2D lights, ambient lighting, shadows and lighting shaders.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Lighting2D
+  rootNamespace: BEngine
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+editor:
+  assembly: BEngine.Lighting2D.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.lighting2d
+    target: runtime
+  - packageId: com.bengine.player-build
+    target: editor

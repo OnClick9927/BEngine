@@ -1,0 +1,4 @@
+interface:
+  display_name: "BEngine Core"
+  short_description: "Develop BEngine core runtime and editor APIs"
+  default_prompt: "Use $bengine-core to implement a core engine or editor change while preserving BEngine's package boundaries."

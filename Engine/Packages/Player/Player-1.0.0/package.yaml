@@ -1,0 +1,57 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.player
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Player
+description: Player host lifecycle, staged startup and package composition.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  hostReferences:
+  - BEngine.Platform.Desktop
+  - BEngine.Platform.DotNet
+  - BEngine.Windows
+  - BEngine.Linux
+  - BEngine.macOS
+  assembly: BEngine.Player
+  rootNamespace: BEngine.Player
+  dependencies:
+  - packageId: com.bengine.asset-bundles
+    target: runtime
+  - packageId: com.bengine.hot-update
+    target: runtime
+  - packageId: com.bengine.diagnostics
+    target: runtime
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+  - id: Silk.NET.OpenGL
+    version: 2.23.0
+  - id: Silk.NET.Windowing
+    version: 2.23.0
+  - id: Silk.NET.Input
+    version: 2.23.0
+  - id: Veldrid
+    version: 4.9.0
+  - id: Microsoft.Extensions.DependencyInjection
+    version: 10.0.11
+
+editor:
+  packageReferences:
+  - id: Microsoft.Extensions.DependencyInjection
+    version: 10.0.11
+  - id: YamlDotNet
+    version: 18.1.0
+  hostReferences:
+  - BEngine.Platform.DotNet
+  assembly: BEngine.Player.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.hot-update
+    target: runtime
+  - packageId: com.bengine.asset-bundles
+    target: editor

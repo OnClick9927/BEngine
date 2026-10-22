@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine</RootNamespace>
+    <AssemblyName>BEngine.Animation</AssemblyName>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><AssemblyName>BEngine.Diagnostics</AssemblyName><RootNamespace>BEngine</RootNamespace></PropertyGroup><ItemGroup><ProjectReference Include="../../../Core/BEngine/BEngine.csproj" /><ProjectReference Include="../../HotUpdate/BEngine.HotUpdate/BEngine.HotUpdate.csproj" /></ItemGroup></Project>

@@ -1,0 +1,14 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Player.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.Player
+- BEngine.Platform.DotNet
+- BEngine.HotUpdate
+- BEngine.AssetBundles.Editor
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

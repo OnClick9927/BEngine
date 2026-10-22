@@ -1,0 +1,13 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.ShaderGraph.Editor
+rootNamespace: BEngine.ShaderGraph.Editor
+references:
+- BEngine.ShaderGraph
+- BEngine.PlayerBuild.Editor
+- BEngine.UIElements.Editor
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

@@ -1,0 +1,14 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Video.Editor
+rootNamespace: BEngine.Video.Editor
+references:
+- BEngine.Video
+- BEngine.Audio
+- BEngine.Audio.Editor
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

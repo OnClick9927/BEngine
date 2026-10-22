@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\BEngine.Player.Hosts.props" />
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BEngine.Player.iOSHost</AssemblyName>
+    <RootNamespace>BEngine.Player.Hosts.iOS</RootNamespace>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifier>ios-arm64</RuntimeIdentifier>
+    <MtouchInterpreter>BEngine.Player.iOSHost</MtouchInterpreter>
+  </PropertyGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="BEngine.Platform.Veldrid" RootMode="All" />
+    <ProjectReference Include="..\..\BEngine.iOS\BEngine.iOS.csproj"
+                      Condition="Exists('..\..\BEngine.iOS\BEngine.iOS.csproj')" />
+    <ProjectReference Include="..\..\BEngine.Platform.Veldrid\BEngine.Platform.Veldrid.csproj"
+                      Condition="Exists('..\..\BEngine.Platform.Veldrid\BEngine.Platform.Veldrid.csproj')" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEngineContentRoot)' != '' and '$(BEngineDataDirectoryName)' != ''">
+    <BundleResource Include="$(BEngineContentRoot)\$(BEngineDataDirectoryName)\**\*">
+      <LogicalName>BEnginePayload/$(BEngineDataDirectoryName)/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </BundleResource>
+  </ItemGroup>
+</Project>

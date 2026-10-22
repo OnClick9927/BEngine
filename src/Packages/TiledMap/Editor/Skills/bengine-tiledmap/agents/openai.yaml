@@ -1,0 +1,4 @@
+interface:
+  display_name: "BEngine Tiled Map"
+  short_description: "Build deterministic 2D tilemaps and palettes"
+  default_prompt: "Use $bengine-tiledmap to implement or edit a BEngine Tilemap, palette, or painting workflow."

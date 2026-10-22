@@ -1,0 +1,4 @@
+interface:
+  display_name: "BEngine UIElements"
+  short_description: "Build retained UI, UXML, USS, and UI Builder tools"
+  default_prompt: "Use $bengine-ui-elements to build or extend a retained-mode BEngine UI and its authoring workflow."

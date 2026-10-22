@@ -1,0 +1,33 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.tiledmap
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Tiled Map
+description: >-
+  2D tile palettes, atlas regions and tilemaps with runtime painting, camera culling, sorting, point sampling, pixel snapping and hot-update-aware texture caching.
+  Create palettes from texture atlases, paint and erase tiles in the editor or at runtime, and render large maps with camera culling. Configure sorting, pixel snapping and point sampling for pixel art. Includes palette and tilemap editors, painting examples and resource-loading documentation.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  dependencies:
+  - packageId: com.bengine.texture-atlas
+    target: runtime
+  assembly: BEngine.TiledMap
+  rootNamespace: BEngine.TiledMap
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+editor:
+  assembly: BEngine.TiledMap.Editor
+  rootNamespace: BEngine.TiledMap.Editor
+  dependencies:
+  - packageId: com.bengine.physics2d
+    target: runtime
+  - packageId: com.bengine.tiledmap
+    target: runtime
+  - packageId: com.bengine.texture-atlas
+    target: runtime

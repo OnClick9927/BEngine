@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>BEngine.VisualScripting.Editor</AssemblyName>
+    <RootNamespace>BEngine.VisualScripting.Editor</RootNamespace>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine.VisualScripting/BEngine.VisualScripting.csproj" />
+    <ProjectReference Include="../../UIElements/BEngine.UIElements.Editor/BEngine.UIElements.Editor.csproj" />
+  </ItemGroup>
+</Project>

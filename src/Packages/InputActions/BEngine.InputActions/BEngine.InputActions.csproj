@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <RootNamespace>BEngine.InputActions</RootNamespace>
+    <AssemblyName>BEngine.InputActions</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../../Core/BEngine/BEngine.csproj" /></ItemGroup>
+  <ItemGroup><PackageReference Include="YamlDotNet" /></ItemGroup>
+</Project>

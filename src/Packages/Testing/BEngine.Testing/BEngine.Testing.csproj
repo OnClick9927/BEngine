@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Testing</AssemblyName>
+    <RootNamespace>BEngine.Testing</RootNamespace>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <BEnginePackageExportOwner>false</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>

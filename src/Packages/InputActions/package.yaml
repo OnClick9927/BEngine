@@ -1,0 +1,25 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.input-actions
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Input Actions
+description: Action authoring and monitoring, keyboard/gamepad schemes, local device pairing, multitouch gestures, interactive rebinding and YAML overrides.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.InputActions
+  rootNamespace: BEngine.InputActions
+  dependencies: []
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+editor:
+  assembly: BEngine.InputActions.Editor
+  rootNamespace: BEngine.InputActions.Editor
+  dependencies:
+  - packageId: com.bengine.input-actions
+    target: runtime

@@ -1,0 +1,15 @@
+{
+  "project": "https://github.com/BinomialLLC/basis_universal",
+  "version": "2.50.0",
+  "commit": "9bebe16726b3a61c8c213eeee3b7cffb462ef34e",
+  "compiler": "MSVC 19.44.35228 x64",
+  "options": [
+    "BASISU_EXAMPLES=OFF",
+    "BASISU_SSE=OFF",
+    "BASISU_STATIC=ON",
+    "CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+    "CMAKE_CXX_FLAGS=/utf-8",
+    "CMAKE_C_FLAGS=/utf-8"
+  ],
+  "sha256": "3e98893a625c103c60f5f88c6c162746ae7393df06198d66a7a53d81f0269484"
+}

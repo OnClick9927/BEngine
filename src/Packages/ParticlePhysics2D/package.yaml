@@ -1,0 +1,20 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.particle-physics2d
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Particle Physics 2D
+description: Swept particle collisions against Physics2D colliders, with layer and trigger filtering.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.ParticlePhysics2D
+  rootNamespace: BEngine
+  dependencies:
+  - packageId: com.bengine.particles2d
+    target: runtime
+  - packageId: com.bengine.physics2d
+    target: runtime

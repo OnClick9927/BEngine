@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.LineRendering2D.Editor
+rootNamespace: BEngine.Editor
+references: 
+- BEngine.LineRendering2D
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

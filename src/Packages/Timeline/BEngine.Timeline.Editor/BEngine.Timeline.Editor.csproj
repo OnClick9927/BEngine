@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+    <AssemblyName>BEngine.Timeline.Editor</AssemblyName>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../Animation/BEngine.Animation/BEngine.Animation.csproj" />
+    <ProjectReference Include="../BEngine.Timeline/BEngine.Timeline.csproj" />
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../../UIElements/BEngine.UIElements.Editor/BEngine.UIElements.Editor.csproj" /></ItemGroup>
+</Project>

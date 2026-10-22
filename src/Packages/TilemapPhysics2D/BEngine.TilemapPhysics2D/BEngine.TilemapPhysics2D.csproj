@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine.TiledMap</RootNamespace>
+    <AssemblyName>BEngine.TilemapPhysics2D</AssemblyName>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../TiledMap/BEngine.TiledMap/BEngine.TiledMap.csproj" />
+    <ProjectReference Include="../../Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
+  </ItemGroup>
+</Project>

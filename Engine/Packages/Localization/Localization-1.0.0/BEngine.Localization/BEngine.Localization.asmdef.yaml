@@ -1,0 +1,10 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Localization
+rootNamespace: BEngine.Localization
+references: []
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false

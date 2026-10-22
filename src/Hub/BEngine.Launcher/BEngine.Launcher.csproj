@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <ApplicationIcon>../../Core/Editor/Icons/BEngine.ico</ApplicationIcon>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>BEngine.Launcher</RootNamespace>
+    <AssemblyName>BEngine.Launcher</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../Core/Editor/Icons/BEngine.ico" LogicalName="BEngine.Launcher.BEngine.ico" />
+    <ProjectReference Include="../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../Platform/BEngine.Windows/BEngine.Windows.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+</Project>

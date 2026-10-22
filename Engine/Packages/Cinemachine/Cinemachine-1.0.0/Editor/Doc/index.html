@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cinemachine 2D 文档</title>
+<style>html{color-scheme:light;font-family:Segoe UI,Microsoft YaHei,sans-serif;background:#f5f7f8;color:#20272d}body{margin:0}header{padding:20px 28px;border-bottom:1px solid #ccd4d9;background:white}main{max-width:960px;margin:auto;padding:28px}h1{font-size:30px}h2{font-size:24px}h3{font-size:18px;margin-top:28px}p,li{line-height:1.8}pre{padding:18px;overflow:auto;background:#e8edef}a{color:#096b69}img{max-width:100%;height:auto}figure{margin:24px 0}figcaption{font-size:14px;color:#53636b}section{border-top:1px solid #ccd4d9;padding-top:20px}*{box-sizing:border-box;letter-spacing:0}</style></head>
+<body><header>com.bengine.cinemachine</header><main><h1>Cinemachine 2D</h1><p>Fix64 virtual cameras for Camera2D with priority selection, target tracking, damping, camera blends, polygon point confinement and layered impulses.</p>
+<figure><img src="images/overview.png" alt="Cinemachine 2D 的 BEngine 场景与组件"><figcaption>由 BEngine Vulkan 实际渲染的示例场景。运行中检查 Game 画面与 Inspector 引用。</figcaption></figure>
+<section id="runtime-contract"><h2>运行、分包与验证</h2><p>Brain 在 LateUpdate 驱动输出 Camera2D，activeVirtualCamera 与 activeBlend 提供状态；IsLive 包含正在混合的输出源和目标。CutTo(camera) 切换目标。CinemachineCamera.follow/lookAt、priority、positionDamping 与 orthographicSize 控制二维取景。GenerateImpulse(Vector2) 产生由 Listener 接收的脉冲。</p>
+<h3>快速开始</h3><ol><li>在输出 Camera2D 同一对象添加 CinemachineBrain；新建独立对象添加 CinemachineCamera，避免两个组件反复写同一 Transform。</li><li>把角色 Transform 赋给 follow；从零 damping 开始检查取景，再调节 deadZone、trackedObjectOffset 和 damping。</li><li>创建第二台虚拟相机并改变 priority，设置 Brain.defaultBlend；检查初次激活直接取景，后续切换产生过渡。需要震动时再配置 Source/Listener 的层。</li></ol>
+<h3>组件与 API</h3><p>CinemachineBrain, CinemachineCamera, CinemachineBlendDefinition, CinemachineConfiner2D, CinemachineImpulseSource, CinemachineImpulseListener</p><pre><code>var brain = outputCamera.gameObject.AddComponent&lt;CinemachineBrain&gt;();
+var virtualCamera = scene.CreateGameObject("Follow").AddComponent&lt;CinemachineCamera&gt;();
+virtualCamera.follow = player.transform;
+virtualCamera.priority = 20;
+brain.CutTo(virtualCamera);</code></pre>
+<h3>扩展与平台接口</h3><p>运行时使用 Fix64 和主线程 BTask；通过平台服务读写资源，不直接创建主机文件或网络连接。编辑器代码放在 Editor 装配，停止场景时取消请求并解除订阅。</p>
+<h3>资源分包与更新</h3><p>AssetImporter.assetBundleName/assetBundleVariant 指定资源组；BuildPipeline.BuildAssetBundles 接受导入设置或 AssetBundleBuild[]。跨包引用记录为目录依赖。RequiredBundleNames 控制首次安装，IAssetBundleDownloadManager 下载可选组和依赖。已安装可选包参与之后的版本更新。</p>
+<h3>行为边界</h3><p>这是面向本引擎 Camera2D 的独立实现，不提供 Unity Cinemachine 的 3D Body/Aim 管线、Timeline 或完整扩展生态。Confiner 约束相机中心点，不保证整个可视矩形位于多边形内。混合源使用切换时的状态快照。PixelPerfectCamera 会在最终渲染阶段吸附相机，过小的震动可能被像素网格吞掉。</p><h3>排查与验证</h3><ul><li>相机跳回：检查多个 Brain 或游戏脚本是否同时写同一 Camera2D。</li><li>切换不发生：检查目标是否 enabled 且 active、priority 是否高于当前目标。</li><li>像素图仍模糊：在输出相机启用 PixelPerfectCamera，纹理设 Point；不要把阻尼后的浮点渲染结果再次非整数缩放。</li><li>初次激活检查没有从原点缓慢插入；随后切换在中点和终点检查相机位置。</li><li>混合期间两台参与相机 IsLive 都为 true；无可用相机时 activeVirtualCamera 应清空。</li><li>以不同 Game 窗口尺寸检查跟随、相机切换、震动和像素网格。</li></ul>
+<p>Package Manager 导入示例：CameraFollow、CameraBlendImpulse。在 Project 打开场景，检查 Hierarchy/Inspector，比较 Scene 与 Game，Play 后查看 Console，Stop 后再次运行。</p>
+<p>本包增加配置、运行时、验证三份 Skills。详细说明见 <a href="RuntimeGuide.md">运行与扩展指南</a>。</p></section>
+</main><section><h2>新增功能与示例</h2><p><a href="Extensions.md">扩展功能指南</a>：在示例工程 Main 主菜单进入对应演示，每个场景都包含操作说明。</p></section></body></html>

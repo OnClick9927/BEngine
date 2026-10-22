@@ -1,0 +1,18 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.codex
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Codex
+description: Codex integration and assistant editor tools.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+editor:
+  assembly: BEngine.Codex.Editor
+  rootNamespace: BEngine.Editor
+  packageReferences:
+  - id: Markdig
+    version: 1.3.2

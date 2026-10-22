@@ -1,0 +1,32 @@
+# SDK、IDE 和编译缓存
+.dotnet/
+.dotnet-cli/
+/.codex-git-index-*
+.packages/
+.vs/
+.vscode/
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+*.log
+artifacts/
+.artifacts/
+Temp/
+
+# 发行版的本地编辑器数据
+/Engine/EditorData/
+/Engine/Preferences/
+/Engine/Temp/
+
+# 引擎与 Hub 导出时的暂存、回滚文件
+/Engine/.BEgine.publish-staging/
+/Engine/.BEgine.publish-backup/
+/Engine/BEgine/.BEgine-*.publish-staging/
+/Engine/BEgine/.BEgine-*.publish-backup/
+/Engine/.Hub.publish-staging/
+/Engine/.Hub.publish-backup/
+/Engine/.BEngine.Hub.publish-backup
+
+# src 和发行包中的 Examples 是包内容，正常纳入版本管理。

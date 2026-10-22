@@ -1,0 +1,4 @@
+interface:
+  display_name: "BEngine Animation"
+  short_description: "Build deterministic clips and Animator systems"
+  default_prompt: "Use $bengine-animation to implement or integrate deterministic BEngine animation clips and Animator behavior."

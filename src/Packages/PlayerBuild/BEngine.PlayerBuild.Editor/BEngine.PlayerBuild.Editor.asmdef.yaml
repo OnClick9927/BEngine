@@ -1,0 +1,14 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.PlayerBuild.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.UIElements
+- BEngine.Platform.DotNet
+- BEngine.AssetBundles.Editor
+- BEngine.Player.Editor
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

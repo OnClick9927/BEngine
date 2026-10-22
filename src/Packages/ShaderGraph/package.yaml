@@ -1,0 +1,28 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.shader-graph
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Shader Graph
+description: Node-based 2D shader authoring with live Vulkan and OpenGL rendering.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.ShaderGraph
+  rootNamespace: BEngine.ShaderGraph
+  dependencies:
+  - packageId: com.bengine.lighting2d
+    target: runtime
+editor:
+  assembly: BEngine.ShaderGraph.Editor
+  rootNamespace: BEngine.ShaderGraph.Editor
+  dependencies:
+  - packageId: com.bengine.shader-graph
+    target: runtime
+  - packageId: com.bengine.ui-elements
+    target: editor
+  - packageId: com.bengine.player-build
+    target: editor

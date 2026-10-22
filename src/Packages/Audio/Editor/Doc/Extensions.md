@@ -1,0 +1,7 @@
+# 混音组与音量渐变
+
+`AudioMixerGroup` 是可创建的资产，提供 volume、mute 和 parent。音源的 outputAudioMixerGroup 指向一个组，组音量与父组音量相乘；父组静音作用于所有子组。循环父子关系会被拒绝。Inspector 可设置 Output Mixer Group。
+
+`AudioSource.FadeTo(targetVolume, duration, stopWhenComplete)` 在音频运行时更新中渐变，支持 CancelFade 和 isFading；暂停音源或全局监听器时暂停渐变。零时长立即生效，负时长会报错。静音期间播放时钟继续。
+
+示例工程：Main → Mixer Groups & Fades。Play 播放，Fade Out 两秒淡出并停止，Fade In 两秒淡入；Mute Group 控制整个父组。

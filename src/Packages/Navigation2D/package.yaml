@@ -1,0 +1,28 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.navigation2d
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: 2D Navigation
+description: >-
+  Fix64 grid navigation with surfaces, area masks, modifiers, links, partial paths and agents with braking, path copying and rebake-aware repathing.
+  Bake walkable grids from scene geometry, assign area costs and masks, and connect regions with links. Agents follow complete or partial paths with braking and automatic repathing when a surface changes. Includes surface/agent inspectors, navigation debugging, example scenes and runtime documentation.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Navigation2D
+  rootNamespace: BEngine.Navigation2D
+  dependencies:
+  - packageId: com.bengine.physics2d
+    target: runtime
+editor:
+  assembly: BEngine.Navigation2D.Editor
+  rootNamespace: BEngine.Navigation2D.Editor
+  dependencies:
+  - packageId: com.bengine.navigation2d
+    target: runtime
+  - packageId: com.bengine.physics2d
+    target: runtime

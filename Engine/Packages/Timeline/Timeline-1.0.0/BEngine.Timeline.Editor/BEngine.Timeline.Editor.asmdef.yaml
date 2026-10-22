@@ -1,0 +1,13 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Timeline.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.UIElements.Editor
+- BEngine.Animation
+- BEngine.Timeline
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

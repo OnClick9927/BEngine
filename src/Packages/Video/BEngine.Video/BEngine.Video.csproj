@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine.Video</RootNamespace>
+    <AssemblyName>BEngine.Video</AssemblyName>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../Audio/BEngine.Audio/BEngine.Audio.csproj" />
+  </ItemGroup>
+</Project>

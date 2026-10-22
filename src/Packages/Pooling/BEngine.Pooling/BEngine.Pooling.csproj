@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <RootNamespace>BEngine</RootNamespace>
+    <AssemblyName>BEngine.Pooling</AssemblyName>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+  </ItemGroup>
+</Project>

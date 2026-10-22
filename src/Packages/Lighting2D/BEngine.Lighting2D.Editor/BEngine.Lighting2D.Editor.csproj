@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+    <AssemblyName>BEngine.Lighting2D.Editor</AssemblyName>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../PlayerBuild/BEngine.PlayerBuild.Editor/BEngine.PlayerBuild.Editor.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../BEngine.Lighting2D/BEngine.Lighting2D.csproj" />
+  </ItemGroup>
+</Project>

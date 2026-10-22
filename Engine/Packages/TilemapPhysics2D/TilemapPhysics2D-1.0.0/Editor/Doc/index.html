@@ -1,0 +1,6 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tilemap Physics 2D</title>
+<style>body{max-width:850px;margin:48px auto;padding:0 24px;font:17px/1.7 system-ui;color:#263244}code{background:#eef2f6;padding:2px 5px;border-radius:4px}</style>
+<h1>Tilemap Physics 2D</h1><p>启用 <code>com.bengine.tilemap-physics2d</code>，引擎同时启用 TiledMap 和 Physics2D 依赖。</p>
+<p>TilemapCollider2D 从瓦片碰撞配置生成二维碰撞形状。瓦片、地图或调色板变化时自动更新；同一行相邻矩形瓦片会合并以减少形状数量。</p>
+<p>碰撞配置以原始瓦片 ID 为准，动画帧和规则瓦片的视觉替换不会改变其碰撞含义。</p>
+<p>支持矩形、等距菱形和 PointTop/FlatTop 六边形。布局、尺寸、间距和锚点改变后自动刷新，只有矩形格子使用按行合并。图块和父级的旋转、镜像、非等比缩放参与碰撞计算。组件设置和用法见包内 Editor/Readme.md。</p></html>

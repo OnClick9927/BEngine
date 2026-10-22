@@ -1,0 +1,20 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.tilemap-physics2d
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Tilemap Physics 2D
+description: Deterministic tilemap collision generated from palette collider flags, with runtime refresh and horizontal cell merging.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.TilemapPhysics2D
+  rootNamespace: BEngine.TiledMap
+  dependencies:
+  - packageId: com.bengine.tiledmap
+    target: runtime
+  - packageId: com.bengine.physics2d
+    target: runtime

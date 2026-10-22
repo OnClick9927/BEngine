@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine.Navigation2D</RootNamespace>
+    <AssemblyName>BEngine.Navigation2D</AssemblyName>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Physics2D/BEngine.Physics2D/BEngine.Physics2D.csproj" />
+  </ItemGroup>
+</Project>

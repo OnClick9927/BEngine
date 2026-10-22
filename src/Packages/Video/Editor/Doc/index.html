@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>BEngine Video</title>
+<style>body{font:16px/1.65 system-ui;max-width:860px;margin:48px auto;background:#202329;color:#eee;padding:24px}code{color:#8cd9ff}a{color:#8cd9ff}</style>
+<h1>Video</h1><p>Local video import, sprite playback and synchronized audio.</p>
+<h2>Getting started</h2><ol><li>Install Video in Package Manager.</li><li>Import the VideoPlayback example and open its scene.</li>
+<li>Press Play. Space pauses/resumes, R restarts, and arrow keys seek.</li></ol>
+<h2>Importing</h2><p>Portable Frames is the default and plays on Windows, Linux, macOS, Web, Android, and iOS.
+Windows can convert it with Media Foundation when FFmpeg is absent. Original Container preserves the source file and uses Windows Media Foundation for runtime decoding.</p>
+<h2>VideoPlayer</h2><p>Assign <code>clip</code> and <code>targetRenderer</code>, then use <code>Prepare / Play / Pause / Stop</code>.
+Set <code>time</code> to seek, <code>isLooping</code> to repeat and <code>playbackSpeed / volume / mute</code> to control playback.
+Observe <code>isPrepared / isPlaying / frame / texture</code> and subscribe to playback/error events.</p>
+<h2>Direct playback</h2><p>VideoPlayer supports file and HTTP(S) URL sources, independent cursors and software/D3D11 decoding.
+The native path currently requires Windows. Preparation and reads are synchronous; unknown-duration live streams,
+DRM, subtitles and HDR tone mapping are not included. Asset bundles retain compressed container bytes.</p>
+<p><a href="StreamingAndDecoding.md">Streaming, hardware decoding, time semantics and limits</a></p>
+<p><a href="../Readme.md">Full package guide</a> · <a href="https://ffmpeg.org/ffmpeg.html">FFmpeg documentation</a></p></html>
+
+<p><a href='Extensions.md'>逐帧定位、事件与新增示例</a></p>

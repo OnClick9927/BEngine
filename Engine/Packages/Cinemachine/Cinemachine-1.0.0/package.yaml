@@ -1,0 +1,24 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.cinemachine
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Cinemachine 2D
+description: >-
+  Fix64 virtual cameras for Camera2D with priority selection, target tracking, damping, camera blends, polygon point confinement and layered impulses.
+  Compose Camera2D shots with virtual cameras, choose active shots by priority and blend smoothly between targets. Configure tracking, damping and confinement, and add layered camera shake for gameplay impacts. Includes authoring inspectors, practical example scenes and API documentation.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Cinemachine
+  rootNamespace: BEngine.Cinemachine
+  dependencies: []
+editor:
+  assembly: BEngine.Cinemachine.Editor
+  rootNamespace: BEngine.Cinemachine.Editor
+  dependencies:
+  - packageId: com.bengine.cinemachine
+    target: runtime

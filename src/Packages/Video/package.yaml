@@ -1,0 +1,35 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.video
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Video
+description: >-
+  Play original media containers and HTTP videos on Windows through Media Foundation, with independent
+  streaming video/audio cursors and software or D3D11 decoding. New local clips import as portable frames by default
+  for Windows, Linux, macOS, Web, Android and iOS; the Windows editor can transcode without an external FFmpeg install.
+  VideoPlayer displays frames on a SpriteRenderer and supports preparation, play, pause, stop, looping, seeking,
+  playback speed, volume, mute and lifecycle events. Imported .bvideo artifacts play on the engine thread without
+  an external decoder and are compatible with asset bundles. Includes the VideoPlayback scene and sample clip.
+  FFmpeg and ffprobe are required only for Portable Frames conversion; the Audio package supplies sound output.
+enabledByDefault: false
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Video
+  rootNamespace: BEngine.Video
+  dependencies:
+  - packageId: com.bengine.audio
+    target: runtime
+editor:
+  assembly: BEngine.Video.Editor
+  rootNamespace: BEngine.Video.Editor
+  dependencies:
+  - packageId: com.bengine.video
+    target: runtime
+  - packageId: com.bengine.audio
+    target: runtime
+  - packageId: com.bengine.audio
+    target: editor

@@ -1,0 +1,25 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.html-ui-converter
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: HtmlUIConverter
+description: HTML and CSS conversion to UIElements documents.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+editor:
+  dependencies:
+  - packageId: com.bengine.ui-elements
+    target: editor
+  assembly: BEngine.HtmlUIConverter.Editor
+  rootNamespace: BEngine.Editor
+  packageReferences:
+  - id: AngleSharp
+    version: 1.5.2
+  - id: AngleSharp.Css
+    version: 1.0.0
+commandLineOptions:
+- --convert-html

@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.ShaderGraph
+rootNamespace: BEngine.ShaderGraph
+references:
+- BEngine.Lighting2D
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false

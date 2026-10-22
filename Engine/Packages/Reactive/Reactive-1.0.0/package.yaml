@@ -1,0 +1,15 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.reactive
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Reactive
+description: Frame driven observable and subject APIs for BEngine.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Reactive
+  rootNamespace: BEngine.Reactive

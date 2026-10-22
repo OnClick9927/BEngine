@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>BEngine.TiledMap</RootNamespace>
+    <AssemblyName>BEngine.TiledMap</AssemblyName>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../TextureAtlas/BEngine.TextureAtlas/BEngine.TextureAtlas.csproj" />
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+</Project>

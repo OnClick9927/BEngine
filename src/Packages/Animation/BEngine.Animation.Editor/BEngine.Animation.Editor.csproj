@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+    <AssemblyName>BEngine.Animation.Editor</AssemblyName>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../BEngine.Animation/BEngine.Animation.csproj" />
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../../UIElements/BEngine.UIElements.Editor/BEngine.UIElements.Editor.csproj" /></ItemGroup>
+</Project>

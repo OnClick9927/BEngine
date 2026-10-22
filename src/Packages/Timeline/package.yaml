@@ -1,0 +1,35 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.timeline
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Timeline
+description: Timeline assets, playback, media sequencing and track authoring.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Timeline
+  rootNamespace: BEngine
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+  dependencies:
+  - packageId: com.bengine.video
+    target: runtime
+  - packageId: com.bengine.audio
+    target: runtime
+  - packageId: com.bengine.animation
+    target: runtime
+editor:
+  assembly: BEngine.Timeline.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.ui-elements
+    target: editor
+  - packageId: com.bengine.timeline
+    target: runtime
+  - packageId: com.bengine.animation
+    target: runtime

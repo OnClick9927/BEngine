@@ -1,0 +1,14 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Testing.Editor
+rootNamespace: BEngine.Testing.Editor
+references:
+- BEngine.Testing
+- BEngine.PlayerBuild.Editor
+- Mono.Cecil
+includePlatforms:
+- Editor
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
