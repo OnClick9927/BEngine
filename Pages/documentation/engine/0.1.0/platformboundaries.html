@@ -1,0 +1,165 @@
+<h1 id="平台接口与调用入口">平台接口与调用入口</h1>
+<p>业务代码调用 Utility；Utility 通过构造函数注入平台接口；Platform 程序集提供实现。平台接口是给实现方和服务注册使用的 SPI，保持 public 是为了允许外部程序集实现，业务代码不直接获取或调用它。</p>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>Core 调用入口</th>
+<th>平台接口</th>
+<th>实现所在程序集</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>文件读写、目录、流、原子替换</td>
+<td>FileUtility</td>
+<td>IFileSystem</td>
+<td>BEngine.Platform.DotNet</td>
+</tr>
+<tr>
+<td>路径规则</td>
+<td>PathUtility</td>
+<td>IPathService</td>
+<td>BEngine.Platform.DotNet</td>
+</tr>
+<tr>
+<td>系统环境、时钟、诊断、运行时数据</td>
+<td>PlatformUtility</td>
+<td>IPlatformService</td>
+<td>BEngine.Platform.DotNet</td>
+</tr>
+<tr>
+<td>应用目录</td>
+<td>ApplicationPathUtility</td>
+<td>IApplicationPaths</td>
+<td>BEngine.Platform.DotNet</td>
+</tr>
+<tr>
+<td>构建目标表与宿主架构推断</td>
+<td>BuildTargetUtility</td>
+<td>IBuildTargetCatalog</td>
+<td>BEngine.Platform.DotNet</td>
+</tr>
+<tr>
+<td>键盘、鼠标、触摸、手柄状态</td>
+<td>Input、InputUtility</td>
+<td>IInputService</td>
+<td>BEngine.Platform.DotNet；桌面采集在 BEngine.Platform.Desktop</td>
+</tr>
+<tr>
+<td>光标状态</td>
+<td>Cursor、CursorUtility</td>
+<td>ICursorService</td>
+<td>BEngine.Platform.DotNet；原生应用在 BEngine.Platform.Desktop</td>
+</tr>
+<tr>
+<td>屏幕状态和分辨率请求</td>
+<td>Screen、DisplayUtility</td>
+<td>IDisplayService</td>
+<td>BEngine.Platform.DotNet；窗口应用在 BEngine.Platform.Desktop</td>
+</tr>
+<tr>
+<td>渲染设置与目标帧率</td>
+<td>QualitySettings、RenderSettingsUtility、Application.targetFrameRate</td>
+<td>IRenderSettingsService</td>
+<td>BEngine.Platform.DotNet；设备应用在 Desktop / Windows.Editor</td>
+</tr>
+<tr>
+<td>后端目录、设备能力、Shader 变体和视口约定</td>
+<td>GraphicsUtility、GraphicsBackendSettings、SystemInfo</td>
+<td>IGraphicsPlatformService</td>
+<td>BEngine.Platform.DotNet；设备及交换链在 BEngine.Platform.Desktop</td>
+</tr>
+<tr>
+<td>输入法</td>
+<td>TextInputUtility</td>
+<td>ITextInputService</td>
+<td>BEngine.Windows</td>
+</tr>
+<tr>
+<td>原生多点触摸窗口</td>
+<td>TouchInputUtility</td>
+<td>ITouchInputService、ITouchInputSource</td>
+<td>BEngine.Windows；SilkInputSession 每帧转入 Input 状态</td>
+</tr>
+<tr>
+<td>子进程执行和托管</td>
+<td>ProcessUtility、ProcessHostUtility、ProcessHandle</td>
+<td>IProcessRunner、IProcessHost、IProcessHandle</td>
+<td>BEngine.Platform.DotNet.Editor</td>
+</tr>
+<tr>
+<td>等待、线程/进程信息、日志时间、本机提示</td>
+<td>WaitUtility、ExecutionUtility、LogTimestampUtility、HostOutputUtility</td>
+<td>对应 IEditor* 接口</td>
+<td>BEngine.Platform.DotNet.Editor</td>
+</tr>
+<tr>
+<td>源文件监视</td>
+<td>SourceMonitorUtility、SourceChangeMonitor</td>
+<td>IProjectSourceChangeMonitorFactory、IProjectSourceChangeMonitor</td>
+<td>BEngine.Platform.DotNet.Editor</td>
+</tr>
+<tr>
+<td>脚本和包程序集加载、卸载</td>
+<td>AssemblyLoadingUtility、AssemblyScope</td>
+<td>IAssemblyLoadingService、IAssemblyScope</td>
+<td>BEngine.Platform.DotNet.Editor</td>
+</tr>
+<tr>
+<td>原生窗口</td>
+<td>NativeWindowUtility、NativeWindow</td>
+<td>IEditorNativeWindowFactory、IEditorNativeWindow</td>
+<td>BEngine.Windows.Editor</td>
+</tr>
+<tr>
+<td>屏幕工作区、原生拖动、菜单、屏幕取色</td>
+<td>DesktopUtility</td>
+<td>IEditorDesktopService</td>
+<td>BEngine.Windows.Editor</td>
+</tr>
+<tr>
+<td>剪贴板、文件对话框</td>
+<td>ClipboardUtility、FileDialogUtility、EditorUtility</td>
+<td>IClipboardService、IFileDialogService、IEditorUtilityPlatform</td>
+<td>BEngine.Windows.Editor</td>
+</tr>
+<tr>
+<td>编辑器图片与文字</td>
+<td>CanvasResourceUtility、EditorTextUtility</td>
+<td>IGpuCanvasResourceResolver、IEditorTextRasterizer</td>
+<td>BEngine.Windows.Editor</td>
+</tr>
+<tr>
+<td>原生 Shader 编译</td>
+<td>ShaderCompilerUtility</td>
+<td>IShaderCompiler</td>
+<td>BEngine.Windows.Editor</td>
+</tr>
+</tbody></table>
+<p>Core 的两个程序集都以 <code>net10.0</code> 编译，不引用具体 Platform 程序集、Windows Forms、Silk.NET 或 Veldrid。窗口、Win32、系统绘图、文件监视、进程执行和 AssemblyLoadContext 实现均位于 Platform。Core 保留平台无关的绘制算法、控件逻辑、数据类型和 RHI 契约。</p>
+<h2 id="使用方式">使用方式</h2>
+<pre><code class="language-csharp">using BEngine.Platform;
+using Microsoft.Extensions.DependencyInjection;
+
+// 在宿主的组合入口选择具体平台。
+var services = new ServiceCollection().AddBEngineWindows();
+services.AddSingleton&lt;MyAssetReader&gt;();
+using var provider = services.BuildServiceProvider();
+var reader = provider.GetRequiredService&lt;MyAssetReader&gt;();
+
+public sealed class MyAssetReader(FileUtility files)
+{
+    public string Read(string path) =&gt; files.ReadAllText(path);
+}
+</code></pre>
+<p>静态 API 可使用 <code>FileUtility.Current</code>，它按当前场景、已附加的运行时容器、平台默认容器解析。优先在可注入类型中使用构造函数注入，避免将 Current 缓存到另一个作用域。<code>PathUtility</code>、<code>PlatformUtility</code> 等遵循同样的规则。</p>
+<p>测试或自定义平台可在服务注册中提供自己的 <code>IFileSystem</code>，FileUtility 本身无需修改。接口不包含默认文件读写实现，也不会在找不到服务时偷偷回退到物理磁盘。</p>
+<p>编辑器宿主显式初始化 <code>WindowsEditorPlatform</code>，再调用 <code>AddBEngineEditorPlatformServices</code>。Core 只注册调用入口；具体服务由平台注册贡献提供。无原生窗口的工具可只加载 <code>BEngine.Platform.DotNet.Editor</code> 并使用所需的进程、监视和程序集服务。</p>
+<p>迁移后的公开参数由 IFileSystem 等 SPI 改为对应 Utility；集成代码需要重新编译。自定义实现仍实现接口，并在宿主中注册。输入法等可选能力只在平台提供实现时可用。</p>
+<p>输入、光标、显示、渲染设置和图形设备状态按容器隔离。编辑器 Play Mode、包服务和 Player AOT/热更新阶段通过 ShareBEnginePlatformState 显式共用宿主 Utility，避免重新创建输入状态，或在阶段切换后丢失设备信息。独立宿主仍有独立状态。</p>
+<p>Player 包保留自己的 IPlayerInputContext / IPlayerRenderContext 及薄适配器，Escape 关闭游戏等行为由 Player 决定。Silk 设备采集、原生图形窗口选择、OpenGL/Vulkan 创建设备与呈现均在 Platform，不向 Core 增加仅供 Player 调用的协议。</p>
+<p>Android 的 AAudio 输出、生命周期暂停/恢复、OpenGL ES 上传与参数绑定、Surface 分辨率上限和实际帧率调度位于 <code>BEngine.Android</code> / Android Host。Audio 包通过 <code>IPlatformAudioOutputFactory</code> 与可选的 <code>IPlatformBufferedAudioOutput</code> 使用输出；不直接调用 AAudio。<code>AndroidRuntimeSettings</code> 默认最长渲染边 1440、音频缓冲 240 ms，可由应用在初始化前配置。安全区域包含刘海、系统栏及圆角，并与触摸坐标一起换算到渲染分辨率；UI 是否放大、如何排版由应用决定。</p>
+<p><code>PlatformAssetBuildPipeline</code> 只负责独立构建目标 Artifact、验证源文件快照及应用显式平台覆盖。Android / iOS Build 模块注册移动端默认导入策略：Android 纹理上限 1024、iOS 2048，Automatic 普通纹理使用 ETC2、Sprite/UI/Cursor 保留 RGBA32，大于 512 KiB 的音频使用 Streaming。资源的 <code>platform.Android.*</code> / <code>platform.IOS.*</code> 覆盖在默认策略之后应用；原始 Meta、编辑器 Artifact 和桌面默认行为不变。AOT 主包与 AB 共用该入口。各平台原生发布参数仍由对应 Build provider 负责，业务资源命名、玩法与关卡规则不得进入平台策略。</p>
+<p>桌面 Player 的 VSync、目标帧率、窗口尺寸/全屏请求在平台帧开始时应用；编辑器 VSync 由平台窗口应用，浮动窗口仍遵循自身禁止 VSync 的配置。当前交换链只支持 VSync 开/关，vSyncCount 大于 0 均启用；尚未增加按 N 次刷新同步、MSAA 或独占全屏/刷新率切换实现。antiAliasing、反射和阴影质量参数已由平台服务保存，是否生效仍取决于相应渲染器能力，不能把设置了参数当作设备支持。SystemInfo 图形属性来自已创建设备，未知能力返回 false/0，不再硬编码支持标志。</p>
+<p>验证入口：<code>Temp/Validation/PlatformUtilities.cs</code> 检查内存文件系统注入、嵌套容器隔离、引导服务身份、进程/程序集服务和 Core 边界；<code>PackageBoundaries.cs</code> 检查完整包与项目依赖图。<code>PlatformInputRendering.cs</code> 检查输入边沿、触摸生命周期、容器隔离和运行阶段共享；<code>PlatformNativeGraphics.cs</code> 在隐藏窗口中验证 Vulkan/OpenGL 着色器、像素回读、VSync、帧率和分辨率。</p>
+<p>Android Host 使用自适应 Surface 帧率申请（非视频 FixedSource），在目标帧率未设置时使用 60，并在应用更改目标帧率后同步 Surface、View 与 Window 的申请。引擎 APK 声明 game category；不通过系统命令改设备或模拟器配置。OpenGL ES 高频绘制/Uniform/状态调用直接 P/Invoke，状态与参数缓存只由同一 GL 上下文管理，文字测量缓存有界。<code>bengineProfileFrames</code> Intent 仅显式启用两秒聚合的 Tick、Render、空闲时间与批次数统计，正常启动不开启采样。</p>

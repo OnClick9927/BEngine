@@ -1,0 +1,548 @@
+<h1 id="bengine-core">BEngine Core</h1>
+<p>BEngine Core 是引擎与编辑器的内置基础层，提供 2D Scene、GameObject、Component、Transform、Camera2D、Sprite、资源系统、序列化、输入、生命周期和 Unity 风格编辑器扩展 API。Core 始终可用，不需要在 <code>Packages.yaml</code> 中启用，也不依赖 Animation、Physics2D、Navigation2D 或 TiledMap。</p>
+<p><img alt="Core 编辑器概览" src="documentation/engine/0.1.0/assets/Editor/Doc/images/overview.png" loading="lazy" decoding="async"></p>
+<h2 id="包概览与依赖">包概览与依赖</h2>
+<p>Core 是所有工程与扩展包的共同依赖，也是唯一不通过 Package Manager 卸载的功能集合。扩展包可以依赖 Core 和其他包，依赖图禁止循环；Core 不保存具体扩展包注册，保证运行时可按工程清单组合。</p>
+<h3 id="程序集与目录">程序集与目录</h3>
+<p>Package Manager 支持按最低引擎版本筛选包、选择并固定安装版本。顶部工具栏左侧搜索、刷新，右侧创建、导出；
+创建和导出使用紧凑的 Pop EditorWindow。创建时填写根命名空间等包信息、下拉选择最低引擎版本，
+只生成当前工程的源码模板；导出时下拉选择 Assets/Packages 中的包，校验源码后写入与 Assets 同级的 Packages-Exported/包名/包名-版本。
+包仓库使用 <code>Engine/Engine/Packages/包名/包名-版本</code>，详细步骤见 <a href="manual.html?product=engine&amp;version=0.1.0&amp;doc=packageauthoring">包版本与工程内开发</a>。</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>用途</th>
+<th>运行时可用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>BEngine</code></td>
+<td>Scene、GameObject、组件、资源、渲染、输入和数学 API</td>
+<td>是</td>
+</tr>
+<tr>
+<td><code>BEngine.Editor</code></td>
+<td>编辑器基础库：Inspector、菜单、窗口、Package Manager 和资源导入</td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>Resources</code></td>
+<td>默认 Shader 等运行时资源</td>
+<td>是</td>
+</tr>
+<tr>
+<td><code>Editor</code></td>
+<td>图标、离线文档、示例和 AI Skill</td>
+<td>否</td>
+</tr>
+</tbody></table>
+<p>Core 使用 <code>Microsoft.Extensions.DependencyInjection</code> 管理宿主与 Scene scope，并使用 YAML 文档保存工程、场景、Prefab 和资源元数据。运行时是单线程模型；编辑器可以在后台执行扫描、编译、哈希和文件 IO，但不能从后台线程修改场景对象。</p>
+<p>Animation、Animator 状态机由 <code>com.bengine.animation</code> 包提供，Timeline 由独立的 <code>com.bengine.timeline</code> 包提供。Core 保留通用节点／轨道数据模型和窗口内容接口；保留模式控件及 NodeCanvas、TrackEditorCanvas 在 com.bengine.ui-elements 包内；启用包后双击 <code>.anim</code>、<code>.controller</code> 或 <code>.timeline.yaml</code> 可打开对应编辑窗口。具体操作见包文档。</p>
+<h2 id="可导入示例">可导入示例</h2>
+<table>
+<thead>
+<tr>
+<th>示例</th>
+<th>导入目录</th>
+<th>场景</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Core Getting Started</td>
+<td><code>Assets/Examples/CoreGettingStarted</code></td>
+<td><code>res/Core.scene.yaml</code></td>
+<td>MonoBehaviour 生命周期、输入、Transform、SpriteRenderer、Camera2D 和 EditorWindow</td>
+</tr>
+</tbody></table>
+<h3 id="快速开始从-import-到-play">快速开始：从 Import 到 Play</h3>
+<ol>
+<li>启动编辑器，打开 <code>Window &gt; Package Manager</code>。</li>
+<li>在左侧选择 <code>BEngine Core</code>，切换到 <code>Examples</code> 页签。</li>
+<li>在 <code>Core Getting Started</code> 行点击 <code>Import</code>。导入完成后按钮会变为 <code>Reimport</code>。</li>
+<li>在 Project 窗口打开 <code>Assets/Examples/CoreGettingStarted/res/Core.scene.yaml</code>。</li>
+<li>等待脚本编译完成，确认 Console 没有错误，然后点击顶部 Play 按钮。</li>
+<li>使用 Horizontal/Vertical 输入轴移动前景 Sprite，按 <code>Space</code> 切换颜色；Console 会显示 Awake、OnEnable、Start 日志。</li>
+<li>停止 Play。运行时创建的 Camera、背景和伴随 Sprite 会随运行镜像丢弃，原始 Scene 资产不会被改写。</li>
+<li>打开 <code>Tools &gt; Examples &gt; BEngine Editor Window</code> 查看 <code>MenuItem</code>、EditorWindow 生命周期、Selection 和 GenericMenu 示例。</li>
+</ol>
+<p><code>Reimport</code> 默认复用未变化文件，并保留本地修改。需要一份干净参考时，先复制导入目录，再按 Package Manager 的提示选择覆盖策略。</p>
+<h2 id="组件字段表">组件字段表</h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Transform</code></td>
+<td><code>localPosition</code>, <code>localRotation</code>, <code>localScale</code></td>
+<td>本地二维位置、角度和缩放</td>
+</tr>
+<tr>
+<td><code>Transform</code></td>
+<td><code>position</code>, <code>rotation</code>, <code>lossyScale</code></td>
+<td>计算后的世界值；层级变化由 <code>SetParent</code> 管理</td>
+</tr>
+<tr>
+<td><code>Camera2D</code></td>
+<td><code>size</code></td>
+<td>正交相机半高，最小值为 0.001</td>
+</tr>
+<tr>
+<td><code>Camera2D</code></td>
+<td><code>backgroundColor</code>, <code>clearMode</code></td>
+<td>Color、DepthOnly 或 Nothing 清屏策略</td>
+</tr>
+<tr>
+<td><code>Camera2D</code></td>
+<td><code>priority</code>, <code>isMain</code></td>
+<td>多相机按 priority 从小到大稳定渲染</td>
+</tr>
+<tr>
+<td><code>Camera2D</code></td>
+<td><code>cullingMask</code></td>
+<td>独立的 63 位 Layer 掩码；使用 <code>SortingLayer.ToMask</code>、<code>LayerMask.MaskForLayer</code> 或 <code>LayerMask.GetMask</code> 创建</td>
+</tr>
+<tr>
+<td><code>Camera2D</code></td>
+<td><code>viewportRect</code></td>
+<td>左下角原点、0 到 1 的归一化视口</td>
+</tr>
+<tr>
+<td><code>Renderer2D</code></td>
+<td><code>sortingLayer</code>, <code>orderInLayer</code>, <code>opacity</code></td>
+<td>所有 2D Renderer 共用的排序与透明度字段</td>
+</tr>
+<tr>
+<td><code>SpriteRenderer</code></td>
+<td><code>sprite</code>, <code>size</code>, <code>pivot</code>, <code>useSpritePivot</code></td>
+<td>Sprite 资源、尺寸与轴心</td>
+</tr>
+<tr>
+<td><code>SpriteRenderer</code></td>
+<td><code>color</code>, <code>flipX</code>, <code>flipY</code>, <code>material</code></td>
+<td>着色、翻转与材质；Atlas 由 Sprite 引用自动反查</td>
+</tr>
+<tr>
+<td><code>ParticleSystem2D</code></td>
+<td><code>duration</code>, <code>loop</code>, <code>playOnAwake</code>, <code>emissionRate</code></td>
+<td>发射周期与自动播放</td>
+</tr>
+<tr>
+<td><code>ParticleSystem2D</code></td>
+<td><code>startLifetime</code>, <code>startSpeed</code>, <code>startDirection</code>, <code>startSize</code></td>
+<td>新生粒子的寿命、速度、方向和尺寸</td>
+</tr>
+<tr>
+<td><code>ParticleSystem2D</code></td>
+<td><code>startColor</code>, <code>startRotation</code>, <code>startAngularVelocity</code></td>
+<td>新生粒子的颜色和旋转</td>
+</tr>
+<tr>
+<td><code>ParticleSystem2D</code></td>
+<td><code>maxParticles</code>, <code>sprite</code>, <code>atlas</code>, <code>material</code></td>
+<td>容量、视觉资源与合批键</td>
+</tr>
+</tbody></table>
+<p>Sorting Layer 的值是连续自然编号 <code>1..63</code>，不是位值。工程默认提供五个具有稳定内建身份的 Layer；它们可以重命名和调整顺序，但不能删除。自定义 Layer 可以增加、删除、重命名和排序，排序变化后编号仍保持连续。Camera 与 Physics 使用的 Layer Mask 是另一种位掩码表示：不要直接按位组合 Layer 编号，应使用 <code>SortingLayer.ToMask(layer)</code>、<code>LayerMask.MaskForLayer(layer)</code> 或按名称调用 <code>LayerMask.GetMask(...)</code>。内建 UI Layer 通过稳定身份定位，其当前编号可随排序变化。最终渲染顺序由 Layer、Order in Layer、Hierarchy、透明度和提交顺序共同决定，Material、Shader、Atlas 决定相邻提交能否合批。</p>
+<h2 id="资源字段表与导入参数">资源字段表与导入参数</h2>
+<table>
+<thead>
+<tr>
+<th>资源</th>
+<th>关键字段或扩展名</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Scene</code></td>
+<td><code>*.scene.yaml</code></td>
+<td>保存 GameObject、Transform 和 Component 数据</td>
+</tr>
+<tr>
+<td><code>PrefabAsset</code></td>
+<td><code>*.prefab.yaml</code></td>
+<td>可实例化并 Apply/Revert 的对象层级</td>
+</tr>
+<tr>
+<td><code>Sprite</code></td>
+<td>图片 + <code>.meta</code>: <code>textureType</code>, <code>spritePivotX/Y</code></td>
+<td>将图片的 Texture Type 设为 Sprite；同一图片可赋给 SpriteRenderer 或加入 Atlas</td>
+</tr>
+<tr>
+<td><code>TextureAtlas</code></td>
+<td><code>*.atlas.yaml</code>: <code>MaxSize</code>, <code>Padding</code>, <code>Extrude</code>, <code>Sources</code></td>
+<td><code>Sources</code> 是 Sprite 数组，以 <code>ownerGuid + localIdentifier</code> 保存稳定引用；在 <code>Window &gt; 2D &gt; Texture Atlas</code> 构建</td>
+</tr>
+<tr>
+<td><code>Material</code></td>
+<td><code>*.material.yaml</code>: <code>shader</code>, <code>color</code>, <code>renderQueue</code></td>
+<td>可保存 Color、Fix64、Vector4 和 Int 属性</td>
+</tr>
+<tr>
+<td><code>GUISkin</code></td>
+<td><code>*.guiskin.yaml</code>: 全部 <code>EditorStyles</code> 样式槽, <code>customStyles</code></td>
+<td>编辑器主题资产；继承 <code>BAsset</code>，仅存在于 <code>BEngine.Editor</code> 程序集</td>
+</tr>
+<tr>
+<td><code>Texture</code></td>
+<td><code>.png/.jpg/.jpeg/.bmp/.tga/.gif</code></td>
+<td>Inspector Import Settings 写入相邻 <code>.meta</code>；GIF 导入首帧，JPEG 应用 EXIF Orientation</td>
+</tr>
+<tr>
+<td><code>TextureImporter</code></td>
+<td><code>compressionFormat</code>, <code>filterMode</code>, <code>wrapMode</code></td>
+<td>RGBA32、BC1/3/7、ETC2 RGBA8、ASTC 4x4、过滤和寻址模式</td>
+</tr>
+<tr>
+<td><code>TextureImporter</code></td>
+<td><code>generateMipMaps</code>, <code>maxTextureSize</code>, <code>pixelsPerUnit</code>, <code>platformOverrides</code></td>
+<td>完整 MipMap、32 到 16384 的 2 次幂尺寸、PPU 与 Windows/Linux/MacOS/Android/iOS/Web 覆盖</td>
+</tr>
+<tr>
+<td><code>Font</code>, <code>Shader</code>, <code>Script</code>, <code>TextAsset</code></td>
+<td>对应源文件</td>
+<td>均遵循 BAsset 的稳定路径和 GUID 契约</td>
+</tr>
+</tbody></table>
+<p>Inspector 中修改 Texture 导入参数后必须点击 <code>Apply</code>；<code>Revert</code> 会重新读取 <code>.meta</code>。导入器会生成带校验的 BTEX 产物和完整 mip 链；Vulkan/OpenGL 支持时直接上传块压缩数据，否则解压全部 mip 为 RGBA8。Player 构建应用目标平台覆盖，编辑器使用默认设置。格式限制、显存回退和编码工具依赖见 <a href="manual.html?product=engine&amp;version=0.1.0&amp;doc=textureimport">图片导入、纹理压缩与平台覆盖</a>。</p>
+<h3 id="统一-basset-与导入链路">统一 BAsset 与导入链路</h3>
+<p>工程资源不再区分两套资产基类：Scene、Texture、Font、Shader、Material、TextureAtlas、ScriptableObject 资产等都直接或间接继承统一的 <code>BAsset</code>。Sprite 是 TextureImporter 从 Texture 创建的 <code>BObject</code> SubAsset，以主 Texture 的 GUID 和非零 <code>localIdentifier</code> 标识，不是第二种资产基类。</p>
+<p>编辑器读取链路是 <code>Source -&gt; AssetDatabase -&gt; AssetImporter -&gt; Artifact -&gt; BAsset</code>。Source 是用户磁盘中的原始文件；AssetDatabase 管理工程路径、GUID、Source/Artifact 地址、哈希与 SubAsset 身份；AssetImporter 把源数据转换到 Artifact；AssetDatabase 再从 Artifact 创建并缓存 BAsset。Assets 面板展示 AssetDatabase 的资源记录，而不是直接枚举磁盘文件。重新导入、刷新、移动或删除资源时必须使相关缓存失效。</p>
+<p>需要把可序列化资源写回源文件时，编辑器内部通过泛型 <code>Document&lt;TAsset&gt;</code> 在 BAsset 与磁盘文档之间转换；该桥梁不公开，也不形成新的资产类型层级。运行时只允许从 AssetBundle 读取 BAsset，并由渲染后端按需创建 GPU 对象；运行时及 Play 镜像都不能把资源保存回工程文件。</p>
+<h3 id="cg-shader-编译链pragma-与阶段">CG Shader 编译链、pragma 与阶段</h3>
+<p>工程把 <code>Assets</code> 下的 <code>*.cg</code> 和 <code>*.shader</code> 作为 CG Shader 源。这里的 CG 是使用 HLSL 语义的单阶段源码，不是 Unity ShaderLab/<code>CGPROGRAM</code> 容器；入口函数、<code>SV_Target</code> 等签名必须对目标阶段有效。阶段可由文件名后缀声明：</p>
+<table>
+<thead>
+<tr>
+<th>文件名/pragma</th>
+<th>阶段</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>*.vert.cg</code>, <code>*.vertex.cg</code> 或 <code>#pragma stage vertex</code></td>
+<td>Vertex</td>
+</tr>
+<tr>
+<td><code>*.frag.cg</code>, <code>*.fragment.cg</code>, <code>#pragma stage fragment</code> 或 <code>pixel</code></td>
+<td>Fragment</td>
+</tr>
+<tr>
+<td><code>*.comp.cg</code>, <code>*.compute.cg</code> 或 <code>#pragma stage compute</code></td>
+<td>Compute</td>
+</tr>
+</tbody></table>
+<p>普通 <code>*.shader</code> 以及没有阶段后缀的 <code>*.cg</code> 必须包含 <code>#pragma stage vertex|fragment|pixel|compute</code>。入口默认是 <code>main</code>，可用 <code>#pragma entry MyEntry</code> 修改。<code>stage</code> 和 <code>entry</code> 是 BEngine 引擎 pragma，解析后会从交给编译器的源码中移除；其他预处理指令仍由 shaderc 处理。</p>
+<pre><code class="language-hlsl">#pragma stage fragment
+#pragma entry FragmentMain
+
+float4 FragmentMain() : SV_Target
+{
+    return float4(0.15, 0.75, 0.65, 1.0);
+}
+</code></pre>
+<p>编辑器后台链路为 <code>Assets source -&gt; stage/entry 解析 -&gt; shaderc(HLSL) -&gt; Vulkan 1.0 SPIR-V -&gt; content-addressed .spv -&gt; current 指针</code>。编译启用 performance optimization、自动 location 和 HLSL IO mapping；构建 ID 包含 schema、规范化工程路径、阶段、入口和完整源码，因此未变化输入复用现有 Artifact。后台编译只准备结果，Apply 阶段原子更新 <code>current</code> 指针、处理已删除 Shader，并清除默认 Shader 缓存。单个 Shader 失败不会提交坏指针；详情写入 <code>ShaderCompilation.log</code>，修正源码后重新导入或执行 <code>Edit &gt; Recompile Scripts</code>。</p>
+<h2 id="运行时-api">运行时 API</h2>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>scene.CreateGameObject(name)</code></td>
+<td>在指定 Scene 创建对象</td>
+</tr>
+<tr>
+<td><code>gameObject.AddComponent&lt;T&gt;()</code></td>
+<td>添加组件并自动满足 <code>RequireComponent</code></td>
+</tr>
+<tr>
+<td><code>GetComponent&lt;T&gt;()</code> / <code>TryGetComponent&lt;T&gt;()</code></td>
+<td>查询当前对象组件</td>
+</tr>
+<tr>
+<td><code>scene.QueryComponents&lt;T&gt;()</code></td>
+<td>查询 Scene 中所有匹配组件</td>
+</tr>
+<tr>
+<td><code>transform.Translate/Rotate/SetParent</code></td>
+<td>2D 空间变换与层级操作</td>
+</tr>
+<tr>
+<td><code>SceneManager.LoadScene</code></td>
+<td>Single 或 Additive 加载场景</td>
+</tr>
+<tr>
+<td>定时与协程</td>
+<td>启用 <code>com.bengine.coroutines</code> 后使用 <code>this.StartCoroutine</code>、<code>this.Invoke</code> 等扩展方法</td>
+</tr>
+<tr>
+<td><code>BAsset.Load&lt;T&gt;(path)</code></td>
+<td>按 Assets/Packages 稳定路径加载资源</td>
+</tr>
+<tr>
+<td><code>BAsset.LoadSubAsset&lt;T&gt;(path, localIdentifier)</code></td>
+<td>用主资源路径和局部 ID 加载 SubAsset</td>
+</tr>
+<tr>
+<td><code>Object.Instantiate</code>, <code>Object.Destroy</code></td>
+<td>复制与销毁运行时对象</td>
+</tr>
+</tbody></table>
+<pre><code class="language-csharp">using BEngine;
+
+[AddComponentMenu(&quot;Gameplay/Player Mover&quot;)]
+public sealed class PlayerMover : MonoBehaviour
+{
+    public Fix64 speed = 4;
+    private SpriteRenderer? _renderer;
+
+    public override void Awake() =&gt; _renderer = GetComponent&lt;SpriteRenderer&gt;();
+
+    public override void Update()
+    {
+        var input = new Vector2(Input.GetAxisRaw(&quot;Horizontal&quot;), Input.GetAxisRaw(&quot;Vertical&quot;));
+        transform.Translate(input * speed * Time.deltaTime, Space.World);
+        if (Input.GetKeyDown(KeyCode.Space) &amp;&amp; _renderer is not null)
+            _renderer.color = _renderer.color == Color.white ? Color.red : Color.white;
+    }
+}
+</code></pre>
+<p>生命周期顺序为 <code>Awake -&gt; OnEnable -&gt; Start -&gt; FixedUpdate/Update/LateUpdate -&gt; OnDisable -&gt; OnDestroy</code>。运行时修改只发生在 Play 镜像；停止 Play 后编辑器继续显示播放前的 Scene 和组件数据。</p>
+<h2 id="编辑器-api">编辑器 API</h2>
+<table>
+<thead>
+<tr>
+<th>API/特性</th>
+<th>用途与注册方式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>[MenuItem(&quot;Tools/...&quot;)]</code></td>
+<td>程序集加载时自动发现静态菜单方法；同路径布尔方法用于验证</td>
+</tr>
+<tr>
+<td><code>EditorWindow.GetWindow&lt;T&gt;()</code></td>
+<td>创建或聚焦可停靠窗口</td>
+</tr>
+<tr>
+<td><code>[CustomEditor(typeof(T), true)]</code></td>
+<td>为目标类型及可选子类注册 Inspector</td>
+</tr>
+<tr>
+<td><code>[CustomPropertyDrawer(typeof(T))]</code></td>
+<td>为字段类型或 PropertyAttribute 注册 Drawer</td>
+</tr>
+<tr>
+<td><code>SerializedObject</code>, <code>SerializedProperty</code></td>
+<td>统一多选、Undo 和字段绘制；普通嵌套对象以 Foldout 递归显示并按深度缩进</td>
+</tr>
+<tr>
+<td><code>EditorGUI.ObjectField</code></td>
+<td>为 BObject/BAsset 字段提供选择、拖放和类型校验</td>
+</tr>
+<tr>
+<td><code>Undo.RecordObject</code>, <code>EditorUtility.SetDirty</code></td>
+<td>正确记录编辑态修改</td>
+</tr>
+<tr>
+<td><code>AssetDatabase.LoadAssetAtPath&lt;T&gt;()</code></td>
+<td>通过工程路径加载编辑器资源</td>
+</tr>
+<tr>
+<td><code>AssetDatabase.LoadAllAssetsAtPath</code></td>
+<td>返回主资源及其导入表示、内嵌和文件型 SubAsset</td>
+</tr>
+<tr>
+<td><code>AssetDatabase.LoadAllAssetRepresentationsAtPath</code></td>
+<td>只返回指定主资源的 SubAsset 表示</td>
+</tr>
+<tr>
+<td><code>AssetDatabase.AddObjectToAsset</code> / <code>RemoveObjectFromAsset</code></td>
+<td>向主资源添加或移除内嵌 SubAsset</td>
+</tr>
+<tr>
+<td><code>AssetDatabase.IsMainAsset</code> / <code>IsSubAsset</code></td>
+<td>判断对象在资源文件中的身份</td>
+</tr>
+<tr>
+<td><code>AssetDatabase.TryGetGUIDAndLocalFileIdentifier</code></td>
+<td>取得主资源 GUID 与对象 localIdentifier</td>
+</tr>
+<tr>
+<td><code>Selection.activeObject</code></td>
+<td>同步 Project、Hierarchy、Scene 和 Inspector 选择</td>
+</tr>
+<tr>
+<td><code>ScenePickingProviderRegistry.Register</code></td>
+<td>让外部 Renderer 参与 Scene 点击选取</td>
+</tr>
+<tr>
+<td><code>GUI.skin</code></td>
+<td>获取或设置当前 <code>GUISkin</code>；控件从中解析对应的默认 <code>GUIStyle</code></td>
+</tr>
+<tr>
+<td><code>EditorAppearance.SetSkin</code></td>
+<td>将指定 Skin 应用到整个编辑器并重绘所有窗口</td>
+</tr>
+</tbody></table>
+<h3 id="project-窗口布局">Project 窗口布局</h3>
+<p>Project 窗口的菜单可以在 One Column 与 Two Column 间切换。左侧目录始终分为 Assets 和 Packages 两个独立滚动区域；把鼠标移到两者之间的横线后上下拖动，可以直接调整下方 Packages 区域的高度。分隔高度会随编辑器布局保存，并在窗口缩小时限制在两个区域都可操作的范围内。</p>
+<p>Two Column 模式右侧按网格显示当前文件夹的直接子项。文件与文件夹名称都以缩略图中心为轴水平居中；长名称保持在单元范围内裁剪并显示省略号，悬停仍可通过 Tooltip 查看完整名称。Project 中的文件标签隐藏最后一段后缀，例如 <code>Spark.png</code> 显示为 <code>Spark</code>，<code>Showcase.atlas.yaml</code> 显示为 <code>Showcase.atlas</code>；磁盘文件名和资源路径不变。</p>
+<p>Project 与 Hierarchy 的 TreeView 只有在鼠标于同一行按下并抬起时才提交 Selection；按下后移出该行或进入拖拽不会改变 Selection。因此可以直接把 Project/Hierarchy 的 BObject 拖到未锁定 Inspector 的 ObjectField，Inspector 不会在拖拽起点切换目标。拖拽开始后光标会切换为拖拽样式，ObjectField 仅在类型和 <code>allowSceneObjects</code> 规则通过时接受赋值。</p>
+<p>文本输入框按操作系统键盘重复节奏处理长按 <code>Backspace</code>、<code>Delete</code>、左/右方向键、<code>Home</code> 和 <code>End</code>。首次按键立即执行，越过系统重复延迟后连续执行，按键抬起或输入框失焦时立即停止；因此删除、移动光标不需要反复单击按键。</p>
+<h3 id="subasset-身份与生命周期">SubAsset 身份与生命周期</h3>
+<p>SubAsset 不拥有独立的顶层资源身份，而由“主资源 GUID + 非零 <code>localIdentifier</code>”唯一标识；主资源自身的 <code>localIdentifier</code> 为 <code>0</code>。序列化 BAsset 子资源引用时使用 <code>guid:&lt;主资源 GUID&gt;#subasset=&lt;localIdentifier&gt;</code>，资源移动或重命名后引用仍然稳定。<code>AssetDatabase.TryGetGUIDAndLocalFileIdentifier</code> 返回同一组身份，<code>LoadAllAssetsAtPath</code> 返回主资源和所有表示，<code>LoadAllAssetRepresentationsAtPath</code> 只返回其 SubAsset。</p>
+<p>使用 <code>AssetDatabase.AddObjectToAsset(objectToAdd, mainAssetOrPath)</code> 创建内嵌 SubAsset，完成字段修改后按常规调用 <code>EditorUtility.SetDirty</code>/保存；使用 <code>RemoveObjectFromAsset</code> 将其移出主资源。不能让 SubAsset 再拥有子资源，也不能手动移除由 Importer 管理的 Sprite 等导入表示。Project 把 SubAsset 显示为主资源节点的子项；展开主资源即可查看、选择和拖拽，ObjectField、Inspector 与枚举 API 使用同一对象身份。</p>
+<h3 id="全局-layoutundo-与-profiler">全局 Layout、Undo 与 Profiler</h3>
+<p>Layout 包含工程窗口状态和对象引用。当前布局和命名布局统一保存在各工程的 <code>Library/Editor/Layouts</code>，不同工程相互隔离；旧工程 <code>ProjectSettings/EditorLayout.yaml</code> 与 <code>ProjectSettings/Layouts</code> 会在首次读取时迁入该目录，之后不再写回 ProjectSettings。工具栏的布局下拉框将当前会话显示为 <code>Layout</code>，并提供不可删除的 <code>Default</code>、<code>2 by 3</code>、<code>Tall</code>、<code>Wide</code> 预设；自定义布局可保存、切换、重命名和删除。</p>
+<p>点击工具栏 Undo History 图标会打开 TreeView 历史窗口。每条记录显示组名、操作数、对象数、对象名和场景影响；选择任意记录会把 Undo 游标直接移动到该状态，右侧同时显示记录详情。新的编辑动作会按常规截断当前游标之后的 Redo 分支。</p>
+<p><code>Window &gt; Analysis &gt; Profiler</code> 将 CPU、Rendering、Memory 和外部注册模块分开显示。顶部模块行高度固定为 132 像素并可纵向滚动；Rendering 包含 Camera、Batch、Draw、Triangle、Vertex、Render Target、耗时占比和帧间差值，Memory 包含托管堆、存活量、碎片、进程 Working Set/Private Bytes、分配速率、帧间差值及分配站点。CPU 按 Editor/Runtime 域、类、方法和调用栈展开。<code>Profiler Modules</code> 菜单控制可见模块，扩展代码通过 <code>EditorProfilerModuleRegistry</code> 注册计数器和详情绘制。</p>
+<p>编辑器快捷键遵循 Unity 的同类命令：Q/W/E/R/F 为 View/Move/Rotate/Scale/Frame Selected；Ctrl/Cmd+N/O/S 为新建/打开/保存场景；Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z（Windows 也支持 Ctrl+Y）为 Undo/Redo；Ctrl/Cmd+D 复制对象，F2 重命名，Delete 删除；Ctrl/Cmd+P、Ctrl/Cmd+Shift+P、Ctrl/Cmd+Alt+P 为 Play/Pause/Step；Ctrl/Cmd+1..5 聚焦 Scene/Game/Inspector/Hierarchy/Project，Ctrl/Cmd+7 聚焦 Profiler，Ctrl/Cmd+Shift+C 聚焦 Console。文本输入获得焦点时，复制、粘贴、全选等命令只作用于该字段。</p>
+<h3 id="自定义编辑器主题">自定义编辑器主题</h3>
+<p><code>Preferences</code> 和 <code>Project Settings</code> 都是普通、可持久化布局的 <code>EditorWindow</code>，可以像 Scene、Inspector 一样停靠、拖出和重新停靠；重复打开菜单会定位并聚焦已有窗口。Float 使用独立原生窗口，可以移动到任意显示器并拖回主窗口 Dock；显示器拓扑变化后会把离屏窗口恢复到最近的可见工作区。Float 内的 Popup 留在所属窗口，未聚焦 Float 降频绘制，最小化时停止 GPU 提交。<code>Preferences &gt; General</code> 的 Editor Scale 使用带精确数值输入的 Slider，范围固定为 <code>0.5–1.8</code>。</p>
+<p><code>GUISkin</code> 继承 <code>BAsset</code>。Preferences 创建的自定义主题以 <code>*.guiskin.yaml</code> 保存在 <code>Engine/Engine/Preferences/BEgine-&lt;version&gt;/Themes</code>，可以创建多份。每个 Skin 直接包含 <code>EditorStyles</code> 暴露的完整样式集合，以及可由扩展包增加的 <code>customStyles</code>；不存在独立的 SkinColors/Palette。<code>GUIStyle</code> 保存 Normal、Hover、Active、Focused、On 与 Disabled 状态的文字色、背景色、边框色、<code>Texture</code> 背景图片和布局参数。</p>
+<ol>
+<li>打开 <code>Edit &gt; Preferences &gt; Theme</code>，在列表查看 Light、Dark、Classic 和所有自定义 Skin。</li>
+<li>内置 Light、Dark、Classic 可以通过对应 ObjectField 选中并在 Inspector 查看；样式与状态 Foldout 可以展开，但字段只读，资源不能修改或删除。</li>
+<li>点击 <code>New</code> 会复制当前主题，并在 <code>Engine/Engine/Preferences/BEgine-&lt;version&gt;/Themes</code> 创建一份名称唯一的 <code>*.guiskin.yaml</code>。</li>
+<li>点击 Skin 的 ObjectField 会把它设为 <code>Selection.activeObject</code>，随后在 Inspector 编辑内置样式和 <code>customStyles</code>。每个 <code>GUIStyleState.backgroundImage</code> 使用 Texture ObjectField；点击 Inspector 的 Apply 保存。</li>
+<li>回到 Preferences 点击 <code>Set</code> 将该 Skin 应用到整个编辑器。<code>Delete</code> 只对自定义 Skin 可用；删除正在使用的 Skin 后会回到 Dark。</li>
+<li>每个自定义 Skin 行下方的 Light、Dark、Classic 按钮可一键复制完整预设，然后继续微调各个 GUIStyle。</li>
+</ol>
+<p>扩展编辑器时，<code>GUI</code>、<code>EditorGUI</code>、<code>GUILayout</code>、<code>EditorGUILayout</code> 和 <code>EditorToolbar</code> 的绘制重载都可以接收 <code>GUIStyle?</code>。传入具体样式会覆盖主题；传入 <code>null</code> 则按控件语义回退到当前 <code>GUI.skin</code> 的对应槽，例如 Button 使用 <code>GUI.skin.button</code>、文本输入使用 <code>GUI.skin.textField</code>、工具栏按钮使用 <code>GUI.skin.toolbarButton</code>。因此扩展窗口应优先使用 <code>null</code> 或 <code>EditorStyles</code>，只在需要包专用外观时使用 <code>customStyles</code>。</p>
+<pre><code class="language-csharp">var skin = AssetDatabase.LoadAssetAtPath&lt;GUISkin&gt;(&quot;Assets/Editor/Studio.guiskin.yaml&quot;);
+if (skin is not null)
+    EditorAppearance.SetSkin(skin); // 应用全局主题并重绘窗口
+
+GUI.Button(buttonRect, new GUIContent(&quot;Run&quot;), style: null); // 当前 skin.button
+var accent = GUI.skin.FindStyle(&quot;MyPackage/AccentButton&quot;) ?? GUI.skin.button;
+GUILayout.Button(&quot;Build&quot;, accent);
+</code></pre>
+<p>直接赋值 <code>GUI.skin</code> 适合底层宿主或测试；编辑器工具应调用 <code>EditorAppearance.SetSkin</code>，以同步主题状态、外观通知和窗口重绘。</p>
+<h2 id="完整编辑器工作流">完整编辑器工作流</h2>
+<ol>
+<li>从 <code>File &gt; New Scene</code> 创建场景，并立刻保存到 <code>Assets/Scenes</code>。</li>
+<li>使用 <code>GameObject &gt; Camera 2D</code> 创建相机；在 Inspector 设置 size、priority、clearMode、cullingMask 和 viewportRect。</li>
+<li>在 Project 选中 PNG，在 Inspector 将 <code>Texture Type</code> 设为 <code>Sprite</code>，按需调整 Pivot/PPU，然后点击 <code>Apply</code>；使用 <code>GameObject &gt; 2D Object &gt; Sprite</code> 创建对象并把这张图片赋给 SpriteRenderer。</li>
+<li>需要 Atlas 时，从 <code>Assets &gt; Create &gt; 2D &gt; Texture Atlas</code> 创建 Atlas，在 Atlas Inspector 或 <code>Window &gt; 2D &gt; Texture Atlas</code> 通过 Sprite ObjectField 添加图片并 Build。清单保存 Sprite 的 ownerGuid 与 localIdentifier；生成的 PNG 以 Atlas GUID 和保留 localIdentifier 注册为 SubAsset，在 Project 展开 Atlas 节点后显示，而不成为独立顶层资源。同一图片仍直接用于 SpriteRenderer，无需创建第二份资源。</li>
+<li>在 <code>Edit &gt; Project Settings &gt; Tags and Layers</code> 管理 Tag 与全部 Sorting Layer。Layer 使用连续自然编号 <code>1..63</code>；五个内建层可重命名和排序但不可删除，自定义层可增删、重命名和排序。</li>
+<li>用 W/E/R 切换移动、旋转、缩放 Handle；Scene 点击对象会同步 Hierarchy 选择。</li>
+<li>进入 Play 验证运行时行为。Play 期间不要尝试保存 Scene 或组件变更；停止后原数据会恢复。</li>
+<li>检查 Game View 的分辨率和 Status 统计，再通过 <code>File &gt; Save Scene</code> 保存编辑态修改。</li>
+</ol>
+<h2 id="扩展-core">扩展 Core</h2>
+<h3 id="可运行-editorwindow">可运行 EditorWindow</h3>
+<p>把以下脚本放入 Editor 程序集。<code>MenuItem</code> 和 <code>EditorWindow</code> 不需要手工调用注册器，编辑器在程序集加载后自动发现。</p>
+<pre><code class="language-csharp">using BEngine;
+using BEngine.Editor;
+
+public sealed class SelectionInfoWindow : EditorWindow
+{
+    [MenuItem(&quot;Tools/My Package/Selection Info&quot;)]
+    private static void Open() =&gt; GetWindow&lt;SelectionInfoWindow&gt;(&quot;Selection Info&quot;);
+
+    protected override void OnEnable() =&gt; Selection.selectionChanged += Repaint;
+    protected override void OnDisable() =&gt; Selection.selectionChanged -= Repaint;
+
+    protected override void OnGUI()
+    {
+        EditorGUILayout.LabelField(&quot;当前选择&quot;, EditorStyles.boldLabel);
+        EditorGUILayout.LabelField(Selection.activeObject?.name ?? &quot;None&quot;);
+    }
+}
+</code></pre>
+<h3 id="注册-scene-运行系统">注册 Scene 运行系统</h3>
+<p>实现 <code>ISceneRuntimeSystem</code> 后可通过扩展包的 <code>IEngineServiceModule</code> 注入。模块会在包程序集启用时发现，禁用包时作用域和注册会被清理。</p>
+<pre><code class="language-csharp">using BEngine;
+using BEngine.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+public sealed class CombatActor : MonoBehaviour
+{
+    public void Tick(Fix64 deltaTime) =&gt; transform.Rotate(deltaTime * 45);
+}
+
+public sealed class CombatSystem : ISceneRuntimeSystem
+{
+    public string packageId =&gt; &quot;com.example.combat&quot;;
+    public int order =&gt; 200;
+    public void Update(Scene scene, Fix64 deltaTime)
+    {
+        foreach (var actor in scene.QueryComponents&lt;CombatActor&gt;())
+            actor.Tick(deltaTime);
+    }
+}
+
+public sealed class CombatModule : IEngineServiceModule
+{
+    public void ConfigureServices(IServiceCollection services, EngineServiceContext context) =&gt;
+        services.TryAddEnumerable(ServiceDescriptor.Transient&lt;ISceneRuntimeSystem, CombatSystem&gt;());
+}
+</code></pre>
+<h2 id="调试与常见问题">调试与常见问题</h2>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>检查与处理</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Game 窗口没有画面</td>
+<td>确认 Scene 中有启用的 Camera2D、cullingMask 包含对象层、viewportRect 非零且对象位于正交范围内</td>
+</tr>
+<tr>
+<td>Scene 能看到但 Game 看不到</td>
+<td>检查 Renderer sortingLayer、Camera cullingMask、Transform、opacity 和 Camera size</td>
+</tr>
+<tr>
+<td>Sprite 只显示纯色</td>
+<td>检查图片的 <code>Texture Type = Sprite</code> 是否已 Apply、源图 <code>.meta</code> 和 Atlas 是否已 Build；未指定 Sprite 时纯色 Quad 是正常行为</td>
+</tr>
+<tr>
+<td>不能合批</td>
+<td>Material、Shader、解析后的 Atlas 必须相同，而且排序后必须相邻</td>
+</tr>
+<tr>
+<td>Texture 参数重选后丢失</td>
+<td>修改后点击 Apply，并确认源文件旁 <code>.meta</code> 可写；Reimport 后查看 Console</td>
+</tr>
+<tr>
+<td>Play 停止后对象消失</td>
+<td>Play 中创建的对象属于运行镜像，停止后丢弃是设计行为</td>
+</tr>
+<tr>
+<td>Play 中修改被保存</td>
+<td>不应发生；记录 Editor 日志并检查自定义工具是否绕过 Play 状态直接写 YAML</td>
+</tr>
+<tr>
+<td>Add Component 找不到脚本</td>
+<td>检查编译错误、程序集定义依赖和脚本类型是否为非抽象 Component</td>
+</tr>
+<tr>
+<td>包菜单或 Drawer 不出现</td>
+<td>确认代码位于 Editor 程序集，等待编译完成并查看 Console 的功能边界错误</td>
+</tr>
+<tr>
+<td>文档或示例按钮不可用</td>
+<td>Play Mode、编译或包切换期间会禁用导入；回到 Edit Mode 后重试</td>
+</tr>
+<tr>
+<td>Example/Editor 启动失败</td>
+<td>从 Hub 启动时，Hub 会等到 Editor 首帧报告 Ready；托管启动异常、原生崩溃、提前退出或启动超时都会由 Hub 弹窗，并显示实际诊断日志路径。直接运行 <code>BEngine.Editor.exe</code> 时，Editor 会用原生弹窗报告可捕获的启动异常</td>
+</tr>
+</tbody></table>
+<p>启动布局可以恢复选中的页签与逻辑焦点，但不得在主原生窗口完成初始化前调用原生 <code>Focus</code>；真正的窗口聚焦由首帧之后的窗口生命周期接管。工程的 Editor 启动异常写入工程 <code>Library/Editor/Logs/EditorBootstrap.log</code>；Editor 无法自行记录的崩溃或超时由 Hub 写入同目录的 <code>EditorStartup.log</code>，启动状态保存在工程 <code>Library/Editor/Startup</code>。未指定工程时发生的编辑器入口错误和 Hub 自身启动错误仍写入全局 <code>Temp/Logs</code>。弹窗中的路径应始终指向本次故障实际生成的日志。</p>
+<p>离线网页手册位于 <code>Editor/Doc/index.html</code>，可从 <code>Help &gt; Documentation</code> 或 Package Manager 打开。</p>
+<p>旧项目中的 <code>*.sprite.yaml</code> 只保留读取兼容；新内容不要再创建或编辑这类描述符。</p>
+<h2 id="新增功能与示例">新增功能与示例</h2>
+<p>扩展功能的说明与导入示例由各 Package 提供，示例工程 Main 主菜单提供对应入口。</p>
+<p>地图、动画、音视频预览和包 Inspector 的入口见 <a href="manual.html?product=engine&amp;version=0.1.0&amp;doc=editorauthoring">编辑器资源制作</a>。</p>

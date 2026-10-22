@@ -1,0 +1,32 @@
+Networking      <section id="networking">
+        <h2 id="跨平台-tcpudphttp-与-websocket">跨平台 TCP、UDP、HTTP 与 WebSocket</h2>
+        <p><code>BEngine.Networking</code> 组合 .NET 标准 <code>TcpClient</code>、<code>UdpClient</code>、<code>HttpClient</code> 和 <code>ClientWebSocket</code>，不自行实现协议。所有异步操作接受 <code>CancellationToken</code>；TCP、UDP、WebSocket 暴露 <code>Timeout/LastResult/Error/Exception</code>，HTTP 暴露 <code>Result/Error/ResponseCode/DownloadData/DownloadText</code>。区分 TimedOut、Canceled、ConnectionError、ProtocolError 和 DataProcessingError，并始终释放客户端、请求和句柄。</p>
+        <pre><code>using System.Net;
+using System.Text;
+using BEngine.Networking;
+
+using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+await using var tcp = new TcpNetworkClient { Timeout = TimeSpan.FromSeconds(5) };
+await tcp.ConnectAsync(&quot;127.0.0.1&quot;, 7000, stop.Token);
+await tcp.SendAsync(Encoding.UTF8.GetBytes(&quot;ping&quot;), stop.Token);
+var buffer = new byte[1024];
+var count = await tcp.ReceiveAsync(buffer, stop.Token);
+
+await using var udp = new UdpNetworkClient(new IPEndPoint(IPAddress.Any, 0));
+await udp.SendAsync(Encoding.UTF8.GetBytes(&quot;status&quot;),
+    new IPEndPoint(IPAddress.Loopback, 7001), stop.Token);
+NetworkDatagram datagram = await udp.ReceiveAsync(stop.Token);
+
+using var request = HttpNetworkRequest.Get(&quot;https://example.test/status&quot;);
+request.SetRequestHeader(&quot;Accept&quot;, &quot;application/json&quot;);
+await request.SendAsync(stop.Token);
+
+await using var socket = new WebSocketNetworkClient();
+await socket.ConnectAsync(new Uri(&quot;wss://example.test/events&quot;), stop.Token);
+await socket.SendTextAsync(&quot;subscribe&quot;, stop.Token);
+WebSocketMessage message = await socket.ReceiveAsync(256 * 1024, stop.Token);
+await socket.CloseAsync(cancellationToken: stop.Token);</code></pre>
+        <h3 id="注入与扩展">注入与扩展</h3>
+        <p>HTTP 提供 Get/Delete/Post/Put 工厂，并允许注入共享 <code>HttpClient</code> 或 <code>HttpMessageHandler</code>；外部 HttpClient 默认不由请求释放。大响应使用 <code>SendAsync(responseHandler, token)</code> 流式消费。WebSocket 可注入 <code>IWebSocketTransport</code>；默认 <code>ClientWebSocketTransport</code> 的 <code>Options</code> 可在连接前配置。测试或平台集成应实现 transport 或包装 sealed 客户端，把 TLS、代理、压缩、握手和协议解析继续交给 .NET。</p>
+      </section>

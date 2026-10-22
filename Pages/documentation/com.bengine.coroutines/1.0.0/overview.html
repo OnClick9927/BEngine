@@ -1,0 +1,11 @@
+<h1 id="coroutines-package">Coroutines package</h1>
+<p>Coroutine scheduling is provided by the <code>com.bengine.coroutines</code> package. Enable
+it from Package Manager. Scheduling, reflection dispatch and yield instructions
+are implemented in <code>BEngine.Coroutines</code>, outside Core.</p>
+<p>The public types keep the <code>BEngine</code> namespace. Coroutine and delayed invocation
+methods are extension methods on <code>MonoBehaviour</code>: use <code>this.StartCoroutine(Run())</code>,
+<code>this.Invoke(nameof(Tick), 1)</code>, <code>this.StopAllCoroutines()</code> and <code>this.CancelInvoke()</code>
+inside a behaviour. Calls through an explicit component variable keep their syntax.
+Old unqualified calls such as <code>StartCoroutine(Run())</code> must add <code>this.</code>.</p>
+<p>The package registers a scene runtime system. Work is canceled and iterators are
+disposed when the owner is destroyed or the scene runtime stops.</p>

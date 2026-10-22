@@ -1,0 +1,21 @@
+AssetBundles
+<h1 id="assetbundles">AssetBundles</h1>
+<p>AssetBundle Package 按资源组进行增量构建：一个包包含多个 Bundle，未变化的压缩产物会在校验后复用。</p>
+<h2 id="配置与构建">配置与构建</h2>
+<p>打开编辑器菜单 <strong>Assets → AssetBundle Packages...</strong>，配置包名与资源目录或文件，保存至 <code>ProjectSettings/AssetBundlePackages.yaml</code>。</p>
+<pre>format: BEngine.AssetBundlePackages
+version: 1
+defaultPackageName: default
+packages:
+  - name: fonts
+    assetPaths: [Assets/GameContent/Fonts]
+  - name: images
+    assetPaths: [Assets/GameContent/Images]
+  - name: config
+    assetPaths: [Assets/GameContent/Config]</pre>
+<p>路径最长匹配优先；没有匹配的资产进入默认包。资源导入器的 Bundle 名决定包内分组。<code>bengine</code> 是自动生成的程序集和引擎资源保留包。</p>
+<p>首次执行 <strong>Build All Packages</strong> 建立完整基线。修改配置后选择 <code>config</code>，执行 <strong>Build Selected Packages</strong>，字体、图片复用已校验缓存。未选包有变化、缺失或损坏时会报错，需把该包纳入构建。</p>
+<p>缓存位于 <code>Library/AssetBundleBuildCache</code>，不随 Player staging 删除。输入内容、导入设置、依赖、平台、压缩、加密和构建器变更都会影响指纹；复用时会核对大小与 SHA-256。</p>
+<h2 id="运行时">运行时</h2>
+<p>构建时明确区分包，运行时继续使用同一 manager 和原资源 address。只有按包更新、下载或修复时才需要指定包名；普通加载无需感知包归属。</p>
+<p><a href="manual.html?product=com.bengine.asset-bundles&amp;version=1.0.0&amp;doc=runtime-guide">运行时、按包更新与修复 API</a></p>

@@ -1,0 +1,61 @@
+<h1 id="input-actions">Input Actions</h1>
+<p><code>PlayerInput</code> 在 <code>ISceneRuntimeSystem.BeforeUpdate</code> 阶段采集动作：本帧的 FixedUpdate、Update 与 LateUpdate 均可读取本帧输入。手动创建的 InputActionSession 由调用方每帧调用一次 Update。BeforeUpdate 在 MonoBehaviour.Start 后执行。</p>
+<p>启用 <code>com.bengine.input-actions</code>，从 Assets/Create/Input/Actions 创建动作资产，双击资源或打开 Window/Input/Input Actions。三栏窗口编辑 Maps、Actions 和 Bindings，支持搜索、增删、复制/排序、Undo/Redo、Save；Inspector 也可打开同一资源。重排保持 Binding ID，复制生成新 ID，以便稳定恢复玩家改键。Play 中禁止修改资产。</p>
+<p>窗口的 Listen 显示动作状态；Capture 捕获新的键鼠按键或所选手柄按钮，Escape 取消。捕获成功会写入当前资产并进入 Undo；保存后才写入磁盘。失焦、开始 Play、撤销或关闭窗口会停止监听。运行时改键仅改变 session，规则见下文。</p>
+<pre><code class="language-csharp">using BEngine.InputActions;
+using var input = new InputActionSession(actions) { gamepadIndex = 0, scheme = &quot;Keyboard&quot; };
+input.EnableMap(&quot;Gameplay&quot;);
+input.FindAction(&quot;Gameplay/Jump&quot;).performed += _ =&gt; Jump();
+// 每帧在消费输入之前调用 input.Update()。
+using var rebind = input.BeginRebind(&quot;Gameplay/Jump&quot;, 0);
+// 后续 Update 捕获键盘/鼠标按键或已配对手柄按钮；Escape 取消。
+var yaml = input.SaveBindingOverrides();
+input.LoadBindingOverrides(yaml);
+</code></pre>
+<p>场景使用 PlayerInput 组件时，InputActionsRuntimeSystem 每帧更新其 session；不要重复调用 Update。各玩家指定 gamepadIndex；-1 不使用手柄，useKeyboard/useTouch 决定是否共享键鼠或触摸。多个 session 克隆资产绑定并各自存储覆盖，不会改写项目资产。</p>
+<p><code>Input.GetGamepads()</code> 返回稳定的宿主槽位 index、名称和连接状态，断开设备仍保留槽位。<code>session.PairGamepad(index)</code> 默认独占；其他 session 不会读到被独占的设备。<code>UnpairGamepad()</code>、Dispose 或组件禁用释放占用，失败的配对保留原设备。<code>TryPairNextAvailableGamepad()</code> 选择最小的可用已连接槽位。旧的 gamepadIndex 赋值仍为共享模式；PlayerInput 可开启 exclusiveGamepad 和 pairFirstAvailable，后者在等待配对时每帧重试。断线保留设备占用，重连继续使用同一槽位；deviceLost/deviceRegained/pairingChanged 可驱动界面。断线取消手柄动作和正在捕获的改键，不打断仍按住的键盘动作。该配对用于同机玩家，不含网络功能。</p>
+<p>支持 Button/Axis/Vector2；Key、KeyAxis、KeyVector2、GamepadButton、GamepadAxis、GamepadStick，以及下述触摸控制。KeyVector2 的 key 是右，negative 是左，up/down 是上下。非空 scheme 按名称匹配；空 scheme 绑定通用。键鼠方向/手柄输入有死区重映射、归一化与 scale；多个绑定取幅度最大者，幅度相同时保持绑定顺序。</p>
+<h2 id="触摸与手势">触摸与手势</h2>
+<table>
+<thead>
+<tr>
+<th>控制</th>
+<th>值与用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>TouchPress</td>
+<td>按住；requiredTouches 设置最少活动触点数</td>
+</tr>
+<tr>
+<td>TouchPosition / TouchDelta</td>
+<td>指定 fingerId 的像素位置/本帧位移；-1 选择稳定的主触点</td>
+</tr>
+<tr>
+<td>TouchTap / TouchLongPress</td>
+<td>成功轻点/长按的一帧脉冲；使用 Button + Press</td>
+</tr>
+<tr>
+<td>TouchSwipe</td>
+<td>松开时的二维滑动位移；使用 Vector2</td>
+</tr>
+<tr>
+<td>TouchPan</td>
+<td>单指位移或双指中心位移；使用 Vector2</td>
+</tr>
+<tr>
+<td>TouchPinch</td>
+<td>双指间距变化，单位像素；使用 Axis，scale 可调整缩放速度</td>
+</tr>
+<tr>
+<td>TouchRotate</td>
+<td>双指连线旋转角度，单位度；使用 Axis</td>
+</tr>
+</tbody></table>
+<p>位置原点为游戏画面左下角。触摸位移、捏合和旋转不归一化，scale 直接乘原始单位；位置不应用死区。TouchGestureSettings 设置时间和像素阈值。长按仅触发一次，多指操作松开不会产生单指轻点；替换触点会重新建立双指基线。失踪/Canceled 触点不会触发完成手势。每个 session 独立追踪，也可直接使用 TouchGestureTracker.Update(touches, unscaledDeltaTime) 做确定性回放。</p>
+<p>Windows Player 通过窗口 WM_TOUCH 接收多点触控，维护设备/触点身份，转换到 framebuffer 像素，过滤触摸产生的重复鼠标消息；焦点丢失和窗口销毁取消触点。消息缓冲保留下/上边沿及快速滑动起点，活动触点最多 128 个，报告队列溢出时取消而不留下按住状态。WM_TOUCH 没有压力数据，pressure/maximumPossiblePressure 使用 0/1 的接触状态。平台输入由 ITouchInputService/ITouchInputSource 提供；其他宿主可接入同一协议。Windows 原生消息以系统 InjectTouchInput 验证，物理触摸屏、移动/Web 设备仍需各平台验收。</p>
+<p>started/performed/canceled 与 wasPressedThisFrame/wasReleasedThisFrame 可用于事件和轮询。DisableMap、SwitchMap、改键和 Dispose 会取消正在进行的动作。切换地图先校验名称，非法配置不会破坏旧映射。配置加载先完整校验版本、控制类型及 ID，失败不会改写当前覆盖。</p>
+<p>Button 动作的 interaction 支持 Press（默认）、Hold、Tap 和 MultiTap。Hold 在持续按住 holdDuration 后触发一次 performed；Tap 要求在 tapDuration 内松开；MultiTap 要求 tapCount 次短按，间隔不超过 tapInterval。计时参数均为秒，使用 unscaledDeltaTime，因此时间缩放不会改变点击判定。手动 session 可调用 Update(deltaTime) 进行确定性的输入回放。Axis/Vector2 仅支持 Press。</p>
+<p><code>isPressed</code>/<code>value</code> 始终反映物理按下状态；<code>phase</code> 表示交互阶段，<code>wasPerformedThisFrame</code> 在成功判定当帧为 true。长按松开、短按超时或多击间隔超时会 canceled；成功短按/多击只 performed。禁用动作图、切换控制方案、改键和销毁会清空尚未完成的计时。交互配置在 session 创建时复制，不会跟随资产后续修改。</p>
+<p>交互捕获支持按钮。摇杆与组合键编辑界面可以构造 InputBinding 并调用 rebind.Complete(binding)；不会把轴噪声自动当成改键。保存字符串可用 PlayerPrefs 或项目自己的存档服务，不自动写回动作资产。</p>
+<p>绑定覆盖格式 v2 包含 fingerId/requiredTouches，仍可读取 v1（使用 -1/1 默认值）；未知 ID、重复 ID 和非法字段会整体拒绝，不破坏当前覆盖。</p>

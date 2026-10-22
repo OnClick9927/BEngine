@@ -5,7 +5,7 @@
     "version": "1.1.0",
     "category": "动画与音频",
     "description": "通过关键帧、动画片段和 Animator 状态机组织 2D 动画，支持预览、录制与曲线编辑。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Animation/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.animation&version=1.1.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -15,7 +15,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "导入分层 PSD/PSB 与 Aseprite 文档，保留图层、帧时长及稳定资源引用。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/ArtImport2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.art-import2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -25,7 +25,7 @@
     "version": "1.0.0",
     "category": "构建与发布",
     "description": "按资源包增量构建，提供资源加载、远程更新、完整性校验、修复与回滚。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/AssetBundles/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.asset-bundles&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -35,7 +35,7 @@
     "version": "1.0.0",
     "category": "动画与音频",
     "description": "导入 WAV、MP3 与 Ogg Vorbis，使用音源、混音组、效果和混音快照组织 2D 声音。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Audio/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.audio&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -45,7 +45,7 @@
     "version": "1.0.0",
     "category": "动画与音频",
     "description": "用虚拟相机实现 2D 跟随、取景、相机混合、边界约束和震动。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Cinemachine/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.cinemachine&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -55,7 +55,7 @@
     "version": "1.0.0",
     "category": "UI 与工具",
     "description": "在编辑器中使用 Codex 集成与辅助工具，连接代码和项目工作流程。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Codex/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.codex&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -65,7 +65,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "用协程与等待指令编排分帧逻辑、定时调用和异步流程。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Coroutines/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.coroutines&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -75,7 +75,7 @@
     "version": "1.0.0",
     "category": "UI 与工具",
     "description": "分析 CPU/GPU 与帧提交，检查对象堆快照，并连接经身份验证的远程 Player 诊断。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Diagnostics/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.diagnostics&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -85,7 +85,7 @@
     "version": "1.0.0",
     "category": "构建与发布",
     "description": "提供热更新运行时服务与程序集加载，配合资源发布流程切换业务内容。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/HotUpdate/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.hot-update&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -95,7 +95,7 @@
     "version": "1.0.0",
     "category": "UI 与工具",
     "description": "将 HTML 与 CSS 转换为 UIElements 文档，辅助复用界面结构和样式。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/HtmlUIConverter/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.html-ui-converter&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -105,7 +105,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "配置键盘与手柄动作、设备配对、多点触摸手势和交互式按键重绑定。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/InputActions/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.input-actions&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -115,7 +115,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "编排任务依赖与分帧批处理；独立后台 API 可处理复制的纯数据任务。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Jobs/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.jobs&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -125,7 +125,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "为 2D 场景添加灯光、环境光与阴影，使用配套着色器参与渲染。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Lighting2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.lighting2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -135,7 +135,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "通过线段与拖尾组件绘制动态几何，并在编辑器中查看 Gizmos。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/LineRendering2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.line-rendering2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -145,7 +145,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "管理语言表、格式化文本、本地化资源与属性绑定，支持 CSV 交换和键生成。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Localization/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.localization&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -155,7 +155,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "使用 Fix64 网格烘焙、A* 寻路和 Agent 移动，结合障碍裁切与导航链接。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Navigation2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.navigation2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -165,7 +165,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "通过异步 TCP、UDP 与 WebSocket 客户端连接应用服务。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Networking/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.networking&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -175,7 +175,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "让粒子与 2D 碰撞体进行扫掠碰撞，支持层与触发器过滤。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/ParticlePhysics2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.particle-physics2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -185,7 +185,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "制作 2D 粒子发射与运动效果，支持运行时渲染和编辑模式预览。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Particles2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.particles2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -195,7 +195,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "使用 Fix64 2D 刚体、碰撞体、碰撞与触发器消息，以及射线和范围查询。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Physics2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.physics2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -205,7 +205,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "对齐像素相机与世界坐标，控制正交尺寸和像素吸附。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/PixelPerfect2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.pixel-perfect2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -215,7 +215,7 @@
     "version": "1.0.0",
     "category": "构建与发布",
     "description": "组织独立 Player 生命周期、分阶段启动与按包组合的运行时服务。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Player/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.player&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -225,7 +225,7 @@
     "version": "1.0.0",
     "category": "构建与发布",
     "description": "管理构建配置、Player 发布、资源压缩与裁剪，并生成主包和热更新内容。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/PlayerBuild/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.player-build&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -235,7 +235,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "复用对象与集合，提供预热、有界租用、租约和运行统计。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Pooling/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.pooling&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -245,7 +245,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "通过全局或局部 Volume 配置颜色调整、Bloom 与暗角效果。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/PostProcessing/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.postprocessing&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -255,7 +255,7 @@
     "version": "1.0.0",
     "category": "UI 与工具",
     "description": "用扩展属性和自定义字段绘制器改善 Inspector 中的组件配置体验。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/PropertyAttributes/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.property-attributes&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -265,7 +265,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "使用由帧驱动的 Observable 与 Subject API 组织响应式逻辑。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Reactive/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.reactive&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -275,7 +275,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "在节点画布中编写 2D 着色图、子图与材质，预览 Vulkan 和 OpenGL 渲染结果。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/ShaderGraph/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.shader-graph&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -285,7 +285,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "用可编辑贝塞尔曲线制作重复边缘、带孔填充与同步 2D 碰撞体的形状。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/SpriteShape2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.sprite-shape2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -295,7 +295,7 @@
     "version": "1.0.0",
     "category": "动画与音频",
     "description": "制作 2D 骨骼、权重网格、FFD 与链式 IK，支持约束、重定向和附件切换。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/SpriteSkinning2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.sprite-skinning2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -305,7 +305,7 @@
     "version": "1.0.0",
     "category": "项目模板",
     "description": "导入可直接编辑的俯视移动、相机跟随、旋转与浮动组件，仅依赖 Core。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/StandardAsset/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.standardasset&version=1.0.0",
     "type": "project",
     "minimumEngineVersion": "0.1.0"
   },
@@ -315,7 +315,7 @@
     "version": "1.0.0",
     "category": "UI 与工具",
     "description": "在 Edit、Play 与打包后的 Windows Player 中运行测试，查看源码定位和可选覆盖率。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Testing/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.testing&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -325,7 +325,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "编辑、导入与打包纹理图集，管理 Sprite 资源和图集引用。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/TextureAtlas/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.texture-atlas&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -335,7 +335,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "用调色板与可撤销画笔绘制稀疏 Tilemap，支持运行时修改和相机剔除。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/TiledMap/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.tiledmap&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -345,7 +345,7 @@
     "version": "1.0.0",
     "category": "2D 与渲染",
     "description": "从瓦片碰撞标记生成 2D 碰撞，支持运行时刷新和横向单元合并。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/TilemapPhysics2D/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.tilemap-physics2d&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -355,7 +355,7 @@
     "version": "1.0.0",
     "category": "动画与音频",
     "description": "使用时间轴资源与轨道编辑器编排动画、媒体及顺序播放。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Timeline/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.timeline&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -365,7 +365,7 @@
     "version": "1.0.0",
     "category": "UI 与工具",
     "description": "可视化编辑与预览 UIElements 文档，配置控件、层级和样式。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/UIBuilder/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.ui-builder&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -375,7 +375,7 @@
     "version": "1.0.0",
     "category": "UI 与工具",
     "description": "用保留模式控件、布局及 bxml/bss/bcss 组织界面，处理复杂文字和交互输入。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/UIElements/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.ui-elements&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -385,7 +385,7 @@
     "version": "1.0.0",
     "category": "动画与音频",
     "description": "播放便携视频帧资源；Windows 可按需解码原始容器并检测实际解码能力。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/Video/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.video&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   },
@@ -395,7 +395,7 @@
     "version": "1.0.0",
     "category": "玩法与系统",
     "description": "用事件、变量、条件和动作节点编排玩法逻辑，并查看实时调试状态。",
-    "docsUrl": "https://github.com/OnClick9927/BEngine/blob/main/src/Packages/VisualScripting/Editor/Readme.md",
+    "docsUrl": "manual.html?product=com.bengine.visual-scripting&version=1.0.0",
     "type": "package",
     "minimumEngineVersion": "0.1.0"
   }

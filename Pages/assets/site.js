@@ -114,9 +114,9 @@
       symbol.setAttribute('aria-hidden', 'true');
       top.append(symbol, node('span', 'package-version', `v${pkg.version}`));
       const bottom = node('div', 'package-card-bottom');
-      const documentation = node('a', '', '查看文档 ↗');
+      const documentation = node('a', 'package-doc-button', `阅读 ${pkg.version} 文档 →`);
       documentation.href = pkg.docsUrl;
-      documentation.setAttribute('aria-label', `${pkg.name} 文档`);
+      documentation.setAttribute('aria-label', `阅读 ${pkg.name} ${pkg.version} 文档`);
       bottom.append(node('span', '', pkg.category), documentation);
       card.append(top, node('h2', '', pkg.name), node('div', 'package-id', pkg.id), node('p', '', pkg.description), bottom);
       fragment.append(card);
@@ -133,12 +133,12 @@
   function showError() {
     grid.replaceChildren();
     const error = node('div', 'empty-state');
-    error.append(node('h2', '', '包目录暂时无法加载'), node('p', '', '请检查网络后重试，也可以直接查看 GitHub 包目录。'));
+    error.append(node('h2', '', '包目录暂时无法加载'), node('p', '', '请检查网络后重试，也可以先阅读包使用指南。'));
     const retry = node('button', 'button button-dark', '重新加载');
     retry.type = 'button';
     retry.addEventListener('click', loadPackages);
-    const source = node('a', 'text-link', '查看 GitHub 包目录 ↗');
-    source.href = 'https://github.com/OnClick9927/BEngine/tree/main/src/Packages';
+    const source = node('a', 'text-link', '阅读包使用指南 →');
+    source.href = 'docs.html#packages';
     const actions = node('div', 'button-row');
     actions.style.justifyContent = 'center';
     actions.append(retry, source);
@@ -151,12 +151,13 @@
     grid.setAttribute('aria-busy', 'true');
     count.textContent = '正在加载包目录…';
     try {
-      const response = await fetch('data/packages.json');
+      const response = await fetch('data/packages.json?v=versioned-docs-1');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (!Array.isArray(data) || !data.length || data.some(pkg =>
         !['id', 'name', 'version', 'category', 'description', 'docsUrl'].every(key => typeof pkg[key] === 'string') ||
-        !pkg.docsUrl.startsWith('https://github.com/OnClick9927/BEngine/'))) throw new Error('Invalid package catalog');
+        !pkg.docsUrl.startsWith('manual.html?') ||
+        new URL(pkg.docsUrl, location.href).origin !== location.origin)) throw new Error('Invalid package catalog');
       packages = data;
       filterRow.replaceChildren();
       for (const category of ['全部', ...new Set(packages.map(pkg => pkg.category))]) {

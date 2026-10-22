@@ -1,0 +1,10 @@
+<h1 id="test-framework">Test Framework</h1>
+<p>Open <strong>Window &gt; General &gt; Test Runner</strong> to discover and run tests from the current project.</p>
+<ul>
+<li><code>[Test(TestMode.Edit)]</code> runs without a scene.</li>
+<li><code>[Test(TestMode.Play)]</code> creates a real <code>Scene</code> and <code>SceneRuntime</code>; use <code>TestContext.Current.Scene</code> and <code>Tick()</code> for lifecycle checks.</li>
+<li><code>[Test(TestMode.Player)]</code> is built into a Windows Player and executed after its startup scene loads. Results return to the editor as JSON.</li>
+<li>Double-click a result, or use <strong>Open</strong>, to jump to the first portable-PDB sequence point.</li>
+<li>Add <code>[assembly: BEngine.Testing.Coverage]</code>, or the same fully qualified attribute to a type or method, to enable statement and branch probes. Export produces LCOV (<code>DA</code> and <code>BRDA</code>) and JSON in <code>Temp/TestRunner/Coverage</code>.</li>
+</ul>
+<p>The package has its own assertions and does not require NUnit or xUnit in game assemblies.</p>

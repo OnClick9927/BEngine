@@ -1,0 +1,6 @@
+Shader Graph
+
+<h1 id="shader-graph">Shader Graph</h1><p>基于通用 NodeCanvas，支持 Vulkan/OpenGL 的无光照与 Lit2D 图、复用子图、多纹理和独立 GPU 节点预览。</p>
+<ol><li>从 Assets/Create/Rendering/Shader Graph 创建图，拖动端口连线并在右侧编辑。</li><li>SubGraph 引用另一张图，SubGraphInput 的 A/B/C/D 对应父节点输入；双击进入，Back 返回。</li><li>CustomFunction 编写参数 A/B/C/D、返回 vec4 的 GLSL 函数体。错误进入 Console，保留上次成功效果。</li><li>创建 Shader Graph Material 并指定 graph；Shader Graph Renderer 2D 使用 shaderMaterial 或显式 graph。Renderer 参数优先于材质，再取图默认值。</li><li>Surface 选择 Lit2D，Output.Normal 接 RGB 切线空间法线。灯光/阴影使用 Lighting2D；支持旋转、镜像和层过滤。</li><li>GPU Node Preview 打开独立预览窗口；材质 Inspector 可预览共享属性。支持 Undo/Redo、保存和 Play 资产写入保护。</li></ol>
+<p>最多 512 节点/2048 连线、16 层子图、4096 个展开节点、16 个向量参数。八个纹理槽由 Sprite、图纹理和灯光纹理共同使用；光照和参数数据最多 64 KiB。GLSL 函数体不接受 HLSL/预处理指令。</p>
+<p>Windows 双后端实际像素、源码包注册与卸载有行为检查；其他平台尚需各自验证。完整工作流与边界见包内 Editor/Readme.md。</p>

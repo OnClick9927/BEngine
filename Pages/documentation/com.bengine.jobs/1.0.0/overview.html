@@ -1,0 +1,11 @@
+<h1 id="jobs">Jobs</h1>
+<p><code>BEngine.Jobs</code> provides dependency-aware, single-thread asynchronous scheduling, batched <code>IJobParallelFor</code> execution and unmanaged containers with schedule-time safety checks. The compatibility <code>IJob</code> paths never create worker threads. For explicitly pure, copied unmanaged values, <code>BackgroundJobs.ScheduleAsync&lt;TJob,TResult&gt;</code> is the separate bounded worker API; it never accepts scene objects, native containers or engine services and always completes on the owner frame thread.</p>
+<ul>
+<li>Use <code>job.Schedule()</code> for one job and <code>job.Schedule(length, batchSize)</code> for work divided into batches across frames.</li>
+<li>Pass a <code>JobHandle</code> when a later job reads or writes data owned by an earlier job. Combine independent handles with <code>JobHandle.CombineDependencies</code>.</li>
+<li>Store shared unmanaged data in <code>NativeArray&lt;T&gt;</code> or <code>NativeReference&lt;T&gt;</code>. Mark input-only fields <code>[ReadOnly]</code> and output-only fields <code>[WriteOnly]</code>.</li>
+<li>Prefer <code>await handle</code> or <code>await handle.CompleteAsync()</code> before accessing its containers. <code>Complete()</code> synchronously helps execute queued jobs on the engine thread.</li>
+<li>The Editor/Player drives <code>BTaskScheduler.Main</code>; custom hosts must tick that scheduler. <code>JobSystem.Shutdown()</code> cancels pending jobs and releases reservations.</li>
+<li><code>[BurstCompile]</code> records optimization intent. BEngine prepares the closed generic <code>Execute</code> method and uses non-boxing, aggressively optimized dispatch. It does not invoke Unity Burst or an LLVM native compiler.</li>
+</ul>
+<p>See <code>Doc/Jobs.md</code> for failure, lifetime and platform behavior.</p>

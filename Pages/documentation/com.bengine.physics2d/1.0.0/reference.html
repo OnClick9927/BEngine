@@ -1,0 +1,139 @@
+<strong>Physics2D</strong><span>Fix64 刚体、Collider、查询与碰撞回调</span>
+<div>
+<section id="runtime-contract"><h2 id="运行分包与验证">运行、分包与验证</h2><p>Rigidbody2D.simulated=false 同时退出积分、碰撞和空间查询；重新启用保留原速度。力与速度应从 FixedUpdate 管理。Raycast/Overlap 查询使用引擎二维向量和 LayerMask。Collider 的触发事件和接触回调仍在主线程执行。</p>
+<h3 id="快速开始">快速开始</h3><ol><li>用静态边界和一个动态 Rigidbody2D 创建最小场景，添加 Collider 并确认尺寸、层和质量。</li><li>将力输入写在 FixedUpdate，以固定步长观察落地与反弹；通过 layerMask 排除不相关物体。</li><li>增加 isTrigger 区域并记录进入、停留、退出；分别禁用 Collider、GameObject 和 Rigidbody2D.simulated，比较预期行为。</li></ol>
+<h3 id="组件与-api">组件与 API</h3><p>Rigidbody2D, BoxCollider2D, CircleCollider2D, Collider2D, Physics2D, RaycastHit2D</p><pre><code>body.simulated = true;
+body.linearVelocity = new Vector2((Fix64)2, Fix64.Zero);
+// Disable simulation and remove attached colliders from queries.
+body.simulated = false;</code></pre>
+<h3 id="扩展与平台接口">扩展与平台接口</h3><p>运行时使用 Fix64 和主线程 BTask；通过平台服务读写资源，不直接创建主机文件或网络连接。编辑器代码放在 Editor 装配，停止场景时取消请求并解除订阅。</p>
+<h3 id="资源分包与更新">资源分包与更新</h3><p>AssetImporter.assetBundleName/assetBundleVariant 指定资源组；BuildPipeline.BuildAssetBundles 接受导入设置或 AssetBundleBuild[]。跨包引用记录为目录依赖。RequiredBundleNames 控制首次安装，IAssetBundleDownloadManager 下载可选组和依赖。已安装可选包参与之后的版本更新。</p>
+<h3 id="行为边界">行为边界</h3><p>这是独立二维定点物理实现，不能假设与 Unity Box2D 数值轨迹相同。刚体与查询的参数使用 Fix64。大量密集碰撞体仍会提高接触求解成本；按场景范围拆分并限制活动物体数量。业务确定性依赖固定输入顺序和一致步长。</p><h3 id="排查与验证">排查与验证</h3><ul><li>停止的刚体仍挡路：确认设置的是 simulated=false，而不是仅把速度设为零。</li><li>快物体穿透：减小固定步长、检查 Collider 厚度及当前支持的碰撞检测模式；不要在 Update 直接跳过障碍移动。</li><li>多场景重置物理时间：用 SceneRuntime.TickAll 推进多个运行时，共享单次全局帧推进。</li><li>将 simulated=false 的物体放在射线中，确认它不参与查询且位置不变化。</li><li>重新启用后验证再次参与碰撞；观察 Stop/销毁后没有遗留接触。</li><li>相同固定步长和输入运行两次，比较位置与速度的 Fix64.RawValue，而不是格式化小数。</li></ul>
+<p>Package Manager 导入示例：RigidbodyAndQueries、TriggersAndQueries。在 Project 打开场景，检查 Hierarchy/Inspector，比较 Scene 与 Game，Play 后查看 Console，Stop 后再次运行。</p>
+<p>本包增加配置、运行时、验证三份 Skills。详细说明见 <a href="manual.html?product=com.bengine.physics2d&amp;version=1.0.0&amp;doc=runtimeguide">运行与扩展指南</a>。</p></section>
+<section id="overview"><h1 id="physics2d-使用手册">Physics2D 使用手册</h1>
+  <p>Physics2D 是单线程、场景隔离的确定性 2D 物理系统。它在 FixedUpdate 中模拟
+  Dynamic/Kinematic/Static 刚体，支持四种 Collider、Material、连续碰撞、查询、触发器和消息回调。</p>
+  <figure><img alt="Physics2D 完整示例场景与 Inspector" src="documentation/com.bengine.physics2d/1.0.0/assets/Editor/Doc/images/overview.png" loading="lazy" decoding="async">
+    <figcaption>图 1：完整作者场景在 Hierarchy 中直接保存 Arena、Dynamic Body、Trigger 和 Camera2D；
+    中央 Scene 展示刚体与查询区域，右侧 Inspector 列出 Rigidbody、Collider 和 Query 学习入口。</figcaption>
+  </figure>
+  <div>每个 Scene 拥有独立 PhysicsWorld2DState。切换/卸载场景或停止 Play 时，
+  刚体速度、接触缓存、IgnoreCollision 对和运行时参数都会随镜像销毁。</div>
+</section>
+
+<section id="quickstart"><h2 id="快速开始-1">快速开始</h2><ol>
+  <li>打开 <b>Window &gt; General &gt; Package Manager</b>，启用 <b>2D Physics</b>。</li>
+  <li>在 Examples 导入 <b>Rigidbody And Queries</b>。</li>
+  <li>打开 <code>Assets/Examples/RigidbodyAndQueries/res/Physics2D.scene.yaml</code>。</li>
+  <li>选择 <b>Physics2D Body</b>，检查 SpriteRenderer、BoxCollider2D、Rigidbody2D 和示例脚本。</li>
+  <li>确认 Floor 只有 Collider，没有 Dynamic Rigidbody，因此作为静态几何。</li>
+  <li>点击 Play；观察方块受重力、连续检测、摩擦和弹性影响。按 Space 重置并重新施加速度。</li>
+  <li>在 Console 检查 Raycast 和 OnCollisionEnter2D 的接触点信息。</li>
+</ol><p>不要在 Update 中按可变帧率直接手动推进物理。默认由引擎 FixedUpdate 模拟；
+仅在关闭 autoSimulation 后使用 Physics2D.Simulate，并传入固定正步长。</p></section>
+
+<section id="examples"><h2 id="完整展示示例">完整展示示例</h2>
+  <table><thead><tr><th>示例</th><th>场景中直接包含</th><th>操作</th></tr></thead><tbody>
+    <tr><td>Rigidbody And Queries</td><td>Dynamic Body、BoxCollider、Bouncy Material、Floor、Camera2D</td>
+      <td>Space 重置并 AddForce；向下 Raycast；Console 输出 Collision contacts。</td></tr>
+    <tr><td>Triggers And Queries</td><td>Trigger Area、Kinematic Probe、多个 Circle Target、Camera2D</td>
+      <td>Probe 穿越 Trigger；Space 执行 OverlapCircle、OverlapBox、CircleCast。</td></tr>
+  </tbody></table>
+  <p>示例对象、Collider、Rigidbody 和 Camera 均序列化在 scene.yaml 中；脚本只负责交互与 API 调用，
+  不会在 Play 时从空场景临时构造全部内容。</p>
+</section>
+
+<section id="components"><h2 id="组件介绍">组件介绍</h2>
+  <div>
+    <article><h3 id="rigidbody2d">Rigidbody2D</h3><p>mass、gravityScale、linear/angularDamping、
+      bodyType、simulated、linear/angularVelocity、constraints、collisionDetectionMode 和
+      interpolation。提供 AddForce、AddTorque、MovePosition、Sleep/WakeUp。</p></article>
+    <article><h3 id="collider2d-公共字段">Collider2D 公共字段</h3><p>isTrigger、offset、density、sharedMaterial/material。
+      attachedRigidbody 向父级查找刚体；bounds、ClosestPoint、OverlapPoint、Distance 与 Raycast
+      可用于编辑器或运行时查询。</p></article>
+    <article><h3 id="形状">形状</h3><p>Box 使用 size；Circle 使用 radius；Capsule 使用 size 与
+      Vertical/Horizontal direction；Polygon 使用按顺序排列的 points。</p></article>
+    <article><h3 id="physicsmaterial2d">PhysicsMaterial2D</h3><p>friction 控制切向阻尼，bounciness 控制反弹。
+      Material 可由 Collider 引用；两个接触体的材质共同影响解算结果。</p></article>
+  </div>
+  <table><thead><tr><th>Body Type</th><th>行为</th><th>常见用途</th></tr></thead><tbody>
+    <tr><td>Dynamic</td><td>受重力、力、冲量与碰撞解算影响</td><td>角色、箱子、弹丸</td></tr>
+    <tr><td>Kinematic</td><td>由 MovePosition/MoveRotation 驱动，可产生 Trigger/接触</td><td>移动平台、探针</td></tr>
+    <tr><td>Static</td><td>不积分运动，作为固定几何</td><td>地面、墙体</td></tr>
+  </tbody></table>
+</section>
+
+<section id="workflow"><h2 id="编辑器工作流">编辑器工作流</h2><ol>
+  <li>在非 Play 状态创建 GameObject 与 SpriteRenderer，先确定 Transform 尺寸。</li>
+  <li>点击 Add Component，在 AdvancedDropdown 的 Physics 2D 子层选择 Collider。</li>
+  <li>在 Scene 开启 Gizmos，选中对象确认 Box/Circle/Capsule/Polygon 轮廓贴合画面。</li>
+  <li>需要运动时添加 Rigidbody2D，选择 Body Type、质量、阻尼、约束与检测模式。</li>
+  <li>需要区域事件时勾选 isTrigger；接收方脚本实现 OnTriggerEnter2D 等消息。</li>
+  <li>进入 Play 并聚焦 Game；用 Scene 观察 Gizmos，用 Console 查看碰撞/触发回调。</li>
+  <li>停止 Play 后，在编辑模式调整并保存。运行时速度和组件修改不会写回场景。</li>
+</ol></section>
+
+<section id="api"><h2 id="查询与刚体-api">查询与刚体 API</h2>
+  <table><thead><tr><th>API</th><th>结果</th></tr></thead><tbody>
+    <tr><td>Raycast / RaycastAll</td><td>返回最近命中或按距离排序的全部 RaycastHit2D。</td></tr>
+    <tr><td>OverlapCircle / CheckCircle</td><td>返回圆内 Collider 或只判断是否存在。</td></tr>
+    <tr><td>OverlapBox / OverlapBoxAll / CheckBox</td><td>返回区域内 Collider；OverlapBoxAll 支持旋转角度。</td></tr>
+    <tr><td>OverlapPoint / Distance</td><td>执行真实形状点测试，或返回两个 Collider 的表面距离。</td></tr>
+    <tr><td>CircleCast</td><td>沿方向扫掠一个圆，适合角色前方与落地检测。</td></tr>
+    <tr><td>SyncTransforms</td><td>手动移动 Transform 后，在查询前同步物理代理。</td></tr>
+    <tr><td>IgnoreCollision / GetIgnoreCollision</td><td>设置/读取同一物理场景中的 Collider 对忽略状态。</td></tr>
+    <tr><td>IgnoreLayerCollision / GetIgnoreLayerCollision</td><td>使用引擎 GameObject.layer 设置场景碰撞矩阵。</td></tr>
+    <tr><td>AddForce / AddTorque / AddForceAtPosition</td><td>按 Force、Acceleration、Impulse 或 VelocityChange 施力。</td></tr>
+  </tbody></table>
+  <pre><code>using BEngine.Physics2D;
+using World = BEngine.Physics2D.Physics2D;
+
+public override void FixedUpdate()
+{
+    body.AddForce(Vector2.right * thrust, ForceMode.Force);
+}
+
+public bool IsGrounded()
+{
+    World.SyncTransforms();
+    return World.CircleCast(transform.position, 0.4, Vector2.down,
+        out var hit, 0.8, groundMask, QueryTriggerInteraction.Ignore);
+}</code></pre>
+  <p>Circle、Capsule、旋转 Box 与凸 Polygon 都进入 Fix64 窄相位；CircleCast 对边和圆角执行解析扫掠。
+  RaycastHit2D 提供 collider、point、normal、distance、fraction、rigidbody 与 transform。所有 query
+  都接受引擎 Layer Mask 和 QueryTriggerInteraction（UseGlobal、Ignore、Collide）。</p>
+</section>
+
+<section id="callbacks"><h2 id="碰撞与-trigger-回调">碰撞与 Trigger 回调</h2>
+  <table><tbody>
+    <tr><th>OnCollisionEnter2D(Collision2D)</th><td>两个非 Trigger Collider 首次接触。</td></tr>
+    <tr><th>OnCollisionStay2D(Collision2D)</th><td>接触持续的固定步。</td></tr>
+    <tr><th>OnCollisionExit2D(Collision2D)</th><td>接触结束。</td></tr>
+    <tr><th>OnTriggerEnter2D(Collider2D)</th><td>进入 Trigger 区域。</td></tr>
+    <tr><th>OnTriggerStay2D(Collider2D)</th><td>停留在 Trigger 区域。</td></tr>
+    <tr><th>OnTriggerExit2D(Collider2D)</th><td>离开 Trigger 区域。</td></tr>
+  </tbody></table>
+  <p>Collision2D 包含 collider、rigidbody、relativeVelocity、contacts 和 contactCount；
+  GetContact(index) 返回 point、normal 等接触数据。回调方法可放在同一 GameObject 的启用 MonoBehaviour 上。</p>
+</section>
+
+<section id="extend"><h2 id="如何扩展">如何扩展</h2>
+  <h3 id="自定义角色控制器">自定义角色控制器</h3><ol>
+    <li>Runtime asmdef 引用 BEngine.Physics2D。</li><li>缓存 Rigidbody2D 和 Collider2D。</li>
+    <li>在 Update 采集输入，在 FixedUpdate 施加力或 MovePosition。</li>
+    <li>用 CircleCast + groundMask 判断地面，明确忽略 Trigger。</li>
+    <li>用 constraints 锁定不需要的运动轴，避免每帧强行覆盖解算结果。</li></ol>
+  <h3 id="编辑器扩展">编辑器扩展</h3><p>外部 Collider 或行为组件可实现 OnDrawGizmosSelected 绘制检测范围；
+  用户可从 Scene Gizmos 类型列表独立开关。批量设置 Material、Layer、Trigger 的命令应放入
+  Editor asmdef，并通过 Tools/项目名 菜单注册；所有持久化操作只允许在非 Play 状态。</p>
+</section>
+
+<section id="debug"><h2 id="调试与常见问题">调试与常见问题</h2><table><tbody>
+  <tr><th>对象穿透</th><td>启用 Continuous，检查 Collider 尺寸与 fixedDeltaTime，避免一次 MovePosition 跨越过远。</td></tr>
+  <tr><th>没有回调</th><td>确认 Collider 启用、Layer Mask 允许、至少一方可模拟；Trigger 与 Collision 回调签名不同。</td></tr>
+  <tr><th>Query 查不到刚移动对象</th><td>调用 SyncTransforms，确认 query 的 layerMask 与 trigger policy。</td></tr>
+  <tr><th>多个 Scene 相互影响</th><td>报告问题；每个 Scene 应有独立 PhysicsWorld2DState 和 IgnoreCollision 对。</td></tr>
+  <tr><th>停止 Play 后速度消失</th><td>运行时镜像隔离的预期结果；调试状态不会保存到 asset。</td></tr>
+</tbody></table></section>
+</div>

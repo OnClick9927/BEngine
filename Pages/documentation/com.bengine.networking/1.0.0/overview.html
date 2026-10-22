@@ -1,0 +1,40 @@
+<h1 id="networking">Networking</h1>
+<p>TCP, UDP and WebSocket asynchronous clients.</p>
+<p>Enable com.bengine.networking in Package Manager. Disabling the package removes its tools and types from the project.</p>
+<h3 id="跨平台网络快速开始">跨平台网络快速开始</h3>
+<p><code>BEngine.Networking</code> 只使用 .NET 的 <code>TcpClient</code>、<code>UdpClient</code>、<code>HttpClient</code> 和 <code>ClientWebSocket</code>，不自行实现协议。所有异步操作接受 <code>CancellationToken</code>；TCP、UDP 和 WebSocket 通过 <code>Timeout</code>、<code>LastResult</code>、<code>Error</code>、<code>Exception</code> 暴露最近状态，HTTP 请求通过 <code>Result</code>、<code>Error</code>、<code>ResponseCode</code>、<code>DownloadData/DownloadText</code> 暴露完成状态。<code>TimedOut</code>、<code>Canceled</code>、<code>ConnectionError</code>、<code>ProtocolError</code> 和 <code>DataProcessingError</code> 应分别处理。客户端和请求都必须 <code>Dispose</code>/<code>DisposeAsync</code>。</p>
+<pre><code class="language-csharp">using System.Net;
+using System.Text;
+using BEngine.Networking;
+
+using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+await using var tcp = new TcpNetworkClient { Timeout = TimeSpan.FromSeconds(5) };
+await tcp.ConnectAsync(&quot;127.0.0.1&quot;, 7000, stop.Token);
+await tcp.SendAsync(Encoding.UTF8.GetBytes(&quot;ping&quot;), stop.Token);
+var tcpBuffer = new byte[1024];
+var tcpCount = await tcp.ReceiveAsync(tcpBuffer, stop.Token);
+
+await using var udp = new UdpNetworkClient(new IPEndPoint(IPAddress.Any, 0));
+await udp.SendAsync(
+    Encoding.UTF8.GetBytes(&quot;status&quot;),
+    new IPEndPoint(IPAddress.Loopback, 7001),
+    stop.Token);
+NetworkDatagram datagram = await udp.ReceiveAsync(stop.Token);
+
+using var request = HttpNetworkRequest.Get(&quot;https://example.test/status&quot;);
+request.Timeout = TimeSpan.FromSeconds(5);
+request.SetRequestHeader(&quot;Accept&quot;, &quot;application/json&quot;);
+await request.SendAsync(stop.Token);
+if (request.Result == NetworkRequestResult.Success)
+    Console.WriteLine(request.DownloadText);
+
+await using var socket = new WebSocketNetworkClient();
+await socket.ConnectAsync(new Uri(&quot;wss://example.test/events&quot;), stop.Token);
+await socket.SendTextAsync(&quot;subscribe&quot;, stop.Token);
+WebSocketMessage message = await socket.ReceiveAsync(
+    maximumMessageSize: 256 * 1024,
+    cancellationToken: stop.Token);
+await socket.CloseAsync(cancellationToken: stop.Token);
+</code></pre>
+<p>HTTP 提供 <code>Get/Delete/Post/Put</code> 工厂，也可在构造函数注入共享 <code>HttpClient</code> 或 <code>HttpMessageHandler</code>；默认不会释放外部 <code>HttpClient</code>。需要流式处理大响应时使用 <code>SendAsync(Func&lt;HttpResponseMessage, CancellationToken, Task&gt;, token)</code>，不要先缓冲到 <code>DownloadData</code>。WebSocket 的扩展边界是 <code>IWebSocketTransport</code>：生产环境默认使用 <code>ClientWebSocketTransport</code>，可先配置其 <code>Options</code> 再传给 <code>WebSocketNetworkClient</code>，测试或平台适配可注入自己的 transport。协议、TLS、代理、压缩和握手仍交给 .NET 实现；扩展包应组合这些 sealed 客户端或实现 transport，不应复制协议栈。</p>

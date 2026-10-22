@@ -1,0 +1,82 @@
+<h1 id="bengine-audio">BEngine Audio</h1>
+  <p>用于 BEngine 2D 场景的 WAV/MP3/Ogg Vorbis、流式声部、Mixer Group 效果与设备输出。详见 <a href="manual.html?product=com.bengine.audio&amp;version=1.0.0&amp;doc=streamingandmixer">流式音频与混音</a>。</p>
+
+
+<section id="runtime-contract"><h2 id="运行分包与验证">运行、分包与验证</h2><p>AudioClip.Create/GetData/SetData 管理内存 PCM。AudioSource.Play/PlayDelayed/PlayOneShot/Pause/UnPause/Stop 管理播放，time/timeSamples 查询游标。mute 只将输出增益变为零，仍推进播放位置；Pause 冻结主声部和 OneShot。isPlaying 包含仍存活的 OneShot。</p>
+<h3 id="快速开始">快速开始</h3><ol><li>导入 PCM WAV，在 Inspector 核对采样率、通道和时长；通过包的资源加载路径引用 Clip，避免硬编码主机绝对路径。</li><li>在场景放置 AudioListener 与 AudioSource，给 source.clip 赋值；启用 playOnAwake 或从 Start 调用 Play。</li><li>用两段短音调用 PlayOneShot，分别测试 Pause、UnPause、mute、panStereo 和 Stop；循环背景音与一次性提示音使用独立 Source。</li></ol>
+<h3 id="组件与-api">组件与 API</h3><p>AudioClip, AudioSource, AudioListener, AudioOutput, IAudioOutput</p><pre><code>source.clip = clip;
+source.loop = true;
+source.Play();
+source.PlayOneShot(click, Fix64.Half);
+source.mute = true;</code></pre>
+<h3 id="扩展与平台接口">扩展与平台接口</h3><p>运行时使用 Fix64 和主线程 BTask；通过平台服务读写资源，不直接创建主机文件或网络连接。编辑器代码放在 Editor 装配，停止场景时取消请求并解除订阅。</p>
+<h3 id="资源分包与更新">资源分包与更新</h3><p>AssetImporter.assetBundleName/assetBundleVariant 指定资源组；BuildPipeline.BuildAssetBundles 接受导入设置或 AssetBundleBuild[]。跨包引用记录为目录依赖。RequiredBundleNames 控制首次安装，IAssetBundleDownloadManager 下载可选组和依赖。已安装可选包参与之后的版本更新。</p>
+<h3 id="行为边界">行为边界</h3><p>提供 WAV/MP3/Ogg Vorbis、独立流式声部、后台解码和总线 DSP 效果。AudioClip.Create(stream:true) 需要 PCM 回调。设备平台和跳转成本见流式音频与混音文档。PCM 样本以 float 在音频输出边界混合，播放时间和参数使用 Fix64；音频硬件时钟不作为游戏逻辑时钟。</p><h3 id="排查与验证">排查与验证</h3><ul><li>无声：检查 AudioListener.pause/volume、Source.mute/volume、组件 active 状态及平台 IAudioOutput 是否为空输出。</li><li>暂停后提示音仍响：检查是否用了不同 Source；同一 Source 的 Pause 应暂停所有声部。</li><li>长期静音后恢复从旧位置播放：记录 timeSamples；mute 应持续推进，Pause 才保持位置。</li><li>播放后静音若干帧，确认输出为零而 timeSamples 增加。</li><li>仅播放 OneShot 时检查 isPlaying=true，Pause 后为 false，UnPause 后继续，Stop 清理所有声部。</li><li>用假的 IAudioOutput 记录样本长度与饱和范围，再在目标平台听测左右声道。</li></ul>
+<p>Package Manager 导入示例：AudioGettingStarted、OneShotMixer。在 Project 打开场景，检查 Hierarchy/Inspector，比较 Scene 与 Game，Play 后查看 Console，Stop 后再次运行。</p>
+<p>本包增加配置、运行时、验证三份 Skills。详细说明见 <a href="manual.html?product=com.bengine.audio&amp;version=1.0.0&amp;doc=runtimeguide">运行与扩展指南</a>。</p></section>
+  <h2 id="快速开始-1">快速开始</h2>
+  <ol>
+    <li>在 <code>Window &gt; General &gt; Package Manager</code> 启用 Audio，导入 Audio Getting Started。</li>
+    <li>从 Project 打开 <code>Assets/Examples/AudioGettingStarted/res/Audio.scene.yaml</code>。</li>
+    <li>选择 Music Source，在 Inspector 检查 Clip、Loop、Volume、Pitch、Pan 和 Play On Awake。</li>
+    <li>打开 Scene、Game、Console 后 Play。Space 暂停，方向键调节音量/声像，R 重新播放。</li>
+  </ol>
+  <figure>
+    <img alt="Audio 示例场景、Hierarchy 与 Inspector" src="documentation/com.bengine.audio/1.0.0/assets/Editor/Doc/images/overview.png" loading="lazy" decoding="async">
+    <figcaption>完整示例场景：左侧是 Listener、Music Source 与 Camera2D，右侧 Inspector 展示 Audio Source 的可编辑字段；中间是纯 2D 场景内容。</figcaption>
+  </figure>
+
+  <h2 id="组件介绍">组件介绍</h2>
+  <table>
+    <thead><tr><th>类型</th><th>职责</th><th>关键字段</th></tr></thead>
+    <tbody>
+      <tr><td><code>AudioClip</code></td><td>保存完整 PCM 或流式来源，是可被 Resources/AssetBundle 加载的 BAsset。</td><td>samples、channels、frequency、length、loadState</td></tr>
+      <tr><td><code>AudioSource</code></td><td>播放 Clip 和一次性音效；按优先级进入 2D 软件混音。</td><td>clip、volume、pitch、panStereo、loop、mute、priority</td></tr>
+      <tr><td><code>AudioListener</code></td><td>场景监听器标记与全局音量/暂停入口。</td><td>AudioListener.volume、AudioListener.pause</td></tr>
+      <tr><td><code>AudioImporter</code></td><td>将 WAV/MP3/Ogg Vorbis 及加载策略转换为 Artifact/AudioClip。</td><td>loadType、forceToMono、normalize、loadInBackground、preloadAudioData</td></tr>
+    </tbody>
+  </table>
+  <p>BEngine 是 2D 引擎。AudioSource 不读取 Transform 距离，不提供 3D spatial blend、doppler、reverb zone 或 3D 环绕定位。</p>
+
+  <h2 id="api">API</h2>
+  <h3 id="创建和读写-clip">创建和读写 Clip</h3>
+  <pre><code>var clip = AudioClip.Create(&quot;Tone&quot;, 44100, 2, 44100);
+clip.SetData(interleavedPcm, 0);
+var copy = new float[interleavedPcm.Length];
+clip.GetData(copy, 0);</code></pre>
+  <h3 id="播放控制">播放控制</h3>
+  <pre><code>var source = GetComponent&lt;AudioSource&gt;();
+source.volume = Fix64.Parse(&quot;0.8&quot;);
+source.panStereo = Fix64.Parse(&quot;-0.2&quot;);
+source.Play();
+source.PlayOneShot(clickClip, Fix64.Half);</code></pre>
+  <p><code>PlayDelayed</code> 接受确定性 Fix64 秒数；<code>time</code>、<code>timeSamples</code> 可定位；
+     <code>Pause</code>/<code>UnPause</code> 保留游标，<code>Stop</code> 清除游标和 one-shot。</p>
+
+  <h2 id="编辑器工作流">编辑器工作流</h2>
+  <ol>
+    <li>将 WAV 拖入 Project。Importer 校验 RIFF/WAVE、fmt 和 data 块并生成 AudioClip。</li>
+    <li>在 Inspector 修改导入设置后重新导入；Force To Mono 会合并声道，Normalize 提升峰值。</li>
+    <li>从 Project 将 Clip 拖到 Audio Clip ObjectField；类型不匹配时光标明确显示拒绝。</li>
+    <li>字段右侧选择按钮打开 Assets/Scene 双页签 TreeView，可搜索且不显示 Assets 根节点。</li>
+    <li>修改 Source 使用 Undo；Play 中只改变运行镜像，Stop 后恢复编辑态数据。</li>
+  </ol>
+
+  <h2 id="如何扩展">如何扩展</h2>
+  <p>平台输出实现 <code>IAudioOutput</code> 并用 <code>AudioOutput.current</code> 安装。提交的是交错 float PCM；
+     实现需要自行维护设备缓冲，避免在帧热路径分配，并在 Dispose 中释放原生资源。</p>
+  <p>新增编码格式时，在 Runtime 注册 <code>RuntimeAssetCodecRegistry</code>，在 Editor 注册对应
+     <code>AssetImporter</code> 和图标。包卸载必须注销静态注册；Inspector 修改依次调用 Undo、赋值、
+     <code>EditorUtility.SetDirty</code>。</p>
+
+  <h2 id="排错">排错</h2>
+  <table>
+    <tbody>
+      <tr><th>没有声音</th><td>检查 OpenAL、Listener.pause、Source.mute/volume、Clip 引用和 Play 状态。</td></tr>
+      <tr><th>导入失败</th><td>支持 PCM/Float WAV、MP3 和 Ogg Vorbis；在 Console 查看具体格式/解码错误。</td></tr>
+      <tr><th>播放太快/太慢</th><td>检查 Clip 采样率与 Source pitch；输出端会按设备采样率重采样。</td></tr>
+      <tr><th>Stop 后参数恢复</th><td>这是编辑态/运行态隔离，属于预期行为。</td></tr>
+    </tbody>
+  </table>
+
+<section><h2 id="新增功能与示例">新增功能与示例</h2><p><a href="manual.html?product=com.bengine.audio&amp;version=1.0.0&amp;doc=extensions">扩展功能指南</a>：在示例工程 Main 主菜单进入对应演示，每个场景都包含操作说明。</p></section>

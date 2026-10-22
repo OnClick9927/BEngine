@@ -1,0 +1,391 @@
+<h1 id="property-attributes">Property Attributes</h1>
+<p>详细的生命周期、分包更新、平台扩展、行为限制与验证步骤见 <a href="manual.html?product=com.bengine.property-attributes&amp;version=1.0.0&amp;doc=reference" title="此独立页面未随本版本发布，打开本版本详细手册">运行与扩展指南</a>。任务 Skills 位于 <code>Editor/Skills</code>。</p>
+<p>Property Attributes 为 BEngine 的 GPU IMGUI Inspector 提供声明式字段布局、条件显示、验证、输入控件、路径选择和内联操作。包 ID 为 <code>com.bengine.property-attributes</code>，运行时程序集 <code>BEngine.PropertyAttributes</code> 只保存 Attribute 元数据，编辑器程序集 <code>BEngine.Editor</code> 负责 <code>SerializedProperty</code> 和 <code>PropertyDrawer</code> 绘制；它只依赖 Core，不依赖 UIElements。</p>
+<p><img alt="Property Attributes Inspector 概览" src="documentation/com.bengine.property-attributes/1.0.0/assets/Editor/Doc/PropertyAttributes/images/overview.png" loading="lazy" decoding="async"></p>
+<h2 id="包概览与依赖">包概览与依赖</h2>
+<ol>
+<li>打开 <code>Window &gt; Package Manager</code>，选择 <code>Property Attributes</code> 并启用。</li>
+<li>运行时组件脚本的程序集定义引用 <code>BEngine.PropertyAttributes</code>。</li>
+<li>自定义 Drawer 放在 Editor 程序集，并同时引用 <code>BEngine.Editor</code> 和包含自定义 Attribute 的运行时程序集。</li>
+<li>包禁用后，使用这些 Attribute 的脚本无法解析，因此不要在仍被场景脚本引用时移除包。</li>
+</ol>
+<p>该包没有运行时 Component、Scene System 或资源格式。所有内置 Attribute 都继承 <code>ExtendedPropertyAttribute</code>，最终仍属于 Core 的 <code>PropertyAttribute</code>；运行时不会执行 Inspector 绘制逻辑。</p>
+<h2 id="可导入示例">可导入示例</h2>
+<table>
+<thead>
+<tr>
+<th>示例</th>
+<th>导入目录</th>
+<th>场景</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Inspector Attributes and Drawer</td>
+<td><code>Assets/Examples/InspectorAttributesAndDrawer</code></td>
+<td><code>res/PropertyAttributes.scene.yaml</code></td>
+<td>内置属性以及可运行的 PercentAttribute/PercentDrawer 扩展</td>
+</tr>
+<tr>
+<td>Attributes Gallery</td>
+<td><code>Assets/Examples/AttributesGallery</code></td>
+<td><code>res/AttributesGallery.scene.yaml</code></td>
+<td>独立 Inspector 属性画廊、条件字段、路径和 InlineButton</td>
+</tr>
+</tbody></table>
+<h3 id="快速开始从-import-到-play">快速开始：从 Import 到 Play</h3>
+<ol>
+<li>在 Package Manager 选择 Property Attributes，打开 <code>Examples</code> 页签。</li>
+<li>点击某个示例右侧 <code>Import</code>，等待脚本与程序集定义编译完成。</li>
+<li>Inspector Attributes and Drawer：打开 <code>Assets/Examples/InspectorAttributesAndDrawer/res/PropertyAttributes.scene.yaml</code>。</li>
+<li>Attributes Gallery：打开 <code>Assets/Examples/AttributesGallery/res/AttributesGallery.scene.yaml</code>。</li>
+<li>在 Hierarchy 选择 <code>Property Attributes Showcase</code> 或 <code>Attributes Gallery Bootstrap</code>。</li>
+<li>在 Inspector 切换 Show Advanced/Lock Advanced、拖动数值、选择 Dropdown、输入无效 Level，并点击 Reset 按钮。</li>
+<li>点击 Play，继续观察 Inspector 和 Console；运行时变化只属于 Play 镜像。</li>
+<li>停止 Play 后打开示例的 <code>runtime/*.cs</code>；第一个示例还包含 <code>Editor/PercentDrawer.cs</code>，可直接复制为自定义 Drawer 起点。</li>
+</ol>
+<h2 id="组件资源字段表与属性参数">组件/资源字段表与属性参数</h2>
+<p>本包没有自有 Component、Scene System 或 BAsset 资源格式；它扩展的是任意组件或资源的可序列化字段。下表即本包的公开字段元数据契约。</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>构造参数/字段</th>
+<th>支持目标</th>
+<th>Inspector 行为</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Title</code></td>
+<td><code>title</code>, <code>subtitle</code></td>
+<td>任意序列化字段</td>
+<td>在字段前显示标题和可选副标题</td>
+</tr>
+<tr>
+<td><code>InfoBox</code></td>
+<td><code>message</code>, <code>messageType</code>, <code>visibleIf</code></td>
+<td>任意字段</td>
+<td>显示 Info/Warning/Error；visibleIf 为真时才显示</td>
+</tr>
+<tr>
+<td><code>LabelText</code></td>
+<td><code>label</code></td>
+<td>任意字段</td>
+<td>替换默认字段名</td>
+</tr>
+<tr>
+<td><code>Indent</code></td>
+<td><code>level</code></td>
+<td>任意字段</td>
+<td>增加字段缩进，最小为 0</td>
+</tr>
+<tr>
+<td><code>ShowIf</code> / <code>HideIf</code></td>
+<td><code>conditionMember</code>, <code>expectedValue</code></td>
+<td>任意字段</td>
+<td>按字段、属性或零参成员值显示/隐藏</td>
+</tr>
+<tr>
+<td><code>EnableIf</code> / <code>DisableIf</code></td>
+<td><code>conditionMember</code>, <code>expectedValue</code></td>
+<td>任意字段</td>
+<td>按条件启用/禁用编辑</td>
+</tr>
+<tr>
+<td><code>ReadOnly</code></td>
+<td>无</td>
+<td>任意字段</td>
+<td>保持显示但禁用输入</td>
+</tr>
+<tr>
+<td><code>Required</code></td>
+<td><code>message</code></td>
+<td>string、BObject、可空引用</td>
+<td>null、空白字符串或失效对象时显示错误</td>
+</tr>
+<tr>
+<td><code>ValidateInput</code></td>
+<td><code>validatorMember</code>, <code>message</code>, <code>messageType</code></td>
+<td>任意字段</td>
+<td>调用 <code>bool M()</code> 或 <code>bool M(T value)</code></td>
+</tr>
+<tr>
+<td><code>Clamp</code></td>
+<td><code>minimum</code>, <code>maximum</code></td>
+<td>Integer、Float、Fix64</td>
+<td>绘制后把值限制在范围内</td>
+</tr>
+<tr>
+<td><code>MaxValue</code></td>
+<td><code>maximum</code></td>
+<td>Integer、Float、Fix64</td>
+<td>只限制最大值</td>
+</tr>
+<tr>
+<td>Core <code>Range</code></td>
+<td><code>min</code>, <code>max</code></td>
+<td>Integer、Float、Fix64</td>
+<td>使用 Slider/IntSlider 绘制</td>
+</tr>
+<tr>
+<td><code>MinMax</code></td>
+<td><code>minimum</code>, <code>maximum</code></td>
+<td>Vector2</td>
+<td>X/Y 作为最小/最大值并保持顺序</td>
+</tr>
+<tr>
+<td><code>ProgressBar</code></td>
+<td><code>minimum</code>, <code>maximum</code>, <code>title</code>, <code>editable</code></td>
+<td>Float、Fix64</td>
+<td>显示并可选编辑进度条</td>
+</tr>
+<tr>
+<td><code>Dropdown</code></td>
+<td>固定 <code>choices</code> 或 <code>providerMember</code></td>
+<td>string、enum</td>
+<td>固定选项或从 IEnumerable provider 动态获取</td>
+</tr>
+<tr>
+<td><code>Password</code></td>
+<td><code>mask</code></td>
+<td>string</td>
+<td>使用遮罩字符绘制</td>
+</tr>
+<tr>
+<td><code>FilePath</code></td>
+<td><code>title</code>, <code>filter</code>, <code>relativeToProject</code></td>
+<td>string</td>
+<td>文件对话框，默认保存工程相对路径</td>
+</tr>
+<tr>
+<td><code>FolderPath</code></td>
+<td><code>description</code>, <code>relativeToProject</code></td>
+<td>string</td>
+<td>文件夹对话框</td>
+</tr>
+<tr>
+<td><code>AssetPath</code></td>
+<td><code>extension</code></td>
+<td>string</td>
+<td>从 Assets 起始并按扩展名过滤</td>
+</tr>
+<tr>
+<td><code>InlineButton</code></td>
+<td><code>methodName</code>, <code>label</code></td>
+<td>任意字段</td>
+<td>字段下显示按钮，调用 <code>void M()</code> 或 <code>void M(T value)</code></td>
+</tr>
+<tr>
+<td><code>HorizontalLine</code></td>
+<td><code>thickness</code>, <code>color</code></td>
+<td>任意字段</td>
+<td>按 thickness/color 绘制分隔线并计入高度</td>
+</tr>
+<tr>
+<td><code>Prefix</code> / <code>Suffix</code></td>
+<td><code>text</code></td>
+<td>任意字段</td>
+<td>在输入区域两侧绘制文本并预留宽度</td>
+</tr>
+<tr>
+<td><code>EnumFlags</code></td>
+<td>无</td>
+<td>enum</td>
+<td>枚举菜单支持多个位组合及零值清空</td>
+</tr>
+</tbody></table>
+<p>同一字段可以组合多个属性。<code>ShowIf</code>、<code>EnableIf</code> 等允许多次使用，并以全部条件满足为准。条件名、Provider、Validator 和 Action 都通过目标对象实例反射解析，不支持静态成员。</p>
+<h2 id="常用组合">常用组合</h2>
+<pre><code class="language-csharp">using BEngine;
+using BEngine;
+
+[AddComponentMenu(&quot;Gameplay/Character Settings&quot;)]
+public sealed class CharacterSettings : MonoBehaviour
+{
+    [Title(&quot;角色&quot;, &quot;Inspector 验证与条件字段&quot;)]
+    [Required(&quot;名称不能为空&quot;)]
+    [LabelText(&quot;显示名称&quot;)]
+    public string displayName = &quot;Hero&quot;;
+
+    public bool advanced = true;
+
+    [ShowIf(nameof(advanced))]
+    [Range(0, 20)]
+    [Clamp(1, 12)]
+    public Fix64 speed = 5;
+
+    [Dropdown(nameof(Profiles), true)]
+    public string profile = &quot;Balanced&quot;;
+
+    [ValidateInput(nameof(IsPositive), &quot;等级必须大于 0&quot;)]
+    public int level = 1;
+
+    [ProgressBar(0, 100, &quot;生命&quot;)]
+    [InlineButton(nameof(Heal), &quot;回满&quot;)]
+    public Fix64 health = 75;
+
+    private static readonly string[] ProfileValues = [&quot;Balanced&quot;, &quot;Quality&quot;, &quot;Performance&quot;];
+    private IEnumerable&lt;string&gt; Profiles =&gt; ProfileValues;
+    private bool IsPositive(int value) =&gt; value &gt; 0;
+    private void Heal() =&gt; health = 100;
+}
+</code></pre>
+<h2 id="运行时-api-与编辑器-api">运行时 API 与编辑器 API</h2>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>所在程序集</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>ExtendedPropertyAttribute</code></td>
+<td>Runtime</td>
+<td>所有包内属性的共同基类</td>
+</tr>
+<tr>
+<td><code>ValidationMessageType</code></td>
+<td>Runtime</td>
+<td>Info、Warning、Error</td>
+</tr>
+<tr>
+<td><code>SerializedObject.FindProperty(path)</code></td>
+<td>Editor</td>
+<td>获取可绘制和可 Undo 的字段代理</td>
+</tr>
+<tr>
+<td><code>SerializedProperty.propertyType</code></td>
+<td>Editor</td>
+<td>判断 Integer、Float、String、Vector2、ObjectReference 等类型</td>
+</tr>
+<tr>
+<td><code>SerializedProperty.boxedValue</code></td>
+<td>Editor</td>
+<td>通用读取/写入值</td>
+</tr>
+<tr>
+<td><code>EditorGUI.DefaultPropertyField</code></td>
+<td>Editor</td>
+<td>自定义 Drawer 不支持某类型时安全回退</td>
+</tr>
+<tr>
+<td><code>EditorGUI.PropertyField</code></td>
+<td>Editor</td>
+<td>使用已注册 Drawer 绘制 SerializedProperty</td>
+</tr>
+<tr>
+<td><code>PropertyDrawer.OnGUI</code></td>
+<td>Editor</td>
+<td>实现字段绘制</td>
+</tr>
+<tr>
+<td><code>PropertyDrawer.GetPropertyHeight</code></td>
+<td>Editor</td>
+<td>为多行控件报告稳定高度</td>
+</tr>
+<tr>
+<td><code>[CustomPropertyDrawer(typeof(T), useForChildren)]</code></td>
+<td>Editor</td>
+<td>程序集加载后自动注册 Drawer</td>
+</tr>
+</tbody></table>
+<p><code>ExtendedPropertyDrawer</code> 会自动匹配所有 <code>ExtendedPropertyAttribute</code> 子类，无需项目手工注册。自定义 Attribute 如果不继承它，则需要自己的 <code>PropertyDrawer</code>。</p>
+<h2 id="完整编辑器工作流">完整编辑器工作流</h2>
+<ol>
+<li>在运行时程序集的组件字段上添加 Attribute；不要从运行时代码引用 <code>BEngine.Editor</code>。</li>
+<li>先单独添加一个属性并等待编译，确认默认 Inspector 可见，再逐步组合条件、验证和布局属性。</li>
+<li>Provider 使用实例字段、属性或零参非 void 方法，并返回 <code>IEnumerable</code>；Dropdown 会把每项转换为字符串。</li>
+<li>Validator 使用 <code>bool M()</code> 或 <code>bool M(T value)</code>；签名错误会导致验证失败。</li>
+<li>InlineButton 使用 <code>void M()</code> 或 <code>void M(T value)</code>，避免在按钮中绕过 Undo 修改编辑态对象。</li>
+<li>路径字段默认返回工程相对路径；保存前确认路径以 <code>Assets/</code> 或所需工程目录开头。</li>
+<li>自定义 Drawer 放入 Editor 文件夹/程序集，使用 <code>SerializedProperty</code> 写值，并为不支持类型调用 DefaultPropertyField。</li>
+<li>在多选对象、窄 Inspector、Play/Stop 和脚本重载后验证布局及值持久化。</li>
+</ol>
+<h2 id="扩展可运行-percent-drawer">扩展：可运行 Percent Drawer</h2>
+<p>运行时程序集：</p>
+<pre><code class="language-csharp">using BEngine;
+
+[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+public sealed class PercentAttribute : PropertyAttribute;
+</code></pre>
+<p>Editor 程序集：</p>
+<pre><code class="language-csharp">using BEngine;
+using BEngine.Editor;
+
+[CustomPropertyDrawer(typeof(PercentAttribute))]
+public sealed class PercentDrawer : PropertyDrawer
+{
+    public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
+    {
+        if (property.propertyType != SerializedPropertyType.Float)
+        {
+            EditorGUI.DefaultPropertyField(position, property, label, includeChildren: true);
+            return;
+        }
+
+        var percent = Math.Clamp(property.floatValue * 100f, 0f, 100f);
+        property.floatValue = EditorGUI.Slider(
+            position, $&quot;{label.text} (%)&quot;, percent, 0f, 100f) / 100f;
+    }
+}
+</code></pre>
+<p>注册完全由 <code>[CustomPropertyDrawer]</code> 完成。Editor 程序集必须引用定义 <code>PercentAttribute</code> 的运行时程序集；重载或禁用包时，Drawer Registry 会失效缓存并重新扫描可用程序集。</p>
+<h2 id="调试与常见问题">调试与常见问题</h2>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>检查与处理</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>属性完全不生效</td>
+<td>确认包已启用、运行时 asmdef 引用 <code>BEngine.PropertyAttributes</code>，字段可被 SerializedObject 枚举</td>
+</tr>
+<tr>
+<td>ShowIf 总是隐藏</td>
+<td>conditionMember 必须是同一实例上的字段、属性或零参成员；检查拼写和 expectedValue 类型转换</td>
+</tr>
+<tr>
+<td>EnableIf 逻辑相反</td>
+<td><code>EnableIf(member, false)</code> 表示成员等于 false 时启用；DisableIf 则在条件为真时禁用</td>
+</tr>
+<tr>
+<td>Dropdown 为空</td>
+<td>Provider 必须返回 IEnumerable；不能是静态成员、带参数方法或 void 方法</td>
+</tr>
+<tr>
+<td>Validator 总报错</td>
+<td>使用 <code>bool M()</code> 或与字段类型匹配的 <code>bool M(T value)</code>，并避免方法抛异常</td>
+</tr>
+<tr>
+<td>InlineButton 没有执行</td>
+<td>方法必须是实例 void 方法，可无参数或接收当前字段值</td>
+</tr>
+<tr>
+<td>Clamp 不作用于 Vector2</td>
+<td>Clamp 只处理 Integer/Float/Fix64；范围 Vector2 使用 MinMax</td>
+</tr>
+<tr>
+<td>路径不是 Assets 相对路径</td>
+<td>检查 relativeToProject；AssetPath 从 Application.dataPath 打开但返回工程相对路径</td>
+</tr>
+<tr>
+<td>自定义 Drawer 不出现</td>
+<td>Drawer 必须在 Editor 程序集、有公开无参构造，并添加 CustomPropertyDrawer</td>
+</tr>
+<tr>
+<td>自定义 Drawer 导致布局重叠</td>
+<td>GetPropertyHeight 必须包含所有额外行；OnGUI 只能使用分配到的 Rect</td>
+</tr>
+<tr>
+<td>HorizontalLine/Prefix/Suffix/EnumFlags 没有视觉变化</td>
+<td>检查已加载编辑器包版本、字段类型及 Drawer 注册</td>
+</tr>
+<tr>
+<td>Play 中修改停止后丢失</td>
+<td>这是运行镜像隔离；需要持久化的参数应在 Edit Mode 修改并保存 Scene/Asset</td>
+</tr>
+</tbody></table>
+<p>离线网页文档位于 <code>Editor/Doc/index.html</code>，Package Manager 可直接打开。</p>

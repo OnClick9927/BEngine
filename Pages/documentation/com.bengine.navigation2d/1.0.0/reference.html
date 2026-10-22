@@ -1,0 +1,138 @@
+<strong>Navigation2D</strong><span>确定性网格烘焙、A* 寻路与 2D Agent</span>
+<div>
+
+
+<section id="runtime-contract"><h2 id="运行分包与验证">运行、分包与验证</h2><p>Surface.BuildNavigation 重建格子；Navigation2D.CalculatePath/SamplePosition 使用区域掩码。Agent.SetDestination 返回是否找到可用路径；SetPath 保留独立副本；remainingDistance/velocity/pathStatus 描述运动状态。updatePosition=false 时通过 nextPosition 获取模拟位置。</p>
+<h3 id="快速开始">快速开始</h3><ol><li>创建 Surface，设置 bounds/cellSize 和障碍层，添加 Collider2D 障碍后执行 Bake。先观察烘焙结果，再创建 Agent。</li><li>用 SamplePosition 验证目标落在可行走区域，给 SetDestination 的返回值和 pathStatus 加日志。PathPartial 只能走到已找到的可达点。</li><li>用 Modifier 设置区域并用 areaMask 过滤；添加 Link 连接两个区域，重建 Surface 后验证单向/双向和 costModifier。</li></ol>
+<h3 id="组件与-api">组件与 API</h3><p>NavigationSurface2D, NavigationAgent2D, NavigationPath2D, NavigationObstacle2D, NavigationModifier2D, NavigationLink2D, Navigation2D</p><pre><code>surface.BuildNavigation();
+agent.speed = (Fix64)3;
+agent.stoppingDistance = Fix64.Parse(&quot;0.1&quot;);
+bool accepted = agent.SetDestination(destination);
+NavigationPathStatus status = agent.pathStatus;</code></pre>
+<h3 id="扩展与平台接口">扩展与平台接口</h3><p>运行时使用 Fix64 和主线程 BTask；通过平台服务读写资源，不直接创建主机文件或网络连接。编辑器代码放在 Editor 装配，停止场景时取消请求并解除订阅。</p>
+<h3 id="资源分包与更新">资源分包与更新</h3><p>AssetImporter.assetBundleName/assetBundleVariant 指定资源组；BuildPipeline.BuildAssetBundles 接受导入设置或 AssetBundleBuild[]。跨包引用记录为目录依赖。RequiredBundleNames 控制首次安装，IAssetBundleDownloadManager 下载可选组和依赖。已安装可选包参与之后的版本更新。</p>
+<h3 id="行为边界">行为边界</h3><p>采用离散格网而非 Unity 多边形 NavMesh。Agent 半径参与局部避让，格网净空取决于 Surface 烘焙配置。局部避让是轻量的二维排斥，不是 ORCA，也不保证密集队列无死锁。不同 avoidance quality 当前不提供不同求解器。不要把区域编号直接当掩码，使用 1UL &lt;&lt; area。</p><h3 id="排查与验证">排查与验证</h3><ul><li>目标在障碍中：允许得到 PathPartial；不得把阻挡中的原始目标追加到路径末尾。</li><li>高速角色越过终点：核对 stoppingDistance、autoBraking 与每步位移限制，运动应被当前拐点距离截断。</li><li>障碍移动后仍走旧路：更新障碍并 BuildNavigation；autoRepath 监听烘焙代次，不能代替烘焙。</li><li>分别测试 mask=0、仅某区域、全区域和不可达目标，检查返回值与 pathStatus。</li><li>设很大 speed 和较大 Tick，确认不会越过拐点，在终点速度归零。</li><li>修改传给 SetPath 的原始 corners 后，确认 Agent 的路径不改变；重烘焙后检查 autoRepath。</li></ul>
+<p>Package Manager 导入示例：NavigationSurfaceAndAgent、DynamicRebake。在 Project 打开场景，检查 Hierarchy/Inspector，比较 Scene 与 Game，Play 后查看 Console，Stop 后再次运行。</p>
+<p>本包增加配置、运行时、验证三份 Skills。详细说明见 <a href="manual.html?product=com.bengine.navigation2d&amp;version=1.0.0&amp;doc=runtimeguide">运行与扩展指南</a>。</p></section>
+<section id="overview">
+  <h1 id="navigation2d-使用手册">Navigation2D 使用手册</h1>
+  <p>Navigation2D 将场景中的 2D Collider、Obstacle 和 Modifier 采样为确定性网格，
+  Agent 使用 A* 计算路径并在固定点数坐标中移动。包依赖 Physics2D，启用本包时 Package Manager
+  会同时解析运行时依赖。</p>
+  <figure><img alt="Navigation2D 完整示例场景与 Inspector" src="documentation/com.bengine.navigation2d/1.0.0/assets/Editor/Doc/images/overview.png" loading="lazy" decoding="async">
+    <figcaption>图 1：左侧 Hierarchy 中 Surface、Obstacle、Agent 与 Camera 都直接保存在场景；
+    中央 Scene 展示可行走区域和路径节点；右侧 Inspector 是烘焙与移动参数。示例并非只有启动代码。</figcaption>
+  </figure>
+  <div>坐标、速度、网格单元与路径长度都使用 Fix64。相同场景、输入和固定时间步应得到相同结果。</div>
+</section>
+
+<section id="quickstart"><h2 id="快速开始-1">快速开始</h2>
+  <ol>
+    <li>打开 <b>Window &gt; General &gt; Package Manager</b>，选择 <b>2D Navigation</b> 并启用。</li>
+    <li>切到 <b>Examples</b>，在 <b>Navigation Surface And Agent</b> 后点击 <b>Import</b>。</li>
+    <li>在 Project 打开 <code>Assets/Examples/NavigationSurfaceAndAgent/res/Navigation.scene.yaml</code>。</li>
+    <li>选择 <b>Navigation Surface</b>，确认 Size 覆盖场景，Cell Size 与 Agent Radius 合理。</li>
+    <li>通过组件菜单执行 <b>Bake</b>；Scene 中的 Gizmos 会显示 Surface、Obstacle、Agent 和 Link。</li>
+    <li>点击 Play，Agent 会绕开红色 Carving Obstacle。按 Space 在两个目的地之间切换。</li>
+    <li>观察 Console 的目标、路径状态与 remainingDistance；停止 Play 后场景恢复到运行前。</li>
+  </ol>
+  <p>修改障碍物后必须再次 Bake 或调用 UpdateNavigation。运行时烘焙只修改 Play 镜像，
+  不会保存到场景资源。</p>
+</section>
+
+<section id="examples"><h2 id="完整展示示例">完整展示示例</h2>
+  <table><thead><tr><th>示例</th><th>场景内容</th><th>交互与学习点</th></tr></thead><tbody>
+    <tr><td>Navigation Surface And Agent</td><td>Surface、世界背景、Carving Obstacle、Agent、Camera2D</td>
+      <td>首次烘焙、SamplePosition、SetDestination、自动到达目标；Space 切换终点。</td></tr>
+    <tr><td>Dynamic Rebake</td><td>可移动 Obstacle、自动重寻路 Agent、Surface、目标标记、Camera2D</td>
+      <td>Space 移动障碍物，UpdateNavigation 重建网格，Agent 重新计算路径。</td></tr>
+  </tbody></table>
+  <p>每个示例都有独立 asmdef、详细 Readme、运行时脚本和可直接打开的 scene.yaml。可重复 Import；
+  对已修改文件默认保留本地改动，需要恢复原版时使用明确的覆盖重导入。</p>
+</section>
+
+<section id="components"><h2 id="组件介绍">组件介绍</h2>
+  <div>
+    <article><h3 id="navigationsurface2d">NavigationSurface2D</h3><p>定义采样范围和网格精度。关键字段：
+      agentTypeId、collectObjects、center、size、layerMask、useGeometry、cellSize、agentRadius、
+      buildOnStart。Context 菜单提供 Bake 与 Clear。</p></article>
+    <article><h3 id="navigationagent2d">NavigationAgent2D</h3><p>沿路径移动。配置 radius、speed、acceleration、
+      angularSpeed、stoppingDistance、autoBraking、autoRepath、updatePosition、updateRotation、
+      areaMask 与 avoidance quality。</p></article>
+    <article><h3 id="navigationobstacle2d">NavigationObstacle2D</h3><p>Box/Circle 动态障碍。center、size/radius、
+      carving 与 carveOnlyStationary 决定烘焙时的阻挡形状。</p></article>
+    <article><h3 id="link-与-modifier">Link 与 Modifier</h3><p>NavigationLink2D 连接 startPoint/endPoint，可双向并设置 cost；
+      Modifier2D 可结合 Collider 覆盖区域；ModifierVolume2D 以 center/size 标记 Area。</p></article>
+  </div>
+  <h3 id="字段选择建议">字段选择建议</h3>
+  <table><thead><tr><th>参数</th><th>影响</th><th>建议</th></tr></thead><tbody>
+    <tr><td>cellSize</td><td>越小路径越精细，节点数和烘焙成本越高</td><td>从角色直径的 1/2 开始</td></tr>
+    <tr><td>agentRadius</td><td>对阻挡区域增加安全边距</td><td>与 Agent radius 保持一致</td></tr>
+    <tr><td>stoppingDistance</td><td>到目标多近才结束路径</td><td>避免小于一个 Fix64 有效步长</td></tr>
+    <tr><td>layerMask</td><td>选择参与 Surface 收集的世界层</td><td>只包含导航几何层，减少误阻挡</td></tr>
+  </tbody></table>
+</section>
+
+<section id="workflow"><h2 id="编辑器工作流">编辑器工作流</h2>
+  <ol>
+    <li>用 GameObject 创建地面和障碍，为需要参与采样的对象添加 Physics2D Collider。</li>
+    <li>创建空 GameObject，使用 Add Component 的 AdvancedDropdown 搜索
+      <b>Navigation Surface 2D</b>。</li>
+    <li>在 Scene 中观察 Surface Gizmo，调整 center/size；用 Hierarchy 左侧眼睛临时隐藏干扰物。</li>
+    <li>为阻挡物添加 Navigation Obstacle 2D，开启 carving；为角色添加 Navigation Agent 2D。</li>
+    <li>从组件 Context 菜单 Bake。更改 Collider、Obstacle、Modifier 或 Surface 后重新 Bake。</li>
+    <li>进入 Play，在 Scene 打开 Navigation Gizmos，在 Game 观察相机结果，在 Console 检查状态。</li>
+  </ol>
+</section>
+
+<section id="api"><h2 id="运行时-api">运行时 API</h2>
+  <table><thead><tr><th>API</th><th>用途</th></tr></thead><tbody>
+    <tr><td>Navigation2D.CalculatePath(source, target, mask, path)</td><td>计算路径并写入 NavigationPath2D。</td></tr>
+    <tr><td>Navigation2D.SamplePosition(point, out hit, distance, mask)</td><td>将任意点吸附到最近可行走网格。</td></tr>
+    <tr><td>agent.SetDestination(target)</td><td>计算并采用目标路径，返回是否成功。</td></tr>
+    <tr><td>agent.SetPath / ResetPath / Warp</td><td>采用自定义路径、清除路径或瞬移并清除旧路径。</td></tr>
+    <tr><td>surface.BuildNavigation / UpdateNavigation / RemoveData</td><td>构建、重建或清除运行时网格。</td></tr>
+  </tbody></table>
+  <pre><code>using BEngine.Navigation2D;
+using Nav = BEngine.Navigation2D.Navigation2D;
+
+public sealed class ClickToMove : MonoBehaviour
+{
+    private NavigationAgent2D? agent;
+    public override void Awake() =&gt; agent = GetComponent&lt;NavigationAgent2D&gt;();
+
+    public void MoveTo(Vector2 requested)
+    {
+        if (agent is null) return;
+        var target = Nav.SamplePosition(requested, out var hit, 2)
+            ? hit.position
+            : requested;
+        if (!agent.SetDestination(target))
+            Debug.LogWarning(&quot;No complete path to target.&quot;);
+    }
+}</code></pre>
+</section>
+
+<section id="extend"><h2 id="如何扩展">如何扩展</h2>
+  <h3 id="扩展一个运行时目标选择器">扩展一个运行时目标选择器</h3>
+  <ol><li>在项目 Runtime asmdef 引用 BEngine.Navigation2D。</li>
+    <li>创建 MonoBehaviour 并缓存 NavigationAgent2D，不要每帧重复搜索组件。</li>
+    <li>把输入位置先交给 SamplePosition，再调用 SetDestination。</li>
+    <li>通过 hasPath、pathPending、pathStatus、remainingDistance 驱动动画或 UI。</li>
+    <li>需要动态地图时集中调用 Surface.UpdateNavigation，不要让每个 Agent 独立重烘焙。</li></ol>
+  <h3 id="扩展编辑器工具">扩展编辑器工具</h3>
+  <p>在 Editor asmdef 引用 Navigation2D.Editor，使用 MenuItem 把命令放到 Tools/项目名 下；
+  通过 Selection.activeGameObject 获取目标，在修改场景组件后标记场景为已修改。外部组件可实现
+  OnDrawGizmosSelected 绘制目标与路径，用户可在 Scene 的 Gizmos 菜单按组件类型开关。</p>
+</section>
+
+<section id="debug"><h2 id="调试限制与常见问题">调试、限制与常见问题</h2>
+  <table><tbody>
+    <tr><th>SetDestination 返回 false</th><td>确认 Surface 已 Bake、源点/终点可采样、Area Mask 匹配且对象属于同一运行场景。</td></tr>
+    <tr><th>Agent 穿过障碍</th><td>确认 Obstacle carving 开启，或 Collider 位于 Surface.layerMask；移动后重烘焙。</td></tr>
+    <tr><th>路径贴墙</th><td>增大 Surface.agentRadius 或 Agent.radius，减小 cellSize 后重烘焙。</td></tr>
+    <tr><th>Scene 没有 Gizmos</th><td>开启 Scene Gizmos，并在类型列表启用 NavigationSurface2D/Agent/Obstacle/Link。</td></tr>
+    <tr><th>停止 Play 后数据消失</th><td>这是运行时镜像隔离的预期行为；在编辑模式配置并保存资源。</td></tr>
+  </tbody></table>
+</section>
+</div>

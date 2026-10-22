@@ -1,0 +1,169 @@
+<strong>UIElements</strong><span>保留模式 UI、UXML/USS、UI Builder、事件调试与运行时控件</span>
+<div>
+<section id="overview"><h1 id="uielements-使用手册">UIElements 使用手册</h1>
+  <p>UIElements 是 BEngine 的独立保留模式 UI 包（com.bengine.ui-elements）。它通过 UIDocument 把 VisualElement 树提交到
+  具有稳定内建身份的 UI Sorting Layer，支持 UXML 结构、USS 样式、UI Builder、HTML 转换、运行时查询与控件事件。</p>
+  <figure><img alt="UIElements 完整示例场景与 Inspector" src="documentation/com.bengine.ui-elements/1.0.0/assets/Editor/Doc/UIElements/images/overview.png" loading="lazy" decoding="async">
+    <figcaption>图 1：Hierarchy 直接保存 Runtime World、HUD Document、Controls Gallery 和 Camera；
+    中央 Scene/Game 表示世界之上的 UI，右侧 Inspector 展示 UXML、缩放模式与 UI Sorting Layer。</figcaption>
+  </figure>
+  <div>UIDocument 和 VisualElement 使用具有稳定内建身份的 UI Layer；该 Layer 可以重命名和排序，
+  因此它的连续自然编号会随工程配置变化，不能写死数字。同层仍按 orderInLayer、Hierarchy 和稳定透明顺序排序，
+  可与使用 UI Layer 的 Particle 穿插。</div>
+</section>
+
+<section id="quickstart"><h2 id="快速开始">快速开始</h2><ol>
+  <li>打开 <b>Window &gt; UIElement &gt; Samples</b>，确认内置编辑器工具可用。</li>
+  <li>从 UIElements Examples 导入 <b>Runtime HUD</b>。</li>
+  <li>打开 <code>Assets/Examples/RuntimeHud/res/UIElements.scene.yaml</code>。</li>
+  <li>选中 <b>Runtime HUD Document</b>；确认 UIDocument.sourceAsset 指向 RuntimeHud.bxml。</li>
+  <li>检查 Scale With Screen Size、Reference 1280×720、UI Sorting Layer 与 Sorting Order。</li>
+  <li>点击 Play，编辑器会立即聚焦已打开的 Game 窗口；点击 Advance Progress 和 Reset。</li>
+  <li>在 Game 选择 16:9、1280×720 等分辨率并展开 Statistics，观察 UI 缩放与批次。</li>
+  <li>停止 Play；运行时 Progress、Tree selection 和脚本改值不会写回 UXML/Scene。</li>
+</ol></section>
+
+<section id="examples"><h2 id="完整展示示例">完整展示示例</h2>
+  <table><thead><tr><th>示例</th><th>场景和资源</th><th>交互</th></tr></thead><tbody>
+    <tr><td>Runtime HUD</td><td>UIDocument、RuntimeHudController、世界背景、Camera2D、UXML、USS</td>
+      <td>Button 更新 ProgressBar、TreeView/ListView；演示 ClickEvent 冒泡与帧调度。</td></tr>
+    <tr><td>Controls Gallery</td><td>UIDocument、ControlsGalleryBootstrap、Camera2D、完整控件 UXML/USS</td>
+      <td>双向绑定和 BObservable 输入流，Preset/Reset，同步 Progress 与状态。</td></tr>
+  </tbody></table>
+  <p>两个示例的 UIDocument 和 Camera 都直接序列化在场景中，sourceAsset 使用导入后的真实工程路径；
+  它们不是进入 Play 后才为一个空对象补齐全部 UI。</p>
+</section>
+
+<section id="document"><h2 id="uidocument-组件介绍">UIDocument 组件介绍</h2>
+  <table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody>
+    <tr><td>sourceAsset</td><td>UXML 或 BEngine UI 资源的工程相对路径；变更后 Reload。</td></tr>
+    <tr><td>sortingLayer / sortingOrder</td><td>稳定内建 UI Layer 和层内顺序；Layer 当前编号由工程排序动态确定，可与同层 Particle 穿插。</td></tr>
+    <tr><td>material / atlas</td><td>设置 UI 材质与图集，Material + Shader + Atlas 决定合批兼容性。</td></tr>
+    <tr><td>interactable</td><td>是否参与运行时指针派发；多个 Document 时优先最高 sortingOrder。</td></tr>
+    <tr><td>scaleMode</td><td>ConstantPixelSize 或 ScaleWithScreenSize。</td></tr>
+    <tr><td>referenceWidth / referenceHeight</td><td>缩放参考分辨率，最小值按运行时保护。</td></tr>
+  </tbody></table>
+  <p>OnEnable 自动 Reload。rootVisualElement 按需实例化；SetVisualTree 可在运行时注入程序化树；
+  DispatchPointerDown 用于明确的指针测试或自定义输入桥。</p>
+</section>
+
+<section id="controls"><h2 id="组件与控件目录">组件与控件目录</h2>
+  <div>
+    <article><h3 id="文本与输入">文本与输入</h3><p>Label、TextField、IntegerField、FloatField、
+      SearchField、Toggle、Slider、DropdownField、ColorField。</p></article>
+    <article><h3 id="命令与工具栏">命令与工具栏</h3><p>Button、Toolbar、ToolbarButton、ToolbarMenu、
+      ToolbarSearchField、ToolbarSpacer。</p></article>
+    <article><h3 id="容器与数据">容器与数据</h3><p>VisualElement、Box、Foldout、ScrollView、ListView、
+      TreeView、TreeViewItem。</p></article>
+    <article><h3 id="展示">展示</h3><p>Image、ProgressBar。Image 支持 sourcePath/scaleMode；
+      ProgressBar 支持 low/high/value/title。</p></article>
+  </div>
+  <h3 id="treeview">TreeView</h3>
+  <p>TreeView 支持 items、selection、Expand/Collapse、RefreshItems、ScrollToItem、重命名和拖放。
+  canRenameItem/validateRename/canStartDrag/canDrop 提供策略钩子；rename 与 drag/drop 有明确事件。
+  Runtime HUD 用程序化 TreeViewItem 数据演示查询、展开和选择。</p>
+</section>
+
+<section id="uxml"><h2 id="uxml-与-uss">UXML 与 USS</h2>
+  <pre><code>&lt;UXML&gt;
+  &lt;Style src=&quot;RuntimeHud.bss&quot; /&gt;
+  &lt;VisualElement name=&quot;RuntimeHud&quot; class=&quot;runtime-hud&quot;&gt;
+    &lt;Label text=&quot;BEngine Runtime HUD&quot; class=&quot;hud-title&quot; /&gt;
+    &lt;ProgressBar name=&quot;Progress&quot; low-value=&quot;0&quot; high-value=&quot;100&quot; /&gt;
+    &lt;Button name=&quot;Advance&quot; text=&quot;Advance&quot; /&gt;
+  &lt;/VisualElement&gt;
+&lt;/UXML&gt;</code></pre>
+  <pre><code>.runtime-hud {
+  width: 520px;
+  padding: 18px;
+  background-color: #2B2D31F2;
+  border-color: #555A63FF;
+  border-width: 1px;
+}
+.hud-title { height: 34px; font-size: 22px; color: #F2F3F5FF; }</code></pre>
+  <p>USS 支持类、类型和后代选择器，以及宽高、最小尺寸、margin/padding、flex direction/grow/shrink、
+  align/justify、overflow、font size、color、background、border 等当前 Style 字段。使用相对
+  Style src 时按 UXML 所在目录解析。</p>
+</section>
+
+<section id="api"><h2 id="运行时-api-与事件">运行时 API 与事件</h2>
+  <table><thead><tr><th>API</th><th>用途</th></tr></thead><tbody>
+    <tr><td>root.Q&lt;T&gt; / Query&lt;T&gt;</td><td>按类型、name、class 查询首项或完整结果。</td></tr>
+    <tr><td>Add / Insert / Remove / Clear</td><td>维护保留模式树，自动传播 dirty 状态。</td></tr>
+    <tr><td>AddToClassList / RemoveFromClassList</td><td>动态切换 USS class。</td></tr>
+    <tr><td>styleSheets.Add / ApplyStyleSheets</td><td>附加并应用 StyleSheet。</td></tr>
+    <tr><td>SetEnabled / visible</td><td>控制交互或视觉状态。</td></tr>
+    <tr><td>SetValueWithoutNotify</td><td>更新 BaseField 值但避免递归 valueChanged。</td></tr>
+    <tr><td>RegisterCallback&lt;TEvent&gt;</td><td>注册 TrickleDown 捕获或默认冒泡事件。</td></tr>
+    <tr><td>root.Bind(data)</td><td>按 binding-path 创建可刷新、可释放的双向绑定。</td></tr>
+    <tr><td>element.schedule.Execute</td><td>通过 Editor/Player Update 上的 BTaskScheduler 按时间或帧调度。</td></tr>
+  </tbody></table>
+  <pre><code>public override void Start()
+{
+    var document = GetComponent&lt;UIDocument&gt;();
+    var root = document?.rootVisualElement;
+    var progress = root?.Q&lt;ProgressBar&gt;(&quot;Progress&quot;);
+    var advance = root?.Q&lt;Button&gt;(&quot;Advance&quot;);
+    if (progress is null || advance is null) return;
+
+    advance.clicked += () =&gt; progress.value = Math.Min(100, progress.value + 10);
+}</code></pre>
+  <p>Button 使用 clicked；字段使用 valueChanged；ListView/TreeView 提供 selectionChanged；
+  TreeView 还提供 rename 与 drag/drop 事件。PointerDownEvent、ClickEvent、ChangeEvent 支持捕获/冒泡及
+  StopPropagation。长期事件、UIBinding 和 ScheduledItem 应在 OnDisable/OnDestroy 释放。</p>
+</section>
+
+<section id="builder"><h2 id="编辑器工作流">编辑器工作流</h2><ol>
+  <li>使用 <b>Assets &gt; Create &gt; UI Toolkit &gt; UI Document</b> 创建 UXML；
+      使用同级 Style Sheet 创建 USS。Project 右键与顶部 Assets 菜单保持一致。</li>
+  <li>打开 <b>Window &gt; UIElement &gt; UI Builder</b>，从 Library 搜索控件，在 Hierarchy 维护树，在 UIElement Container Viewport
+      中选择节点，再通过 Inspector 编辑 identity、binding、class、控件值、布局和颜色。</li>
+  <li>使用 New/Open/Save、Undo/Redo、Duplicate/Reorder/Delete、分辨率与缩放工具栏；左右面板和
+      缩放 Canvas 都可独立滚动。</li>
+  <li>在场景 GameObject 添加 <b>UI Toolkit &gt; UI Document</b>，通过 ObjectField/路径指定 sourceAsset。</li>
+  <li>设置 UI Layer、Sorting Order、Material、Atlas 与分辨率缩放。</li>
+  <li>写 MonoBehaviour，通过 Q 查询具名控件并注册事件。</li>
+  <li>打开同组的 <b>Event Debugger</b>，按面板和事件类型筛选，检查回调阶段、传播路径与事件属性。</li>
+  <li>打开同组的 <b>Samples</b>，浏览和操作按钮、滚动、开关、文本、列表、数值、颜色和选择字段。</li>
+  <li>Game 窗口选择多个分辨率，检查文本、长单词、ScrollView 和按钮不重叠。</li>
+</ol>
+  <p>已有 HTML 可通过 <b>Window &gt; UIElement &gt; HTML Converter</b> 或 Project/Assets 菜单的
+  <b>Convert HTML to UIElements</b> 转换。转换结果仍需在 UI Builder 中检查布局和当前 USS 支持范围。</p>
+</section>
+
+<section id="extend"><h2 id="如何扩展">如何扩展</h2>
+  <h3 id="组合自定义控件">组合自定义控件</h3><ol><li>Runtime asmdef 会自动引用引擎核心中的 UIElements。</li>
+    <li>继承 VisualElement 或现有控件，在构造函数中 Add 子节点并设置 class。</li>
+    <li>用公开事件暴露语义，而不是让外部依赖内部节点结构。</li>
+    <li>程序化创建后通过 UIDocument.SetVisualTree，或在加载 UXML 后把组合控件插入占位节点。</li>
+    <li>为材质/图集设置一致值以保留批次兼容性。</li></ol>
+  <pre><code>public sealed class StatusBadge : VisualElement
+{
+    private readonly Label label = new();
+    public StatusBadge()
+    {
+        AddToClassList(&quot;status-badge&quot;);
+        Add(label);
+    }
+    public void SetStatus(string text, bool ok)
+    {
+        label.text = text;
+        if (ok) AddToClassList(&quot;ok&quot;); else RemoveFromClassList(&quot;ok&quot;);
+    }
+}</code></pre>
+  <p>当前 UXML 解析器公开支持内置控件集合，没有公开的自定义标签注册 API。
+  外部自定义控件应以程序化组合或 UXML 占位节点替换实现，不要在文档中宣称未知标签会自动实例化。</p>
+  <h3 id="编辑器扩展">编辑器扩展</h3><p>EditorWindow 可复用 UI Builder/Converter 的 MenuItem 模式；资产创建使用
+  GenerateUniqueAssetPath 和 AssetDatabase.ImportAsset。自定义 Asset Editor 可提供 UXML/USS
+  预览，但所有 asset 写入必须在非 Play 状态。</p>
+</section>
+
+<section id="debug"><h2 id="调试与常见问题">调试与常见问题</h2><table><tbody>
+  <tr><th>只显示空 UI</th><td>检查 sourceAsset 工程路径、文件存在、UXML 根与 Style src 相对路径。</td></tr>
+  <tr><th>Q 返回 null</th><td>检查 name 大小写、控件类型和 Reload 是否已完成。</td></tr>
+  <tr><th>点击无反应</th><td>确认 UIDocument.interactable、最高 sortingOrder、Button enabled，且 Game 获得焦点。</td></tr>
+  <tr><th>不同分辨率溢出</th><td>使用 ScaleWithScreenSize，设置参考分辨率、min-size、flex 与 ScrollView。</td></tr>
+  <tr><th>批次过多</th><td>比较 Material、Shader、Atlas、Sorting Layer/Order 和视觉连续性。</td></tr>
+  <tr><th>停止 Play 后值恢复</th><td>运行镜像隔离的预期行为；运行时不能保存 Scene、组件、UXML 或 USS。</td></tr>
+</tbody></table></section>
+</div>

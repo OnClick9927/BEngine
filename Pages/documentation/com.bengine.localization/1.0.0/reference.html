@@ -1,0 +1,7 @@
+Localization
+
+<h1 id="localization">Localization</h1><p>启用 <code>com.bengine.localization</code>，使用 LocalizationTable 管理语言文本与资源，通过独立 LocalizationContext 处理语言切换、回退和格式化。</p>
+<p>支持 CSV/XLSX 导入导出、键常量生成、复数与命名参数、伪本地化、可取消的异步加载，以及文本、资源和属性绑定。</p>
+<p>场景可使用 LocalizationController 和绑定组件。异步切换以最后一次请求为准；绑定的销毁会解除订阅。</p>
+<p>翻译扩展通过 ILocalizationTranslator 生成待审核的缺失翻译表，不会自动调用远程翻译服务或覆盖已发布译文。</p>
+<p>接口示例、表格格式和限制见包内 Editor/Readme.md。</p>

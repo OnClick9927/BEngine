@@ -1,0 +1,30 @@
+<h1 id="压缩音频流式读取与混音效果">压缩音频、流式读取与混音效果</h1>
+<p>导入 <code>.wav</code>、<code>.mp3</code>、<code>.ogg</code>，在 AudioClip Inspector 选择 <strong>Load Type</strong>。WAV 支持 PCM 8/16/24/32 和 IEEE Float 32；压缩格式为 MPEG Layer III 和 Ogg Vorbis。AAC、Opus、FLAC 和视频容器不是当前音频导入格式。</p>
+<h2 id="加载方式">加载方式</h2>
+<ul>
+<li><strong>Decompress On Load</strong>：保留完整 float PCM，最多 256 MiB。<strong>Load In Background</strong> 开启时后台解码，<code>loadState</code> 从 Loading 变成 Loaded/Failed，错误见 <code>loadError</code>。声源等待加载完成后从原游标播放。</li>
+<li><strong>Streaming</strong>：每个声部使用独立解码器和 2048 帧播放缓存，不创建完整 PCM。磁盘上的原文件及导入产物按需读取，<code>encodedMemoryBytes</code> 为 0。当前资源包提供器交付完整字节，因此从 AssetBundle 加载会保留压缩字节；不应把它称为资源包直接磁盘流。</li>
+<li><strong>Preload Audio Data</strong> 关闭时只读取格式和时长，状态为 Unloaded。<code>LoadAudioData()</code> 或首次播放开始加载；<code>UnloadAudioData()</code> 关闭声部读句柄、取消后台加载，之后可再次加载。创建的纯内存 PCM 没有恢复来源，不能卸载。</li>
+<li>Mono、Normalize、加载策略写入 <code>BGAUDIO2</code> 导入产物。仍可读取旧 <code>BGAUDIO1</code> 和原始音频字节。<code>Load In Background</code> 保留兼容名称，实际通过 BTask 在引擎线程分帧解码，不创建工作线程；资源及播放 API 在引擎线程使用。自定义异步 PCM reader 可通过 <code>hasPendingSamples</code> 表示正在准备，声部等待数据后从原游标恢复，不把暂时无数据视为 EOF。</li>
+</ul>
+<p><code>AudioClip.Load(path, AudioClipLoadType.Streaming)</code> 可读取原文件。导入产物以其持久化策略为准。<code>AudioClip.CreateStream(name, factory)</code> 接受为每次调用创建独立 <code>AudioSampleReader</code> 的工厂。<code>Create(..., stream:true, pcmReaderCallback, pcmSetPositionCallback)</code> 支持程序音频；有外部游标的回调必须提供位置回调，或改用独立 reader 工厂。</p>
+<p>GetData/Seek/timeSamples 的偏移单位为帧；Read 的长度为交错样本数量。MP3 和 Vorbis 跳转为保证与顺序解码完全一致，向前解码并丢弃中间样本，倒退时重新打开解码器。因此远距离跳转开销随位置增长，不是常数时间定位。MP3 的 LAME/Lavc/Lavf Xing/Info 标记会裁掉编码及解码延迟和尾部填充；没有有效间隙元数据的文件保留解码器报告的时长。</p>
+<h2 id="mixer-group-制作">Mixer Group 制作</h2>
+<p>在 Assets/Create/Audio/Mixer Group 创建总线，设置 Parent Bus、Volume、Mute。Inspector 可添加、调整、移除和排序 Gain、Parametric Equalizer、LowPass、HighPass、Distortion、Chorus、Delay、Compressor、Convolution Reverb，支持 Undo/Redo、Apply/Revert，Play 时禁止写资源。</p>
+<p>同一场景、同一 AudioMixerController、同一组的声源先相加，再依次经过效果列表。之后分出 Pre Fader Sends，应用本组音量，再分出 Post Fader Sends，最后送往父组；没有父组则进入主输出。父组只处理一次合并后的信号。AudioListener.volume 在最终输出作用一次，pause 冻结播放与尾音。</p>
+<p>Send Target 指向另一组。Pre Fader 在本组音量之前；因此拉低本组音量或 mute 后，前推子发送仍有信号。Parametric Equalizer 使用中心频率、Q 和增益；Distortion 使用归一化 tanh 软削波；Chorus 为左右声道使用错相调制延迟。Delay 的 Wet 为干湿比例，Feedback 为反馈比例；改变延迟时间重置该延迟缓冲。压缩器以所有声道的峰值控制统一增益，使用 Threshold、Ratio、Attack、Release 和 Makeup Gain。Convolution Reverb 接受最多 4096 个单声道脉冲响应采样，按输出采样率重采样并保留跨块尾音。滤波频率自动限制到输出采样率的 49%。</p>
+<p>快照依旧通过 AudioMixerController.TransitionTo 控制组音量。状态在场景、控制器、组之间隔离，不修改资源。声源停止/销毁后效果尾音继续；禁用效果清除其历史，场景 Stop 清空全部 DSP 状态。变更输出采样率或声道数也会重置历史。</p>
+<p>父组和发送组成的有向图禁止循环。制作操作先校验再记入 Undo；运行时修改造成非法图时输出静音并保留诊断，修正后恢复。<code>AudioRuntimeSystem.GetMixerError(scene)</code> 可查询诊断。最多 256 个场景/控制器总线，每组最多 16 效果和 16 发送；单场景音频块缓冲最多 64 MiB，延迟缓冲最多 32 MiB。参数范围有运行时验证。</p>
+<h2 id="预览与输出">预览与输出</h2>
+<p>Inspector 预览按块计算波形，独立管理设备与读取游标，不替换场景的 AudioOutput。暂停释放预览设备；停止释放播放 reader；关闭 Inspector 释放波形 reader。</p>
+<p>Windows 优先使用 waveOut，失败时尝试 OpenAL。<code>AudioOutput.current</code> 可替换输出，<code>ResetToSystemDefault()</code> 恢复设备。Windows 的 <code>IAudioOutputDiagnostics</code> 提供提交、完成、丢弃帧和等待缓冲数；设备重置时未播放的缓冲计为丢弃，不计为播放完成。驱动完成不等于做过声学回环或人工听测。</p>
+<p>Windows 队列最多缓存一秒音频且不超过 256 个缓冲；超过预算的帧计入 droppedFrames。场景混音按累计小数采样推进，避免 59.94 Hz 等非整数帧率下每帧向上取整造成播放漂移。当前场景音频随 SceneRuntime 的时间步长推进；不同场景的 DSP 历史独立。<code>SceneRuntime.TickAll</code> 通过整帧系统生命周期把同一宿主帧内所有已加载场景的结果相加，完成后统一应用 AudioListener.volume、有限值处理和限幅，并只向设备提交一个音频块。直接调用单个 <code>AudioRuntimeSystem.Update</code> 仍立即提交，供工具和测试使用。</p>
+<h2 id="验证与依赖">验证与依赖</h2>
+<p><code>Temp/Validation/AudioEnhancements</code> 使用原创 440/880 Hz 音频，与 FFmpeg 的独立 PCM 参考比较 MP3/Ogg 输出；验证精确跳转、八种加载策略、取消/重试、程序音频、EQ 中心增益、失真边界、左右错相 Chorus、卷积脉冲与跨块连续性、滤波频响、延迟脉冲、效果顺序、总线汇总、循环拒绝、尾音、场景/控制器隔离、两个 additive scene 的单次设备提交、编辑器操作和 Windows 设备队列。FFmpeg 仅用于生成验证样本，不随运行时发布。</p>
+<p>运行时使用 <a href="https://www.nuget.org/packages/NLayer/3.0.0">NLayer 3.0.0</a> 和 <a href="https://www.nuget.org/packages/NVorbis/0.10.5">NVorbis 0.10.5</a>，两者为 MIT 许可；版本声明在 package.yaml。MP3 间隙信息处理参考 <span title="外部参考：https://github.com/FFmpeg/FFmpeg/blob/master/libavformat/mp3dec.c">FFmpeg mp3dec</span> 的格式定义；滤波器使用 <a href="https://www.w3.org/TR/audio-eq-cookbook/">W3C Audio EQ Cookbook</a> 的双二阶系数。</p>
+<p>NLayer 3.0.0 的短块窗口索引漏掉最高的第 12 频带，会使瞬态短文件产生明显尾部误差。<code>NLayerCompatibility</code> 在首帧解码前补齐该索引表，保留显式裁剪元数据。这一兼容层依赖固定版本的内部布局，升级依赖时必须运行短文件、MPEG2 单声道、CBR Info、LAME/Lavc 标签与独立参考 PCM 检查；布局不符时报错，不静默忽略。所需成员有裁剪保留声明，但 AOT/移动端仍需目标平台验证。</p>
+<h2 id="自定义与原生-dsp-插件">自定义与原生 DSP 插件</h2>
+<p><code>AudioDspPlugins.Register(id, factory)</code> 注册托管/静态处理器工厂。工厂接收采样率与声道数，为每个场景/控制器/总线效果创建独立 <code>IAudioDspPlugin</code>；Process 原地处理交错 float PCM，HasTail 决定无声源时是否继续处理尾音。Mixer 的 Plugin 效果保存 ID 和最多 256 个参数，Inspector 可编辑参数并支持 Undo/保存。</p>
+<p><code>AudioDspPlugins.RegisterNative(id, absoluteLibraryPath)</code> 加载 C ABI v1 动态库，导出约定见 <a href="about.html#source">NativeDsp.h</a>。运行时检查 ABI 版本、必需符号及 Create 的格式接受结果；每块推送参数后调用 Process。禁用/移除效果、移除总线、场景停止或格式变化会 Destroy 实例。取消注册阻止新实例创建，已有实例持有库直至各自释放。注册返回 IDisposable，应由宿主扩展管理其生命周期，并负责发行目标对应的原生库。Web/iOS 使用编译进宿主的托管/静态适配器，不进行动态库加载。</p>
+<p><code>Validation/NativeAudioPlugin</code> 可编译测试动态库；设置 <code>BENGINE_NATIVE_DSP_TEST_LIBRARY</code> 后 AudioEnhancements 验证真实 DLL 的增益、声道/实例隔离、跨块状态、尾音、Mixer 集成和取消注册后的库寿命。</p>
+<p>当前为 CPU float DSP，不承诺不同设备之间逐位相同；不包含 3D 声场。移动/Web 的解码器可编译性不能替代音频设备运行验证；平台状态记录在引擎验收清单。</p>
