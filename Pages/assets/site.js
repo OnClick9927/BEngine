@@ -173,8 +173,11 @@
     const fragment = document.createDocumentFragment();
     for (const pkg of visible) {
       const card = node('article', 'package-card');
-      // Public cards contain only a name and a short description.
-      card.append(node('h2', '', choose(pkg.name, pkg.nameEn)), node('p', '', choose(pkg.description, pkg.descriptionEn)));
+      // Keep the original package name in every language; localize the summary only.
+      const name = node('h2', '', pkg.nameEn);
+      name.translate = false;
+      name.lang = 'en';
+      card.append(name, node('p', '', choose(pkg.description, pkg.descriptionEn)));
       fragment.append(card);
     }
     grid.append(fragment);

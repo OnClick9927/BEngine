@@ -8,10 +8,10 @@ The public website is a static introduction to BEngine: basic setup, package sum
 
 - **官网只保留基础。** API、详细工作流与包手册由 Hub 根据本地安装的引擎和包版本提供。从 Hub 的「引擎与包」使用文档入口，不再复制或导出详细手册到官网。
 - `manual.html` 为旧书签提供基础入口说明，不读取旧 product/version/doc 查询参数。
-- `data/packages.json` 为静态功能简介，当前包含 39 个扩展包，不包含 StandardAsset 项目模板。每项包含中英名称、简短介绍与非空 `categories` 数组；`categories` 仅为快速筛选元数据，允许一个包归属多个相关分类。网页卡片仍只显示名称和介绍，不展示版本、ID、依赖图、分类标签或文档按钮。
+- `data/packages.json` 为静态功能简介，当前包含 39 个扩展包，不包含 StandardAsset 项目模板。卡片名称固定使用 `nameEn` 中的包原名，不随网站语言切换；`name` 保留为中文搜索别名。每项还包含中英简短介绍与非空 `categories` 数组；`categories` 仅为快速筛选元数据，允许一个包归属多个相关分类。网页卡片仍只显示名称和介绍，不展示版本、ID、依赖图、分类标签或文档按钮。
 - 本地 Hub 文档门户的安装版本扫描与版本切换属于 Hub，与此静态简介目录分开维护。
 
-Detailed APIs, workflows, and package manuals are supplied by Hub for locally installed versions. The website does not export or mirror manuals. `manual.html` explains the local entry point for old bookmarks. The public catalog contains bilingual names, summaries, and a nonempty `categories` array for each of the 39 extension packages. Categories are filter metadata and may overlap; cards still show only the name and summary. Installation and version selection remain in Hub.
+Detailed APIs, workflows, and package manuals are supplied by Hub for locally installed versions. The website does not export or mirror manuals. `manual.html` explains the local entry point for old bookmarks. The public catalog contains original package names in `nameEn`, Chinese search aliases in `name`, bilingual summaries, and a nonempty `categories` array for each of the 39 extension packages. Cards always use the original name regardless of website language. Categories are filter metadata and may overlap; cards still show only the name and summary. Installation and version selection remain in Hub.
 
 分类使用以下稳定 ID；中英显示名称由页面本地化，不将显示名称写入数组：
 

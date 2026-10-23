@@ -70,6 +70,11 @@ function create(tag, className, text) {
   if (text !== undefined) element.textContent = text;
   return element;
 }
+function originalName(tag, className, text) {
+  const element = create(tag, className, text);
+  element.translate = false;
+  return element;
+}
 function route() {
   const params = new URLSearchParams(location.search);
   return {engine:params.get('engine') || catalog?.engine?.version || '', package:params.get('package') || '', page:params.get('page') || '', tab:params.get('tab') === 'packages' ? 'packages' : 'engine'};
@@ -145,9 +150,10 @@ function displayPageTitle(page) {
 function renderCatalogControls() {
   const current = route();
   const select = $('engine-version');
+  select.translate = false;
   select.replaceChildren();
   for (const entry of catalog.engines || []) {
-    const option = create('option', '', entry.name || `BEngine ${entry.version}`);
+    const option = originalName('option', '', entry.name || `BEngine ${entry.version}`);
     option.value = entry.version;
     select.append(option);
   }
@@ -180,7 +186,7 @@ function renderPackages() {
   }
   for (const product of matches) {
     const card = create('article', 'package-card');
-    card.append(create('h2', '', product.name), create('span', 'version', t('packageVersion', product.version)), create('p', '', product.description || ''));
+    card.append(originalName('h2', '', product.name), create('span', 'version', t('packageVersion', product.version)), create('p', '', product.description || ''));
     if (documentUrlFor(product, '')) {
       const link = create('a', 'button button-primary', t('openDocs'));
       link.href = portalUrl({package:product.id, page:'', tab:'engine'});
@@ -197,6 +203,7 @@ function renderProductControls() {
   $('product-kind').textContent = kind;
   $('document-kind').textContent = kind;
   $('product-name').textContent = engine ? 'BEngine' : activeProduct.name;
+  $('product-name').translate = false;
   $('product-version').textContent = t('packageVersion', activeProduct.version);
   $('document-title').textContent = currentDocumentTitle || productTitle;
   $('document-version').textContent = engine ? t('engineVersionNote', activeProduct.version) : t('packageVersionNote', activeProduct.version, catalog.engine.version);
@@ -259,7 +266,8 @@ function readerError(message) {
 // Documents are read as data. Their scripts, styles and resource origins never enter the shell.
 const allowedTags = new Set('a abbr article b blockquote br caption code col colgroup dd del details div dl dt em figcaption figure h1 h2 h3 h4 h5 h6 hr i img kbd li main mark nav ol p picture pre s samp section small source span strong sub summary sup table tbody td th thead tfoot tr u ul var video audio'.split(' '));
 const removeEntirely = new Set('script style iframe object embed form input button select textarea link meta base svg math canvas template noscript'.split(' '));
-const allowedAttributes = new Set('id class title alt width height colspan rowspan scope open controls loop muted preload type start reversed value'.split(' '));
+const allowedAttributes = new Set('id class title alt width height colspan rowspan scope open controls loop muted preload type start reversed value translate lang'.split(' '));
+const originalTextTags = new Set('code pre kbd samp var'.split(' '));
 function prepareDocument(raw, docUrl, markdown) {
   const parsed = document.createElement('template');
   parsed.innerHTML = markdown ? marked.parse(raw, {gfm:true}) : raw;
@@ -279,6 +287,7 @@ function prepareDocument(raw, docUrl, markdown) {
       return group;
     }
     const element = document.createElement(tag === 'h1' ? 'h2' : tag);
+    if (originalTextTags.has(tag)) element.translate = false;
     for (const attribute of node.attributes) {
       const key = attribute.name.toLowerCase();
       if (!allowedAttributes.has(key)) continue;
@@ -289,6 +298,13 @@ function prepareDocument(raw, docUrl, markdown) {
         element.id = cleanId;
       } else if (key === 'class') {
         element.className = attribute.value.split(/\s+/).filter(token => ['grid','card','note','warning','table-wrap','lead','steps','pill','eyebrow'].includes(token)).join(' ');
+      } else if (key === 'translate') {
+        if (attribute.value.trim().toLowerCase() === 'no') element.translate = false;
+      } else if (key === 'lang') {
+        try {
+          const languageTag = Intl.getCanonicalLocales(attribute.value.trim())[0];
+          if (languageTag) element.lang = languageTag;
+        } catch { /* Invalid language tags are omitted. */ }
       } else element.setAttribute(key, attribute.value);
     }
     if (/^h[1-6]$/.test(tag) && !element.id) {
