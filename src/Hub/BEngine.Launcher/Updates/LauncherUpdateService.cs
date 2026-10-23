@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -24,6 +25,7 @@ internal sealed class LauncherUpdateService : IDisposable
     private readonly bool _ownsHttp;
     private readonly Uri _repositoryApi;
     private readonly Uri _rawBase;
+    private readonly ConcurrentDictionary<string, byte> _http11Authorities = new(StringComparer.OrdinalIgnoreCase);
 
     internal LauncherUpdateService(HttpClient? httpClient = null, string? repositoryApiBase = null, string? rawBase = null)
     {
@@ -127,7 +129,8 @@ internal sealed class LauncherUpdateService : IDisposable
             if (index == 0 || index == files.Count - 1 || Stopwatch.GetElapsedTime(lastCompareTimestamp, now).TotalMilliseconds >= 50)
             {
                 lastCompareTimestamp = now;
-                progress.Report(new("Comparing", file.Path, index, files.Count, 100d * index / files.Count));
+                progress.Report(new("Comparing", file.Path, index, files.Count, 100d * index / files.Count,
+                    FilePath: file.Path));
             }
             EnsureNoReparsePoints(root, file.Path);
             var localPath = ResolvePath(root, file.Path);
@@ -197,7 +200,8 @@ internal sealed class LauncherUpdateService : IDisposable
             if (index == 0 || index == plan.OriginalFiles.Count - 1 || Stopwatch.GetElapsedTime(lastVerifyTimestamp, now).TotalMilliseconds >= 50)
             {
                 lastVerifyTimestamp = now;
-                progress.Report(new("Verifying", file.Path, index, plan.OriginalFiles.Count, 100d * index / plan.OriginalFiles.Count));
+                progress.Report(new("Verifying", file.Path, index, plan.OriginalFiles.Count, 100d * index / plan.OriginalFiles.Count,
+                    FilePath: file.Path));
             }
             var localPath = ResolvePath(plan.InstallationRoot, file.Path);
             if ((!file.Exists && (File.Exists(localPath) || Directory.Exists(localPath))) ||
@@ -236,7 +240,8 @@ internal sealed class LauncherUpdateService : IDisposable
                     {
                         var completed = Interlocked.Add(ref downloaded, file.Size);
                         progress.Report(new("Downloading", $"Reusing verified file · {file.Path}", completed, totalBytes,
-                            totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes)));
+                            totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
+                            FilePath: file.Path, Status: "Reusing verified file"));
                     }
                     return;
                 }
@@ -262,9 +267,11 @@ internal sealed class LauncherUpdateService : IDisposable
                             if (force || completed == totalBytes || Stopwatch.GetElapsedTime(lastProgressTimestamp, now).TotalMilliseconds >= 100)
                             {
                                 lastProgressTimestamp = now;
-                                progress.Report(new("Downloading",
-                                    NetworkMessage(file.Path, headersReceived ? "Receiving data" : "Waiting for response", uri, attempt, MaximumNetworkAttempts, elapsed.Elapsed),
-                                    completed, totalBytes, totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes)));
+                                var status = NetworkStatus(headersReceived ? "Receiving data" : "Waiting for response",
+                                    uri, attempt, MaximumNetworkAttempts, elapsed.Elapsed);
+                                progress.Report(new("Downloading", $"{file.Path} · {status}",
+                                    completed, totalBytes, totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
+                                    FilePath: file.Path, Status: status));
                             }
                         }
                     }
@@ -274,7 +281,7 @@ internal sealed class LauncherUpdateService : IDisposable
                     {
                         using var request = CreateRequest(uri);
                         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token).ConfigureAwait(false);
-                        EnsureNetworkSuccess(response);
+                        EnsureNetworkSuccess(response, uri);
                         headersReceived = true;
                         if (response.Content.Headers.ContentLength is { } contentLength && contentLength != file.Size)
                             throw new InvalidDataException($"The downloaded file has an unexpected size: {file.Path}");
@@ -296,7 +303,7 @@ internal sealed class LauncherUpdateService : IDisposable
                                 requestTimeout.CancelAfter(DownloadIdleTimeout);
                                 Report(false);
                             }
-                            if (received != file.Size) throw new RetryableNetworkException("The file transfer ended before all bytes arrived.");
+                            if (received != file.Size) throw new RetryableNetworkException("The file transfer ended before all bytes arrived.", isTransportFailure: true);
                             if (!Convert.ToHexString(hash.GetHashAndReset()).Equals(file.Sha, StringComparison.OrdinalIgnoreCase))
                                 throw new InvalidDataException($"File integrity verification failed: {file.Path}. No installed files were replaced.");
                             await output.FlushAsync(token).ConfigureAwait(false);
@@ -313,13 +320,15 @@ internal sealed class LauncherUpdateService : IDisposable
                         if (!verified) Interlocked.Add(ref downloaded, -received);
                         if (File.Exists(partial)) File.Delete(partial);
                     }
-                }, uri, "Downloading", file.Path, progress, token, reportRetry: message =>
+                }, uri, "Downloading", file.Path, progress, token, reportRetry: (message, nextAttempt) =>
                 {
                     lock (progressGate)
                     {
                         var completed = Interlocked.Read(ref downloaded);
                         progress.Report(new("Downloading", message, completed, totalBytes,
-                            totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes)));
+                            totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
+                            FilePath: file.Path,
+                            Status: $"Retrying network request · {uri.Host} · {nextAttempt}/{MaximumNetworkAttempts}"));
                     }
                 }).ConfigureAwait(false);
             }).ConfigureAwait(false);
@@ -354,7 +363,7 @@ internal sealed class LauncherUpdateService : IDisposable
             {
                 using var request = CreateRequest(uri);
                 using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token).ConfigureAwait(false);
-                EnsureNetworkSuccess(response);
+                EnsureNetworkSuccess(response, uri);
                 headersReceived = true;
                 total = response.Content.Headers.ContentLength ?? 0;
                 const int maximumMetadataBytes = 32 * 1024 * 1024;
@@ -379,7 +388,7 @@ internal sealed class LauncherUpdateService : IDisposable
                         Report();
                     }
                 }
-                if (total > 0 && received != total) throw new RetryableNetworkException("The metadata transfer ended before all bytes arrived.");
+                if (total > 0 && received != total) throw new RetryableNetworkException("The metadata transfer ended before all bytes arrived.", isTransportFailure: true);
                 cancellationToken.ThrowIfCancellationRequested();
                 Report();
                 return JsonDocument.Parse(payload.GetBuffer().AsMemory(0, (int)payload.Length));
@@ -391,9 +400,9 @@ internal sealed class LauncherUpdateService : IDisposable
             }
         }, uri, stage, label, progress, cancellationToken, maximumAttempts);
 
-    private static async Task<T> WithNetworkRetriesAsync<T>(Func<int, Task<T>> operation, Uri uri,
+    private async Task<T> WithNetworkRetriesAsync<T>(Func<int, Task<T>> operation, Uri uri,
         string stage, string label, IProgress<LauncherUpdateProgress> progress, CancellationToken cancellationToken,
-        int maximumAttempts = MaximumNetworkAttempts, Action<string>? reportRetry = null)
+        int maximumAttempts = MaximumNetworkAttempts, Action<string, int>? reportRetry = null)
     {
         for (var attempt = 1; ; attempt++)
         {
@@ -409,12 +418,19 @@ internal sealed class LauncherUpdateService : IDisposable
             catch (HttpRequestException exception) { failure = exception; }
             catch (RetryableNetworkException exception) { failure = exception; }
             cancellationToken.ThrowIfCancellationRequested();
+            // A connection reset or stalled HTTP/2 connection can interrupt every multiplexed
+            // file at once. Retry this authority over independent, bounded HTTP/1.1 connections
+            // for the rest of this service session. HTTP responses and integrity failures do
+            // not change transport policy, and unrelated authorities retain HTTP/2.
+            if (timedOut || failure is HttpRequestException { StatusCode: null } or RetryableNetworkException { IsTransportFailure: true })
+                _http11Authorities.TryAdd(uri.GetLeftPart(UriPartial.Authority), 0);
             if (attempt == maximumAttempts)
                 throw new IOException((timedOut ? "The network request timed out." : "The network request failed after retries.") +
-                                      $" · {uri.Host} · {uri.AbsolutePath} · {attempt}/{maximumAttempts}", failure);
+                                      $" · {uri.Host} · {uri.AbsolutePath} · {attempt}/{maximumAttempts}" +
+                                      (timedOut ? string.Empty : " · " + failure.GetBaseException().Message), failure);
             var retryMessage = $"{label} · Retrying network request · {uri.Host} · {attempt + 1}/{maximumAttempts}";
             if (reportRetry is null) progress.Report(new(stage, retryMessage));
-            else reportRetry(retryMessage);
+            else reportRetry(retryMessage, attempt + 1);
             // The short, cancellable backoff also avoids hammering GitHub during transient failures.
             await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken).ConfigureAwait(false);
         }
@@ -423,7 +439,7 @@ internal sealed class LauncherUpdateService : IDisposable
     private static async ValueTask<int> ReadNetworkAsync(Stream stream, Memory<byte> buffer, CancellationToken cancellationToken)
     {
         try { return await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false); }
-        catch (IOException exception) { throw new RetryableNetworkException("The network connection was interrupted.", exception); }
+        catch (IOException exception) { throw new RetryableNetworkException("The network connection was interrupted.", exception, isTransportFailure: true); }
     }
 
     private static async Task ReportHeartbeatAsync(Action report, CancellationToken cancellationToken)
@@ -440,24 +456,31 @@ internal sealed class LauncherUpdateService : IDisposable
     }
 
     private static string NetworkMessage(string label, string status, Uri uri, int attempt, int maximumAttempts, TimeSpan elapsed) =>
-        $"{label} · {status} · {uri.Host} · {attempt}/{maximumAttempts} · {elapsed.TotalSeconds:F0} s";
+        $"{label} · {NetworkStatus(status, uri, attempt, maximumAttempts, elapsed)}";
 
-    private static void EnsureNetworkSuccess(HttpResponseMessage response)
+    private static string NetworkStatus(string status, Uri uri, int attempt, int maximumAttempts, TimeSpan elapsed) =>
+        $"{status} · {uri.Host} · {attempt}/{maximumAttempts} · {elapsed.TotalSeconds:F0} s";
+
+    private static void EnsureNetworkSuccess(HttpResponseMessage response, Uri uri)
     {
         if (response.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.InternalServerError or
             HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout)
             throw new RetryableNetworkException($"GitHub returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).");
-        EnsureSuccess(response);
+        EnsureSuccess(response, uri);
     }
 
-    private sealed class RetryableNetworkException(string message, Exception? inner = null) : IOException(message, inner);
-
-    private static HttpRequestMessage CreateRequest(Uri uri)
+    private sealed class RetryableNetworkException(string message, Exception? inner = null, bool isTransportFailure = false) : IOException(message, inner)
     {
+        internal bool IsTransportFailure => isTransportFailure;
+    }
+
+    private HttpRequestMessage CreateRequest(Uri uri)
+    {
+        var useHttp11 = _http11Authorities.ContainsKey(uri.GetLeftPart(UriPartial.Authority));
         var request = new HttpRequestMessage(HttpMethod.Get, uri)
         {
-            Version = HttpVersion.Version20,
-            VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+            Version = useHttp11 ? HttpVersion.Version11 : HttpVersion.Version20,
+            VersionPolicy = useHttp11 ? HttpVersionPolicy.RequestVersionExact : HttpVersionPolicy.RequestVersionOrLower
         };
         request.Headers.UserAgent.ParseAdd("BEngine-Hub/0.1.0");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
@@ -465,7 +488,7 @@ internal sealed class LauncherUpdateService : IDisposable
         return request;
     }
 
-    private static void EnsureSuccess(HttpResponseMessage response)
+    private static void EnsureSuccess(HttpResponseMessage response, Uri uri)
     {
         if (response.IsSuccessStatusCode) return;
         if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests)
@@ -474,10 +497,10 @@ internal sealed class LauncherUpdateService : IDisposable
             if (retry is null && response.Headers.TryGetValues("X-RateLimit-Reset", out var resets) &&
                 long.TryParse(resets.FirstOrDefault(), out var seconds))
                 retry = DateTimeOffset.FromUnixTimeSeconds(seconds).ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
-            throw new IOException($"GitHub denied or rate-limited the request (HTTP {(int)response.StatusCode})." +
+            throw new IOException($"GitHub denied or rate-limited the request (HTTP {(int)response.StatusCode}) · {uri.Host} · {uri.AbsolutePath}." +
                                   (retry is { Length: > 0 } ? $" Retry after {retry}." : " Retry later."));
         }
-        throw new IOException($"GitHub returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}). No installed files were replaced.");
+        throw new IOException($"GitHub returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}) · {uri.Host} · {uri.AbsolutePath}. No installed files were replaced.");
     }
 
     private static void EnsureCompleteTree(JsonElement element)

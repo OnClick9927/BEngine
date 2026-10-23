@@ -5,7 +5,9 @@ internal sealed record LauncherUpdateProgress(
     string Message,
     long Completed = 0,
     long Total = 0,
-    double? Percent = null);
+    double? Percent = null,
+    string? FilePath = null,
+    string? Status = null);
 
 internal sealed record LauncherUpdateFile(string Path, string Sha, long Size);
 
