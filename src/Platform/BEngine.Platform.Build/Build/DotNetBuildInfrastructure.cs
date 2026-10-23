@@ -121,6 +121,8 @@ public static class DotNetBuildEnvironmentProbe
                 CreateNoWindow = true
             };
             foreach (var argument in arguments) request.Arguments.Add(argument);
+            if (Path.GetFileNameWithoutExtension(fileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+                BEngine.Tooling.ToolEnvironment.ApplyToDotNetBuild(request.EnvironmentVariables);
             using var timeoutSource = new CancellationTokenSource(timeout);
             var result = processRunner.Run(request, timeoutSource.Token);
             return new ProbeResult(result.Succeeded,
@@ -384,6 +386,7 @@ internal static class DotNetPublishRunner
         if (engineRoot is not null) process.Arguments.Add($"-p:BEngineEngineRoot={engineRoot}");
         configure?.Invoke(process);
         DotNetBuildHostLocator.AddAdditionalProperties(process, context.Request);
+        BEngine.Tooling.ToolEnvironment.ApplyToDotNetBuild(process.EnvironmentVariables);
 
         try
         {

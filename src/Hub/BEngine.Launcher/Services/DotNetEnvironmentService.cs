@@ -254,6 +254,7 @@ internal sealed class DotNetEnvironmentService : IDisposable
             }
         };
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+        BEngine.Tooling.ToolEnvironment.ApplyToDotNetBuild(process.StartInfo.Environment);
         process.StartInfo.Environment["DOTNET_NOLOGO"] = "1";
         process.StartInfo.Environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
         if (!process.Start()) throw new IOException("Could not inspect the .NET installation.");
@@ -383,7 +384,11 @@ internal sealed class DotNetEnvironmentService : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            using var process = Process.Start(new ProcessStartInfo(path, "/install /norestart") { UseShellExecute = true }) ??
+            var start = new ProcessStartInfo(path) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(path)! };
+            foreach (var argument in new[] { "/install", "/norestart", "/log", Path.Combine(Path.GetDirectoryName(path)!, "install.log") })
+                start.ArgumentList.Add(argument);
+            BEngine.Tooling.ToolEnvironment.ApplyToDotNetBuild(start.Environment);
+            using var process = Process.Start(start) ??
                 throw new IOException("The Microsoft .NET installer could not be opened.");
             // Let Microsoft's own Cancel action roll back installation. Killing an MSI process can leave
             // system components half configured, so cancellation never terminates an active installer.

@@ -58,6 +58,7 @@ internal static class PlayerManagedCodeTrimmer
             WorkingDirectory = directory, CreateNoWindow = true, UseShellExecute = false,
             RedirectStandardOutput = true, RedirectStandardError = true
         };
+        BEngine.Tooling.ToolEnvironment.ApplyToDotNetBuild(request.EnvironmentVariables);
         foreach (var argument in new[] { linker, "-x", descriptor, "-out", output,
                      "--action", "skip", "--trim-mode", "skip", "--deterministic", "--skip-unresolved", "false" })
             request.Arguments.Add(argument);

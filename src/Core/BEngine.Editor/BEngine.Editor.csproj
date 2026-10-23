@@ -18,6 +18,7 @@
     <EmbeddedResource Include="../Editor/Icons/BEngine.ico" LogicalName="BEngine.Editor.BEngine.ico" />
     <Compile Include="*.cs" />
     <Compile Include="Properties/**/*.cs" />
+    <Compile Include="../../Shared/BEngineToolEnvironment.cs" Link="Tooling/BEngineToolEnvironment.cs" />
     <Compile Include="Editor/**/*.cs" Exclude="Editor/**/Properties/AssemblyInfo.cs" />
   </ItemGroup>
 </Project>

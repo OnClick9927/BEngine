@@ -37,7 +37,7 @@ public sealed partial class CodexAppServerClient : IDisposable
     public CodexProjectSettingsData Settings { get; }
     public string ProjectRoot => _store.ProjectRoot;
     public string LocalExecutablePath { get; private set; } = string.Empty;
-    public string CodexHomePath => CodexProcessRequestFactory.ResolveHome(ProjectRoot);
+    public string CodexHomePath => CodexProcessRequestFactory.ResolveHome();
 
     public CodexAppServerClient(string projectRoot) : this(projectRoot, ProcessHostUtility.Current)
     {

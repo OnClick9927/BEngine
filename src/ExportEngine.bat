@@ -51,12 +51,7 @@ if errorlevel 1 (
     set "EXPORT_EXIT_CODE=1"
     goto finish
 )
-dotnet --version
-if errorlevel 1 (
-    echo [ERROR] The .NET SDK required by global.json is unavailable.
-    set "EXPORT_EXIT_CODE=1"
-    goto restore_directory
-)
+rem ExportEngine.ps1 configures the local tool profile before the first SDK call.
 echo.
 echo Exporting BEngine, Hub and all engine packages [%EXPORT_CONFIGURATION%]...
 echo Output: Engine\Engine\BEngine.Hub.exe, Engine\Engine\BEgine\BEgine-version, Engine\Engine\Packages

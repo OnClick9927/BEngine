@@ -17,6 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Share the exact document/version/dependency rules without shipping Editor. -->
+    <Compile Include="../../Shared/BEngineToolEnvironment.cs" Link="Shared/BEngineToolEnvironment.cs" />
     <Compile Include="../../Core/BEngine/Lifecycle/EngineVersion.cs" Link="Shared/EngineVersion.cs" />
     <Compile Include="../../Core/BEngine/Math/Fix64.cs" Link="Shared/Fix64.cs" />
     <Compile Include="../../Core/BEngine/ProjectSystem/Serialization/ProjectData.cs" Link="Shared/ProjectData.cs" />

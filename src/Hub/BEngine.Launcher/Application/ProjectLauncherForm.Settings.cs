@@ -127,7 +127,7 @@ internal sealed partial class ProjectLauncherForm
         AddWide(folderRow);
         AddWide(new Label
         {
-            Text = "Leave blank to use the most recent project location, then Documents.",
+            Text = "Leave blank to use the most recent project location, then the Hub's Projects folder.",
             AutoSize = true, ForeColor = SecondaryText, Margin = new Padding(0, 6, 0, 12)
         });
 

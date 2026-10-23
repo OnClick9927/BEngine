@@ -90,7 +90,7 @@ internal sealed class LauncherUpdateInstallerForm : Form
                     "installing" => T("4/6  安装更新", "4/6  Installing update"),
                     "verifying-installed" => T("5/6  校验安装结果", "5/6  Verifying installed files"),
                     "restarting" => T("6/6  启动新的 Hub", "6/6  Starting the updated Hub"),
-                    "cleanup" => T("正在清理旧版本临时文件", "Cleaning up temporary files"),
+                    "cleanup" => T("正在清理已完成更新的下载内容", "Removing completed update downloads"),
                     "rollback" => T("正在恢复原有安装", "Restoring the previous installation"),
                     "completed" => T("更新完成", "Update complete"),
                     _ => value.Stage

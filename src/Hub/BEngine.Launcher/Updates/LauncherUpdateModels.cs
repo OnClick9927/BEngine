@@ -43,6 +43,16 @@ internal sealed record LauncherUpdatePlan
     public string StagingRoot => System.IO.Path.Combine(WorkspaceRoot, "staging");
     public string PlanPath => System.IO.Path.Combine(WorkspaceRoot, "update-plan.json");
     public bool HasUpdates => Changes.Count != 0;
-    public long DownloadBytes => Changes.Where(change => change.Kind != LauncherUpdateChangeKind.Deleted)
-        .Sum(change => change.Size);
+    public long DownloadBytes => GetChangedBlobGroups().Sum(group => group[0].Size);
+
+    // Git blob identity is content based, so equal content at several installation paths
+    // requires one network transfer while every destination remains in the install plan.
+    internal LauncherUpdateFile[][] GetChangedBlobGroups()
+    {
+        var changedPaths = Changes.Where(change => change.Kind != LauncherUpdateChangeKind.Deleted)
+            .Select(change => change.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return Files.Where(file => changedPaths.Contains(file.Path))
+            .GroupBy(file => (Sha: file.Sha.ToUpperInvariant(), file.Size))
+            .Select(group => group.ToArray()).ToArray();
+    }
 }

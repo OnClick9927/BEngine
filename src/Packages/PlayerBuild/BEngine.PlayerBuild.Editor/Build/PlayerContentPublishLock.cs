@@ -38,23 +38,10 @@ internal sealed class PlayerContentPublishLock : IDisposable
             System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(publicationPath)))
             .ToLowerInvariant() + ".lock";
-        var localData = platformService.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var fallbackLockDirectory = pathService.Combine(
-            platformService.TemporaryDirectory, "BEngine", LockDirectoryName);
-        var lockDirectory = string.IsNullOrWhiteSpace(localData)
-            ? fallbackLockDirectory
-            : pathService.Combine(localData, "BEngine", LockDirectoryName);
-        try
-        {
-            fileSystem.CreateDirectory(lockDirectory);
-        }
-        catch (Exception exception) when (
-            !lockDirectory.Equals(fallbackLockDirectory, StringComparison.OrdinalIgnoreCase) &&
-            exception is IOException or UnauthorizedAccessException)
-        {
-            lockDirectory = fallbackLockDirectory;
-            fileSystem.CreateDirectory(lockDirectory);
-        }
+        // Keep coordination files outside disposable Temp: deleting a held lock can let a
+        // second publisher obtain a different file handle for the same output on Unix.
+        var lockDirectory = pathService.Combine(EditorDataPaths.rootPath, "Cache", LockDirectoryName);
+        fileSystem.CreateDirectory(lockDirectory);
         var lockPath = pathService.Combine(lockDirectory, lockName);
         while (true)
         {

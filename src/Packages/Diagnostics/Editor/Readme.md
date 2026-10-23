@@ -4,6 +4,8 @@ Profiler, frame debugger, object-memory snapshots and remote Player diagnostics.
 
 Use **Window > Analysis > Profiler** for local CPU/GPU samples, **Memory Profiler** for live
 `BObject` snapshots and reference paths, and **Remote Player Profiler** to connect to a built Player.
+Saved Memory Profiler snapshots belong to the current project and are stored in
+`Library/Diagnostics/Snapshots`; the directory is created when saving the first snapshot.
 
 Start a desktop Player with:
 

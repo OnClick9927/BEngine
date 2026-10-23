@@ -6,6 +6,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$previousToolEnvironment = [Environment]::GetEnvironmentVariables('Process')
+try {
+. (Join-Path $PSScriptRoot 'SetToolEnvironment.ps1')
 $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $outputRoot = Join-Path $repositoryRoot 'Engine\Engine'
 $engineVersion = & (Join-Path $PSScriptRoot 'GetEngineVersion.ps1')
@@ -27,21 +30,34 @@ $coreEditor = Join-Path $PSScriptRoot 'Core\Editor'
 $playerBuildHosts = Join-Path $PSScriptRoot 'Platform\Hosts'
 $engineDefines = Join-Path $PSScriptRoot 'BEngine.Defines.targets'
 $runningOnWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
-# Host applications share the installed .NET runtime instead of embedding one
-# per executable. Single-file bundles still extract their own assemblies/native
-# assets; .NET does not support bundle compression for framework-dependent apps.
+# Hub and Editor share the installed .NET runtime. Hub's managed bundle loads
+# directly from the executable. Editor keeps its compiler references and native
+# libraries beside its apphost. Neither extracts files into the user's .NET
+# bundle cache before our application code runs.
 $compactHostPublishArguments = @(
     # SDK project-reference evaluation removes SelfContained. Keep its publish
     # counterpart explicit so referenced executable projects cannot infer true.
     '-p:PublishSelfContained=false',
     '-p:PublishRuntimeIdentifier=win-x64',
     '-p:PublishSingleFile=true',
-    '-p:IncludeAllContentForSelfExtract=true',
-    '-p:IncludeNativeLibrariesForSelfExtract=true',
+    '-p:IncludeAllContentForSelfExtract=false',
+    '-p:IncludeNativeLibrariesForSelfExtract=false',
     '-p:EnableCompressionInSingleFile=false',
     '-p:DebugType=None',
     '-p:DebugSymbols=false'
 )
+# Editor compiles project/package sources against its own installed assemblies.
+# A regular apphost preserves Assembly.Location for every compiler reference
+# without bundling and extracting DLLs on startup.
+$editorHostPublishArguments = @($compactHostPublishArguments | Where-Object {
+    $_ -notlike '-p:PublishSingleFile=*'
+}) + @('-p:PublishSingleFile=false')
+# Player packaging is a separate policy from the portable authoring tools.
+# Preserve its established single-file layout for existing launch/build flows.
+$playerHostPublishArguments = @($compactHostPublishArguments | Where-Object {
+    $_ -notlike '-p:IncludeAllContentForSelfExtract=*' -and
+    $_ -notlike '-p:IncludeNativeLibrariesForSelfExtract=*'
+}) + @('-p:IncludeAllContentForSelfExtract=true', '-p:IncludeNativeLibrariesForSelfExtract=true')
 
 function Assert-ExportPath {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -287,23 +303,37 @@ foreach ($retired in @('Media')) {
     /nodeReuse:false -p:NuGetAudit=false -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false `
     @compactHostPublishArguments
 if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed with exit code $LASTEXITCODE." }
+# The website distributes Hub as one executable. A future native/content
+# dependency must not silently disappear when the staging directory is removed.
+$unexpectedHubFiles = @(Get-ChildItem -LiteralPath $hubStageOutput -File -Recurse | Where-Object {
+    $_.FullName -ne (Join-Path $hubStageOutput 'BEngine.Launcher.exe')
+})
+if ($unexpectedHubFiles.Count -gt 0) {
+    throw "Hub must publish without extraction or external dependencies: $($unexpectedHubFiles.FullName -join ', ')."
+}
 
 # Keep the RID publish-scoped: a global RuntimeIdentifier makes transitive
 # Player references contribute both RID-specific and portable apphost metadata.
 & dotnet publish $editorProject -c $Configuration --self-contained false -o $stageOutput -m:1 `
     /nodeReuse:false -p:NuGetAudit=false -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false `
-    @compactHostPublishArguments
+    @editorHostPublishArguments
 if ($LASTEXITCODE -ne 0) { throw "Editor publish failed with exit code $LASTEXITCODE." }
+foreach ($compilerReference in @('BEngine.dll', 'BEngine.Editor.dll',
+        'Microsoft.Extensions.DependencyInjection.Abstractions.dll')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $stageOutput $compilerReference))) {
+        throw "Editor publication is missing its external compiler reference $compilerReference."
+    }
+}
 # Keep the established executable name for the composed editor host.
 Move-Item -LiteralPath (Join-Path $stageOutput "BEngine.Editor.Host.exe") -Destination (Join-Path $stageOutput "BEngine.Editor.exe") -Force
 
 & dotnet publish $playerProject -c $Configuration --self-contained false -o $stageOutput -m:1 `
     /nodeReuse:false -p:NuGetAudit=false -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false `
-    @compactHostPublishArguments
+    @playerHostPublishArguments
 if ($LASTEXITCODE -ne 0) { throw "Player publish failed with exit code $LASTEXITCODE." }
 
 # Symbols are useful while building the engine but are not required by the
-# compact self-extracting hosts. Keep BuildRuntime symbols for platform build
+# published hosts. Keep BuildRuntime symbols for platform build
 # diagnostics and remove only symbols beside the Editor/Player hosts and Hub.
 foreach ($symbol in @(Get-ChildItem -LiteralPath $stageOutput -File -Recurse -Filter '*.pdb' |
         Where-Object { $_.FullName -notmatch '[\\/]BuildRuntime[\\/]' })) {
@@ -394,8 +424,11 @@ foreach ($artifactFile in @(Get-ChildItem -LiteralPath $buildHostsOutput -File -
 }
 Copy-Item -LiteralPath $engineDefines -Destination (Join-Path $stageOutput 'BEngine.Defines.targets')
 
-foreach ($required in @('BEngine.Editor.exe', 'BEngine.Player.exe',
-        'BEngine.Defines.targets')) {
+foreach ($required in @('BEngine.Editor.exe', 'BEngine.Editor.Host.dll',
+        'BEngine.Editor.Host.runtimeconfig.json', 'BEngine.Editor.Host.deps.json',
+        'BEngine.dll', 'BEngine.Editor.dll',
+        'Microsoft.Extensions.DependencyInjection.Abstractions.dll',
+        'BEngine.Player.exe', 'BEngine.Defines.targets')) {
     if (-not (Test-Path -LiteralPath (Join-Path $stageOutput $required))) {
         throw "Engine export is missing $required."
     }
@@ -568,3 +601,12 @@ foreach ($legacyLauncherShortcut in $legacyLauncherShortcuts) {
 }
 
 Write-Output "BENGINE_EXPORT_OK|$Configuration|$engineOutput|$hubOutput"
+}
+finally {
+    # Invoking this script from an existing PowerShell session must not change
+    # the user-data paths of games or other applications launched afterward.
+    foreach ($name in $toolEnvironmentNames) {
+        $previousValue = if ($previousToolEnvironment.Contains($name)) { $previousToolEnvironment[$name] } else { [NullString]::Value }
+        [Environment]::SetEnvironmentVariable($name, $previousValue, 'Process')
+    }
+}

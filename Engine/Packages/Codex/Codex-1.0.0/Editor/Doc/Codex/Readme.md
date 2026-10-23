@@ -1,7 +1,8 @@
 # Codex
 
 Open `Window/Codex` to work with the current project through the installed Codex CLI.
-The window uses the official app-server protocol and the existing ChatGPT sign-in.
+The window uses the official app-server protocol. Sign in to the editor's separate
+Codex profile before starting a conversation.
 
 ## Conversations
 
@@ -37,16 +38,20 @@ resolves them.
 
 ## Storage and Protocol
 
-Editor preferences and the local active-conversation cache use YAML. Full conversation
-history is owned by the installed Codex app-server using the existing `CODEX_HOME`
-(or the user's `.codex` directory). The current engine project is registered with
+Editor preferences and the local active-conversation cache use YAML. The app-server
+stores its configuration, sign-in and full conversation history in `Preferences/Codex`
+beside `BEngine.Hub.exe`. The editor sets `CODEX_HOME` for this process and does not
+reuse a user profile or an inherited `CODEX_HOME`. Existing user configuration and
+credentials are not copied. Preserve this directory to retain the editor's sign-in
+and conversations. The current engine project is registered with
 the local Codex project API, and new durable conversations use that project ID.
 The Codex icon in the conversation header opens the same thread in Codex desktop.
 In an empty conversation, that icon opens the current project in Codex desktop
 without sending a message. This uses the desktop's project-opening route, which
 also adds the folder to its sidebar. Backend project registration alone does not
 update the desktop's separate sidebar cache. An opened conversation is also
-available from the desktop's recent conversations.
+available from the desktop's recent conversations when that desktop uses the same
+Codex home. A separately configured desktop has its own conversation history.
 
 JSON is used only for the external JSON-RPC wire protocol. Package Skills are
 supplied as developer instructions, so they do not pollute user messages or titles.

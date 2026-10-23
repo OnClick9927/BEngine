@@ -11,15 +11,15 @@ internal sealed class LauncherProjectWorkspace
     internal string ProjectFilePath => Path.Combine(RootPath, ProjectFileName);
     internal ProjectData Project { get; }
 
-    private LauncherProjectWorkspace(string root, ProjectData project)
+    private LauncherProjectWorkspace(string root, ProjectData project, bool createLayout = false)
     {
         RootPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
         Project = project;
+        if (!createLayout) return;
         foreach (var relative in new[]
         {
             project.AssetsDirectory, project.ScenesDirectory, project.ScriptsDirectory, project.EditorScriptsDirectory,
-            "ProjectSettings", "Packages", project.AssetsDirectory + "/3rd", "Library", "Library/Packages",
-            "Library/ScriptAssemblies", "Library/Artifacts", "Library/ShaderCache", "Logs", "Temp"
+            "ProjectSettings", "Packages"
         }) Directory.CreateDirectory(ResolveInside(relative));
     }
 
@@ -64,7 +64,7 @@ internal sealed class LauncherProjectWorkspace
         {
             var name = projectName.Trim();
             var workspace = new LauncherProjectWorkspace(staging, new ProjectData
-            { Name = name, EngineVersion = EngineVersion.Current, Window = new WindowData { Title = name } });
+            { Name = name, EngineVersion = EngineVersion.Current, Window = new WindowData { Title = name } }, createLayout: true);
             YamlUtility.Save(workspace.Project, workspace.ProjectFilePath);
             LauncherProjectTemplate.Write(workspace);
             if (File.Exists(root)) throw new IOException($"The project path became a file: {root}.");

@@ -15,9 +15,19 @@ internal sealed class LauncherUpdateService : IDisposable
     private const string DefaultRepositoryApi = "https://api.github.com/repos/OnClick9927/BEngine/";
     private const string DefaultRawBase = "https://raw.githubusercontent.com/OnClick9927/BEngine/";
     private const int MaximumNetworkAttempts = 3;
-    private const int MaximumConcurrentDownloads = 8;
+    private const int MaximumConcurrentDownloads = 16;
+    private const int MaximumConcurrentLargeDownloads = 8;
+    private const int MaximumConcurrentFileRanges = 4;
+    private const long ParallelRangeSizeLimit = 4 * 1024 * 1024;
+    private const long RangeProbeSize = 64 * 1024;
+    private const int MaximumBlobApiRequests = 16;
+    private const int ReservedApiRequests = 10;
+    private const long SmallFileSizeLimit = 64 * 1024;
     private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan DownloadIdleTimeout = TimeSpan.FromSeconds(60);
+    // Recover promptly when an established transfer stops delivering any data.
+    private static readonly TimeSpan DownloadIdleTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan SlowRangeObservation = TimeSpan.FromSeconds(15);
+    private const long SlowRangeBytesPerSecond = 64 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
     private static readonly HashSet<string> ProtectedRoots = new(StringComparer.OrdinalIgnoreCase)
         { "Preferences", "EditorData", "Temp", ".git", ".bengine-update-manifest.json" };
@@ -25,9 +35,15 @@ internal sealed class LauncherUpdateService : IDisposable
     private readonly bool _ownsHttp;
     private readonly Uri _repositoryApi;
     private readonly Uri _rawBase;
+    private readonly Uri? _blobApiBase;
+    private readonly object _apiBudgetGate = new();
+    private int _remainingApiRequests = 60;
+    private int _blobApiRequests;
+    private bool _blobApiUnavailable;
     private readonly ConcurrentDictionary<string, byte> _http11Authorities = new(StringComparer.OrdinalIgnoreCase);
 
-    internal LauncherUpdateService(HttpClient? httpClient = null, string? repositoryApiBase = null, string? rawBase = null)
+    internal LauncherUpdateService(HttpClient? httpClient = null, string? repositoryApiBase = null, string? rawBase = null,
+        string? blobApiBase = null)
     {
         _ownsHttp = httpClient is null;
         _http = httpClient ?? new HttpClient(new SocketsHttpHandler
@@ -37,6 +53,10 @@ internal sealed class LauncherUpdateService : IDisposable
         }) { Timeout = Timeout.InfiniteTimeSpan };
         _repositoryApi = CreateBaseUri(repositoryApiBase ?? DefaultRepositoryApi);
         _rawBase = CreateBaseUri(rawBase ?? DefaultRawBase);
+        // Default downloads can recover through GitHub's official content-addressed API.
+        // Custom transports opt in explicitly so injected/offline clients never contact GitHub.
+        _blobApiBase = blobApiBase is not null ? CreateBaseUri(blobApiBase) :
+            repositoryApiBase is null && rawBase is null ? new Uri(_repositoryApi, "git/blobs/") : null;
     }
 
     internal Task<LauncherUpdatePlan> CheckAsync(string installationRoot,
@@ -162,8 +182,7 @@ internal sealed class LauncherUpdateService : IDisposable
             }
         }
 
-        var workspace = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "BEngine", "HubUpdates", Guid.NewGuid().ToString("N")));
-        if (IsInside(root, workspace)) throw new IOException("The update workspace must be outside the Engine installation directory.");
+        var workspace = LauncherUpdateWorkspace.Create(root);
         var plan = new LauncherUpdatePlan
         {
             InstallationRoot = root, WorkspaceRoot = workspace, CommitSha = commitSha, EngineTreeSha = engineTree,
@@ -188,8 +207,6 @@ internal sealed class LauncherUpdateService : IDisposable
         if (!plan.HasUpdates) return;
         ValidatePlan(plan);
         EnsureNoReparsePoints(plan.InstallationRoot, string.Empty);
-        var changedPaths = plan.Changes.Where(change => change.Kind != LauncherUpdateChangeKind.Deleted)
-            .Select(change => change.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
         // Recheck the preview baseline, including files about to be removed or replaced.
         long lastVerifyTimestamp = 0;
         for (var index = 0; index < plan.OriginalFiles.Count; index++)
@@ -220,125 +237,452 @@ internal sealed class LauncherUpdateService : IDisposable
         var totalBytes = plan.DownloadBytes;
         var progressGate = new object();
         long lastProgressTimestamp = 0;
-        progress.Report(new("Downloading", "Downloading changed files", 0, totalBytes, totalBytes == 0 ? 100 : 0));
-        // Start large transfers first so they overlap the many small package files instead of
-        // keeping the final download slot busy after all other workers have become idle.
-        var downloads = plan.Files.Where(file => changedPaths.Contains(file.Path))
-            .OrderByDescending(file => file.Size).ToArray();
-        await Parallel.ForEachAsync(downloads, new ParallelOptions { MaxDegreeOfParallelism = MaximumConcurrentDownloads, CancellationToken = cancellationToken },
-            async (file, token) =>
+        void ReportCopy(LauncherUpdateFile file)
+        {
+            lock (progressGate)
             {
-                var target = ResolvePath(plan.StagingRoot, file.Path);
-                EnsureNoReparsePoints(plan.WorkspaceRoot, $"staging/{file.Path}");
-                if (Directory.Exists(target)) throw new IOException($"A directory occupies an expected staging file path: {file.Path}");
-                // Cancellation or a transient failure may leave complete files from this exact
-                // snapshot. Trust them only after checking both length and Git blob identity.
-                if (File.Exists(target) && new FileInfo(target).Length == file.Size &&
-                    string.Equals(await HashFileAsync(target, token).ConfigureAwait(false), file.Sha, StringComparison.OrdinalIgnoreCase))
+                var completed = Interlocked.Read(ref downloaded);
+                progress.Report(new("Downloading", $"Copying verified file · {file.Path}", completed, totalBytes,
+                    totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
+                    FilePath: file.Path, Status: "Copying verified file"));
+            }
+        }
+        progress.Report(new("Downloading", "Downloading changed files", 0, totalBytes, totalBytes == 0 ? 100 : 0));
+        // Transfer each Git blob only once, even when several runtime variants use the same
+        // content. Start large blobs first and let the small-file tail use additional slots.
+        var downloads = plan.GetChangedBlobGroups().OrderByDescending(group => group[0].Size).ToArray();
+        using var largeDownloadSlots = new SemaphoreSlim(MaximumConcurrentLargeDownloads);
+        using var networkSlots = new SemaphoreSlim(MaximumConcurrentDownloads);
+        var downloadFailures = new ConcurrentQueue<(string Path, Exception Error)>();
+        await Parallel.ForEachAsync(downloads, new ParallelOptions { MaxDegreeOfParallelism = MaximumConcurrentDownloads, CancellationToken = cancellationToken },
+            async (group, token) =>
+            {
+                var file = group[0];
+                var isLarge = file.Size > SmallFileSizeLimit;
+                if (isLarge) await largeDownloadSlots.WaitAsync(token).ConfigureAwait(false);
+                try
                 {
-                    lock (progressGate)
+                    var target = ResolvePath(plan.StagingRoot, file.Path);
+                    foreach (var destination in group)
                     {
-                        var completed = Interlocked.Add(ref downloaded, file.Size);
-                        progress.Report(new("Downloading", $"Reusing verified file · {file.Path}", completed, totalBytes,
-                            totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
-                            FilePath: file.Path, Status: "Reusing verified file"));
+                        EnsureNoReparsePoints(plan.WorkspaceRoot, $"staging/{destination.Path}");
+                        if (Directory.Exists(ResolvePath(plan.StagingRoot, destination.Path)))
+                            throw new IOException($"A directory occupies an expected staging file path: {destination.Path}");
                     }
-                    return;
-                }
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                var relativeUrl = $"{plan.CommitSha}/Engine/{string.Join('/', file.Path.Split('/').Select(Uri.EscapeDataString))}";
-                var uri = new Uri(_rawBase, relativeUrl);
-                await WithNetworkRetriesAsync(async attempt =>
-                {
-                    var partial = Path.Combine(plan.WorkspaceRoot, "partial", Guid.NewGuid().ToString("N") + ".part");
-                    using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-                    using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(token);
-                    requestTimeout.CancelAfter(ResponseTimeout);
-                    var elapsed = Stopwatch.StartNew();
-                    var headersReceived = false;
-                    long received = 0;
-                    var verified = false;
-                    void Report(bool force)
+                    // Cancellation or a transient failure may leave complete files from this exact
+                    // snapshot at any destination in this group. Check length and blob identity
+                    // before using that staged copy as the source for the other destinations.
+                    string? verifiedSource = null;
+                    foreach (var destination in group)
+                    {
+                        var candidate = ResolvePath(plan.StagingRoot, destination.Path);
+                        if (File.Exists(candidate) && new FileInfo(candidate).Length == file.Size &&
+                            string.Equals(await HashFileAsync(candidate, token).ConfigureAwait(false), file.Sha, StringComparison.OrdinalIgnoreCase))
+                        {
+                            verifiedSource = candidate;
+                            break;
+                        }
+                    }
+                    if (verifiedSource is not null)
                     {
                         lock (progressGate)
                         {
-                            var completed = Interlocked.Read(ref downloaded);
-                            var now = Stopwatch.GetTimestamp();
-                            if (force || completed == totalBytes || Stopwatch.GetElapsedTime(lastProgressTimestamp, now).TotalMilliseconds >= 100)
-                            {
-                                lastProgressTimestamp = now;
-                                var status = NetworkStatus(headersReceived ? "Receiving data" : "Waiting for response",
-                                    uri, attempt, MaximumNetworkAttempts, elapsed.Elapsed);
-                                progress.Report(new("Downloading", $"{file.Path} · {status}",
-                                    completed, totalBytes, totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
-                                    FilePath: file.Path, Status: status));
-                            }
+                            var completed = Interlocked.Add(ref downloaded, file.Size);
+                            progress.Report(new("Downloading", $"Reusing verified file · {file.Path}", completed, totalBytes,
+                                totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
+                                FilePath: file.Path, Status: "Reusing verified file"));
                         }
+                        await StageBlobCopiesAsync(plan, group, verifiedSource, ReportCopy, token).ConfigureAwait(false);
+                        return;
                     }
-                    Report(true);
-                    var heartbeat = ReportHeartbeatAsync(() => Report(true), heartbeatStop.Token);
-                    try
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    var relativeUrl = $"{plan.CommitSha}/Engine/{string.Join('/', file.Path.Split('/').Select(Uri.EscapeDataString))}";
+                    var uri = new Uri(_rawBase, relativeUrl);
+                    if (file.Size >= ParallelRangeSizeLimit)
                     {
-                        using var request = CreateRequest(uri);
-                        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token).ConfigureAwait(false);
-                        EnsureNetworkSuccess(response, uri);
-                        headersReceived = true;
-                        if (response.Content.Headers.ContentLength is { } contentLength && contentLength != file.Size)
-                            throw new InvalidDataException($"The downloaded file has an unexpected size: {file.Path}");
-                        requestTimeout.CancelAfter(DownloadIdleTimeout);
-                        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
-                        hash.AppendData(Encoding.ASCII.GetBytes($"blob {file.Size.ToString(CultureInfo.InvariantCulture)}\0"));
-                        await using var source = await response.Content.ReadAsStreamAsync(requestTimeout.Token).ConfigureAwait(false);
-                        await using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                        await DownloadRangedBlobAsync(file, uri, plan.WorkspaceRoot, target, networkSlots, progress,
+                            (delta, force, status) =>
+                            {
+                                lock (progressGate)
+                                {
+                                    var completed = Interlocked.Add(ref downloaded, delta);
+                                    var now = Stopwatch.GetTimestamp();
+                                    if (force || completed == totalBytes || Stopwatch.GetElapsedTime(lastProgressTimestamp, now).TotalMilliseconds >= 100)
+                                    {
+                                        lastProgressTimestamp = now;
+                                        progress.Report(new("Downloading", $"{file.Path} · {status}", completed, totalBytes,
+                                            totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
+                                            FilePath: file.Path, Status: status));
+                                    }
+                                }
+                            }, token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await WithNetworkRetriesAsync(async attempt =>
                         {
-                            var buffer = new byte[81920];
-                            int count;
-                            while ((count = await ReadNetworkAsync(source, buffer, requestTimeout.Token).ConfigureAwait(false)) != 0)
+                            await networkSlots.WaitAsync(token).ConfigureAwait(false);
+                            try
                             {
-                                if (received + count > file.Size) throw new InvalidDataException($"The downloaded file exceeds its expected size: {file.Path}");
-                                hash.AppendData(buffer.AsSpan(0, count));
-                                await output.WriteAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
-                                received += count;
-                                Interlocked.Add(ref downloaded, count);
-                                requestTimeout.CancelAfter(DownloadIdleTimeout);
-                                Report(false);
+                                var partial = Path.Combine(plan.WorkspaceRoot, "partial", Guid.NewGuid().ToString("N") + ".part");
+                                using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                                using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+                                requestTimeout.CancelAfter(ResponseTimeout);
+                                var elapsed = Stopwatch.StartNew();
+                                var headersReceived = false;
+                                long received = 0;
+                                var verified = false;
+                                void Report(bool force)
+                                {
+                                    lock (progressGate)
+                                    {
+                                        var completed = Interlocked.Read(ref downloaded);
+                                        var now = Stopwatch.GetTimestamp();
+                                        if (force || completed == totalBytes || Stopwatch.GetElapsedTime(lastProgressTimestamp, now).TotalMilliseconds >= 100)
+                                        {
+                                            lastProgressTimestamp = now;
+                                            var status = NetworkStatus(headersReceived ? "Receiving data" : "Waiting for response",
+                                                uri, attempt, MaximumNetworkAttempts, elapsed.Elapsed);
+                                            progress.Report(new("Downloading", $"{file.Path} · {status}",
+                                                completed, totalBytes, totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
+                                                FilePath: file.Path, Status: status));
+                                        }
+                                    }
+                                }
+                                Report(true);
+                                var heartbeat = ReportHeartbeatAsync(() => Report(true), heartbeatStop.Token);
+                                try
+                                {
+                                    using var request = CreateRequest(uri);
+                                    using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token).ConfigureAwait(false);
+                                    EnsureNetworkSuccess(response, uri);
+                                    headersReceived = true;
+                                    if (response.Content.Headers.ContentLength is { } contentLength && contentLength != file.Size)
+                                        throw new InvalidDataException($"The downloaded file has an unexpected size: {file.Path}");
+                                    requestTimeout.CancelAfter(DownloadIdleTimeout);
+                                    using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+                                    hash.AppendData(Encoding.ASCII.GetBytes($"blob {file.Size.ToString(CultureInfo.InvariantCulture)}\0"));
+                                    await using var source = await response.Content.ReadAsStreamAsync(requestTimeout.Token).ConfigureAwait(false);
+                                    await using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                                    {
+                                        var buffer = new byte[81920];
+                                        int count;
+                                        while ((count = await ReadNetworkAsync(source, buffer, requestTimeout.Token).ConfigureAwait(false)) != 0)
+                                        {
+                                            if (received + count > file.Size) throw new InvalidDataException($"The downloaded file exceeds its expected size: {file.Path}");
+                                            hash.AppendData(buffer.AsSpan(0, count));
+                                            await output.WriteAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
+                                            received += count;
+                                            Interlocked.Add(ref downloaded, count);
+                                            requestTimeout.CancelAfter(DownloadIdleTimeout);
+                                            Report(false);
+                                        }
+                                        if (received != file.Size) throw new RetryableNetworkException("The file transfer ended before all bytes arrived.", isTransportFailure: true);
+                                        if (!Convert.ToHexString(hash.GetHashAndReset()).Equals(file.Sha, StringComparison.OrdinalIgnoreCase))
+                                            throw new InvalidDataException($"File integrity verification failed: {file.Path}. No installed files were replaced.");
+                                        await output.FlushAsync(token).ConfigureAwait(false);
+                                    }
+                                    File.Move(partial, target, true);
+                                    verified = true;
+                                    Report(true);
+                                    return true;
+                                }
+                                finally
+                                {
+                                    heartbeatStop.Cancel();
+                                    await heartbeat.ConfigureAwait(false);
+                                    if (!verified) Interlocked.Add(ref downloaded, -received);
+                                    if (File.Exists(partial)) File.Delete(partial);
+                                }
                             }
-                            if (received != file.Size) throw new RetryableNetworkException("The file transfer ended before all bytes arrived.", isTransportFailure: true);
-                            if (!Convert.ToHexString(hash.GetHashAndReset()).Equals(file.Sha, StringComparison.OrdinalIgnoreCase))
-                                throw new InvalidDataException($"File integrity verification failed: {file.Path}. No installed files were replaced.");
-                            await output.FlushAsync(token).ConfigureAwait(false);
-                        }
-                        File.Move(partial, target, true);
-                        verified = true;
-                        Report(true);
-                        return true;
+                            finally { networkSlots.Release(); }
+                        }, uri, "Downloading", file.Path, progress, token, reportRetry: (message, nextAttempt) =>
+                        {
+                            lock (progressGate)
+                            {
+                                var completed = Interlocked.Read(ref downloaded);
+                                progress.Report(new("Downloading", message, completed, totalBytes,
+                                    totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
+                                    FilePath: file.Path,
+                                    Status: $"Retrying network request · {uri.Host} · {nextAttempt}/{MaximumNetworkAttempts}"));
+                            }
+                        }).ConfigureAwait(false);
                     }
-                    finally
-                    {
-                        heartbeatStop.Cancel();
-                        await heartbeat.ConfigureAwait(false);
-                        if (!verified) Interlocked.Add(ref downloaded, -received);
-                        if (File.Exists(partial)) File.Delete(partial);
-                    }
-                }, uri, "Downloading", file.Path, progress, token, reportRetry: (message, nextAttempt) =>
+                    await StageBlobCopiesAsync(plan, group, target, ReportCopy, token).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (!token.IsCancellationRequested &&
+                    exception is NetworkRequestException or InvalidDataException)
                 {
-                    lock (progressGate)
-                    {
-                        var completed = Interlocked.Read(ref downloaded);
-                        progress.Report(new("Downloading", message, completed, totalBytes,
-                            totalBytes == 0 ? 100 : Math.Min(100, 100d * completed / totalBytes),
-                            FilePath: file.Path,
-                            Status: $"Retrying network request · {uri.Host} · {nextAttempt}/{MaximumNetworkAttempts}"));
-                    }
-                }).ConfigureAwait(false);
+                    // A single inaccessible blob must not cancel other large transfers and
+                    // discard their progress. Finish verified staging; a retry reuses it.
+                    downloadFailures.Enqueue((file.Path, exception));
+                }
+                finally
+                {
+                    if (isLarge) largeDownloadSlots.Release();
+                }
             }).ConfigureAwait(false);
 
         cancellationToken.ThrowIfCancellationRequested();
+        if (!downloadFailures.IsEmpty)
+        {
+            var failures = downloadFailures.ToArray();
+            static string Limit(string value, int maximum) => value.Length <= maximum ? value : value[..(maximum - 3)] + "...";
+            var paths = string.Join(", ", failures.Take(3).Select(failure => Limit(failure.Path, 160)));
+            throw new IOException($"Unable to download {failures.Length} update file(s): {paths}" +
+                (failures.Length > 3 ? ", ..." : string.Empty) + ". " + Limit(failures[0].Error.Message, 400) +
+                " Verified files are retained for retry. No installed files were replaced.",
+                new AggregateException(failures.Select(failure => new IOException(failure.Path, failure.Error))));
+        }
         progress.Report(new("Verifying", "Saving the verified update plan", totalBytes, totalBytes, 100));
         var planPart = plan.PlanPath + ".part";
         await File.WriteAllTextAsync(planPart, JsonSerializer.Serialize(plan, JsonOptions), cancellationToken).ConfigureAwait(false);
         File.Move(planPart, plan.PlanPath, true);
         progress.Report(new("Ready", "Download verified; ready to install", totalBytes, totalBytes, 100));
+    }
+
+    private async Task DownloadRangedBlobAsync(LauncherUpdateFile file, Uri uri, string workspaceRoot,
+        string target, SemaphoreSlim networkSlots, IProgress<LauncherUpdateProgress> progress,
+        Action<long, bool, string> report, CancellationToken cancellationToken)
+    {
+        var partial = Path.Combine(workspaceRoot, "partial", Guid.NewGuid().ToString("N") + ".part");
+        long received = 0;
+        var verified = false;
+        try
+        {
+            await using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                             1, FileOptions.Asynchronous | FileOptions.RandomAccess))
+            {
+                // Probe with a short real first range. A server that ignores Range can still
+                // provide the whole file in this response; do not discard and request it again.
+                var wholeBody = false;
+                await TransferRangeAsync(0, Math.Min(file.Size, RangeProbeSize) - 1, allowWholeBody: true,
+                    cancellationToken).ConfigureAwait(false);
+                if (!wholeBody)
+                {
+                    var remaining = file.Size - RangeProbeSize;
+                    var rangeLength = (remaining + MaximumConcurrentFileRanges - 1) / MaximumConcurrentFileRanges;
+                    var ranges = Enumerable.Range(0, MaximumConcurrentFileRanges)
+                        .Select(index => (Start: RangeProbeSize + index * rangeLength,
+                            End: Math.Min(file.Size - 1, RangeProbeSize + (index + 1) * rangeLength - 1)))
+                        .Where(range => range.Start <= range.End).ToArray();
+                    await Parallel.ForEachAsync(ranges, new ParallelOptions
+                    {
+                        MaxDegreeOfParallelism = MaximumConcurrentFileRanges, CancellationToken = cancellationToken
+                    }, async (range, token) =>
+                        await TransferRangeAsync(range.Start, range.End, allowWholeBody: false, token).ConfigureAwait(false))
+                        .ConfigureAwait(false);
+                }
+                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+                async Task TransferRangeAsync(long start, long end, bool allowWholeBody, CancellationToken token)
+                {
+                    var nextOffset = start;
+                    Uri? reservedFallback = null;
+                    await WithNetworkRetriesAsync(async attempt =>
+                    {
+                        if (nextOffset > end) return true;
+                        await networkSlots.WaitAsync(token).ConfigureAwait(false);
+                        try
+                        {
+                            var transferUri = uri;
+                            if (attempt == 2)
+                            {
+                                if (reservedFallback is not null)
+                                {
+                                    lock (_apiBudgetGate)
+                                        if (!_blobApiUnavailable && _remainingApiRequests >= ReservedApiRequests)
+                                            transferUri = reservedFallback;
+                                }
+                                else transferUri = TryCreateBlobApiUri(file) ?? uri;
+                            }
+                            var useBlobApi = transferUri != uri;
+                            using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                            using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+                            requestTimeout.CancelAfter(ResponseTimeout);
+                            var elapsed = Stopwatch.StartNew();
+                            var headersReceived = false;
+                            void Report(bool force) => report(0, force, NetworkStatus(
+                                headersReceived ? "Receiving data" : "Waiting for response", transferUri, attempt,
+                                MaximumNetworkAttempts, elapsed.Elapsed));
+                            Report(true);
+                            var heartbeat = ReportHeartbeatAsync(() => Report(true), heartbeatStop.Token);
+                            try
+                            {
+                                using var request = CreateRequest(transferUri);
+                                // Independent HTTP/1.1 connections let a large-file tail retain
+                                // concurrency even when only one or two blobs remain to download.
+                                request.Version = HttpVersion.Version11;
+                                request.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
+                                request.Headers.Range = new RangeHeaderValue(nextOffset, end);
+                                if (useBlobApi)
+                                {
+                                    request.Headers.Accept.Clear();
+                                    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.raw+json"));
+                                }
+                                using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
+                                    requestTimeout.Token).ConfigureAwait(false);
+                                if (useBlobApi)
+                                {
+                                    ObserveApiBudget(response);
+                                    if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests or
+                                        HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity)
+                                    {
+                                        DisableBlobApi();
+                                        throw new RetryableNetworkException($"The alternate GitHub route is unavailable (HTTP {(int)response.StatusCode}).");
+                                    }
+                                    if (response.StatusCode == HttpStatusCode.OK && !allowWholeBody)
+                                    {
+                                        DisableBlobApi();
+                                        throw new RetryableNetworkException("The alternate GitHub route did not support resuming this range.");
+                                    }
+                                }
+                                EnsureNetworkSuccess(response, transferUri);
+                                headersReceived = true;
+                                if (response.StatusCode == HttpStatusCode.OK && allowWholeBody)
+                                {
+                                    // If this origin cannot resume a whole-body response, restart
+                                    // only this response. Supported ranges retain every written byte.
+                                    if (nextOffset != 0)
+                                    {
+                                        Interlocked.Add(ref received, -nextOffset);
+                                        report(-nextOffset, true, NetworkStatus("Receiving data", transferUri, attempt,
+                                            MaximumNetworkAttempts, elapsed.Elapsed));
+                                        nextOffset = 0;
+                                    }
+                                    end = file.Size - 1;
+                                    wholeBody = true;
+                                }
+                                else
+                                {
+                                    var range = response.Content.Headers.ContentRange;
+                                    if (response.StatusCode != HttpStatusCode.PartialContent || range is null ||
+                                        !range.Unit.Equals("bytes", StringComparison.OrdinalIgnoreCase) ||
+                                        range.From != nextOffset || range.To != end || range.Length != file.Size)
+                                        throw new InvalidDataException($"The downloaded file has an invalid Content-Range: {file.Path}");
+                                }
+                                var expectedLength = end - nextOffset + 1;
+                                if (response.Content.Headers.ContentLength is { } length && length != expectedLength)
+                                    throw new InvalidDataException($"The downloaded file range has an unexpected size: {file.Path}");
+                                requestTimeout.CancelAfter(DownloadIdleTimeout);
+                                await using var source = await response.Content.ReadAsStreamAsync(requestTimeout.Token).ConfigureAwait(false);
+                                var responseStartOffset = nextOffset;
+                                var responseClock = Stopwatch.StartNew();
+                                var buffer = new byte[81920];
+                                int count;
+                                while ((count = await ReadNetworkAsync(source, buffer, requestTimeout.Token).ConfigureAwait(false)) != 0)
+                                {
+                                    if (count > end - nextOffset + 1)
+                                        throw new InvalidDataException($"The downloaded file range exceeds its expected size: {file.Path}");
+                                    await RandomAccess.WriteAsync(output.SafeFileHandle, buffer.AsMemory(0, count), nextOffset, token)
+                                        .ConfigureAwait(false);
+                                    nextOffset += count;
+                                    Interlocked.Add(ref received, count);
+                                    report(count, false, NetworkStatus("Receiving data", transferUri, attempt,
+                                        MaximumNetworkAttempts, elapsed.Elapsed));
+                                    requestTimeout.CancelAfter(DownloadIdleTimeout);
+                                    // A slow first route can hand off without losing any written
+                                    // bytes. Reserve the bounded API request before leaving it;
+                                    // if no budget is available, keep the current stream alive.
+                                    if (attempt == 1 && !wholeBody && responseClock.Elapsed >= SlowRangeObservation &&
+                                        end - nextOffset + 1 >= 1024 * 1024 &&
+                                        (nextOffset - responseStartOffset) / responseClock.Elapsed.TotalSeconds < SlowRangeBytesPerSecond &&
+                                        (reservedFallback = TryCreateBlobApiUri(file)) is not null)
+                                        throw new RetryableNetworkException("Switching a slow download route while retaining received bytes.");
+                                }
+                                if (nextOffset != end + 1)
+                                    throw new RetryableNetworkException("The file range transfer ended before all bytes arrived.", isTransportFailure: true);
+                                Report(true);
+                                return true;
+                            }
+                            finally
+                            {
+                                heartbeatStop.Cancel();
+                                await heartbeat.ConfigureAwait(false);
+                            }
+                        }
+                        finally { networkSlots.Release(); }
+                    }, uri, "Downloading", file.Path, progress, token, reportRetry: (_, nextAttempt) =>
+                        report(0, true, $"Retrying network request · {uri.Host} · {nextAttempt}/{MaximumNetworkAttempts}"))
+                        .ConfigureAwait(false);
+                }
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (received != file.Size || new FileInfo(partial).Length != file.Size ||
+                !string.Equals(await HashFileAsync(partial, cancellationToken).ConfigureAwait(false), file.Sha, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"File integrity verification failed: {file.Path}. No installed files were replaced.");
+            File.Move(partial, target, true);
+            verified = true;
+            report(0, true, "Receiving data");
+        }
+        finally
+        {
+            if (!verified) report(-Interlocked.Read(ref received), true, "Receiving data");
+            if (File.Exists(partial)) File.Delete(partial);
+        }
+    }
+
+    private Uri? TryCreateBlobApiUri(LauncherUpdateFile file)
+    {
+        // GitHub's blob endpoint supports at most 100 MB. Leave API capacity for
+        // metadata checks and use it only as a bounded recovery route for big blobs.
+        if (_blobApiBase is null || file.Size > 100_000_000) return null;
+        lock (_apiBudgetGate)
+        {
+            if (_blobApiUnavailable || _blobApiRequests >= MaximumBlobApiRequests || _remainingApiRequests <= ReservedApiRequests)
+                return null;
+            _blobApiRequests++;
+            _remainingApiRequests--;
+            return new Uri(_blobApiBase, file.Sha.ToLowerInvariant());
+        }
+    }
+
+    private void ObserveApiBudget(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("X-RateLimit-Remaining", out var values) ||
+            !int.TryParse(values.FirstOrDefault(), NumberStyles.None, CultureInfo.InvariantCulture, out var remaining) || remaining < 0)
+            return;
+        lock (_apiBudgetGate) _remainingApiRequests = Math.Min(_remainingApiRequests, remaining);
+    }
+
+    private void DisableBlobApi()
+    {
+        lock (_apiBudgetGate) _blobApiUnavailable = true;
+    }
+
+    private static async Task StageBlobCopiesAsync(LauncherUpdatePlan plan, IReadOnlyList<LauncherUpdateFile> group,
+        string verifiedSource, Action<LauncherUpdateFile> reportCopy, CancellationToken cancellationToken)
+    {
+        foreach (var file in group)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var target = ResolvePath(plan.StagingRoot, file.Path);
+            EnsureNoReparsePoints(plan.WorkspaceRoot, $"staging/{file.Path}");
+            if (Directory.Exists(target)) throw new IOException($"A directory occupies an expected staging file path: {file.Path}");
+            if (target.Equals(verifiedSource, StringComparison.OrdinalIgnoreCase)) continue;
+            reportCopy(file);
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            var partial = Path.Combine(plan.WorkspaceRoot, "partial", Guid.NewGuid().ToString("N") + ".part");
+            try
+            {
+                await using (var source = new FileStream(verifiedSource, FileMode.Open, FileAccess.Read, FileShare.Read,
+                                 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                await using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                                 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                {
+                    await source.CopyToAsync(output, 81920, cancellationToken).ConfigureAwait(false);
+                    await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                // Publish only complete copies so cancellation leaves reusable staged files.
+                File.Move(partial, target, true);
+            }
+            finally
+            {
+                if (File.Exists(partial)) File.Delete(partial);
+            }
+        }
     }
 
     private Task<JsonDocument> GetJsonAsync(Uri uri, string stage, string label,
@@ -363,6 +707,7 @@ internal sealed class LauncherUpdateService : IDisposable
             {
                 using var request = CreateRequest(uri);
                 using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token).ConfigureAwait(false);
+                ObserveApiBudget(response);
                 EnsureNetworkSuccess(response, uri);
                 headersReceived = true;
                 total = response.Content.Headers.ContentLength ?? 0;
@@ -425,7 +770,7 @@ internal sealed class LauncherUpdateService : IDisposable
             if (timedOut || failure is HttpRequestException { StatusCode: null } or RetryableNetworkException { IsTransportFailure: true })
                 _http11Authorities.TryAdd(uri.GetLeftPart(UriPartial.Authority), 0);
             if (attempt == maximumAttempts)
-                throw new IOException((timedOut ? "The network request timed out." : "The network request failed after retries.") +
+                throw new NetworkRequestException((timedOut ? "The network request timed out." : "The network request failed after retries.") +
                                       $" · {uri.Host} · {uri.AbsolutePath} · {attempt}/{maximumAttempts}" +
                                       (timedOut ? string.Empty : " · " + failure.GetBaseException().Message), failure);
             var retryMessage = $"{label} · Retrying network request · {uri.Host} · {attempt + 1}/{maximumAttempts}";
@@ -474,6 +819,8 @@ internal sealed class LauncherUpdateService : IDisposable
         internal bool IsTransportFailure => isTransportFailure;
     }
 
+    private sealed class NetworkRequestException(string message, Exception? inner = null) : IOException(message, inner);
+
     private HttpRequestMessage CreateRequest(Uri uri)
     {
         var useHttp11 = _http11Authorities.ContainsKey(uri.GetLeftPart(UriPartial.Authority));
@@ -497,10 +844,10 @@ internal sealed class LauncherUpdateService : IDisposable
             if (retry is null && response.Headers.TryGetValues("X-RateLimit-Reset", out var resets) &&
                 long.TryParse(resets.FirstOrDefault(), out var seconds))
                 retry = DateTimeOffset.FromUnixTimeSeconds(seconds).ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
-            throw new IOException($"GitHub denied or rate-limited the request (HTTP {(int)response.StatusCode}) · {uri.Host} · {uri.AbsolutePath}." +
+            throw new NetworkRequestException($"GitHub denied or rate-limited the request (HTTP {(int)response.StatusCode}) · {uri.Host} · {uri.AbsolutePath}." +
                                   (retry is { Length: > 0 } ? $" Retry after {retry}." : " Retry later."));
         }
-        throw new IOException($"GitHub returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}) · {uri.Host} · {uri.AbsolutePath}. No installed files were replaced.");
+        throw new NetworkRequestException($"GitHub returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}) · {uri.Host} · {uri.AbsolutePath}. No installed files were replaced.");
     }
 
     private static void EnsureCompleteTree(JsonElement element)
@@ -561,9 +908,7 @@ internal sealed class LauncherUpdateService : IDisposable
 
     private static void ValidatePlan(LauncherUpdatePlan plan)
     {
-        if (!Path.IsPathFullyQualified(plan.InstallationRoot) || !Path.IsPathFullyQualified(plan.WorkspaceRoot) ||
-            IsInside(plan.InstallationRoot, plan.WorkspaceRoot) || IsInside(plan.WorkspaceRoot, plan.InstallationRoot))
-            throw new InvalidDataException("The update workspace must be separate from the installation directory.");
+        LauncherUpdateWorkspace.Validate(plan.InstallationRoot, plan.WorkspaceRoot);
         if (plan.CommitSha.Length != 40 || !plan.CommitSha.All(Uri.IsHexDigit))
             throw new InvalidDataException("The update snapshot identifier is invalid.");
         var files = new Dictionary<string, LauncherUpdateFile>(StringComparer.OrdinalIgnoreCase);
@@ -616,7 +961,13 @@ internal sealed class LauncherUpdateService : IDisposable
         return uri;
     }
 
-    private static bool IsProtected(string path) => path.Split('/').Any(ProtectedRoots.Contains);
+    private static bool IsProtected(string path)
+    {
+        var segments = path.Split('/');
+        return segments[0].Equals("Cache", StringComparison.OrdinalIgnoreCase) ||
+               segments[0].Equals("Projects", StringComparison.OrdinalIgnoreCase) ||
+               segments.Any(ProtectedRoots.Contains);
+    }
 
     private static void ValidateRelativePath(string path)
     {

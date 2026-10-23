@@ -10,6 +10,12 @@ public static class WebPlayerTestLauncher
 {
     public static async Task<TestRunResult> Run(PlayerTestLaunchRequest request, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        var projectPath = string.IsNullOrWhiteSpace(request.ProjectPath)
+            ? BEngine.Editor.EditorApplication.projectPath : request.ProjectPath;
+        if (string.IsNullOrWhiteSpace(projectPath) || !Path.IsPathFullyQualified(projectPath) || !Directory.Exists(projectPath))
+            throw new InvalidOperationException("An existing project path is required to run Web Player tests. Open a project or provide ProjectPath.");
+        var profileRoot = Path.Combine(Path.GetFullPath(projectPath), "Temp", "TestRunner", "BrowserProfiles");
         var executable = Environment.GetEnvironmentVariable("BENGINE_TEST_BROWSER") ?? new[]
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe"),
@@ -24,7 +30,7 @@ public static class WebPlayerTestLauncher
         var result = new TaskCompletionSource<TestRunResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var serving = Serve();
-        var profile = Path.Combine(Path.GetTempPath(), "bengine-browser-tests-" + token); Directory.CreateDirectory(profile);
+        var profile = Path.Combine(profileRoot, "bengine-browser-tests-" + token); Directory.CreateDirectory(profile);
         var query = "?bengineAutoStart=1&bengineRunTests=1&bengineTestToken=" + token + "&bengineTestCoverage=" + (request.CollectCoverage ? "1" : "0") +
             "&bengineTestContentUrl=" + Uri.EscapeDataString(request.ContentUrl);
         if (request.TestIds is not null) query += "&bengineTestIds=" + Uri.EscapeDataString(JsonSerializer.Serialize(request.TestIds));
@@ -32,11 +38,14 @@ public static class WebPlayerTestLauncher
         // Edge's compatibility relaunch otherwise returns success before the actual browser process starts.
         if (Path.GetFileName(executable).Equals("msedge.exe", StringComparison.OrdinalIgnoreCase)) start.ArgumentList.Add("--edge-skip-compat-layer-relaunch");
         foreach (var argument in new[] { "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-timer-throttling", "--enable-unsafe-swiftshader", "--user-data-dir=" + profile, address + query }) start.ArgumentList.Add(argument);
-        using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start test browser.");
-        var diagnostics = process.StandardError.ReadToEndAsync();
-        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        Process? process = null;
+        Task<string>? diagnostics = null;
+        Task<string>? standardOutput = null;
         try
         {
+            process = Process.Start(start) ?? throw new InvalidOperationException("Could not start test browser.");
+            diagnostics = process.StandardError.ReadToEndAsync();
+            standardOutput = process.StandardOutput.ReadToEndAsync();
             var completed = await Task.WhenAny(result.Task, process.WaitForExitAsync(stop.Token)).WaitAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (completed != result.Task)
@@ -48,10 +57,18 @@ public static class WebPlayerTestLauncher
         }
         finally
         {
-            stop.Cancel(); listener.Stop(); if (!process.HasExited) process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(); await Task.WhenAll(diagnostics, standardOutput);
+            stop.Cancel(); listener.Stop();
+            if (process is not null)
+            {
+                using (process)
+                {
+                    if (!process.HasExited) process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync();
+                    await Task.WhenAll(diagnostics!, standardOutput!);
+                }
+            }
             try { await serving; } catch (HttpListenerException) { } catch (ObjectDisposedException) { } catch (OperationCanceledException) { }
-            var temporaryRoot = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar);
+            var temporaryRoot = Path.GetFullPath(profileRoot).TrimEnd(Path.DirectorySeparatorChar);
             if (Path.GetDirectoryName(Path.GetFullPath(profile)) == temporaryRoot && Path.GetFileName(profile) == "bengine-browser-tests-" + token)
                 for (var attempt = 0; attempt < 3 && Directory.Exists(profile); attempt++)
                 {

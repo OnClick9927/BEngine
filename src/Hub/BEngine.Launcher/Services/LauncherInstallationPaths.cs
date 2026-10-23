@@ -2,22 +2,13 @@ namespace BEngine.Launcher;
 
 internal static class LauncherInstallationPaths
 {
-    // Keep this mapping aligned with EditorDataPaths.ResolveTempPath. A source
-    // checkout shares its outer Temp; an exported Engine uses its sibling Temp.
-    internal static string ResolveTemporaryDirectory(string installationRoot)
-    {
-        var root = new DirectoryInfo(Path.GetFullPath(installationRoot));
-        if (root.Name.Equals("Engine", StringComparison.OrdinalIgnoreCase) && root.Parent is { } parent)
-        {
-            if (File.Exists(Path.Combine(parent.FullName, "src", "BEngine.sln")) && parent.Parent is { } repository)
-                return Path.Combine(repository.FullName, "Temp");
-            return Path.Combine(parent.FullName, "Temp");
-        }
-        return Path.Combine(root.FullName, "Temp");
-    }
+    internal static string ResolveTemporaryDirectory(string installationRoot) =>
+        Path.Combine(Path.GetFullPath(installationRoot), "Temp");
 
     internal static string ResolveRoot(string? baseDirectory = null)
     {
+        if (baseDirectory is null && Environment.GetEnvironmentVariable("BENGINE_HUB_DIRECTORY") is { Length: > 0 } hubDirectory)
+            return Path.GetFullPath(hubDirectory);
         var executableDirectory = Environment.ProcessPath is { Length: > 0 } processPath
             ? Path.GetDirectoryName(Path.GetFullPath(processPath))
             : null;

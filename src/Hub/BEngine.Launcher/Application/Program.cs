@@ -8,11 +8,12 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        var updaterExitCode = LauncherUpdateInstaller.RunUpdater(args);
-        if (updaterExitCode.HasValue) return updaterExitCode.Value;
-        InitializeTaskbarIdentity();
         try
         {
+            var updaterExitCode = LauncherUpdateInstaller.RunUpdater(args);
+            if (updaterExitCode.HasValue) return updaterExitCode.Value;
+            BEngine.Tooling.ToolEnvironment.ConfigureHub();
+            InitializeTaskbarIdentity();
             Run(args);
             return 0;
         }

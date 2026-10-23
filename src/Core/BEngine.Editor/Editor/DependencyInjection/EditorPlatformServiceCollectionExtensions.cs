@@ -14,6 +14,7 @@ public static class EditorPlatformServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddBEnginePlatformServices();
+        services.Replace(ServiceDescriptor.Singleton<IApplicationPaths, EditorApplicationPaths>());
         services.TryAddSingleton<IProjectAssetDatabaseFactory, ProjectAssetDatabaseFactory>();
         services.TryAddSingleton<IBPackageArchiveService, BPackageArchiveService>();
         services.TryAddSingleton<ProcessUtility>();

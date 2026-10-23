@@ -10,6 +10,7 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        BEngine.Tooling.ToolEnvironment.ConfigureEditor();
         if (EditorCommandLineHelp.TryHandle(args)) return 0;
         // Set the shell identity before creating any project-loading windows.
         WindowsEditorTaskbar.InitializeProcess();

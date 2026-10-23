@@ -90,6 +90,7 @@ internal static class LauncherUpdateInstaller
             var token = Guid.NewGuid().ToString("N");
             var readyPath = Path.Combine(plan.WorkspaceRoot, $"installer-ready-{token}.json");
             var start = new ProcessStartInfo(installer) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(installer)! };
+            BEngine.Tooling.ToolEnvironment.ApplyTo(start.Environment);
             start.ArgumentList.Add("--apply-update");
             start.ArgumentList.Add(plan.PlanPath);
             start.ArgumentList.Add("--plan-sha256");
@@ -142,8 +143,10 @@ internal static class LauncherUpdateInstaller
             ValidatePlan(plan);
             if (!planPath.Equals(Path.GetFullPath(plan.PlanPath), StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("The update plan is outside its workspace.");
-            if (IsWithin(plan.InstallationRoot, Environment.ProcessPath ?? AppContext.BaseDirectory))
-                throw new InvalidOperationException("The updater must run outside the installation directory.");
+            var expectedUpdater = SafePath(plan.WorkspaceRoot, "installer/BEngine.Hub.Updater.exe");
+            if (!Path.GetFullPath(Environment.ProcessPath ?? AppContext.BaseDirectory).Equals(expectedUpdater, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The updater must run from this update workspace's protected installer directory.");
+            BEngine.Tooling.ToolEnvironment.Configure(plan.InstallationRoot);
             System.Windows.Forms.Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             System.Windows.Forms.Application.EnableVisualStyles();
             System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
@@ -203,7 +206,6 @@ internal static class LauncherUpdateInstaller
             progress.Report(new("completed", "The previous installation has been restored.", Percent: 100));
             return;
         }
-        var temporaryFiles = CaptureTemporaryFiles(plan);
         await VerifyOriginalFilesAsync(plan, cancellationToken);
         progress.Report(new("verifying", "Verifying downloaded files and unchanged installed files", Percent: 0));
         var changes = plan.Changes.ToDictionary(change => change.Path, StringComparer.OrdinalIgnoreCase);
@@ -347,92 +349,15 @@ internal static class LauncherUpdateInstaller
         // Cleanup is deliberately outside the install/rollback transaction. It
         // runs only after the new Hub has passed startup verification and the
         // journal is committed; a busy cache file must never undo an update.
-        progress.Report(new("cleanup", "Removing temporary files from the previous engine", Percent: 100));
-        CleanupSuccessfulUpdate(plan, temporaryFiles);
+        progress.Report(new("cleanup", "Removing completed update downloads", Percent: 100));
+        CleanupSuccessfulUpdate(plan);
         progress.Report(new("completed", "Update complete. Your projects and preferences have been preserved.", Percent: 100));
     }
 
-    private static TemporaryFiles CaptureTemporaryFiles(LauncherUpdatePlan plan)
+    private static void CleanupSuccessfulUpdate(LauncherUpdatePlan plan)
     {
-        var root = LauncherInstallationPaths.ResolveTemporaryDirectory(plan.InstallationRoot);
-        var files = new List<TemporaryFile>();
-        var directories = new List<string>();
-        try
-        {
-            EnsureNoReparsePoints(root);
-            if (!Directory.Exists(root)) return new(root, files, directories);
-            CaptureDirectory(root);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
-        { AppendLog(plan, $"Temporary file scan: {exception.Message}"); }
-        return new(root, files, directories);
-
-        void CaptureDirectory(string directory)
-        {
-            // A test, custom deployment, or interrupted recovery may keep its
-            // workspace under Temp. Never let cache cleanup touch that subtree.
-            if (IsWithin(plan.WorkspaceRoot, directory)) return;
-            try
-            {
-                EnsureNoReparsePoints(directory);
-                // Previous failed updates can also have recovery workspaces in
-                // Temp. Their journal owns all descendants, including backups.
-                if (File.Exists(Path.Combine(directory, "install-journal.json"))) return;
-                foreach (var path in Directory.EnumerateFileSystemEntries(directory))
-                {
-                    try
-                    {
-                        if (IsWithin(plan.WorkspaceRoot, path)) continue;
-                        var attributes = File.GetAttributes(path);
-                        if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
-                        if ((attributes & FileAttributes.Directory) != 0) CaptureDirectory(path);
-                        else
-                        {
-                            var info = new FileInfo(path);
-                            files.Add(new(path, info.Length, info.LastWriteTimeUtc.Ticks, info.CreationTimeUtc.Ticks));
-                        }
-                    }
-                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                    { AppendLog(plan, $"Temporary file scan: {path}: {exception.Message}"); }
-                }
-                directories.Add(directory);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
-            { AppendLog(plan, $"Temporary directory scan: {directory}: {exception.Message}"); }
-        }
-    }
-
-    private static void CleanupSuccessfulUpdate(LauncherUpdatePlan plan, TemporaryFiles snapshot)
-    {
-        foreach (var file in snapshot.Files)
-        {
-            try
-            {
-                if (!IsWithin(snapshot.Root, file.Path) || IsWithin(plan.WorkspaceRoot, file.Path)) continue;
-                EnsureNoReparsePoints(file.Path);
-                var current = new FileInfo(file.Path);
-                // Restarting Hub can create or reopen logs at the same path.
-                // Keep every new or changed file from this fresh session.
-                if (!current.Exists || current.Length != file.Length || current.LastWriteTimeUtc.Ticks != file.LastWriteUtcTicks ||
-                    current.CreationTimeUtc.Ticks != file.CreationUtcTicks) continue;
-                if ((current.Attributes & FileAttributes.ReadOnly) != 0) current.IsReadOnly = false;
-                File.Delete(file.Path);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
-            { AppendLog(plan, $"Temporary file cleanup: {file.Path}: {exception.Message}"); }
-        }
-        foreach (var directory in snapshot.Directories)
-        {
-            try
-            {
-                if (!IsWithin(snapshot.Root, directory) || IsWithin(plan.WorkspaceRoot, directory)) continue;
-                EnsureNoReparsePoints(directory);
-                if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
-            { AppendLog(plan, $"Temporary directory cleanup: {directory}: {exception.Message}"); }
-        }
-
+        // Temp also owns portable SDK caches and active tool data. An update
+        // may remove only its completed downloads and rollback copies.
         // Keep the tiny committed journal/log and the currently running updater.
         // Downloads and rollback copies are no longer needed after success.
         foreach (var relative in new[] { "staging", "partial", "backup" })
@@ -492,15 +417,8 @@ internal static class LauncherUpdateInstaller
 
     internal static void ValidatePlan(LauncherUpdatePlan plan)
     {
-        if (string.IsNullOrWhiteSpace(plan.InstallationRoot) || string.IsNullOrWhiteSpace(plan.WorkspaceRoot) ||
-            !Path.IsPathFullyQualified(plan.InstallationRoot) || !Path.IsPathFullyQualified(plan.WorkspaceRoot))
-            throw new InvalidDataException("The installation and workspace must be absolute paths.");
+        LauncherUpdateWorkspace.Validate(plan.InstallationRoot, plan.WorkspaceRoot);
         var root = Path.GetFullPath(plan.InstallationRoot);
-        var workspace = Path.GetFullPath(plan.WorkspaceRoot);
-        if (IsWithin(root, workspace) || IsWithin(workspace, root))
-            throw new InvalidDataException("The update workspace must be outside the installation directory.");
-        EnsureNoReparsePoints(root);
-        EnsureNoReparsePoints(workspace);
         if (!IsSha(plan.CommitSha) || !IsSha(plan.EngineTreeSha)) throw new InvalidDataException("The update is not pinned to a valid Git commit and tree.");
         var files = new Dictionary<string, LauncherUpdateFile>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in plan.Files)
@@ -546,6 +464,9 @@ internal static class LauncherUpdateInstaller
         if (string.IsNullOrWhiteSpace(relative) || relative.Contains('\\') || Path.IsPathRooted(relative))
             throw new InvalidDataException($"Invalid relative update path: {relative}");
         var segments = relative.Split('/');
+        if (segments[0].Equals("Cache", StringComparison.OrdinalIgnoreCase) ||
+            segments[0].Equals("Projects", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"Refusing to modify protected user data: {relative}");
         foreach (var segment in segments)
         {
             if (segment is "" or "." or ".." || segment.EndsWith('.') || segment.EndsWith(' ') ||
@@ -805,8 +726,6 @@ internal static class LauncherUpdateInstaller
     private sealed record ProcessIdentity(int Id, long StartTimeUtcTicks, string ExecutablePath);
     private sealed record PendingInstallation(string PlanPath);
     private sealed record InstallerReady(int ProcessId, string Token);
-    private sealed record TemporaryFile(string Path, long Length, long LastWriteUtcTicks, long CreationUtcTicks);
-    private sealed record TemporaryFiles(string Root, List<TemporaryFile> Files, List<string> Directories);
     private sealed record JournalEntry(string Path, bool Existed);
     private sealed record InstallJournal
     {

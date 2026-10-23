@@ -2,6 +2,9 @@
 
 本包提供 Player 构建与发布流程。依赖见 package.yaml。
 
+同一 Hub 下的工程通过 `Hub/Cache/ContentPublishLocks` 协调对同一输出包的并发发布。
+该目录仅在发布时创建，锁释放后保留协调文件；不要在构建进行中删除此缓存目录。
+
 Player 与热资源默认输出到当前工程的 `Build` 目录，分别为 `Build/<player>` 和 `Build/hotres`。
 编辑器菜单与构建 API 使用相同的路径校验：工程内部只允许 `Build` 及其子目录，
 工程根目录、父目录以及 `Assets` 等其他工程内部目录不能作为 Player 替换目标。

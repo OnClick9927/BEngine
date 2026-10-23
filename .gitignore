@@ -18,7 +18,9 @@ Temp/
 # 发行版的本地编辑器数据
 /Engine/EditorData/
 /Engine/Preferences/
+/Engine/Cache/
 /Engine/Temp/
+/Engine/Projects/
 
 # 引擎与 Hub 导出时的暂存、回滚文件
 /Engine/.BEgine.publish-staging/

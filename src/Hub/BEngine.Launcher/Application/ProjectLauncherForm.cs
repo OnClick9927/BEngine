@@ -991,7 +991,7 @@ internal sealed partial class ProjectLauncherForm : Form
         if (!string.IsNullOrWhiteSpace(preferred) && Path.IsPathFullyQualified(preferred)) return preferred;
         var recent = _settings.Projects.FirstOrDefault(project => Directory.Exists(project.Path));
         if (recent is not null && Directory.GetParent(recent.Path) is { } parent) return parent.FullName;
-        return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        return Path.Combine(BEngine.Tooling.ToolEnvironment.InstallationDirectory, "Projects");
     }
 
     private LauncherProjectRecord? SelectedProject =>

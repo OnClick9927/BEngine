@@ -463,6 +463,7 @@ public static class ProjectScriptCompiler
             CreateNoWindow = true
         };
         request.EnvironmentVariables["DOTNET_CLI_UI_LANGUAGE"] = "en-US";
+        BEngine.Tooling.ToolEnvironment.ApplyToDotNetBuild(request.EnvironmentVariables);
         foreach (var argument in new[]
                  {
                      "build", projectPath, "--nologo", "--disable-build-servers", "-m:1", "-nr:false",

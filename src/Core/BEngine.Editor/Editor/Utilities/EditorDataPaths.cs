@@ -55,15 +55,11 @@ public static class EditorDataPaths
     private static string Initialize()
     {
         var root = ResolveRootPath();
-        FileSystem.CreateDirectory(root);
         MigrateTempData(root);
         MigrateUnversionedPreferences(root, EngineVersion.Current);
         MigrateExportData(root);
         MigrateRootPreferences(root);
         MigrateLegacyData(root);
-        FileSystem.CreateDirectory(ResolveTempPath(root));
-        FileSystem.CreateDirectory(Paths.Combine(EnginePreferencesDirectory(root, EngineVersion.Current), "Themes"));
-        FileSystem.CreateDirectory(Paths.Combine(root, "Preferences", "Hub"));
         return root;
     }
 
@@ -72,15 +68,7 @@ public static class EditorDataPaths
 
     private static string ResolveTempPath(string root)
     {
-        var parent = ParentDirectory(root);
-        if (Paths.GetFileName(Paths.TrimEndingDirectorySeparator(root)).Equals("Engine", StringComparison.OrdinalIgnoreCase) &&
-            parent is not null &&
-            FileSystem.FileExists(Paths.Combine(parent, "src", "BEngine.sln")) &&
-            ParentDirectory(parent) is { } repository)
-            return Paths.Combine(repository, "Temp");
-
-        return Paths.Combine(Paths.GetFileName(Paths.TrimEndingDirectorySeparator(root))
-            .Equals("Engine", StringComparison.OrdinalIgnoreCase) ? parent ?? root : root, "Temp");
+        return Paths.Combine(root, "Temp");
     }
 
     private static void MigrateTempData(string root)
@@ -120,6 +108,8 @@ public static class EditorDataPaths
         var sources = FileSystem.EnumerateFiles(preferencesRoot, "*", SearchOption.TopDirectoryOnly).ToList();
         var legacyDirectories = FileSystem.EnumerateDirectories(preferencesRoot, "*", SearchOption.TopDirectoryOnly)
             .Where(directory => !Paths.GetFileName(directory).Equals("Hub", StringComparison.OrdinalIgnoreCase) &&
+                                !Paths.GetFileName(directory).Equals("Codex", StringComparison.OrdinalIgnoreCase) &&
+                                !Paths.GetFileName(directory).Equals("Tools", StringComparison.OrdinalIgnoreCase) &&
                                 !Paths.GetFileName(directory).StartsWith("BEgine-", StringComparison.OrdinalIgnoreCase))
             .ToArray();
         foreach (var directory in legacyDirectories)
@@ -146,6 +136,8 @@ public static class EditorDataPaths
 
     private static string ResolveRootPath()
     {
+        var installation = Platform.GetEnvironmentVariable(BEngine.Tooling.ToolEnvironment.HubDirectoryVariable);
+        if (!string.IsNullOrWhiteSpace(installation)) return Paths.GetFullPath(installation);
         var configured = Platform.GetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH");
         if (!string.IsNullOrWhiteSpace(configured)) return Paths.GetFullPath(configured);
 

@@ -10,12 +10,19 @@ namespace BEngine.Testing.Editor;
 public static class PlayerTestSession
 {
     /// <summary>Runs an already-built device/browser Player against a prepared main content directory.</summary>
+    public static Task<TestRunResult> RunBuiltPlayerAsync(PlayerBuildResult build, string contentDirectory, string resultPath,
+        bool collectCoverage = false, string androidApplicationIdentifier = "com.bengine.game", IReadOnlyCollection<string>? testIds = null, CancellationToken cancellationToken = default) =>
+        RunBuiltPlayerAsync(build, contentDirectory, resultPath, EditorApplication.projectPath,
+            collectCoverage, androidApplicationIdentifier, testIds, cancellationToken);
+
+    /// <summary>Runs an already-built Player for an explicit project, including when no editor project is open.</summary>
     public static async Task<TestRunResult> RunBuiltPlayerAsync(PlayerBuildResult build, string contentDirectory, string resultPath,
-        bool collectCoverage = false, string androidApplicationIdentifier = "com.bengine.game", IReadOnlyCollection<string>? testIds = null, CancellationToken cancellationToken = default)
+        string projectPath, bool collectCoverage = false, string androidApplicationIdentifier = "com.bengine.game", IReadOnlyCollection<string>? testIds = null, CancellationToken cancellationToken = default)
     {
         if (!PlayerTestLaunchers.TryGet(build.Target.TargetId, out var launcher)) throw new NotSupportedException("This target has no device/browser test launcher.");
         await using var server = LoopbackContentServer.Start(contentDirectory);
-        var result = await launcher(new(build, server.BaseUrl, resultPath, collectCoverage, testIds) { AndroidApplicationIdentifier = androidApplicationIdentifier }, cancellationToken);
+        var result = await launcher(new(build, server.BaseUrl, resultPath, collectCoverage, testIds)
+            { AndroidApplicationIdentifier = androidApplicationIdentifier, ProjectPath = projectPath }, cancellationToken);
         if (result.Coverage is not null) CodeCoverage.Merge(result.Coverage);
         return result;
     }
@@ -81,7 +88,7 @@ public static class PlayerTestSession
         if (PlayerTestLaunchers.TryGet(build.Target.TargetId, out var launcher))
         {
             var deviceResult = await launcher(new(build, server.BaseUrl, resultPath, collectCoverage, testIds)
-                { AndroidApplicationIdentifier = request.AndroidApplicationIdentifier }, cancellationToken).ConfigureAwait(false);
+                { AndroidApplicationIdentifier = request.AndroidApplicationIdentifier, ProjectPath = projectPath }, cancellationToken).ConfigureAwait(false);
             if (deviceResult.Coverage is not null) CodeCoverage.Merge(deviceResult.Coverage);
             return deviceResult;
         }

@@ -8,7 +8,9 @@ internal static class LauncherDataPaths
 
     private static string Initialize()
     {
-        var configured = Environment.GetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH");
+        var configured = Environment.GetEnvironmentVariable("BENGINE_HUB_DIRECTORY") is { Length: > 0 } hubDirectory
+            ? hubDirectory
+            : Environment.GetEnvironmentVariable("BENGINE_EDITOR_DATA_PATH");
         var root = string.IsNullOrWhiteSpace(configured) ? LauncherInstallationPaths.ResolveRoot() : Path.GetFullPath(configured);
         var preferences = EnsureDirectory(Path.Combine(root, "Preferences", "Hub"));
         var destination = Path.Combine(preferences, "LauncherSettings.yaml");

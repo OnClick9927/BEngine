@@ -197,6 +197,7 @@ internal sealed class EditorHotUpdateSession : IEditorHotUpdateSession
         services.AddSingleton(fileSystem);
         services.AddSingleton(pathService);
         services.AddSingleton(platformService);
+        services.AddSingleton(EditorServiceAccess.GetRequiredService<IApplicationPaths>());
         services.AddSingleton(applicationPaths);
         var runtimeAssemblies = DiscoverRuntimeAssemblies(hotAssemblies);
         services.AddBEngine(

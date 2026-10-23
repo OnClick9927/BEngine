@@ -4,7 +4,11 @@ namespace BEngine.Testing.Editor;
 
 public sealed record PlayerTestLaunchRequest(PlayerBuildResult Build, string ContentUrl, string ResultPath,
     bool CollectCoverage, IReadOnlyCollection<string>? TestIds)
-{ public string AndroidApplicationIdentifier { get; init; } = "com.bengine.game"; }
+{
+    public string AndroidApplicationIdentifier { get; init; } = "com.bengine.game";
+    /// <summary>The owning project. Browser profiles and other test intermediates belong to its Temp directory.</summary>
+    public string ProjectPath { get; init; } = string.Empty;
+}
 
 /// <summary>Device/browser runners can install, launch and return results without changing the test pipeline.</summary>
 public static class PlayerTestLaunchers

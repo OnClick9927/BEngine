@@ -237,6 +237,7 @@ internal sealed partial class ProjectLauncherForm
 
     private static void ConfigureEditorEnvironment(ProcessStartInfo start, DotNetEnvironmentSnapshot environment)
     {
+        BEngine.Tooling.ToolEnvironment.ApplyTo(start.Environment);
         if (environment.RuntimeRoot is { Length: > 0 } runtimeRoot)
         {
             start.Environment["DOTNET_ROOT_X64"] = runtimeRoot;

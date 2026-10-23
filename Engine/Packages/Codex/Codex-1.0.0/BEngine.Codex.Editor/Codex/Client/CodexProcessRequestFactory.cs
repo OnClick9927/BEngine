@@ -4,14 +4,8 @@ namespace BEngine.Editor.Codex;
 
 internal static class CodexProcessRequestFactory
 {
-    internal static string ResolveHome(string projectRoot)
-    {
-        var configured = EditorHostServices.Platform.GetEnvironmentVariable("CODEX_HOME");
-        if (string.IsNullOrWhiteSpace(configured))
-            return EditorHostServices.Paths.Combine(EditorHostServices.Platform.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
-        return EditorHostServices.Paths.GetFullPath(EditorHostServices.Paths.IsPathRooted(configured)
-            ? configured : EditorHostServices.Paths.Combine(projectRoot, configured));
-    }
+    internal static string ResolveHome() =>
+        EditorHostServices.Paths.Combine(EditorDataPaths.rootPath, "Preferences", "Codex");
 
     internal static ProcessHostRequest Create(string executable, string workingDirectory)
     {
@@ -50,7 +44,7 @@ internal static class CodexProcessRequestFactory
             CreateNoWindow = true
         };
         var searchPath = CodexExecutableResolver.BuildEffectiveSearchPath();
-        request.EnvironmentVariables["CODEX_HOME"] = ResolveHome(workingDirectory);
+        request.EnvironmentVariables["CODEX_HOME"] = ResolveHome();
         if (searchPath.Length > 0) request.EnvironmentVariables["PATH"] = searchPath;
         return request;
     }

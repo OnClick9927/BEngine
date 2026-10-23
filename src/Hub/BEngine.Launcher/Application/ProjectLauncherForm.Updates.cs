@@ -17,8 +17,8 @@ internal sealed partial class ProjectLauncherForm
     private readonly Label _updateStage = new();
     private readonly Label _updateDetail = new();
     private readonly Label _updateFile = new();
-    private readonly Label _updateNetwork = new();
     private readonly TableLayoutPanel _updateDetailRows = new();
+    private readonly TableLayoutPanel _updateProgressRow = new();
     private readonly Label _updateSummary = new();
     private readonly Label _updateInstallation = new();
     private readonly ProgressBar _updateProgress = new();
@@ -38,6 +38,7 @@ internal sealed partial class ProjectLauncherForm
     private bool _movingUpdateSplitter;
     private double _updateSplitRatio = 0.32;
     private UpdatePageMode _updatePageMode;
+    private LauncherUpdateProgress? _updateLastProgress;
     private enum UpdatePageMode { Idle, Checking, Preview, DownloadFailed, Downloading, Installing, Result, Recovery, Waiting }
 
     private void BuildUpdatesPage()
@@ -78,7 +79,7 @@ internal sealed partial class ProjectLauncherForm
             button.MinimumSize = new Size(106, 35);
             button.Padding = new Padding(12, 0, 12, 0);
             button.Margin = new Padding(0, 0, 10, 0);
-            _updateActions.Controls.Add(button);
+            if (button != _cancelUpdateButton) _updateActions.Controls.Add(button);
         }
         _checkUpdateButton.Click += async (_, _) => await CheckForUpdatesAsync();
         _installUpdateButton.Click += async (_, _) => await InstallPendingUpdateAsync();
@@ -101,17 +102,29 @@ internal sealed partial class ProjectLauncherForm
         _updateStage.Text = "Ready to check for updates";
         _updateStage.Margin = Padding.Empty;
         layout.Controls.Add(_updateStage, 0, 2);
+        _updateProgressRow.Dock = DockStyle.Fill;
+        _updateProgressRow.Margin = Padding.Empty;
+        _updateProgressRow.BackColor = PanelBackground;
+        _updateProgressRow.ColumnCount = 2;
+        _updateProgressRow.RowCount = 1;
+        _updateProgressRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _updateProgressRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _updateProgressRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _updateProgress.Dock = DockStyle.Fill;
         _updateProgress.Maximum = 1000;
-        _updateProgress.Margin = new Padding(0, 0, 0, 3);
-        layout.Controls.Add(_updateProgress, 0, 3);
+        _updateProgressRow.Controls.Add(_updateProgress, 0, 0);
+        _cancelUpdateButton.Dock = DockStyle.Fill;
+        _cancelUpdateButton.Margin = new Padding(12, 0, 0, 0);
+        _updateProgressRow.Controls.Add(_cancelUpdateButton, 1, 0);
+        layout.Controls.Add(_updateProgressRow, 0, 3);
         _updateDetailRows.Dock = DockStyle.Fill;
         _updateDetailRows.Margin = new Padding(0, 5, 0, 3);
         _updateDetailRows.BackColor = PanelBackground;
         _updateDetailRows.ColumnCount = 1;
-        _updateDetailRows.RowCount = 3;
+        _updateDetailRows.RowCount = 2;
         _updateDetailRows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        foreach (var label in new[] { _updateDetail, _updateFile, _updateNetwork })
+        _updateFile.Font = new DrawingFont("Segoe UI", 9f);
+        foreach (var label in new[] { _updateDetail, _updateFile })
         {
             label.Dock = DockStyle.Fill;
             label.ForeColor = SecondaryText;
@@ -191,6 +204,8 @@ internal sealed partial class ProjectLauncherForm
         DpiChanged += (_, _) => ResizeUpdateLayout();
         _updateStage.TextChanged += (_, _) =>
         {
+            _updateDetailToolTip.SetToolTip(_updateStage, _updateStage.Text);
+            _updateStage.AccessibleDescription = _updateStage.Text;
             if (!HasFixedUpdateStatusRows) ResizeUpdateLayout();
         };
         _updateDetail.TextChanged += (_, _) =>
@@ -199,12 +214,11 @@ internal sealed partial class ProjectLauncherForm
             _updateDetail.AccessibleDescription = _updateDetail.Text;
             if (!HasFixedUpdateStatusRows) ResizeUpdateLayout();
         };
-        foreach (var label in new[] { _updateFile, _updateNetwork })
-            label.TextChanged += (_, _) =>
-            {
-                _updateDetailToolTip.SetToolTip(label, label.Text);
-                label.AccessibleDescription = label.Text;
-            };
+        _updateFile.TextChanged += (_, _) =>
+        {
+            _updateDetailToolTip.SetToolTip(_updateFile, _updateFile.Text);
+            _updateFile.AccessibleDescription = _updateFile.Text;
+        };
         FormClosing += (_, _) => _updateCancellation?.Cancel();
         _updateCompletionTimer.Tick += (_, _) => InitializeUpdateRecovery();
         _updateProgressTimer.Tick += (_, _) =>
@@ -230,16 +244,18 @@ internal sealed partial class ProjectLauncherForm
         _updatePageMode = mode;
         if (mode is not (UpdatePageMode.Checking or UpdatePageMode.Downloading)) _updateProgressBuffer.Clear();
         var busy = mode is UpdatePageMode.Checking or UpdatePageMode.Downloading or UpdatePageMode.Installing;
-        _checkUpdateButton.Visible = true;
-        _installUpdateButton.Visible = mode is (UpdatePageMode.Preview or UpdatePageMode.DownloadFailed
-            or UpdatePageMode.Downloading or UpdatePageMode.Installing) && _pendingUpdate?.HasUpdates == true;
-        _cancelUpdateButton.Visible = mode is UpdatePageMode.Checking or UpdatePageMode.Downloading;
+        _checkUpdateButton.Visible = mode is not (UpdatePageMode.Downloading or UpdatePageMode.Installing or UpdatePageMode.Waiting);
+        _installUpdateButton.Visible = mode is (UpdatePageMode.Preview or UpdatePageMode.DownloadFailed) && _pendingUpdate?.HasUpdates == true;
+        _cancelUpdateButton.Visible = mode is UpdatePageMode.Checking or UpdatePageMode.Downloading or UpdatePageMode.Installing;
+        if (mode is UpdatePageMode.Installing or UpdatePageMode.Waiting) _cancelUpdateButton.Enabled = false;
         _recoverUpdateButton.Visible = mode == UpdatePageMode.Recovery;
+        _updateActions.Visible = mode is not (UpdatePageMode.Downloading or UpdatePageMode.Installing or UpdatePageMode.Waiting);
         _updateStage.Visible = HasFixedUpdateStatusRows || mode != UpdatePageMode.Idle && !string.IsNullOrWhiteSpace(_updateStage.Text);
-        _updateProgress.Visible = busy || mode == UpdatePageMode.Waiting;
+        _updateProgressRow.Visible = _updateProgress.Visible = busy || mode == UpdatePageMode.Waiting;
         _updateDetailRows.Visible = mode is not (UpdatePageMode.Idle or UpdatePageMode.Preview);
-        _updateFile.Visible = _updateNetwork.Visible = HasFixedUpdateStatusRows;
-        if (!HasFixedUpdateStatusRows) _updateFile.Text = _updateNetwork.Text = string.Empty;
+        _updateDetail.Visible = !HasFixedUpdateStatusRows;
+        _updateFile.Visible = HasFixedUpdateStatusRows;
+        if (!HasFixedUpdateStatusRows) _updateFile.Text = string.Empty;
         _updateSplit.Visible = mode != UpdatePageMode.Idle;
         _updateCommit.Visible = true;
         _updateChanges.Visible = true;
@@ -255,10 +271,13 @@ internal sealed partial class ProjectLauncherForm
         _updateChanges.ReLocalize(key => T(key));
         _updateStatistics.SetPresentation(_palette, key => T(key));
         _updateDetailRows.BackColor = PanelBackground;
+        _updateProgressRow.BackColor = PanelBackground;
         _updateSplit.BackColor = Border;
         _updateSplit.Panel1.BackColor = _updateSplit.Panel2.BackColor = PanelBackground;
         UpdateCommitHistory();
         UpdateChangeSummary();
+        if (_updateLastProgress is { } progress && _updatePageMode is UpdatePageMode.Checking or UpdatePageMode.Downloading)
+            ReportUpdateProgress(progress);
         ResizeUpdateLayout();
     }
 
@@ -343,25 +362,28 @@ internal sealed partial class ProjectLauncherForm
                     new Size(Math.Max(1, width - Scale(8)), int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
                 return Math.Clamp(measured.Height, minimumLines * lineHeight, maximumLines * lineHeight) + Scale(padding);
             }
-            var actionHeight = new[] { _checkUpdateButton, _installUpdateButton, _cancelUpdateButton, _recoverUpdateButton }
+            var actionHeight = new[] { _checkUpdateButton, _installUpdateButton, _recoverUpdateButton }
                 .Max(button => Math.Max(button.MinimumSize.Height, button.GetPreferredSize(Size.Empty).Height)) + Scale(8);
-            // Keep statistics, path and connection status in separate fixed rows,
-            // including before the first callback, so long paths cannot hide status.
-            for (var row = 0; row < _updateDetailRows.RowStyles.Count; row++)
-            {
-                var style = _updateDetailRows.RowStyles[row];
-                style.SizeType = !HasFixedUpdateStatusRows && row == 0 ? SizeType.Percent : SizeType.Absolute;
-                style.Height = HasFixedUpdateStatusRows ? _updateDetail.Font.Height : row == 0 ? 100 : 0;
-            }
+            var progressHeight = Math.Max(Scale(35), Math.Max(_cancelUpdateButton.MinimumSize.Height,
+                _cancelUpdateButton.GetPreferredSize(Size.Empty).Height));
+            var progressInset = Math.Max(0, (progressHeight - Scale(18)) / 2);
+            _updateProgress.Margin = new Padding(0, progressInset, 0, progressInset);
+            _cancelUpdateButton.Margin = new Padding(Scale(12), 0, 0, 0);
+            // Only the path is shown below the progress bar while busy. Both
+            // it and the combined status/metrics heading stay on one fixed line.
+            _updateDetailRows.RowStyles[0].SizeType = HasFixedUpdateStatusRows ? SizeType.Absolute : SizeType.Percent;
+            _updateDetailRows.RowStyles[0].Height = HasFixedUpdateStatusRows ? 0 : 100;
+            _updateDetailRows.RowStyles[1].SizeType = SizeType.Absolute;
+            _updateDetailRows.RowStyles[1].Height = HasFixedUpdateStatusRows ? _updateFile.Font.Height : 0;
             float[] heights =
             [
                 TextHeight(_updateInstallation, 1, 1, 8),
-                actionHeight,
+                _updatePageMode is UpdatePageMode.Downloading or UpdatePageMode.Installing or UpdatePageMode.Waiting ? 0 : actionHeight,
                 HasFixedUpdateStatusRows ? _updateStage.Font.Height + Scale(4)
                     : _updatePageMode != UpdatePageMode.Idle && !string.IsNullOrWhiteSpace(_updateStage.Text)
                     ? TextHeight(_updateStage, 1, 2, 4) : 0,
-                busy || _updatePageMode == UpdatePageMode.Waiting ? Scale(18) : 0,
-                HasFixedUpdateStatusRows ? _updateDetail.Font.Height * 3 + Scale(8)
+                busy || _updatePageMode == UpdatePageMode.Waiting ? progressHeight : 0,
+                HasFixedUpdateStatusRows ? _updateFile.Font.Height + Scale(8)
                     : _updatePageMode is not (UpdatePageMode.Idle or UpdatePageMode.Preview) && !string.IsNullOrEmpty(_updateDetail.Text)
                     ? TextHeight(_updateDetail, 1, 4, 8) : 0,
                 0
@@ -399,7 +421,7 @@ internal sealed partial class ProjectLauncherForm
         else _updateProgressTimer.Stop();
         _checkUpdateButton.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery;
         _installUpdateButton.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery && _pendingUpdate?.HasUpdates == true;
-        _cancelUpdateButton.Enabled = busy;
+        _cancelUpdateButton.Enabled = busy && _updatePageMode is UpdatePageMode.Checking or UpdatePageMode.Downloading;
         _recoverUpdateButton.Enabled = !busy;
         RefreshPrimaryNavigation(!busy && !_needsUpdateRecovery);
         _settingsNavigation.Enabled = !busy && !_needsUpdateRecovery;
@@ -411,6 +433,7 @@ internal sealed partial class ProjectLauncherForm
     private void ReportUpdateProgress(LauncherUpdateProgress progress)
     {
         if (IsDisposed || Disposing || _updateCancellation is null || _updateCancellation.IsCancellationRequested) return;
+        _updateLastProgress = progress;
         var title = progress.Stage switch
         {
             "Connecting" => "Connecting to GitHub...",
@@ -421,14 +444,15 @@ internal sealed partial class ProjectLauncherForm
             "Ready" => "Update files are ready",
             _ => progress.Stage
         };
-        SetLocalizedText(_updateStage, title);
         if (progress.Percent is { } percent)
         {
             _updateProgress.Style = ProgressBarStyle.Continuous;
             _updateProgress.Value = (int)Math.Clamp(percent * 10, 0, 1000);
         }
         else _updateProgress.Style = ProgressBarStyle.Marquee;
-        var amount = progress.Total <= 0 ? progress.Completed > 0 ? $"{FormatUpdateBytes(progress.Completed)} · " : string.Empty : progress.Stage is "Downloading" or "Connecting" or "Listing"
+        var byteProgress = progress.Stage is "Downloading" or "Connecting" or "Listing" ||
+            _updatePageMode == UpdatePageMode.Downloading && (progress.Stage is "Verifying" or "Ready") && progress.FilePath is null;
+        var amount = progress.Total <= 0 ? progress.Completed > 0 ? $"{FormatUpdateBytes(progress.Completed)} · " : string.Empty : byteProgress
             ? $"{FormatUpdateBytes(progress.Completed)} / {FormatUpdateBytes(progress.Total)} · "
             : $"{progress.Completed:N0} / {progress.Total:N0} · ";
         var percentage = progress.Percent is { } value ? $"{value:N1}% · " : string.Empty;
@@ -436,9 +460,15 @@ internal sealed partial class ProjectLauncherForm
         var separator = progress.Message.IndexOf(" · ", StringComparison.Ordinal);
         var file = progress.FilePath ?? (separator < 0 ? progress.Message : progress.Message[..separator]);
         var status = progress.Status ?? (separator < 0 ? string.Empty : progress.Message[(separator + 3)..]);
-        _updateDetail.Text = string.IsNullOrEmpty(metrics) ? FormatUpdateBytes(progress.Completed) : metrics;
+        var statusParts = status.Split(" · ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var state = statusParts.Length == 0 ? T(title) : T(statusParts[0]);
+        var diagnostics = statusParts.Length <= 1 ? string.Empty : " · " + string.Join(" · ", statusParts.Skip(1).Select(part => T(part)));
+        // Put transfer totals before optional server/retry details so narrow
+        // windows preserve the numbers the user needs to judge progress.
+        SetLocalizedText(_updateStage, "{0} · {1}{2}", state,
+            string.IsNullOrEmpty(metrics) ? FormatUpdateBytes(progress.Completed) : metrics, diagnostics);
+        _updateDetail.Text = string.Empty;
         _updateFile.Text = progress.FilePath is null ? T(file) : file;
-        _updateNetwork.Text = LocalizeUpdateMessage(status);
     }
 
     private string LocalizeUpdateMessage(string message) => string.Join(" · ", message.Split(" · ").Select(part => T(part)));
@@ -521,7 +551,6 @@ internal sealed partial class ProjectLauncherForm
         SetUpdateBusy(true);
         ReportUpdateProgress(new("Downloading", "Downloading changed files", 0, plan.DownloadBytes,
             plan.DownloadBytes == 0 ? 100 : 0, Status: "Waiting for response"));
-        SetLocalizedText(_updateStage, "Preparing the download...");
         try
         {
             await _updateService.DownloadAsync(plan, _updateProgressBuffer, cancellation.Token);
@@ -532,7 +561,7 @@ internal sealed partial class ProjectLauncherForm
             _updateProgress.Style = ProgressBarStyle.Continuous;
             _updateProgress.Value = 1000;
             _updateDetail.Text = string.Empty;
-            _updateFile.Text = _updateNetwork.Text = string.Empty;
+            _updateFile.Text = string.Empty;
             SetLocalizedText(_updateStage, "Starting the update installer...");
             var language = _localization.Culture.Name;
             var started = await Task.Run(() =>

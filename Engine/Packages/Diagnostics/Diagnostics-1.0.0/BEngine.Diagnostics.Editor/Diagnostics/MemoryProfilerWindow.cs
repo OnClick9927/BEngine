@@ -163,9 +163,13 @@ public sealed class MemoryProfilerWindow : EditorWindow
     private void Save()
     {
         if (_snapshot is null) return;
-        var root = string.IsNullOrWhiteSpace(EditorApplication.projectPath)
-            ? Path.GetTempPath()
-            : Path.Combine(EditorApplication.projectPath, "Temp", "Diagnostics");
+        var projectPath = EditorApplication.projectPath;
+        if (string.IsNullOrWhiteSpace(projectPath))
+        {
+            _status = "Open a project before saving a memory snapshot.";
+            return;
+        }
+        var root = Path.Combine(Path.GetFullPath(projectPath), "Library", "Diagnostics", "Snapshots");
         Directory.CreateDirectory(root);
         var path = Path.Combine(root, $"heap-{DateTime.UtcNow:yyyyMMdd-HHmmss}.bheap.json");
         File.WriteAllText(path, JsonSerializer.Serialize(_snapshot, JsonOptions));
