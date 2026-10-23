@@ -231,7 +231,8 @@ internal sealed partial class ProjectLauncherForm
         if (mode is not (UpdatePageMode.Checking or UpdatePageMode.Downloading)) _updateProgressBuffer.Clear();
         var busy = mode is UpdatePageMode.Checking or UpdatePageMode.Downloading or UpdatePageMode.Installing;
         _checkUpdateButton.Visible = true;
-        _installUpdateButton.Visible = true;
+        _installUpdateButton.Visible = mode is (UpdatePageMode.Preview or UpdatePageMode.DownloadFailed
+            or UpdatePageMode.Downloading or UpdatePageMode.Installing) && _pendingUpdate?.HasUpdates == true;
         _cancelUpdateButton.Visible = mode is UpdatePageMode.Checking or UpdatePageMode.Downloading;
         _recoverUpdateButton.Visible = mode == UpdatePageMode.Recovery;
         _updateStage.Visible = HasFixedUpdateStatusRows || mode != UpdatePageMode.Idle && !string.IsNullOrWhiteSpace(_updateStage.Text);
@@ -239,6 +240,7 @@ internal sealed partial class ProjectLauncherForm
         _updateDetailRows.Visible = mode is not (UpdatePageMode.Idle or UpdatePageMode.Preview);
         _updateFile.Visible = _updateNetwork.Visible = HasFixedUpdateStatusRows;
         if (!HasFixedUpdateStatusRows) _updateFile.Text = _updateNetwork.Text = string.Empty;
+        _updateSplit.Visible = mode != UpdatePageMode.Idle;
         _updateCommit.Visible = true;
         _updateChanges.Visible = true;
         ResizeUpdateLayout();
@@ -365,7 +367,8 @@ internal sealed partial class ProjectLauncherForm
                 0
             ];
             var headerHeight = (int)heights.Sum();
-            heights[5] = Math.Max(Scale(220), _updatesPage.ClientSize.Height - headerHeight - Scale(1));
+            heights[5] = _updatePageMode == UpdatePageMode.Idle ? 0
+                : Math.Max(Scale(220), _updatesPage.ClientSize.Height - headerHeight - Scale(1));
             for (var row = 0; row < heights.Length; row++) _updateLayout.RowStyles[row].Height = heights[row];
             _updateLayout.Height = (int)heights.Sum();
             _updateSplit.SplitterWidth = Scale(7);
@@ -459,6 +462,7 @@ internal sealed partial class ProjectLauncherForm
         {
             var plan = await _updateService.CheckAsync(LauncherInstallationPaths.ResolveRoot(),
                 _updateProgressBuffer, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
             if (IsDisposed || Disposing) return;
             _pendingUpdate = plan;
             RenderUpdatePreview(plan);
@@ -471,8 +475,8 @@ internal sealed partial class ProjectLauncherForm
         {
             if (!IsDisposed)
             {
-                ApplyUpdatePageMode(UpdatePageMode.Result);
-                SetLocalizedText(_updateStage, "Update check cancelled. No files were changed.");
+                ApplyUpdatePageMode(UpdatePageMode.Idle);
+                _updateStage.Text = string.Empty;
                 _updateDetail.Text = string.Empty;
             }
         }

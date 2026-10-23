@@ -1,9 +1,0 @@
-<h1 id="滚动列表性能">滚动列表性能</h1>
-<p><code>ScrollView.scrollOffset</code>、<code>ListView.scrollOffset</code>、<code>TreeView.scrollOffset</code> 只使绘制失效，滚动不再重新计算整棵树的样式和 Flex 布局。<code>ScrollView</code> 布局快照共享节点位置索引，只保存各滚动容器的位移；嵌套滚动和绝对定位使用累计位移，先前返回的快照保持不变。</p>
-<p>滚轮和触摸拖动共用缓存的内容边界，不再逐个线性查找子节点位置。<code>UIRenderCommandList.TryGetRect</code> 使用节点索引；<code>GetMaximumScrollOffset(scroll, scale)</code> 返回逻辑像素中的最大垂直偏移，<code>scale</code> 应与构建命令列表时相同。</p>
-<p>大量按纵坐标顺序排列的叶子节点会建立可见范围索引，绘制时用二分查找定位屏幕内节点。复杂子树或无法建立有序范围索引的布局保留通用遍历，保证 <code>overflow: visible</code> 的子节点不会错误消失。<code>ListView</code>、<code>TreeView</code> 继续只为可见行生成绘制命令；数据源原地修改也会反映到画面。</p>
-<p>鼠标跨行引起的 <code>hover</code>、按下和焦点变化，在样式只修改当前元素的颜色时，局部更新颜色并重绘。包含尺寸、字体等布局声明，或通过祖先状态影响后代的伪类规则，继续使用完整样式和布局更新。文本光标、选区和 TreeView 行悬停只触发重绘。</p>
-<p>自定义控件修改仅影响绘制的状态时，可以调用公开的 <code>VisualElement.MarkDirtyRepaint()</code>。修改布局、样式、层级或可见性时，应继续使用对应属性和方法，使布局缓存正常失效。不要用此方法代替样式属性的失效通知。</p>
-<p>几何缓冲重复上传通过 RHI 的通用 <code>GraphicsMeshUploadCache</code> 去重；滚动造成顶点改变时仍然上传，文字、图片和裁剪不会被冻结。首次创建大型树或修改其尺寸、样式、层级仍需要完整布局；大量数据优先使用 <code>ListView</code> 或 <code>TreeView</code>，避免一次创建全部 UI 节点。</p>
-<p>内联样式动画和 <code>visible</code> 变化会更新布局与绘制，不会重新匹配整棵树的样式表。类名、元素名、层级、样式表和需要完整更新的伪类变化仍使级联失效。视口大小不变时复用样式视口；插入子树及独立计算子树布局后会重新同步，保留媒体查询的行为。</p>
-<p>默认按钮文字在按钮内容区域内水平、垂直居中，显式 <code>textAlign</code> 仍优先。UI 绘制指令作为有序流交给 UI 渲染器，由其按实际文字与图片纹理分批；不再按每条文字的内容拆分外层场景批次。显式元素、祖先或文档的 Material/Atlas 设置仍保留。</p>

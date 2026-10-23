@@ -16,6 +16,9 @@ def build_site(output: Path) -> Path:
     output = output.resolve()
     if output == pages or pages in output.parents:
         raise ValueError("The output directory must be outside Pages.")
+    obsolete = [pages / "documentation", pages / "data" / "documentation.json"]
+    if any(path.exists() for path in obsolete):
+        raise ValueError("Detailed manuals belong to Hub and must not be included in the public website.")
     if output.exists():
         raise ValueError("The output directory already exists. Choose a new directory.")
     if not hub.is_file():

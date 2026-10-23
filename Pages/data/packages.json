@@ -1,402 +1,358 @@
 [
   {
-    "id": "com.bengine.animation",
-    "name": "Animation",
-    "version": "1.1.0",
-    "category": "动画与音频",
+    "name": "动画",
+    "nameEn": "Animation",
     "description": "通过关键帧、动画片段和 Animator 状态机组织 2D 动画，支持预览、录制与曲线编辑。",
-    "docsUrl": "manual.html?product=com.bengine.animation&version=1.1.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Keyframes, animation clips, and Animator state machines for 2D animation.",
+    "categories": [
+      "animation"
+    ]
   },
   {
-    "id": "com.bengine.art-import2d",
-    "name": "Art Import 2D",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "2D 美术导入",
+    "nameEn": "Art Import 2D",
     "description": "导入分层 PSD/PSB 与 Aseprite 文档，保留图层、帧时长及稳定资源引用。",
-    "docsUrl": "manual.html?product=com.bengine.art-import2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Import layered PSD/PSB files and Aseprite documents with stable asset references.",
+    "categories": [
+      "graphics",
+      "assets"
+    ]
   },
   {
-    "id": "com.bengine.asset-bundles",
     "name": "AssetBundles",
-    "version": "1.0.0",
-    "category": "构建与发布",
+    "nameEn": "AssetBundles",
     "description": "按资源包增量构建，提供资源加载、远程更新、完整性校验、修复与回滚。",
-    "docsUrl": "manual.html?product=com.bengine.asset-bundles&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Incremental package builds, asset loading, updates, integrity checks, and repairs.",
+    "categories": [
+      "assets"
+    ]
   },
   {
-    "id": "com.bengine.audio",
-    "name": "Audio",
-    "version": "1.0.0",
-    "category": "动画与音频",
+    "name": "音频",
+    "nameEn": "Audio",
     "description": "导入 WAV、MP3 与 Ogg Vorbis，使用音源、混音组、效果和混音快照组织 2D 声音。",
-    "docsUrl": "manual.html?product=com.bengine.audio&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "2D audio sources, mixer groups, effects, and snapshots for WAV, MP3, and Ogg Vorbis.",
+    "categories": [
+      "media"
+    ]
   },
   {
-    "id": "com.bengine.cinemachine",
     "name": "Cinemachine 2D",
-    "version": "1.0.0",
-    "category": "动画与音频",
+    "nameEn": "Cinemachine 2D",
     "description": "用虚拟相机实现 2D 跟随、取景、相机混合、边界约束和震动。",
-    "docsUrl": "manual.html?product=com.bengine.cinemachine&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Virtual cameras for 2D following, framing, blends, confinement, and camera shake.",
+    "categories": [
+      "animation"
+    ]
   },
   {
-    "id": "com.bengine.codex",
     "name": "Codex",
-    "version": "1.0.0",
-    "category": "UI 与工具",
+    "nameEn": "Codex",
     "description": "在编辑器中使用 Codex 集成与辅助工具，连接代码和项目工作流程。",
-    "docsUrl": "manual.html?product=com.bengine.codex&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Codex integration and assistant tools inside the editor.",
+    "categories": [
+      "development"
+    ]
   },
   {
-    "id": "com.bengine.coroutines",
-    "name": "Coroutines",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "协程",
+    "nameEn": "Coroutines",
     "description": "用协程与等待指令编排分帧逻辑、定时调用和异步流程。",
-    "docsUrl": "manual.html?product=com.bengine.coroutines&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Coordinate frame-based logic, timed calls, and asynchronous flows with coroutines.",
+    "categories": [
+      "development"
+    ]
   },
   {
-    "id": "com.bengine.diagnostics",
-    "name": "Diagnostics",
-    "version": "1.0.0",
-    "category": "UI 与工具",
+    "name": "诊断工具",
+    "nameEn": "Diagnostics",
     "description": "分析 CPU/GPU 与帧提交，检查对象堆快照，并连接经身份验证的远程 Player 诊断。",
-    "docsUrl": "manual.html?product=com.bengine.diagnostics&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "CPU/GPU profiling, frame debugging, memory inspection, and remote Player diagnostics.",
+    "categories": [
+      "development"
+    ]
   },
   {
-    "id": "com.bengine.hot-update",
-    "name": "HotUpdate",
-    "version": "1.0.0",
-    "category": "构建与发布",
+    "name": "热更新",
+    "nameEn": "HotUpdate",
     "description": "提供热更新运行时服务与程序集加载，配合资源发布流程切换业务内容。",
-    "docsUrl": "manual.html?product=com.bengine.hot-update&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Runtime services and assembly loading for updating game code and content.",
+    "categories": [
+      "assets"
+    ]
   },
   {
-    "id": "com.bengine.html-ui-converter",
-    "name": "HtmlUIConverter",
-    "version": "1.0.0",
-    "category": "UI 与工具",
+    "name": "HTML 界面转换",
+    "nameEn": "HtmlUIConverter",
     "description": "将 HTML 与 CSS 转换为 UIElements 文档，辅助复用界面结构和样式。",
-    "docsUrl": "manual.html?product=com.bengine.html-ui-converter&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Convert HTML and CSS into UIElements documents to reuse interface structure and styles.",
+    "categories": [
+      "ui"
+    ]
   },
   {
-    "id": "com.bengine.input-actions",
-    "name": "Input Actions",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "输入动作",
+    "nameEn": "Input Actions",
     "description": "配置键盘与手柄动作、设备配对、多点触摸手势和交互式按键重绑定。",
-    "docsUrl": "manual.html?product=com.bengine.input-actions&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Keyboard and gamepad actions, device pairing, touch gestures, and interactive rebinding.",
+    "categories": [
+      "ui"
+    ]
   },
   {
-    "id": "com.bengine.jobs",
-    "name": "Jobs",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "任务调度",
+    "nameEn": "Jobs",
     "description": "编排任务依赖与分帧批处理；独立后台 API 可处理复制的纯数据任务。",
-    "docsUrl": "manual.html?product=com.bengine.jobs&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Schedule dependencies and frame-based batches, with a separate API for pure-data workers.",
+    "categories": [
+      "development"
+    ]
   },
   {
-    "id": "com.bengine.lighting2d",
-    "name": "Lighting2D",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "2D 光照",
+    "nameEn": "Lighting2D",
     "description": "为 2D 场景添加灯光、环境光与阴影，使用配套着色器参与渲染。",
-    "docsUrl": "manual.html?product=com.bengine.lighting2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Add 2D lights, ambient lighting, and shadows to your scenes.",
+    "categories": [
+      "graphics"
+    ]
   },
   {
-    "id": "com.bengine.line-rendering2d",
-    "name": "LineRendering2D",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "2D 线条与拖尾",
+    "nameEn": "LineRendering2D",
     "description": "通过线段与拖尾组件绘制动态几何，并在编辑器中查看 Gizmos。",
-    "docsUrl": "manual.html?product=com.bengine.line-rendering2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Draw dynamic geometry with line and trail components and editor gizmos.",
+    "categories": [
+      "graphics"
+    ]
   },
   {
-    "id": "com.bengine.localization",
-    "name": "Localization",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "本地化",
+    "nameEn": "Localization",
     "description": "管理语言表、格式化文本、本地化资源与属性绑定，支持 CSV 交换和键生成。",
-    "docsUrl": "manual.html?product=com.bengine.localization&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Language tables, formatted text, localized assets, and CSV exchange.",
+    "categories": [
+      "ui"
+    ]
   },
   {
-    "id": "com.bengine.navigation2d",
-    "name": "2D Navigation",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "2D 导航",
+    "nameEn": "2D Navigation",
     "description": "使用 Fix64 网格烘焙、A* 寻路和 Agent 移动，结合障碍裁切与导航链接。",
-    "docsUrl": "manual.html?product=com.bengine.navigation2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Fix64 grid baking, A* pathfinding, agents, obstacles, and navigation links.",
+    "categories": [
+      "physics"
+    ]
   },
   {
-    "id": "com.bengine.networking",
-    "name": "Networking",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "网络",
+    "nameEn": "Networking",
     "description": "通过异步 TCP、UDP 与 WebSocket 客户端连接应用服务。",
-    "docsUrl": "manual.html?product=com.bengine.networking&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Asynchronous TCP, UDP, and WebSocket clients for application services.",
+    "categories": [
+      "development"
+    ]
   },
   {
-    "id": "com.bengine.particle-physics2d",
-    "name": "Particle Physics 2D",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "2D 粒子物理",
+    "nameEn": "Particle Physics 2D",
     "description": "让粒子与 2D 碰撞体进行扫掠碰撞，支持层与触发器过滤。",
-    "docsUrl": "manual.html?product=com.bengine.particle-physics2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Swept particle collisions against 2D colliders with layer and trigger filtering.",
+    "categories": [
+      "graphics",
+      "physics"
+    ]
   },
   {
-    "id": "com.bengine.particles2d",
-    "name": "Particles2D",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "2D 粒子",
+    "nameEn": "Particles2D",
     "description": "制作 2D 粒子发射与运动效果，支持运行时渲染和编辑模式预览。",
-    "docsUrl": "manual.html?product=com.bengine.particles2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Create particle motion and emission effects with runtime rendering and editor previews.",
+    "categories": [
+      "graphics"
+    ]
   },
   {
-    "id": "com.bengine.physics2d",
-    "name": "2D Physics",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "2D 物理",
+    "nameEn": "2D Physics",
     "description": "使用 Fix64 2D 刚体、碰撞体、碰撞与触发器消息，以及射线和范围查询。",
-    "docsUrl": "manual.html?product=com.bengine.physics2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Fix64 rigidbodies, colliders, collision events, and spatial queries.",
+    "categories": [
+      "physics"
+    ]
   },
   {
-    "id": "com.bengine.pixel-perfect2d",
-    "name": "PixelPerfect2D",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "2D 像素对齐",
+    "nameEn": "PixelPerfect2D",
     "description": "对齐像素相机与世界坐标，控制正交尺寸和像素吸附。",
-    "docsUrl": "manual.html?product=com.bengine.pixel-perfect2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Pixel-perfect camera sizing, coordinate alignment, and pixel snapping.",
+    "categories": [
+      "graphics"
+    ]
   },
   {
-    "id": "com.bengine.player",
     "name": "Player",
-    "version": "1.0.0",
-    "category": "构建与发布",
+    "nameEn": "Player",
     "description": "组织独立 Player 生命周期、分阶段启动与按包组合的运行时服务。",
-    "docsUrl": "manual.html?product=com.bengine.player&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Standalone Player lifecycle, staged startup, and package-based runtime composition.",
+    "categories": [
+      "assets"
+    ]
   },
   {
-    "id": "com.bengine.player-build",
-    "name": "PlayerBuild",
-    "version": "1.0.0",
-    "category": "构建与发布",
+    "name": "Player 构建",
+    "nameEn": "PlayerBuild",
     "description": "管理构建配置、Player 发布、资源压缩与裁剪，并生成主包和热更新内容。",
-    "docsUrl": "manual.html?product=com.bengine.player-build&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Build profiles, Player publishing, compression, stripping, and content delivery.",
+    "categories": [
+      "assets"
+    ]
   },
   {
-    "id": "com.bengine.pooling",
-    "name": "Pooling",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "对象池",
+    "nameEn": "Pooling",
     "description": "复用对象与集合，提供预热、有界租用、租约和运行统计。",
-    "docsUrl": "manual.html?product=com.bengine.pooling&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Reuse objects and collections with prewarming, bounded rentals, and usage statistics.",
+    "categories": [
+      "development"
+    ]
   },
   {
-    "id": "com.bengine.postprocessing",
-    "name": "Post Processing",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "后处理",
+    "nameEn": "Post Processing",
     "description": "通过全局或局部 Volume 配置颜色调整、Bloom 与暗角效果。",
-    "docsUrl": "manual.html?product=com.bengine.postprocessing&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Global and local volumes for color adjustments, bloom, and vignette effects.",
+    "categories": [
+      "graphics"
+    ]
   },
   {
-    "id": "com.bengine.property-attributes",
-    "name": "PropertyAttributes",
-    "version": "1.0.0",
-    "category": "UI 与工具",
+    "name": "Inspector 扩展属性",
+    "nameEn": "PropertyAttributes",
     "description": "用扩展属性和自定义字段绘制器改善 Inspector 中的组件配置体验。",
-    "docsUrl": "manual.html?product=com.bengine.property-attributes&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Extended attributes and custom property drawers for clearer Inspector editing.",
+    "categories": [
+      "ui",
+      "development"
+    ]
   },
   {
-    "id": "com.bengine.reactive",
-    "name": "Reactive",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "响应式编程",
+    "nameEn": "Reactive",
     "description": "使用由帧驱动的 Observable 与 Subject API 组织响应式逻辑。",
-    "docsUrl": "manual.html?product=com.bengine.reactive&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Frame-driven Observable and Subject APIs for reactive game logic.",
+    "categories": [
+      "development"
+    ]
   },
   {
-    "id": "com.bengine.shader-graph",
-    "name": "Shader Graph",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "着色图",
+    "nameEn": "Shader Graph",
     "description": "在节点画布中编写 2D 着色图、子图与材质，预览 Vulkan 和 OpenGL 渲染结果。",
-    "docsUrl": "manual.html?product=com.bengine.shader-graph&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Create 2D shaders, subgraphs, and materials with live Vulkan and OpenGL previews.",
+    "categories": [
+      "graphics"
+    ]
   },
   {
-    "id": "com.bengine.sprite-shape2d",
-    "name": "Sprite Shape 2D",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "2D 精灵形状",
+    "nameEn": "Sprite Shape 2D",
     "description": "用可编辑贝塞尔曲线制作重复边缘、带孔填充与同步 2D 碰撞体的形状。",
-    "docsUrl": "manual.html?product=com.bengine.sprite-shape2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Editable Bézier shapes with repeated edges, holed fills, and synchronized colliders.",
+    "categories": [
+      "graphics"
+    ]
   },
   {
-    "id": "com.bengine.sprite-skinning2d",
-    "name": "Sprite Skinning 2D",
-    "version": "1.0.0",
-    "category": "动画与音频",
+    "name": "2D 骨骼蒙皮",
+    "nameEn": "Sprite Skinning 2D",
     "description": "制作 2D 骨骼、权重网格、FFD 与链式 IK，支持约束、重定向和附件切换。",
-    "docsUrl": "manual.html?product=com.bengine.sprite-skinning2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "2D bones, weighted meshes, FFD, chain IK, constraints, and attachment swapping.",
+    "categories": [
+      "animation"
+    ]
   },
   {
-    "id": "com.bengine.standardasset",
-    "name": "StandardAsset",
-    "version": "1.0.0",
-    "category": "项目模板",
-    "description": "导入可直接编辑的俯视移动、相机跟随、旋转与浮动组件，仅依赖 Core。",
-    "docsUrl": "manual.html?product=com.bengine.standardasset&version=1.0.0",
-    "type": "project",
-    "minimumEngineVersion": "0.1.0"
-  },
-  {
-    "id": "com.bengine.testing",
-    "name": "Test Framework",
-    "version": "1.0.0",
-    "category": "UI 与工具",
+    "name": "测试框架",
+    "nameEn": "Test Framework",
     "description": "在 Edit、Play 与打包后的 Windows Player 中运行测试，查看源码定位和可选覆盖率。",
-    "docsUrl": "manual.html?product=com.bengine.testing&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Edit, Play, and packaged Windows Player tests with optional coverage reporting.",
+    "categories": [
+      "development"
+    ]
   },
   {
-    "id": "com.bengine.texture-atlas",
-    "name": "TextureAtlas",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "纹理图集",
+    "nameEn": "TextureAtlas",
     "description": "编辑、导入与打包纹理图集，管理 Sprite 资源和图集引用。",
-    "docsUrl": "manual.html?product=com.bengine.texture-atlas&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Author, import, and pack texture atlases while managing Sprite references.",
+    "categories": [
+      "graphics",
+      "assets"
+    ]
   },
   {
-    "id": "com.bengine.tiledmap",
-    "name": "Tiled Map",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "瓦片地图",
+    "nameEn": "Tiled Map",
     "description": "用调色板与可撤销画笔绘制稀疏 Tilemap，支持运行时修改和相机剔除。",
-    "docsUrl": "manual.html?product=com.bengine.tiledmap&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Paint sparse tilemaps with palettes, undoable brushes, runtime edits, and camera culling.",
+    "categories": [
+      "graphics"
+    ]
   },
   {
-    "id": "com.bengine.tilemap-physics2d",
-    "name": "Tilemap Physics 2D",
-    "version": "1.0.0",
-    "category": "2D 与渲染",
+    "name": "瓦片地图物理",
+    "nameEn": "Tilemap Physics 2D",
     "description": "从瓦片碰撞标记生成 2D 碰撞，支持运行时刷新和横向单元合并。",
-    "docsUrl": "manual.html?product=com.bengine.tilemap-physics2d&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Generate 2D collision from tile flags, with runtime refresh and horizontal cell merging.",
+    "categories": [
+      "physics"
+    ]
   },
   {
-    "id": "com.bengine.timeline",
-    "name": "Timeline",
-    "version": "1.0.0",
-    "category": "动画与音频",
+    "name": "时间轴",
+    "nameEn": "Timeline",
     "description": "使用时间轴资源与轨道编辑器编排动画、媒体及顺序播放。",
-    "docsUrl": "manual.html?product=com.bengine.timeline&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Sequence animation and media with timeline assets and a track editor.",
+    "categories": [
+      "animation",
+      "media"
+    ]
   },
   {
-    "id": "com.bengine.ui-builder",
-    "name": "UIBuilder",
-    "version": "1.0.0",
-    "category": "UI 与工具",
+    "name": "UI Builder",
+    "nameEn": "UIBuilder",
     "description": "可视化编辑与预览 UIElements 文档，配置控件、层级和样式。",
-    "docsUrl": "manual.html?product=com.bengine.ui-builder&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Visually edit and preview UIElements controls, hierarchy, and styles.",
+    "categories": [
+      "ui"
+    ]
   },
   {
-    "id": "com.bengine.ui-elements",
     "name": "UIElements",
-    "version": "1.0.0",
-    "category": "UI 与工具",
+    "nameEn": "UIElements",
     "description": "用保留模式控件、布局及 bxml/bss/bcss 组织界面，处理复杂文字和交互输入。",
-    "docsUrl": "manual.html?product=com.bengine.ui-elements&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Retained UI controls, layout, complex text, and interaction with bxml/bss/bcss.",
+    "categories": [
+      "ui"
+    ]
   },
   {
-    "id": "com.bengine.video",
-    "name": "Video",
-    "version": "1.0.0",
-    "category": "动画与音频",
+    "name": "视频",
+    "nameEn": "Video",
     "description": "播放便携视频帧资源；Windows 可按需解码原始容器并检测实际解码能力。",
-    "docsUrl": "manual.html?product=com.bengine.video&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Play portable frame assets, with on-demand native container decoding on Windows.",
+    "categories": [
+      "media"
+    ]
   },
   {
-    "id": "com.bengine.visual-scripting",
-    "name": "Visual Scripting",
-    "version": "1.0.0",
-    "category": "玩法与系统",
+    "name": "可视化脚本",
+    "nameEn": "Visual Scripting",
     "description": "用事件、变量、条件和动作节点编排玩法逻辑，并查看实时调试状态。",
-    "docsUrl": "manual.html?product=com.bengine.visual-scripting&version=1.0.0",
-    "type": "package",
-    "minimumEngineVersion": "0.1.0"
+    "descriptionEn": "Build event-driven gameplay with variables, conditions, actions, and live debugging.",
+    "categories": [
+      "development"
+    ]
   }
 ]

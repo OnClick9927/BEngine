@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="../../Core/Editor/Icons/BEngine.ico" LogicalName="BEngine.Launcher.BEngine.ico" />
+    <EmbeddedResource Include="../Editor/DocumentationAssets/**/*" LogicalName="BEngine.Launcher.DocumentationAssets/%(RecursiveDir)%(Filename)%(Extension)" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>BEngine · 文档</title>
+  <script src="preferences.js"></script>
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
+  <link rel="stylesheet" href="docs.css">
+  <script type="module" src="docs.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#document" data-i18n="skip">跳到正文</a>
+  <header class="site-header">
+    <div class="header-inner container">
+      <a class="brand" href="./" id="brand-link"><img src="logo.svg" alt="" width="34" height="34"><span>BEngine<small data-i18n="documentation">文档</small></span></a>
+      <nav class="tabs" aria-label="文档" data-i18n-label="documentation">
+        <a href="./" id="engine-tab" data-i18n="engineManual">引擎手册</a>
+        <a href="?tab=packages" id="packages-tab" data-i18n="packages">扩展包</a>
+      </nav>
+      <div class="header-actions">
+        <button type="button" class="utility" id="language-toggle" aria-label="Switch to English">EN</button>
+        <button type="button" class="utility theme-toggle" id="theme-toggle" aria-label="切换为深色" title="切换为深色">◐</button>
+      </div>
+    </div>
+  </header>
+  <div class="toolbar">
+    <div class="toolbar-inner container">
+      <label class="version-label"><span data-i18n="engineVersion">引擎版本</span><select id="engine-version" disabled aria-label="引擎版本" data-i18n-label="engineVersion"></select></label>
+      <span id="catalog-note" class="muted" aria-live="polite"></span>
+      <button type="button" id="refresh" class="button button-outline" data-i18n="refresh">刷新</button>
+    </div>
+  </div>
+  <div id="status" class="container status" role="status" aria-live="polite" hidden></div>
+  <section id="package-browser" class="container package-browser" hidden aria-labelledby="packages-title">
+    <div class="page-heading"><div><span class="eyebrow">BENGINE PACKAGES</span><h1 id="packages-title" data-i18n="compatiblePackages">兼容的扩展包</h1><p id="packages-summary" class="muted"></p></div><label class="search-box"><span class="visually-hidden" data-i18n="searchPackages">搜索扩展包</span><input id="package-search" type="search" placeholder="搜索扩展包" data-i18n-placeholder="searchPackages" autocomplete="off"></label></div>
+    <div id="package-grid" class="package-grid"></div>
+  </section>
+  <div id="reader" class="container reader" hidden>
+    <aside class="sidebar" aria-label="文档导航" data-i18n-label="documentNavigation">
+      <a href="?tab=packages" id="back-packages" class="back-link" hidden data-i18n="allPackages">← 所有兼容扩展包</a>
+      <div class="product-heading"><span id="product-kind" class="eyebrow"></span><strong id="product-name"></strong><span id="product-version" class="muted"></span></div>
+      <details open class="pages-group"><summary data-i18n="pages">文档目录</summary><nav id="page-nav"></nav></details>
+      <details open class="sections-group"><summary data-i18n="onThisPage">本页内容</summary><nav id="section-nav"></nav></details>
+    </aside>
+    <main id="document" tabindex="-1" aria-busy="true"><div class="document-heading"><span id="document-kind" class="eyebrow"></span><h1 id="document-title"></h1><p id="document-version" class="muted"></p></div><article id="document-content" class="document-content"></article><nav id="pagination" class="pagination" aria-label="翻页" data-i18n-label="pagination"></nav></main>
+  </div>
+  <footer class="footer"><div class="container"><span>BEngine <span data-i18n="documentation">文档</span></span><span data-i18n="localDocumentation">本地文档 · 请保持 Hub 运行</span></div></footer>
+</body>
+</html>

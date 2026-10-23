@@ -1,8 +1,0 @@
-<h1 id="visual-scripting">Visual Scripting</h1>
-<h2 id="runtime">Runtime</h2>
-<p><code>VisualScriptRunner</code> executes graph events synchronously in connection order. Each runner owns an independent blackboard initialized from graph defaults and optional component overrides. <code>Trigger(name)</code> invokes named custom events.</p>
-<p>The graph validates node, connection and variable identities and compatible variable types. <code>maxStepsPerEvent</code> terminates cyclic or unexpectedly large event flows with a visible fault state.</p>
-<h2 id="debugging">Debugging</h2>
-<p>Set a breakpoint on any node. The runner pauses before executing it. Continue ignores that breakpoint once, Step executes one node, and Stop clears the pending flow. <code>VisualScriptDebugHub</code> exposes live runners, immutable variable snapshots, state changes and ordered node traces to editor tools.</p>
-<h2 id="asset-format">Asset format</h2>
-<p><code>.visualscript.yaml</code> version 1 stores typed variables, nodes, ports, connections, positions and breakpoints. Fix64 values use raw signed integers. Unsupported versions, missing references and invalid type combinations are rejected when loading.</p>

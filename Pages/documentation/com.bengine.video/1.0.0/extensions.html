@@ -1,4 +1,0 @@
-<h1 id="逐帧与定位事件">逐帧与定位事件</h1>
-<p><code>VideoPlayer.SeekFrame(index)</code> 精确定位帧，保留播放/暂停状态；自动 Prepare，非法索引报错。<code>StepForward()</code> 暂停后前进一帧，只有 isLooping 为 true 时才回到首帧。</p>
-<p><code>frameReady(player, frameIndex)</code> 在新展示时间的画面提交后触发；<code>seekCompleted(player)</code> 在 SeekFrame 完成后触发。Inspector 的 Next Frame 按钮可在 PlayMode 逐帧检查。原始容器使用 <code>frameRateExact</code>；可变帧率的帧索引为名义值，应使用 <code>time</code> 定位。详见 <a href="manual.html?product=com.bengine.video&amp;version=1.0.0&amp;doc=streaminganddecoding">解码与时间语义</a>。</p>
-<p>示例工程：Main → Video Frame Stepping。Next Frame、First Frame、Middle Frame 和 Play 分别控制步进、定位与播放，底部显示事件计数。</p>

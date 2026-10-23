@@ -80,6 +80,7 @@ internal sealed partial class ProjectLauncherForm : Form
         _packageCatalog = packageCatalog;
         _engineCatalog = engineCatalog;
         _projectService = projectService;
+        Disposed += (_, _) => _documentationServer?.Dispose();
         Text = "BEngine Hub";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(920, 600);
@@ -668,7 +669,9 @@ internal sealed partial class ProjectLauncherForm : Form
                 return;
             }
 
-            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            var engine = SelectedEngine;
+            if (engine is null) return;
+            OpenDocumentationPortal(engine, package);
             SetStatus("Opened documentation for '{0}'.", false, package.DisplayName);
         }
         catch (Exception exception)

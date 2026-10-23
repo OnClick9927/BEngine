@@ -5,6 +5,7 @@ namespace BEngine.Launcher;
 internal sealed partial class ProjectLauncherForm
 {
     private readonly LauncherEngineCatalog _engineCatalog;
+    private LauncherDocumentationServer? _documentationServer;
     private IReadOnlyList<LauncherEngineInfo> _engines = [];
     private readonly LauncherNavigationButton _enginesNavigation = new();
     private readonly ComboBox _engineSelector = new();
@@ -146,15 +147,23 @@ internal sealed partial class ProjectLauncherForm
                 SetStatus("Documentation is not available for '{0}'.", true, engine.DisplayName);
                 return;
             }
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = engine.DocumentationPath, UseShellExecute = true
-            });
+            OpenDocumentationPortal(engine);
             SetStatus("Opened documentation for '{0}'.", false, engine.DisplayName);
         }
         catch (Exception exception)
         {
             SetStatus("Could not open documentation for '{0}': {1}", true, engine.DisplayName, exception.Message);
         }
+    }
+
+    private void OpenDocumentationPortal(LauncherEngineInfo engine, LauncherPackageInfo? package = null)
+    {
+        _documentationServer ??= new LauncherDocumentationServer(_engineCatalog, _packageCatalog);
+        var uri = _documentationServer.Open(engine, package, _localization.Culture.Name,
+            _settings.Personalization.Theme);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = uri.AbsoluteUri, UseShellExecute = true
+        });
     }
 }

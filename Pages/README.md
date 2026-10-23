@@ -1,53 +1,70 @@
-# BEngine 官网
+# BEngine 官网 / Website
 
-官网是纯静态站点，网页、样式、脚本、图片与版本文档全部位于此目录，浏览器不依赖 npm 或运行时环境变量。发布时将这些网页和当前发行的 `Engine/BEngine.Hub.exe` 放入临时站点目录；不发布引擎源码或完整发行目录。
+官网为纯静态站点，包含引擎介绍、基础入门、扩展包简介、创作展示、Hub 下载与开源说明。所有网页内容位于 `Pages`。支持完整中文/英文、浅色/深色；浅色保留品牌风格，深色采用与引擎编辑器一致的中性灰与蓝色交互，无需 npm 或外部字体。
 
-## 本地预览
+The public website is a static introduction to BEngine: basic setup, package summaries, showcase, Hub download, and open-source information. All website content lives in `Pages`. It supports Chinese/English and light/dark themes without npm or external fonts. The dark theme follows the editor’s neutral grays and blue interactions; the light theme retains the existing brand colors.
 
-在仓库根目录 `E:\Project\_BZP\BEngine\Engine` 中执行以下命令，需要 Python 3.10+。输出目录必须尚不存在，且位于 `Pages` 外：
+## 文档与包目录 / Documentation and packages
+
+- **官网只保留基础。** API、详细工作流与包手册由 Hub 根据本地安装的引擎和包版本提供。从 Hub 的「引擎与包」使用文档入口，不再复制或导出详细手册到官网。
+- `manual.html` 为旧书签提供基础入口说明，不读取旧 product/version/doc 查询参数。
+- `data/packages.json` 为静态功能简介，当前包含 39 个扩展包，不包含 StandardAsset 项目模板。每项包含中英名称、简短介绍与非空 `categories` 数组；`categories` 仅为快速筛选元数据，允许一个包归属多个相关分类。网页卡片仍只显示名称和介绍，不展示版本、ID、依赖图、分类标签或文档按钮。
+- 本地 Hub 文档门户的安装版本扫描与版本切换属于 Hub，与此静态简介目录分开维护。
+
+Detailed APIs, workflows, and package manuals are supplied by Hub for locally installed versions. The website does not export or mirror manuals. `manual.html` explains the local entry point for old bookmarks. The public catalog contains bilingual names, summaries, and a nonempty `categories` array for each of the 39 extension packages. Categories are filter metadata and may overlap; cards still show only the name and summary. Installation and version selection remain in Hub.
+
+分类使用以下稳定 ID；中英显示名称由页面本地化，不将显示名称写入数组：
+
+Use these stable category IDs. Display labels are localized by the page and are not stored in the arrays:
+
+| ID | 中文 | English |
+| --- | --- | --- |
+| `graphics` | 画面与美术 | Graphics & art |
+| `animation` | 动画与演出 | Animation |
+| `physics` | 物理与导航 | Physics & navigation |
+| `ui` | 界面与输入 | UI & input |
+| `media` | 音频与视频 | Audio & video |
+| `assets` | 资源与发布 | Assets & builds |
+| `development` | 开发工具 | Development |
+
+扩展包页提供“全部”与上述分类页签，可和关键词联合筛选。页签数字表示当前关键词在各分类中的匹配数量，跨分类包会分别计数。切换分类、语言或主题会保留搜索词；键盘左右方向键、Home、End 可切换页签，窄屏自动换行。
+
+The package page combines category tabs with keyword search. Tab counts reflect matches for the current keyword; a package in multiple categories is counted in each. Changing category, language, or theme keeps the keyword. Arrow keys, Home, and End switch tabs; tabs wrap on narrow screens.
+
+## 本地预览 / Local preview
+
+在引擎仓库根执行，需要 Python 3.10+。输出目录必须不存在，并位于 `Pages` 外：
+
+Run from the engine repository root with Python 3.10+. Choose a new output directory outside `Pages`:
 
 ```powershell
 python Pages/tools/build-site.py --output ..\Temp\Pages-preview
 python -m http.server 4173 --bind 127.0.0.1 --directory ..\Temp\Pages-preview
 ```
 
-打开 <http://127.0.0.1:4173/>。按 `Ctrl+C` 停止服务。页面资源和站内链接使用相对路径，同样兼容 GitHub 项目站点的 `/BEngine/` 前缀。直接预览 `Pages` 也能查看网页；验证 Hub 下载时必须使用上述包含下载文件的站点输出。
+访问 `http://127.0.0.1:4173/`，按 Ctrl+C 停止服务。验证文件、截图和报告统一保存在外层 `Temp`。所有站内引用使用相对路径，兼容 GitHub 项目站点的 `/BEngine/` 前缀。
 
-## GitHub Pages 发布
+Open `http://127.0.0.1:4173/`. Stop with Ctrl+C. Keep verification files, screenshots, and reports under the outer `Temp` directory. Relative links support the `/BEngine/` GitHub project-site prefix.
 
-1. 将 `Pages` 与 `.github/workflows/pages.yml` 提交并推送到仓库 `main` 分支。
-2. 在 [仓库设置](https://github.com/OnClick9927/BEngine/settings/pages) 中进入 **Settings → Pages → Build and deployment**，把 **Source** 设置为 **GitHub Actions**。
-3. 在 **Actions → Deploy BEngine website** 中查看部署；如有需要，选择 `main` 分支手动运行 **Run workflow**。
-4. 部署成功后，预期访问地址为 <https://onclick9927.github.io/BEngine/>。实际发布地址以工作流 `github-pages` 环境显示的链接为准。
+## 发布 / Deployment
 
-上述配置文件已准备在仓库中；是否上线以远端工作流成功结果为准。本地修改不会自动发布。
+GitHub Actions 工作流位于 `.github/workflows/pages.yml`。它运行 `tools/build-site.py`，复制官网至临时发布目录，并将当前 `Engine/BEngine.Hub.exe` 放入 `downloads/BEngine.Hub.exe`。网页不保存 Hub 副本，发布时始终使用当前提交中的发行文件。
 
-`main` 分支中 `Pages/**`、`Engine/BEngine.Hub.exe` 或该工作流的修改会自动触发发布；其他引擎修改不会触发。手动运行也只允许 `main` 分支部署。工作流使用 GitHub 官方 Pages Actions，发布权限仅授予部署 job，不需要手动配置访问令牌。
+The GitHub Actions workflow in `.github/workflows/pages.yml` stages the website and copies the current exported `Engine/BEngine.Hub.exe` to `downloads/BEngine.Hub.exe`. The website source does not contain a duplicate binary.
 
-部署前执行 `tools/build-site.py`，把当前提交的 Hub 复制到站点输出的 `downloads/BEngine.Hub.exe`。下载页通过同源链接和 `download="BEngine.Hub.exe"` 直接下载；首页及导航继续进入已有获取引擎页面。发布新 Hub 时应先更新 `Engine/BEngine.Hub.exe`，官网构建会带上该文件，不需要另存一份到 `Pages`。
+构建器要求 Hub 文件存在且有 Windows EXE 文件头；若 `documentation/` 或 `data/documentation.json` 重新出现则拒绝构建，以免意外发布详细文档。维护脚本与 README 不进入发布目录。Hub 下载需通过构建后的站点验证，直接用静态服务器打开 `Pages` 时下载文件尚不存在。
 
-## 维护
+The builder checks the Hub executable and rejects obsolete detailed-manual mirrors. Maintenance tools and README files are excluded from deployment. Test the Hub download against staged output; directly serving `Pages` does not provide the generated download file.
 
-- 直接编辑此目录中的 HTML、CSS、JavaScript 和图片，保持所有网页内容位于 `Pages` 下。
-- 站内引用使用 `./`、相对文件名或锚点；避免 `/assets/...` 这类从域名根目录开始的路径，以兼容 `/BEngine/` 项目站点。
-- 新增页面时同步导航与相关链接；发布前检查桌面、手机宽度、菜单、按钮和本地资源加载。
-- 文档、包、示例、许可和项目说明在官网内阅读；仅下载和必要的第三方工具入口使用外部链接。
-- 下载和文档入口应指向真实可用的发布物或文档；不要用尚未发布的版本代替已发布内容。
-- `Pages` 源码中不保存 Hub 二进制；站点构建会校验发行文件存在且为 Windows 可执行文件，缺失时停止发布。
-- 浏览器截图、测试脚本、临时服务文件、测试报告和缓存统一放在 `E:\Project\_BZP\BEngine\Temp`，不要放入 `Pages` 或仓库其他目录。
+仓库 Settings → Pages → Source 应为 GitHub Actions。`main` 上的 `Pages/**`、`Engine/BEngine.Hub.exe` 或工作流变更会触发部署；也可手动运行。公开地址预计为 `https://onclick9927.github.io/BEngine/`，是否上线以远端工作流成功结果为准。本地修改不会自动发布。
 
-## 按版本维护文档
+Set repository Settings → Pages → Source to GitHub Actions. Changes to `Pages/**`, the exported Hub, or the workflow on `main` trigger deployment; manual dispatch is also available. The expected URL is `https://onclick9927.github.io/BEngine/`. Publishing is confirmed by a successful remote workflow, not by local edits.
 
-`manual.html` 提供引擎和包的站内阅读器。`data/documentation.json` 记录真实产品、版本与章节，`documentation/产品ID/版本/` 保存对应版本的正文和图片。入口链接包含明确版本，收藏和互链不会随默认版本更新而指向其他版本。
+## 维护 / Maintenance
 
-发布引擎或包的新版本后，在仓库根目录执行，需要 Python 3.10+ 和 Node.js 18+：
+- HTML 中每段翻译使用 `data-zh` / `data-en`，`site.js` 同步标题、描述、图片替代文字、ARIA、导航与动态状态。
+- `preferences.js` 在 CSS 前同步读取 `bengine-language=zh|en`、`bengine-theme=light|dark`，首访跟随浏览器语言与系统主题，显式选择持久化到 localStorage。
+- 颜色 token 与响应布局在 `assets/site.css`。图片保持原样，不随主题反色。
+- 不把测试、截图、缓存、详细文档镜像或引擎源码放入网站发布目录。
 
-```powershell
-python Pages/tools/export-docs.py
-```
-
-导出器从真实发行目录收录手册，保留既有历史版本；默认只刷新每个产品当前最新版本。修订旧版本文档使用 `--refresh-history`。不要创建不存在的历史版本，也不要把新版本手册覆盖到旧版本目录。详情见 [文档导出说明](tools/README.md)。网页本身不需要 Python、Node.js 或构建步骤。
-
-新增版本时，同步 `data/packages.json` 的包版本和 `docsUrl`，以及首页、下载页等明确标注版本的入口。版本文档、目录清单和入口应一起提交发布。
-
-部署规则参考 [GitHub 官方自定义 Pages 工作流文档](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) 和 [发布来源配置文档](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。
+Translations use `data-zh` / `data-en` throughout pages, metadata, accessible names, and dynamic states. `preferences.js` applies stored language and theme before CSS loads; first visits follow browser language and system theme. Theme tokens and responsive layouts live in `assets/site.css`. Images keep their original colors. Keep tests, caches, engine source, and detailed manuals out of the deployed site.
