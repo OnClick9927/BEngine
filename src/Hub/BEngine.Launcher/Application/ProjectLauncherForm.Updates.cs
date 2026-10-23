@@ -32,6 +32,7 @@ internal sealed partial class ProjectLauncherForm
     private readonly ToolTip _updateDetailToolTip = new() { AutoPopDelay = 30000, InitialDelay = 400, ReshowDelay = 100 };
     private CancellationTokenSource? _updateCancellation;
     private LauncherUpdatePlan? _pendingUpdate;
+    private bool _updateHasRetainedDownload;
     private bool _startingUpdateInstaller;
     private bool _needsUpdateRecovery;
     private bool _resizingUpdateLayout;
@@ -246,6 +247,8 @@ internal sealed partial class ProjectLauncherForm
         var busy = mode is UpdatePageMode.Checking or UpdatePageMode.Downloading or UpdatePageMode.Installing;
         _checkUpdateButton.Visible = mode is not (UpdatePageMode.Downloading or UpdatePageMode.Installing or UpdatePageMode.Waiting);
         _installUpdateButton.Visible = mode is (UpdatePageMode.Preview or UpdatePageMode.DownloadFailed) && _pendingUpdate?.HasUpdates == true;
+        SetLocalizedText(_installUpdateButton, _updateHasRetainedDownload
+            ? "Continue download and install" : "Confirm download and install");
         _cancelUpdateButton.Visible = mode is UpdatePageMode.Checking or UpdatePageMode.Downloading or UpdatePageMode.Installing;
         if (mode is UpdatePageMode.Installing or UpdatePageMode.Waiting) _cancelUpdateButton.Enabled = false;
         _recoverUpdateButton.Visible = mode == UpdatePageMode.Recovery;
@@ -477,6 +480,7 @@ internal sealed partial class ProjectLauncherForm
     {
         if (_environmentBusy || _updateCancellation is not null || _startingUpdateInstaller || _needsUpdateRecovery) return;
         _pendingUpdate = null;
+        _updateHasRetainedDownload = false;
         _updateChanges.ClearChanges();
         UpdateCommitHistory();
         UpdateChangeSummary();
@@ -499,7 +503,10 @@ internal sealed partial class ProjectLauncherForm
             ApplyUpdatePageMode(plan.HasUpdates ? UpdatePageMode.Preview : UpdatePageMode.Result);
             _updateProgress.Style = ProgressBarStyle.Continuous;
             _updateProgress.Value = 1000;
-            SetLocalizedText(_updateStage, plan.HasUpdates ? "Updates available. Review changes, then confirm." : "This installation is up to date.");
+            SetLocalizedText(_updateStage, plan.HasUpdates
+                ? _updateHasRetainedDownload ? "Updates available. Saved download data will be verified and resumed."
+                    : "Updates available. Review changes, then confirm."
+                : "This installation is up to date.");
         }
         catch (OperationCanceledException)
         {
@@ -529,11 +536,24 @@ internal sealed partial class ProjectLauncherForm
 
     private void RenderUpdatePreview(LauncherUpdatePlan plan)
     {
+        RefreshRetainedDownloadState();
         UpdateChangeSummary();
         UpdateCommitHistory();
         _updateChanges.SetChanges(plan.Changes, key => T(key));
         _updateDetail.ForeColor = SecondaryText;
         _updateDetail.Text = string.Empty;
+    }
+
+    private void RefreshRetainedDownloadState()
+    {
+        try { _updateHasRetainedDownload = _pendingUpdate is { } plan && LauncherUpdateWorkspace.HasRetainedDownload(plan); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            // This is only a presentation hint. The download service performs
+            // the authoritative path and hash validation before reusing data.
+            _updateHasRetainedDownload = false;
+            System.Diagnostics.Trace.WriteLine(error);
+        }
     }
 
     private async Task InstallPendingUpdateAsync()
@@ -550,7 +570,8 @@ internal sealed partial class ProjectLauncherForm
         _updateDetail.ForeColor = SecondaryText;
         SetUpdateBusy(true);
         ReportUpdateProgress(new("Downloading", "Downloading changed files", 0, plan.DownloadBytes,
-            plan.DownloadBytes == 0 ? 100 : 0, Status: "Waiting for response"));
+            plan.DownloadBytes == 0 ? 100 : 0,
+            Status: _updateHasRetainedDownload ? "Verifying saved download data" : "Waiting for response"));
         try
         {
             await _updateService.DownloadAsync(plan, _updateProgressBuffer, cancellation.Token);
@@ -577,8 +598,11 @@ internal sealed partial class ProjectLauncherForm
         {
             if (!IsDisposed)
             {
+                RefreshRetainedDownloadState();
                 ApplyUpdatePageMode(UpdatePageMode.Preview);
-                SetLocalizedText(_updateStage, "Updates available. Review changes, then confirm.");
+                SetLocalizedText(_updateStage, _updateHasRetainedDownload
+                    ? "Updates available. Saved download data will be verified and resumed."
+                    : "Updates available. Review changes, then confirm.");
                 _updateDetail.Text = string.Empty;
             }
         }
@@ -586,8 +610,11 @@ internal sealed partial class ProjectLauncherForm
         {
             if (!IsDisposed)
             {
+                RefreshRetainedDownloadState();
                 ApplyUpdatePageMode(UpdatePageMode.DownloadFailed);
-                SetLocalizedText(_updateStage, "Update could not start. The installed engine was not changed.");
+                SetLocalizedText(_updateStage, _updateHasRetainedDownload
+                    ? "Download interrupted. Saved data is kept; retry to continue."
+                    : "Update could not start. The installed engine was not changed.");
                 _updateDetail.ForeColor = ErrorText;
                 _updateDetail.Text = DescribeUpdateFailure(exception);
             }

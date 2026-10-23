@@ -49,6 +49,7 @@ internal static class LauncherUpdateInstaller
             if (!Path.GetFullPath(plan.InstallationRoot).Equals(Path.GetFullPath(installationRoot), StringComparison.OrdinalIgnoreCase) ||
                 !Path.GetFullPath(plan.PlanPath).Equals(Path.GetFullPath(marker.PlanPath), StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("The interrupted update belongs to a different installation.");
+            using var workspaceLock = LauncherUpdateWorkspace.AcquireDownloadLock(plan.InstallationRoot, plan.WorkspaceRoot);
             StartExternalUpdater(plan, language, SafePath(plan.WorkspaceRoot, "installer/BEngine.Hub.Updater.exe"), recoveryOnly: true);
             error = string.Empty;
             return true;
@@ -66,6 +67,7 @@ internal static class LauncherUpdateInstaller
                 throw new InvalidOperationException("Please use the exported BEngine.Hub.exe to install updates.");
             if (!Path.GetFullPath(executable).Equals(Path.Combine(Path.GetFullPath(plan.InstallationRoot), "BEngine.Hub.exe"), StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("The update must belong to this Hub installation.");
+            using var workspaceLock = LauncherUpdateWorkspace.AcquireDownloadLock(plan.InstallationRoot, plan.WorkspaceRoot);
             var installerDirectory = SafePath(plan.WorkspaceRoot, "installer");
             Directory.CreateDirectory(installerDirectory);
             EnsureNoReparsePoints(installerDirectory);
@@ -194,6 +196,11 @@ internal static class LauncherUpdateInstaller
             await CloseInstallationProcessesAsync(root, progress, cancellationToken);
         }
 
+        // Downloads reuse this snapshot's workspace. Only acquire its lock
+        // after closing the original Hub (which holds it during the updater
+        // readiness handshake), then retain it through rollback and cleanup.
+        await using var workspaceLock = LauncherUpdateWorkspace.AcquireDownloadLock(root, plan.WorkspaceRoot);
+
         RecoverInterruptedInstallation(root, progress);
         if (recoveryOnly)
         {
@@ -206,6 +213,10 @@ internal static class LauncherUpdateInstaller
             progress.Report(new("completed", "The previous installation has been restored.", Percent: 100));
             return;
         }
+        // The updater already authenticated and loaded this plan before the
+        // handshake. Persist that exact plan after taking ownership in case
+        // another Hub started a retry during the short process handoff.
+        WriteJson(plan.PlanPath, plan);
         await VerifyOriginalFilesAsync(plan, cancellationToken);
         progress.Report(new("verifying", "Verifying downloaded files and unchanged installed files", Percent: 0));
         var changes = plan.Changes.ToDictionary(change => change.Path, StringComparer.OrdinalIgnoreCase);
@@ -219,6 +230,8 @@ internal static class LauncherUpdateInstaller
             verified++;
             progress.Report(new("verifying", file.Path, verified, plan.Files.Count, verified * 100d / plan.Files.Count));
         }
+
+        ArchivePreviousTransaction(plan);
 
         var journal = new InstallJournal { Plan = plan };
         var journalPath = Path.Combine(plan.WorkspaceRoot, "install-journal.json");
@@ -360,7 +373,7 @@ internal static class LauncherUpdateInstaller
         // may remove only its completed downloads and rollback copies.
         // Keep the tiny committed journal/log and the currently running updater.
         // Downloads and rollback copies are no longer needed after success.
-        foreach (var relative in new[] { "staging", "partial", "backup" })
+        foreach (var relative in new[] { "staging", "partial", "backup", "previous-transactions" })
         {
             try { DeleteTemporaryTree(SafePath(plan.WorkspaceRoot, relative), plan, Stopwatch.StartNew()); }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
@@ -369,6 +382,44 @@ internal static class LauncherUpdateInstaller
         try { File.Delete(SafePath(plan.WorkspaceRoot, "RECOVERY.txt")); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         { AppendLog(plan, $"Update workspace cleanup: {exception.Message}"); }
+    }
+
+    private static void ArchivePreviousTransaction(LauncherUpdatePlan plan)
+    {
+        var journalPath = SafePath(plan.WorkspaceRoot, "install-journal.json");
+        var backupPath = SafePath(plan.WorkspaceRoot, "backup");
+        if (!File.Exists(journalPath))
+        {
+            if (Directory.Exists(backupPath))
+                throw new IOException("An earlier update backup has no recovery journal. Its files have been kept.");
+            return;
+        }
+        var bytes = File.ReadAllBytes(journalPath);
+        var previous = JsonSerializer.Deserialize<InstallJournal>(bytes, JsonOptions)
+                       ?? throw new InvalidDataException("Invalid previous update journal. Its recovery files have been kept.");
+        ValidatePlan(previous.Plan);
+        if (!Path.GetFullPath(previous.Plan.InstallationRoot).Equals(Path.GetFullPath(plan.InstallationRoot), StringComparison.OrdinalIgnoreCase) ||
+            !Path.GetFullPath(previous.Plan.WorkspaceRoot).Equals(Path.GetFullPath(plan.WorkspaceRoot), StringComparison.OrdinalIgnoreCase) ||
+            previous.Phase is not ("prepared" or "rolled-back" or "committed") ||
+            File.Exists(Path.Combine(plan.InstallationRoot, PendingFileName)))
+            throw new InvalidDataException("The previous update transaction still needs recovery. Its backup has been kept.");
+
+        // Reusing a snapshot must not overwrite its prior rollback material.
+        // The journal moves last, so an interrupted archive can resume from
+        // the same content identity without discarding a partly moved backup.
+        var key = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        string archive;
+        for (var index = 0; ; index++)
+        {
+            if (index > 10000) throw new IOException("Too many previous update transactions.");
+            archive = SafePath(plan.WorkspaceRoot, $"previous-transactions/{key}{(index == 0 ? string.Empty : "-" + index)}");
+            if (!File.Exists(SafePath(archive, "install-journal.json"))) break;
+        }
+        Directory.CreateDirectory(archive);
+        if (Directory.Exists(backupPath)) Directory.Move(backupPath, SafePath(archive, "backup"));
+        var recoveryPath = SafePath(plan.WorkspaceRoot, "RECOVERY.txt");
+        if (File.Exists(recoveryPath)) File.Move(recoveryPath, SafePath(archive, "RECOVERY.txt"));
+        File.Move(journalPath, SafePath(archive, "install-journal.json"));
     }
 
     private static void DeleteTemporaryTree(string path, LauncherUpdatePlan plan, Stopwatch cleanupTimer)
