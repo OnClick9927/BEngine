@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'Pages/**'
+      - 'src/**'
+      - 'LICENSE'
       - 'Engine/BEngine.Hub.exe'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
@@ -33,7 +35,7 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Prepare website and Hub download
+      - name: Prepare website, Hub, and source downloads
         run: python3 Pages/tools/build-site.py --output "$RUNNER_TEMP/bengine-pages"
 
       - name: Upload website

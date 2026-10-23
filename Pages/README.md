@@ -2,6 +2,8 @@
 
 官网为纯静态站点，包含引擎介绍、基础入门、扩展包简介、创作展示、Hub 下载与开源说明。所有网页内容位于 `Pages`。支持完整中文/英文、浅色/深色；浅色保留品牌风格，深色采用与引擎编辑器一致的中性灰与蓝色交互，无需 npm 或外部字体。
 
+全站导航提供 GitHub 仓库与「加入我们」入口，后者打开 `https://qm.qq.com/q/3mZda9LeRa`。首页、获取引擎页、关于页以及移动导航和页脚提供 main 分支 `src` 下载。外部入口在新页签打开；源码 ZIP 直接从官网同域下载，支持中文/英文与深浅主题。
+
 The public website is a static introduction to BEngine: basic setup, package summaries, showcase, Hub download, and open-source information. All website content lives in `Pages`. It supports Chinese/English and light/dark themes without npm or external fonts. The dark theme follows the editor’s neutral grays and blue interactions; the light theme retains the existing brand colors.
 
 ## 文档与包目录 / Documentation and packages
@@ -33,9 +35,9 @@ The package page combines category tabs with keyword search. Tab counts reflect 
 
 ## 本地预览 / Local preview
 
-在引擎仓库根执行，需要 Python 3.10+。输出目录必须不存在，并位于 `Pages` 外：
+在引擎仓库根执行，需要 Python 3.10+ 和 Git。输出目录必须不存在，并位于 `Pages` 外：
 
-Run from the engine repository root with Python 3.10+. Choose a new output directory outside `Pages`:
+Run from the engine repository root with Python 3.10+ and Git. Choose a new output directory outside `Pages`:
 
 ```powershell
 python Pages/tools/build-site.py --output ..\Temp\Pages-preview
@@ -50,13 +52,15 @@ Open `http://127.0.0.1:4173/`. Stop with Ctrl+C. Keep verification files, screen
 
 GitHub Actions 工作流位于 `.github/workflows/pages.yml`。它运行 `tools/build-site.py`，复制官网至临时发布目录，并将当前 `Engine/BEngine.Hub.exe` 放入 `downloads/BEngine.Hub.exe`。网页不保存 Hub 副本，发布时始终使用当前提交中的发行文件。
 
+同一次构建生成 `downloads/BEngine-main-src.zip`，包含该 main 提交中受 Git 跟踪的 `src/` 与根 `LICENSE`，不包含完整发行目录、Git 历史或本机生成文件。`src/**` 变化也会触发官网部署，因此源码下载会随 main 更新。ZIP 在构建时生成，不把副本提交到 `Pages`。
+
 The GitHub Actions workflow in `.github/workflows/pages.yml` stages the website and copies the current exported `Engine/BEngine.Hub.exe` to `downloads/BEngine.Hub.exe`. The website source does not contain a duplicate binary.
 
 构建器要求 Hub 文件存在且有 Windows EXE 文件头；若 `documentation/` 或 `data/documentation.json` 重新出现则拒绝构建，以免意外发布详细文档。维护脚本与 README 不进入发布目录。Hub 下载需通过构建后的站点验证，直接用静态服务器打开 `Pages` 时下载文件尚不存在。
 
 The builder checks the Hub executable and rejects obsolete detailed-manual mirrors. Maintenance tools and README files are excluded from deployment. Test the Hub download against staged output; directly serving `Pages` does not provide the generated download file.
 
-仓库 Settings → Pages → Source 应为 GitHub Actions。`main` 上的 `Pages/**`、`Engine/BEngine.Hub.exe` 或工作流变更会触发部署；也可手动运行。公开地址预计为 `https://onclick9927.github.io/BEngine/`，是否上线以远端工作流成功结果为准。本地修改不会自动发布。
+仓库 Settings → Pages → Source 应为 GitHub Actions。`main` 上的 `Pages/**`、`src/**`、根 `LICENSE`、`Engine/BEngine.Hub.exe` 或工作流变更会触发部署；也可手动运行。公开地址预计为 `https://onclick9927.github.io/BEngine/`，是否上线以远端工作流成功结果为准。本地修改不会自动发布。
 
 Set repository Settings → Pages → Source to GitHub Actions. Changes to `Pages/**`, the exported Hub, or the workflow on `main` trigger deployment; manual dispatch is also available. The expected URL is `https://onclick9927.github.io/BEngine/`. Publishing is confirmed by a successful remote workflow, not by local edits.
 
@@ -65,6 +69,6 @@ Set repository Settings → Pages → Source to GitHub Actions. Changes to `Page
 - HTML 中每段翻译使用 `data-zh` / `data-en`，`site.js` 同步标题、描述、图片替代文字、ARIA、导航与动态状态。
 - `preferences.js` 在 CSS 前同步读取 `bengine-language=zh|en`、`bengine-theme=light|dark`，首访跟随浏览器语言与系统主题，显式选择持久化到 localStorage。
 - 颜色 token 与响应布局在 `assets/site.css`。图片保持原样，不随主题反色。
-- 不把测试、截图、缓存、详细文档镜像或引擎源码放入网站发布目录。
+- 不把测试、截图、缓存、详细文档镜像或展开的引擎源码放入网站发布目录；源码仅通过构建生成的 ZIP 提供下载。
 
-Translations use `data-zh` / `data-en` throughout pages, metadata, accessible names, and dynamic states. `preferences.js` applies stored language and theme before CSS loads; first visits follow browser language and system theme. Theme tokens and responsive layouts live in `assets/site.css`. Images keep their original colors. Keep tests, caches, engine source, and detailed manuals out of the deployed site.
+Translations use `data-zh` / `data-en` throughout pages, metadata, accessible names, and dynamic states. `preferences.js` applies stored language and theme before CSS loads; first visits follow browser language and system theme. Theme tokens and responsive layouts live in `assets/site.css`. Images keep their original colors. Keep tests, caches, unpacked engine source, and detailed manuals out of the deployed site. The generated source ZIP is the only source download artifact. GitHub and Join us links are available across the site; the source ZIP is served directly from this website.
