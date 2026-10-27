@@ -207,9 +207,10 @@ internal static class AssetBundleValidation
         ValidateVersionText(version.Version, nameof(version.Version));
         var catalogFile = NormalizeRelativePath(version.CatalogFile, "catalog file");
         if (!string.Equals(catalogFile, version.CatalogFile, StringComparison.Ordinal) ||
-            !catalogFile.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase))
+            (!catalogFile.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) &&
+             !catalogFile.EndsWith(".bin", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException(
-                $"Catalog file '{version.CatalogFile}' must be a canonical relative JSON path.");
+                $"Catalog file '{version.CatalogFile}' must be a canonical relative YAML or binary catalog path.");
         ValidateSha256(version.CatalogSha256, nameof(version.CatalogSha256));
         if (version.CatalogSize <= 0)
             throw new InvalidDataException("Catalog size must be positive.");

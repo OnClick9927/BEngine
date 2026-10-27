@@ -3,8 +3,9 @@ namespace BEngine.Audio;
 internal static class AudioDecoder
 {
     // Ownership of the stream always transfers, including failed decoder initialization.
-    internal static AudioSampleReader Open(Stream stream)
+    internal static AudioSampleReader Open(Stream stream, string? diagnosticName = null)
     {
+        using var measurement = AudioPlaybackDiagnostics.Begin(AudioPlaybackDiagnostics.Operation.DecoderOpen, diagnosticName);
         try
         {
             if (!stream.CanRead || !stream.CanSeek) throw new InvalidDataException("Audio sources must be readable and seekable.");
@@ -12,8 +13,8 @@ internal static class AudioDecoder
             var length = stream.ReadAtLeast(header, header.Length, throwOnEndOfStream: false); stream.Position = start;
             AudioSampleReader reader;
             if (length >= 12 && header[..4].SequenceEqual("RIFF"u8) && header[8..12].SequenceEqual("WAVE"u8)) reader = new WaveSampleReader(stream);
-            else if (length >= 4 && header[..4].SequenceEqual("OggS"u8)) reader = new VorbisSampleReader(stream);
-            else if (length >= 3 && (header[..3].SequenceEqual("ID3"u8) || header[0] == 0xff && (header[1] & 0xe0) == 0xe0)) reader = new MpegSampleReader(stream);
+            else if (length >= 4 && header[..4].SequenceEqual("OggS"u8)) reader = new VorbisSampleReader(stream, diagnosticName);
+            else if (length >= 3 && (header[..3].SequenceEqual("ID3"u8) || header[0] == 0xff && (header[1] & 0xe0) == 0xe0)) reader = new MpegSampleReader(stream, diagnosticName);
             else throw new InvalidDataException("Unsupported audio data. Expected PCM/float WAVE, Ogg Vorbis or MPEG audio.");
             try
             {
@@ -31,9 +32,10 @@ internal static class AudioDecoder
         private NVorbis.VorbisReader _reader;
         private readonly Stream _stream;
         private readonly float[] _skip;
+        private readonly string? _diagnosticName;
         private int _position;
-        internal VorbisSampleReader(Stream stream)
-        { _stream = stream; _reader = new(stream, closeOnDispose: false); _skip = new float[4096 * _reader.Channels]; }
+        internal VorbisSampleReader(Stream stream, string? diagnosticName)
+        { _diagnosticName = diagnosticName; _stream = stream; _reader = new(stream, closeOnDispose: false); _skip = new float[4096 * _reader.Channels]; }
         public override int channels => _reader.Channels;
         public override int frequency => _reader.SampleRate;
         public override int samples => checked((int)_reader.TotalSamples);
@@ -42,6 +44,9 @@ internal static class AudioDecoder
         { var read = _reader.ReadSamples(buffer, offset, (int)Math.Min(count, (long)(samples - _position) * channels)); _position += read / channels; return read; }
         protected override void SeekCore(int frame)
         {
+            using var measurement = frame == _position ? default : AudioPlaybackDiagnostics.Begin(
+                frame < _position ? AudioPlaybackDiagnostics.Operation.VorbisBackwardSeek : AudioPlaybackDiagnostics.Operation.VorbisForwardSeek,
+                _diagnosticName, _position, frame);
             // NVorbis 0.10.5 page seeks do not reproduce sequential PCM for all files.
             // Keep exact sample positions and overlap state with bounded decode buffers.
             if (frame < _position) { _reader.Dispose(); _stream.Position = 0; _reader = new(_stream, false); _position = 0; }
@@ -61,8 +66,10 @@ internal static class AudioDecoder
         private readonly int _frames;
         private readonly float[] _skip;
         private readonly int _initialSkip;
-        internal MpegSampleReader(Stream stream)
+        private readonly string? _diagnosticName;
+        internal MpegSampleReader(Stream stream, string? diagnosticName)
         {
+            _diagnosticName = diagnosticName;
             _stream = IO.MpegGaplessReadStream.Prepare(stream, out _initialSkip, out var gaplessFrames); _reader = NLayerCompatibility.Open(_stream);
             try
             {
@@ -82,6 +89,9 @@ internal static class AudioDecoder
         }
         protected override void SeekCore(int frame)
         {
+            using var measurement = frame == _position ? default : AudioPlaybackDiagnostics.Begin(
+                frame < _position ? AudioPlaybackDiagnostics.Operation.MpegBackwardSeek : AudioPlaybackDiagnostics.Operation.MpegForwardSeek,
+                _diagnosticName, _position, frame);
             // Sequential decoding preserves encoder-delay trimming and the bit reservoir.
             // NLayer's byte-position setter is frame-aligned, not an exact PCM frame seek.
             if (frame < _position) { _reader.Dispose(); _stream.Position = 0; _reader = NLayerCompatibility.Open(_stream); _position = 0; SkipDelay(); }

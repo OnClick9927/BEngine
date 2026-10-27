@@ -9,8 +9,8 @@ using NumericsVector4 = System.Numerics.Vector4;
 namespace BEngine.Platform;
 
 /// <summary>WebGL 2 implementation used by the browser Player Host.</summary>
-public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphicsDeviceStatistics,
-    IGraphicsTextureFormatSupport, IGraphicsColorReadback
+public sealed partial class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphicsDeviceStatistics,
+    IGraphicsTextureFormatSupport, IGraphicsColorReadback, IGraphicsStateCache, IGraphicsEncodedImagePreparation
 {
     private const GraphicsDeviceFeatures Features =
         GraphicsDeviceFeatures.Rasterization |
@@ -27,10 +27,21 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
     private GraphicsDrawStatistics _drawStatistics;
     private GraphicsRect _viewport;
     private bool _disposed;
+    private int _boundProgram = -1;
+    private readonly int[] _boundTextures = new int[32];
+    private long _stateGeneration;
+    private long _programBinds, _uniformWrites, _textureBinds, _vertexArrayBinds, _cacheHits;
+    private bool _viewportKnown, _scissorKnown;
+    private GraphicsRect? _scissor;
+    private GraphicsDepthState? _depthState;
+    private GraphicsBlendMode? _blendMode;
+    private GraphicsRasterizerState? _rasterizerState;
+    private int _frameWidth, _frameHeight;
 
     public WebGlGraphicsDevice(string canvasSelector = "#bengine-game")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(canvasSelector);
+        ResetState();
         var information = JsonSerializer.Deserialize(
                               WebGlInterop.Initialize(canvasSelector),
                               WebGlJsonContext.Default.WebGlDeviceInformation) ??
@@ -52,6 +63,34 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
     public GraphicsDeviceCapabilities Capabilities { get; }
     public GraphicsDrawStatistics DrawStatistics => _drawStatistics;
     public GraphicsColorReadbackCapabilities ColorReadbackCapabilities => new(true, 64 * 1024 * 1024);
+    public GraphicsBindingStatistics BindingStatistics =>
+        new(_programBinds, _uniformWrites, _textureBinds, _vertexArrayBinds, _cacheHits);
+
+    public void InvalidateState()
+    {
+        ThrowIfDisposed();
+        ResetState();
+    }
+
+    private void ResetState()
+    {
+        _boundProgram = -1;
+        InvalidateTextureBindings();
+        _viewportKnown = _scissorKnown = false;
+        _depthState = null; _blendMode = null; _rasterizerState = null;
+        _stateGeneration++;
+    }
+
+    // Texture creation and uploads bind/unbind the current JS texture unit.
+    // Forget all units rather than querying GL or assuming which unit was active.
+    private void InvalidateTextureBindings() => Array.Fill(_boundTextures, -1);
+
+    private void UseProgram(int handle)
+    {
+        if (_boundProgram == handle) { _cacheHits++; return; }
+        WebGlInterop.BindProgram(handle);
+        _boundProgram = handle; _programBinds++;
+    }
 
     public IGraphicsProgram CreateProgram(GraphicsShaderProgramDescription description)
     {
@@ -85,7 +124,8 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
         description.Validate();
         if (!SupportsTextureFormat(description.Format))
             throw new NotSupportedException($"WebGL 2 does not support {description.Format} in BEngine.");
-        return new WebGlTexture(this, label, description, initialData, ownsHandle: true);
+        try { return new WebGlTexture(this, label, description, initialData, ownsHandle: true); }
+        finally { InvalidateTextureBindings(); }
     }
 
     public IGraphicsRenderTarget CreateRenderTarget(string label, GraphicsRenderTargetDescription description)
@@ -93,7 +133,8 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         description.Validate();
-        return new WebGlRenderTarget(this, label, description);
+        try { return new WebGlRenderTarget(this, label, description); }
+        finally { InvalidateTextureBindings(); }
     }
 
     public IDisposable PushRenderTarget(IGraphicsRenderTarget renderTarget)
@@ -107,24 +148,33 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
     {
         ThrowIfDisposed();
         viewport.Validate();
+        if (_viewportKnown && _viewport == viewport) { _cacheHits++; return; }
         _viewport = viewport;
         WebGlInterop.SetViewport(viewport.X, viewport.Y, viewport.Width, viewport.Height);
+        _viewportKnown = true;
     }
 
     public void SetScissor(GraphicsRect? scissor)
     {
         ThrowIfDisposed();
-        if (scissor is null)
+        GraphicsRect? deviceScissor = null;
+        if (scissor is { } rect)
+        {
+            rect.Validate();
+            deviceScissor = new GraphicsRect(_viewport.X + rect.X,
+                _viewport.Y + _viewport.Height - rect.Y - rect.Height, rect.Width, rect.Height);
+        }
+        if (_scissorKnown && _scissor == deviceScissor) { _cacheHits++; return; }
+        if (deviceScissor is null)
         {
             WebGlInterop.DisableScissor();
-            return;
         }
-        scissor.Value.Validate();
-        WebGlInterop.SetScissor(
-            _viewport.X + scissor.Value.X,
-            _viewport.Y + _viewport.Height - scissor.Value.Y - scissor.Value.Height,
-            scissor.Value.Width,
-            scissor.Value.Height);
+        else
+        {
+            var converted = deviceScissor.Value;
+            WebGlInterop.SetScissor(converted.X, converted.Y, converted.Width, converted.Height);
+        }
+        _scissor = deviceScissor; _scissorKnown = true;
     }
 
     public void Clear(GraphicsClearFlags flags, NumericsVector4 color)
@@ -136,20 +186,28 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
     public void SetDepthState(GraphicsDepthState state)
     {
         ThrowIfDisposed();
+        if (_depthState == state) { _cacheHits++; return; }
         WebGlInterop.SetDepthState(state.TestEnabled, state.WriteEnabled);
+        _depthState = state;
     }
 
     public void SetBlendMode(GraphicsBlendMode mode)
     {
         ThrowIfDisposed();
+        if (_blendMode == mode) { _cacheHits++; return; }
         WebGlInterop.SetBlendMode((int)mode);
+        _blendMode = mode;
     }
 
     public void SetRasterizerState(GraphicsRasterizerState state)
     {
         ThrowIfDisposed();
+        if (_rasterizerState is { } cached && cached.DepthBiasEnabled == state.DepthBiasEnabled &&
+            cached.CullMode == state.CullMode && SameBits(cached.SlopeScale, state.SlopeScale) &&
+            SameBits(cached.ConstantBias, state.ConstantBias)) { _cacheHits++; return; }
         WebGlInterop.SetRasterizerState(
             state.DepthBiasEnabled, state.SlopeScale, state.ConstantBias, (int)state.CullMode);
+        _rasterizerState = state;
     }
 
     public void BindTexture(int slot, IGraphicsTexture2D texture)
@@ -159,7 +217,9 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
         var typed = Require<WebGlTexture>(texture);
         if ((typed.Description.Usage & GraphicsTextureUsage.Sampled) == 0)
             throw new InvalidOperationException($"Texture '{texture.Label}' was not created for sampling.");
+        if (_boundTextures[slot] == typed.Handle) { _cacheHits++; return; }
         WebGlInterop.BindTexture(slot, typed.Handle);
+        _boundTextures[slot] = typed.Handle; _textureBinds++;
     }
 
     public void Draw(IGraphicsMesh mesh)
@@ -171,9 +231,11 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
     public void Draw(IGraphicsMesh mesh, int vertexCount, int firstVertex = 0)
     {
         var typed = Require<WebGlMesh>(mesh);
-        if (vertexCount < 0 || firstVertex < 0 || firstVertex + vertexCount > typed.VertexCount)
+        if (vertexCount < 0 || firstVertex < 0 || firstVertex > typed.VertexCount ||
+            vertexCount > typed.VertexCount - firstVertex)
             throw new ArgumentOutOfRangeException(nameof(vertexCount));
         WebGlInterop.DrawMesh(typed.Handle, (int)typed.Topology, firstVertex, vertexCount);
+        _vertexArrayBinds++;
         RecordDraw(vertexCount, typed.Topology);
     }
 
@@ -183,6 +245,7 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
         if (vertexCount < 0) throw new ArgumentOutOfRangeException(nameof(vertexCount));
         if (firstVertex < 0) throw new ArgumentOutOfRangeException(nameof(firstVertex));
         WebGlInterop.DrawWithoutMesh((int)topology, firstVertex, vertexCount);
+        _vertexArrayBinds++;
         RecordDraw(vertexCount, topology);
     }
 
@@ -192,6 +255,11 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         WebGlInterop.BeginFrame(width, height);
+        if (_frameWidth != width || _frameHeight != height)
+        {
+            ResetState();
+            _frameWidth = width; _frameHeight = height;
+        }
     }
 
     public void Present()
@@ -231,6 +299,7 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
     public void Dispose()
     {
         if (_disposed) return;
+        ReleasePreparedImages();
         WebGlInterop.DisposeDevice();
         _disposed = true;
         GC.SuppressFinalize(this);
@@ -267,11 +336,23 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
             : "#version 300 es\nprecision highp float;\n" + normalized;
     }
 
-    private static string Encode(ReadOnlySpan<byte> bytes) =>
-        bytes.IsEmpty ? string.Empty : Convert.ToBase64String(bytes);
+    // The browser copies pixel bytes during the synchronous import and never
+    // writes into this read-only alias or retains its transient managed view.
+    private static Span<byte> InteropPixelBytes(ReadOnlySpan<byte> bytes) =>
+        MemoryMarshal.CreateSpan(ref MemoryMarshal.GetReference(bytes), bytes.Length);
 
-    private static string Encode(ReadOnlySpan<float> values) =>
-        Encode(MemoryMarshal.AsBytes(values));
+    // The supported browser ABI accepts Span<byte>, not ReadOnlySpan<float>.
+    // JS only calls MemoryView.copyTo during this synchronous import; it never
+    // writes into this alias or retains the transient managed view.
+    private static Span<byte> InteropVertexBytes(ReadOnlySpan<float> values)
+    {
+        var bytes = MemoryMarshal.AsBytes(values);
+        return MemoryMarshal.CreateSpan(ref MemoryMarshal.GetReference(bytes), bytes.Length);
+    }
+
+    private static bool SameBits<T>(T left, T right) where T : unmanaged =>
+        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref left, 1)).SequenceEqual(
+            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref right, 1)));
 
     private static void FlipRows(byte[] pixels, int width, int height)
     {
@@ -307,30 +388,106 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
 
     private sealed class WebGlProgram : WebGlResource, IGraphicsProgram
     {
+        private const int MaximumCachedUniforms = 64;
+        private const int MaximumCachedVectorArrayNames = 4096;
         private int _handle;
+        private readonly Dictionary<string, UniformValue> _uniforms = new(StringComparer.Ordinal);
+        private string? _vectorArrayFirstElementName;
+        private string[] _vectorArrayElementNames = [];
+        private enum UniformKind { Matrix, Vector, Float, Int }
+        private readonly record struct UniformValue(long Generation, UniformKind Kind,
+            int Scalar, NumericsVector4 Vector, NumericsMatrix4x4 Matrix);
         public WebGlProgram(WebGlGraphicsDevice device, string label, string vertex, string fragment)
             : base(device, label) => _handle = WebGlInterop.CreateProgram(label, vertex, fragment);
-        public void Bind() { ThrowIfDisposed(); WebGlInterop.BindProgram(_handle); }
+        public void Bind() { ThrowIfDisposed(); Owner.UseProgram(_handle); }
         public void SetMatrix4x4(string name, NumericsMatrix4x4 value)
         {
             ThrowIfDisposed();
+            Bind();
+            if (TryGetUniform(name, UniformKind.Matrix, out var cached) && SameBits(cached.Matrix, value))
+            { Owner._cacheHits++; return; }
             WebGlInterop.SetUniformMatrix(_handle, name,
                 value.M11, value.M12, value.M13, value.M14,
                 value.M21, value.M22, value.M23, value.M24,
                 value.M31, value.M32, value.M33, value.M34,
                 value.M41, value.M42, value.M43, value.M44);
+            CacheUniform(name, new(Owner._stateGeneration, UniformKind.Matrix, 0, default, value));
         }
         public void SetVector4(string name, NumericsVector4 value)
         {
             ThrowIfDisposed();
+            Bind();
+            if (TryGetUniform(name, UniformKind.Vector, out var cached) && SameBits(cached.Vector, value))
+            { Owner._cacheHits++; return; }
             WebGlInterop.SetUniformVector(_handle, name, value.X, value.Y, value.Z, value.W);
+            CacheUniform(name, new(Owner._stateGeneration, UniformKind.Vector, 0, value, default));
+        }
+        public void SetVector4Array(string firstElementName, ReadOnlySpan<NumericsVector4> values)
+        {
+            if (!firstElementName.EndsWith("[0]", StringComparison.Ordinal))
+                throw new ArgumentException("Expected an array [0] uniform.", nameof(firstElementName));
+            // The default interface implementation does not bind or check
+            // disposal for an empty array. Keep that behavior here as well.
+            if (values.IsEmpty) return;
+            if (values.Length > MaximumCachedVectorArrayNames)
+            {
+                var prefix = firstElementName[..^3];
+                for (var i = 0; i < values.Length; i++) SetVector4(prefix + "[" + i + "]", values[i]);
+                return;
+            }
+            // Retain one array name per program. Arbitrary user uniform names
+            // and oversized arrays cannot grow this cache without a bound.
+            if (!string.Equals(_vectorArrayFirstElementName, firstElementName, StringComparison.Ordinal))
+            {
+                _vectorArrayFirstElementName = firstElementName;
+                _vectorArrayElementNames = [];
+            }
+            if (_vectorArrayElementNames.Length < values.Length)
+            {
+                var prefix = firstElementName[..^3];
+                var names = new string[values.Length];
+                _vectorArrayElementNames.CopyTo(names, 0);
+                for (var i = _vectorArrayElementNames.Length; i < names.Length; i++)
+                    names[i] = prefix + "[" + i + "]";
+                _vectorArrayElementNames = names;
+            }
+            // Preserve existing per-element cache, state generation and JS
+            // behavior; only the repeated element-name construction is shared.
+            for (var i = 0; i < values.Length; i++) SetVector4(_vectorArrayElementNames[i], values[i]);
         }
         public void SetFloat(string name, float value)
-        { ThrowIfDisposed(); WebGlInterop.SetUniformFloat(_handle, name, value); }
+        {
+            ThrowIfDisposed(); Bind();
+            var bits = BitConverter.SingleToInt32Bits(value);
+            if (TryGetUniform(name, UniformKind.Float, out var cached) && cached.Scalar == bits)
+            { Owner._cacheHits++; return; }
+            WebGlInterop.SetUniformFloat(_handle, name, value);
+            CacheUniform(name, new(Owner._stateGeneration, UniformKind.Float, bits, default, default));
+        }
         public void SetInt(string name, int value)
-        { ThrowIfDisposed(); WebGlInterop.SetUniformInt(_handle, name, value); }
+        {
+            ThrowIfDisposed(); Bind();
+            if (TryGetUniform(name, UniformKind.Int, out var cached) && cached.Scalar == value)
+            { Owner._cacheHits++; return; }
+            WebGlInterop.SetUniformInt(_handle, name, value);
+            CacheUniform(name, new(Owner._stateGeneration, UniformKind.Int, value, default, default));
+        }
+        private bool TryGetUniform(string name, UniformKind kind, out UniformValue value) =>
+            _uniforms.TryGetValue(name, out value) && value.Generation == Owner._stateGeneration && value.Kind == kind;
+        private void CacheUniform(string name, UniformValue value)
+        {
+            // User shaders may generate names dynamically. Bound retained CPU
+            // state without changing any GL uniform or evicting another program.
+            if (_uniforms.Count >= MaximumCachedUniforms && !_uniforms.ContainsKey(name)) _uniforms.Clear();
+            _uniforms[name] = value; Owner._uniformWrites++;
+        }
         protected override void Release()
-        { if (_handle != 0) WebGlInterop.DeleteProgram(_handle); _handle = 0; }
+        {
+            if (_handle != 0) WebGlInterop.DeleteProgram(_handle);
+            if (Owner._boundProgram == _handle) Owner._boundProgram = -1;
+            _handle = 0; _uniforms.Clear();
+            _vectorArrayFirstElementName = null; _vectorArrayElementNames = [];
+        }
     }
 
     private sealed class WebGlMesh : WebGlResource, IGraphicsMesh
@@ -353,7 +510,7 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
                         Layout.Attributes.Select(item => new WebGlAttributeInformation(
                             item.Location, item.ComponentCount, item.OffsetBytes)).ToArray()),
                     WebGlJsonContext.Default.WebGlLayoutInformation),
-                Encode(description.Vertices.Span), Usage == GraphicsBufferUsage.Dynamic);
+                InteropVertexBytes(description.Vertices.Span), Usage == GraphicsBufferUsage.Dynamic);
             VertexCount = description.VertexCount;
         }
 
@@ -362,11 +519,12 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
             ThrowIfDisposed();
             if (Usage != GraphicsBufferUsage.Dynamic)
                 throw new InvalidOperationException($"Mesh '{Label}' is static.");
-            if (vertices.Length * sizeof(float) % Layout.StrideBytes != 0)
+            var byteLength = checked(vertices.Length * sizeof(float));
+            if (byteLength % Layout.StrideBytes != 0)
                 throw new ArgumentException("Vertex data length must be a multiple of the layout stride.",
                     nameof(vertices));
-            WebGlInterop.UpdateMesh(_handle, Encode(vertices));
-            VertexCount = vertices.Length * sizeof(float) / Layout.StrideBytes;
+            WebGlInterop.UpdateMesh(_handle, InteropVertexBytes(vertices));
+            VertexCount = byteLength / Layout.StrideBytes;
         }
 
         protected override void Release()
@@ -391,16 +549,16 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
                     nameof(initialData));
             _handle = WebGlInterop.CreateTexture(label,
                 JsonSerializer.Serialize(description, WebGlJsonContext.Default.GraphicsTextureDescription),
-                Encode(initialData));
+                InteropPixelBytes(initialData));
         }
 
         internal WebGlTexture(WebGlGraphicsDevice device, string label,
-            GraphicsTextureDescription description, int handle)
+            GraphicsTextureDescription description, int handle, bool ownsHandle = false)
             : base(device, label)
         {
             Description = description;
             _handle = handle;
-            _ownsHandle = false;
+            _ownsHandle = ownsHandle;
         }
 
         public void Update(ReadOnlySpan<byte> pixels)
@@ -409,13 +567,24 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
             if (pixels.Length != Description.DataByteSize)
                 throw new ArgumentException($"Texture '{Label}' requires {Description.DataByteSize} bytes.",
                     nameof(pixels));
-            WebGlInterop.UpdateTexture(_handle,
-                JsonSerializer.Serialize(Description, WebGlJsonContext.Default.GraphicsTextureDescription),
-                Encode(pixels));
+            try
+            {
+                WebGlInterop.UpdateTexture(_handle,
+                    JsonSerializer.Serialize(Description, WebGlJsonContext.Default.GraphicsTextureDescription),
+                    InteropPixelBytes(pixels));
+            }
+            finally { Owner.InvalidateTextureBindings(); }
         }
 
         protected override void Release()
-        { if (_ownsHandle && _handle != 0) WebGlInterop.DeleteTexture(_handle); _handle = 0; }
+        {
+            if (_ownsHandle && _handle != 0)
+            {
+                WebGlInterop.DeleteTexture(_handle);
+                Owner.InvalidateTextureBindings();
+            }
+            _handle = 0;
+        }
     }
 
     private sealed class WebGlRenderTarget : WebGlResource, IGraphicsRenderTarget
@@ -459,6 +628,7 @@ public sealed class WebGlGraphicsDevice : IGraphicsPresentationDevice, IGraphics
             ColorTexture?.Dispose();
             DepthTexture?.Dispose();
             if (_handle != 0) WebGlInterop.DeleteRenderTarget(_handle);
+            Owner.InvalidateTextureBindings();
             _handle = 0;
         }
     }
@@ -518,15 +688,18 @@ internal static partial class WebGlInterop
     [JSImport("globalThis.BEngineWebInterop.setUniformInt")]
     internal static partial void SetUniformInt(int handle, string name, int value);
     [JSImport("globalThis.BEngineWebInterop.createMesh")]
-    internal static partial int CreateMesh(string layoutJson, string verticesBase64, bool dynamic);
+    internal static partial int CreateMesh(string layoutJson,
+        [JSMarshalAs<JSType.MemoryView>] Span<byte> vertices, bool dynamic);
     [JSImport("globalThis.BEngineWebInterop.updateMesh")]
-    internal static partial void UpdateMesh(int handle, string verticesBase64);
+    internal static partial void UpdateMesh(int handle, [JSMarshalAs<JSType.MemoryView>] Span<byte> vertices);
     [JSImport("globalThis.BEngineWebInterop.deleteMesh")]
     internal static partial void DeleteMesh(int handle);
     [JSImport("globalThis.BEngineWebInterop.createTexture")]
-    internal static partial int CreateTexture(string label, string descriptionJson, string dataBase64);
+    internal static partial int CreateTexture(string label, string descriptionJson,
+        [JSMarshalAs<JSType.MemoryView>] Span<byte> pixels);
     [JSImport("globalThis.BEngineWebInterop.updateTexture")]
-    internal static partial void UpdateTexture(int handle, string descriptionJson, string dataBase64);
+    internal static partial void UpdateTexture(int handle, string descriptionJson,
+        [JSMarshalAs<JSType.MemoryView>] Span<byte> pixels);
     [JSImport("globalThis.BEngineWebInterop.deleteTexture")]
     internal static partial void DeleteTexture(int handle);
     [JSImport("globalThis.BEngineWebInterop.createRenderTarget")]

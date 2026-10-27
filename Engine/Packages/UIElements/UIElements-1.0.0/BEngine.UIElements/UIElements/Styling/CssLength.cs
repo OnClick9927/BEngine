@@ -1,8 +1,6 @@
-using System.Globalization;
-
 namespace BEngine.UIElements;
 
-/// <summary>Resolves CSS lengths at layout time, relative to their containing block.</summary>
+/// <summary>Resolves CSS lengths deterministically, relative to their containing block.</summary>
 internal static class CssLength
 {
     internal static bool DependsOnContainerOrFont(string expression)
@@ -17,20 +15,29 @@ internal static class CssLength
         }
         return false;
     }
-    internal static float Resolve(string expression, float basis, float viewportWidth,
-        float viewportHeight, float fontSize, float fallback = 0)
+
+    internal static Fix64 Resolve(string expression, Fix64 basis, Fix64 viewportWidth,
+        Fix64 viewportHeight, Fix64 fontSize, Fix64 fallback = default) =>
+        TryResolve(expression, basis, viewportWidth, viewportHeight, fontSize, out var value) ? value : fallback;
+
+    internal static bool TryResolve(string expression, Fix64 basis, Fix64 viewportWidth,
+        Fix64 viewportHeight, Fix64 fontSize, out Fix64 value)
     {
         try
         {
             var parser = new Parser(expression, basis, viewportWidth, viewportHeight, fontSize);
-            var value = parser.Expression();
+            value = parser.Expression();
             parser.Space();
-            return parser.End && float.IsFinite(value) ? value : fallback;
+            return parser.End;
         }
-        catch (FormatException) { return fallback; }
+        catch (Exception exception) when (exception is FormatException or OverflowException or DivideByZeroException)
+        {
+            value = Fix64.Zero;
+            return false;
+        }
     }
 
-    private struct Parser(string text, float basis, float vw, float vh, float font)
+    private struct Parser(string text, Fix64 basis, Fix64 vw, Fix64 vh, Fix64 font)
     {
         private int _index = 0;
         internal bool End => _index == text.Length;
@@ -42,7 +49,7 @@ internal static class CssLength
             _index++;
             return true;
         }
-        internal float Expression()
+        internal Fix64 Expression()
         {
             var result = Product();
             while (true)
@@ -52,7 +59,7 @@ internal static class CssLength
                 else return result;
             }
         }
-        private float Product()
+        private Fix64 Product()
         {
             var result = Term();
             while (true)
@@ -62,7 +69,7 @@ internal static class CssLength
                 else return result;
             }
         }
-        private float Term()
+        private Fix64 Term()
         {
             if (Eat('-')) return -Term();
             if (Eat('+')) return Term();
@@ -76,49 +83,57 @@ internal static class CssLength
                 Require('(');
                 var first = Expression();
                 var minimum = first; var maximum = first;
-                var second = 0f; var third = 0f; var count = 1;
+                var second = Fix64.Zero; var third = Fix64.Zero; var count = 1;
                 while (Eat(','))
                 {
                     var value = Expression();
                     count++;
                     if (count == 2) second = value;
                     else if (count == 3) third = value;
-                    // Match Enumerable.Min/Max's treatment of NaN, including an
-                    // all-NaN maximum. Resolve rejects non-finite final values.
-                    if (value < minimum || float.IsNaN(value)) minimum = value;
-                    if (value > maximum || float.IsNaN(maximum)) maximum = value;
+                    minimum = Fix64.Min(minimum, value);
+                    maximum = Fix64.Max(maximum, value);
                 }
                 Require(')');
                 if (function.Equals("calc", StringComparison.OrdinalIgnoreCase) && count == 1) return first;
                 if (function.Equals("min", StringComparison.OrdinalIgnoreCase)) return minimum;
                 if (function.Equals("max", StringComparison.OrdinalIgnoreCase)) return maximum;
                 if (function.Equals("clamp", StringComparison.OrdinalIgnoreCase) && count == 3)
-                    return Math.Max(first, Math.Min(second, third));
+                    return Fix64.Max(first, Fix64.Min(second, third));
                 throw new FormatException();
             }
-            while (_index < text.Length && (char.IsDigit(text[_index]) || text[_index] == '.')) _index++;
-            if (!float.TryParse(text.AsSpan(start, _index - start), NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out var number)) throw new FormatException();
+            while (_index < text.Length && (char.IsAsciiDigit(text[_index]) || text[_index] == '.')) _index++;
+            // 'em' is a unit; only consume e when it starts a numeric exponent.
+            if (_index < text.Length && text[_index] is 'e' or 'E')
+            {
+                var exponent = _index + 1;
+                if (exponent < text.Length && text[exponent] is '+' or '-') exponent++;
+                if (exponent < text.Length && char.IsAsciiDigit(text[exponent]))
+                {
+                    _index = exponent + 1;
+                    while (_index < text.Length && char.IsAsciiDigit(text[_index])) _index++;
+                }
+            }
+            if (!Fix64.TryParse(text.AsSpan(start, _index - start), out var number)) throw new FormatException();
             start = _index;
             while (_index < text.Length && (char.IsLetter(text[_index]) || text[_index] == '%')) _index++;
-            var unit = text.AsSpan(start, _index - start);
-            return number * UnitScale(unit);
+            return ApplyUnit(number, text.AsSpan(start, _index - start));
         }
-        private float UnitScale(ReadOnlySpan<char> unit)
+        private Fix64 ApplyUnit(Fix64 number, ReadOnlySpan<char> unit)
         {
-            if (unit.IsEmpty || unit.Equals("px", StringComparison.OrdinalIgnoreCase)) return 1;
-            if (unit.SequenceEqual("%")) return basis / 100;
-            if (unit.Equals("vw", StringComparison.OrdinalIgnoreCase)) return vw / 100;
-            if (unit.Equals("vh", StringComparison.OrdinalIgnoreCase)) return vh / 100;
-            if (unit.Equals("vmin", StringComparison.OrdinalIgnoreCase)) return Math.Min(vw, vh) / 100;
-            if (unit.Equals("vmax", StringComparison.OrdinalIgnoreCase)) return Math.Max(vw, vh) / 100;
-            if (unit.Equals("em", StringComparison.OrdinalIgnoreCase)) return font;
-            if (unit.Equals("rem", StringComparison.OrdinalIgnoreCase)) return 16;
-            if (unit.Equals("pt", StringComparison.OrdinalIgnoreCase)) return 96f / 72;
-            if (unit.Equals("pc", StringComparison.OrdinalIgnoreCase)) return 16;
-            if (unit.Equals("in", StringComparison.OrdinalIgnoreCase)) return 96;
-            if (unit.Equals("cm", StringComparison.OrdinalIgnoreCase)) return 96f / 2.54f;
-            if (unit.Equals("mm", StringComparison.OrdinalIgnoreCase)) return 96f / 25.4f;
+            if (unit.IsEmpty || unit.Equals("px", StringComparison.OrdinalIgnoreCase)) return number;
+            // Multiply before dividing so 100% preserves the basis exactly.
+            if (unit.SequenceEqual("%")) return number * basis / 100;
+            if (unit.Equals("vw", StringComparison.OrdinalIgnoreCase)) return number * vw / 100;
+            if (unit.Equals("vh", StringComparison.OrdinalIgnoreCase)) return number * vh / 100;
+            if (unit.Equals("vmin", StringComparison.OrdinalIgnoreCase)) return number * Fix64.Min(vw, vh) / 100;
+            if (unit.Equals("vmax", StringComparison.OrdinalIgnoreCase)) return number * Fix64.Max(vw, vh) / 100;
+            if (unit.Equals("em", StringComparison.OrdinalIgnoreCase)) return number * font;
+            if (unit.Equals("rem", StringComparison.OrdinalIgnoreCase)) return number * 16;
+            if (unit.Equals("pt", StringComparison.OrdinalIgnoreCase)) return number * 96 / 72;
+            if (unit.Equals("pc", StringComparison.OrdinalIgnoreCase)) return number * 16;
+            if (unit.Equals("in", StringComparison.OrdinalIgnoreCase)) return number * 96;
+            if (unit.Equals("cm", StringComparison.OrdinalIgnoreCase)) return number * 9600 / 254;
+            if (unit.Equals("mm", StringComparison.OrdinalIgnoreCase)) return number * 960 / 254;
             throw new FormatException();
         }
         private void Require(char token) { if (!Eat(token)) throw new FormatException(); }

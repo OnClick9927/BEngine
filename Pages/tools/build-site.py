@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Stage the static website with Hub and main-commit source downloads."""
+"""Stage the website, playable Web examples, Hub, and source downloads."""
 
 from __future__ import annotations
 
 import argparse
+import base64
+import gzip
 import hashlib
+import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
+from urllib.parse import urlsplit
 import zipfile
 
 
@@ -58,6 +63,55 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def validate_web_player(root: Path) -> tuple[int, int]:
+    """Reject incomplete or obsolete layouts before publishing playable links."""
+    expected = {"index.html", "player.bin", "framework.bin", "resources", "StreamingAssets"}
+    if root.is_symlink() or not root.is_dir() or {path.name for path in root.iterdir()} != expected:
+        raise ValueError(f"Incomplete Web player layout: {root}. Expected {', '.join(sorted(expected))}.")
+    for name in ("index.html", "player.bin", "framework.bin"):
+        if not (root / name).is_file() or not (root / name).stat().st_size:
+            raise ValueError(f"Missing or empty Web player file: {root / name}")
+    for name in ("resources", "StreamingAssets"):
+        if not (root / name).is_dir() or not any(path.is_file() for path in (root / name).rglob("*")):
+            raise ValueError(f"Missing Web player assets: {root / name}")
+    files = []
+    forbidden = {"temp", "library", "logs", "obj", "bin", "verification", "__pycache__", ".git"}
+    for path in root.rglob("*"):
+        relative = path.relative_to(root)
+        if path.is_symlink() or any(part.casefold() in forbidden for part in relative.parts):
+            raise ValueError(f"Temporary data or linked content in Web player: {path}")
+        if path.is_file():
+            files.append(path)
+    player_bytes = (root / "player.bin").read_bytes()
+    player_integrity = "sha256-" + base64.b64encode(hashlib.sha256(player_bytes).digest()).decode("ascii")
+    entry = (root / "index.html").read_text(encoding="utf-8")
+    if player_integrity not in entry or "./player.bin?benginev=" not in entry:
+        raise ValueError(f"Web entry does not match player.bin: {root}")
+    try:
+        player = gzip.decompress(player_bytes).decode("utf-8")
+        descriptor = json.loads(re.search(r"const descriptor = (\{[^\n]*\});", player)[1])
+        content = json.loads(re.search(r"const contentManifest = (\{[^\n]*\});", player)[1])
+    except (EOFError, OSError, UnicodeError, TypeError, ValueError) as error:
+        raise ValueError(f"Invalid packed Web player: {root}") from error
+    framework = root / "framework.bin"
+    framework_integrity = "sha256-" + base64.b64encode(bytes.fromhex(sha256(framework))).decode("ascii")
+    if (descriptor.get("url", "").split("?", 1)[0] != "./framework.bin" or
+            descriptor.get("integrity") != framework_integrity or descriptor.get("bytes") != framework.stat().st_size):
+        raise ValueError(f"Web runtime does not match framework.bin: {root}")
+    if content.get("streamingAssetsTransport") != "http":
+        raise ValueError(f"Web examples must read StreamingAssets directly over HTTP: {root}")
+    if not content.get("files"):
+        raise ValueError(f"Web player resource manifest is empty: {root}")
+    for resource in content["files"]:
+        url = resource.get("url", "")
+        parsed = urlsplit(url)
+        relative = Path(parsed.path)
+        if (parsed.scheme or parsed.netloc or not url.startswith("./resources/") or
+                ".." in relative.parts or not (root / relative).is_file()):
+            raise ValueError(f"Invalid or missing built-in Web resource {url!r}: {root}")
+    return len(files), sum(path.stat().st_size for path in files)
+
+
 def build_site(output: Path) -> Path:
     pages = Path(__file__).resolve().parents[1]
     repository = pages.parent
@@ -75,6 +129,7 @@ def build_site(output: Path) -> Path:
     with hub.open("rb") as source:
         if source.read(2) != b"MZ":
             raise ValueError(f"The exported Hub is not a Windows executable: {hub}")
+    web_players = {name: validate_web_player(pages / "plays" / name) for name in ("snake", "example")}
     commit, source_files = source_snapshot(repository)
 
     def ignore_maintenance(directory: str, names: list[str]) -> list[str]:
@@ -88,6 +143,9 @@ def build_site(output: Path) -> Path:
         downloads.mkdir(exist_ok=True)
         shutil.copyfile(hub, downloads / "BEngine.Hub.exe")
         archive_source(repository, downloads / "BEngine-main-src.zip", commit, source_files)
+        # Static hosting must preserve the packed players and their asset paths.
+        for name in web_players:
+            validate_web_player(staged / "plays" / name)
         staged.rename(output)
     download = output / "downloads" / "BEngine.Hub.exe"
     source_download = output / "downloads" / "BEngine-main-src.zip"
@@ -97,6 +155,8 @@ def build_site(output: Path) -> Path:
     print(f"Source commit: {commit}")
     print(f"Source download: {source_download} ({source_download.stat().st_size:,} bytes; {len(source_files):,} files)")
     print(f"Source SHA-256: {sha256(source_download)}")
+    for name, (count, size) in web_players.items():
+        print(f"Playable {name}: plays/{name}/ ({count:,} files; {size:,} bytes)")
     return output
 
 

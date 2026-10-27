@@ -65,6 +65,61 @@ Code and package-resource bundles retain the engine's reserved identities.
 Compare generated catalog names and dependency edges instead of inferring a split
 from the number of output files alone.
 
+## Read Directly from StreamingAssets
+
+Select `Load Mode: StreamingAssets` in AssetBundle Settings, or set
+`loadMode: StreamingAssets` and `builtInDirectory: StreamingAssets/AssetBundles`
+in `ProjectSettings/AssetBundles.yaml`. Package the standard release under
+`Assets/StreamingAssets/AssetBundles/<packageName>` before building the Player.
+The normal Player build includes it under `Application.streamingAssetsPath`.
+Disable the remote URL and startup update checks for this offline mode.
+
+The Player and its AOT startup use the packaged catalog directly. Initialization
+checks the catalog hash and, for file sources, bundle presence/length. Each bundle's SHA-256 is
+verified when first opened. Dependencies, encryption and resource lifetimes use
+the same loading pipeline. No AB objects, staging files or activation pointers
+are written to `Application.persistentDataPath`; game saves may still use it.
+In-place updates, rollback and local installation require `PersistentCache` mode.
+
+For a separately managed AB instance:
+
+```csharp
+using var manager = new AssetBundleManager(
+    AssetBundleRuntimeOptions.FromStreamingAssets("game"));
+await manager.InitializeAsync();
+using var handle = await manager.LoadBytesAsync("Assets/Config/game.json");
+```
+
+Desktop and iOS read packaged files in place. Android mounts StreamingAssets
+from the APK without extracting that directory; AB files are stored uncompressed
+in the APK and opened as bounded, seekable file segments. Other compressed assets
+are expanded into memory on demand.
+
+Web uses the site's `StreamingAssets/` URL, resolved relative to the page (including
+subdirectory deployments). These files are not preloaded or mounted into the
+virtual filesystem. Initialization fetches only version/catalog metadata; an AB
+and its dependencies are fetched when first requested, checked for size/SHA-256,
+then opened directly from memory. `HttpNetworkRequest.BypassCache = true` uses
+browser fetch `cache: no-store`: no HTTP cache, IndexedDB, sandbox copy or disk
+installation. Loaded bundles share their in-memory data while in use; after
+unloading, requesting them again fetches them again. Asynchronous loading or
+preloading is required before synchronous resource access. Cross-origin sources
+must allow CORS. A connection is required whenever an unloaded bundle is requested.
+
+Keep the `AssetBundleHandle` returned by an asynchronous load alive while its UI
+or scene may still read bundle payloads synchronously. Dispose it when that scope
+ends. `DownloadDependenciesAsync` warms memory without retaining a usage handle;
+`UnloadUnused` may evict those preloads. Fetch them asynchronously again before
+the next synchronous access.
+
+For a custom HTTP source, configure `UsePersistentCache = false`,
+`BuiltInBaseUri = new Uri("https://example.com/StreamingAssets/AssetBundles/game/")`
+and `PackageName = "game"`, leaving `BuiltInDirectory` and `RemoteBaseUri` unset.
+This is a read-only source, separate from the remote update/install pipeline.
+
+`PersistentCache` remains the default for existing projects and old runtime
+metadata. It retains installation, repair, package updates and rollback.
+
 ## Selective Installation
 
 Set AssetBundleRuntimeOptions.RequiredBundleNames to required root names before

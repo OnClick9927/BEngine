@@ -6,7 +6,7 @@ using System.Text;
 
 namespace BEngine.Player;
 
-internal sealed class PlayerProjectSceneLoader : ISceneLoader
+internal sealed class PlayerProjectSceneLoader : IAsyncSceneLoader
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly ProjectWorkspace _workspace;
@@ -37,6 +37,89 @@ internal sealed class PlayerProjectSceneLoader : ISceneLoader
         var scene = SceneAssetSerialization.Load(sourcePath, services);
         scene.path = sourcePath;
         return scene;
+    }
+
+    public async BTask<Scene> LoadSceneAsync(string sceneNameOrPath, IServiceProvider services, AsyncLoadContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        context.cancellationToken.ThrowIfCancellationRequested();
+        string? address = null;
+        byte[] bytes;
+        AssetBundleHandle<byte[]>? payload = null;
+        Scene? scene = null;
+        var succeeded = false;
+        try
+        {
+            if (_builtInResources is not null)
+                address = ResolveSceneAddress(sceneNameOrPath, _builtInResources.EnumerateAddresses("Assets"), "built-in AOT archive");
+            if (address is not null)
+                bytes = await _builtInResources!.ReadBytesAsync(address, context.cancellationToken);
+            else if (_assetBundles is { IsInitialized: true, ActiveCatalog: not null } &&
+                     (address = ResolveSceneAddress(sceneNameOrPath, _assetBundles.EnumerateAddresses("Assets"), "active AssetBundle catalog")) is not null)
+            {
+                // A cold scene is allowed: loading its verified dependency closure must
+                // finish asynchronously before field binding touches bundled objects.
+                payload = await _assetBundles.LoadBytesAsync(address, context.cancellationToken);
+                bytes = payload.Asset;
+            }
+            else
+            {
+                address = ResolveScenePath(sceneNameOrPath);
+                using var stream = _fileSystem.OpenRead(address);
+                var readContext = new AsyncLoadContext(context.cancellationToken,
+                    value => context.ReportProgress(.05f + .06f * value)) { priority = context.priority };
+                bytes = await readContext.ReadAllBytesAsync(stream);
+            }
+            context.ReportProgress(.12f);
+            SceneAssetData? document = null;
+            await context.RunSteps(() =>
+            {
+                document = YamlUtility.Deserialize<SceneAssetData>(StrictUtf8.GetString(bytes));
+                return CooperativeWorkStatus.Complete;
+            });
+            context.ReportProgress(.2f);
+            if (payload is not null)
+            {
+                // The bundle is already verified, but each sprite entry may still be
+                // compressed. Prepare those payloads before the synchronous binder.
+                var preparedReferences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var component in document!.GameObjects.SelectMany(static item => item.Components))
+                {
+                    if (!component.Fields.TryGetValue(nameof(SpriteRenderer.sprite), out var reference) ||
+                        string.IsNullOrWhiteSpace(reference) || !preparedReferences.Add(reference)) continue;
+                    if (reference.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
+                        _assetBundles!.EnumerateAddresses(reference).Contains(reference, StringComparer.OrdinalIgnoreCase))
+                    {
+                        using var dependency = await _assetBundles!.LoadBytesAsync(reference, context.cancellationToken);
+                    }
+                }
+            }
+            context.ReportProgress(.3f);
+            var restoreContext = new AsyncLoadContext(context.cancellationToken,
+                value => context.ReportProgress(.3f + .5f * value)) { priority = context.priority };
+            scene = await SceneAssetSerialization.RestoreAsync(document!, services, restoreContext);
+            if (payload is not null)
+            {
+                var renderers = scene.QueryComponents<SpriteRenderer>().ToDictionary(static item => item.Id);
+                using var components = document!.GameObjects.SelectMany(static item => item.Components).GetEnumerator();
+                await context.RunSteps(() =>
+                {
+                    if (!components.MoveNext()) return CooperativeWorkStatus.Complete;
+                    RestoreBundledSprite(components.Current, renderers);
+                    return CooperativeWorkStatus.Continue;
+                });
+            }
+            context.cancellationToken.ThrowIfCancellationRequested();
+            scene.path = address;
+            context.ReportProgress(.89f);
+            succeeded = true;
+            return scene;
+        }
+        finally
+        {
+            payload?.Dispose();
+            if (!succeeded && scene is { isCreated: true }) scene.Dispose();
+        }
     }
 
     private bool TryLoadBuiltInScene(
@@ -114,16 +197,19 @@ internal sealed class PlayerProjectSceneLoader : ISceneLoader
         var renderers = scene.QueryComponents<SpriteRenderer>()
             .ToDictionary(renderer => renderer.Id);
         foreach (var component in document.GameObjects.SelectMany(gameObject => gameObject.Components))
-        {
-            if (!renderers.TryGetValue(component.Id, out var renderer) ||
+            RestoreBundledSprite(component, renderers);
+    }
+
+    private void RestoreBundledSprite(ComponentData component, Dictionary<Guid, SpriteRenderer> renderers)
+    {
+        if (!renderers.TryGetValue(component.Id, out var renderer) ||
                 !component.Fields.TryGetValue(nameof(SpriteRenderer.sprite), out var reference) ||
-                string.IsNullOrWhiteSpace(reference)) continue;
-            var bundled = AssetBundleAssetLoader.LoadSprite(_assetBundles!, reference);
-            if (bundled is not null) renderer.sprite = bundled;
-            else if (renderer.sprite is null)
-                throw new InvalidDataException(
-                    $"AssetBundle scene Sprite '{reference}' is not a bundled TextureImporter Sprite.");
-        }
+                string.IsNullOrWhiteSpace(reference)) return;
+        var bundled = AssetBundleAssetLoader.LoadSprite(_assetBundles!, reference);
+        if (bundled is not null) renderer.sprite = bundled;
+        else if (renderer.sprite is null)
+            throw new InvalidDataException(
+                $"AssetBundle scene Sprite '{reference}' is not a bundled TextureImporter Sprite.");
     }
 
     private string ToProjectRelativePath(string sceneNameOrPath)

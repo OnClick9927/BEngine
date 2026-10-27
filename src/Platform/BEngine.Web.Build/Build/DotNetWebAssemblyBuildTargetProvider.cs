@@ -1,6 +1,7 @@
-using System.Text.Json;
 using BEngine.Build;
 using BEngine.Platform;
+using BEngine.AssetBundles;
+using BEngine.Serialization;
 
 namespace BEngine.Editor;
 
@@ -39,6 +40,7 @@ public sealed class DotNetWebAssemblyBuildTargetProvider : DotNetPlatformBuildTa
     protected override void ConfigurePublish(ProcessRunRequest process, PlayerBuildContext context)
     {
         RequireSelfContained(context);
+        process.Arguments.Add($"-p:BEngineHttpStreamingAssets={UsesHttpStreamingAssets(context).ToString().ToLowerInvariant()}");
         // Make the platform a global restore property so the BEngine.Player project graph and
         // its platform-suffixed artifacts directory agree during publish.
         process.Arguments.Add("-p:BEnginePlayerPlatform=Web");
@@ -49,86 +51,48 @@ public sealed class DotNetWebAssemblyBuildTargetProvider : DotNetPlatformBuildTa
             ? "-p:SuppressTrimAnalysisWarnings=false" : "-p:SuppressTrimAnalysisWarnings=true");
         process.Arguments.Add("-p:RunAOTCompilation=true");
         process.Arguments.Add("-p:WasmBuildNative=true");
-        process.Arguments.Add("-p:WasmDedup=false");
+        process.Arguments.Add("-p:WasmDedup=true");
         process.Arguments.Add("-p:WasmNativeDebugSymbols=false");
+        if (string.Equals(context.Request.Configuration, "Release", StringComparison.OrdinalIgnoreCase))
+        {
+            // Optimize the AOT bitcode, native runtime and final WebAssembly for speed.
+            // Keep the SDK's arithmetic, exception and target-feature settings.
+            process.Arguments.Add("-p:WasmBitcodeCompileOptimizationFlag=-O3");
+            process.Arguments.Add("-p:EmccCompileOptimizationFlag=-O3");
+            process.Arguments.Add("-p:EmccLinkOptimizationFlag=-O3");
+        }
     }
 
     protected override void ValidateOutput(PlayerBuildContext context)
     {
         var webRoot = PathService.Combine(context.StagingDirectory, "wwwroot");
-        StagePlayerContent(context, webRoot);
+        WebPlayerContentLayout.Apply(context.StagingDirectory, webRoot, FileSystem, PathService,
+            UsesHttpStreamingAssets(context));
         if (!FileSystem.FileExists(PathService.Combine(webRoot, "index.html")) ||
             !FileSystem.FileExists(PathService.Combine(webRoot, "main.js")) ||
+            !FileSystem.FileExists(PathService.Combine(webRoot, "framework.js")) ||
             !FileSystem.FileExists(PathService.Combine(webRoot, "bengine-content.json")) ||
             !FileSystem.FileExists(PathService.Combine(
                 webRoot, "_framework", "dotnet.js")))
             throw new InvalidDataException(
                 "The WebAssembly Player Host did not produce a deployable wwwroot with " +
-                "index.html, main.js, bengine-content.json, and _framework/dotnet.js.");
+                "index.html, main.js, framework.js, bengine-content.json, and _framework/dotnet.js.");
+        WebPlayerRuntimeBundle.Apply(webRoot, FileSystem, PathService);
+        WebPlayerDistribution.Apply(webRoot, FileSystem, PathService);
+        WebPlayerCacheVersioning.Apply(webRoot, FileSystem, PathService);
     }
 
-    private void StagePlayerContent(PlayerBuildContext context, string webRoot)
+    private bool UsesHttpStreamingAssets(PlayerBuildContext context)
     {
-        var dataDirectories = FileSystem.EnumerateDirectories(
-                context.StagingDirectory, "*_data", SearchOption.TopDirectoryOnly)
-            .OrderBy(path => path, StringComparer.Ordinal)
-            .ToArray();
-        if (dataDirectories.Length != 1)
-            throw new InvalidDataException(
-                $"The Web Player requires exactly one staged '*_data' directory; found " +
-                $"{dataDirectories.Length} in '{context.StagingDirectory}'.");
-        var dataDirectory = dataDirectories[0];
-        var dataDirectoryName = PathService.GetFileName(dataDirectory);
-
-        var contentRoot = PathService.Combine(webRoot, "bengine-content");
-        var entries = new List<WebContentEntry>();
-        foreach (var source in FileSystem.EnumerateFiles(
-                     dataDirectory, "*", SearchOption.AllDirectories)
-                 .OrderBy(path => path, StringComparer.Ordinal))
-        {
-            var relativePath = PathService.GetRelativePath(dataDirectory, source)
-                .Replace('\\', '/');
-            if (relativePath.StartsWith("../", StringComparison.Ordinal) ||
-                relativePath.Equals("..", StringComparison.Ordinal))
-                throw new InvalidDataException(
-                    $"Web Player content escaped its data directory: '{source}'.");
-
-            var destination = PathService.Combine(
-                contentRoot, relativePath.Replace('/', PathService.DirectorySeparatorChar));
-            FileSystem.CreateDirectory(PathService.GetDirectoryName(destination)!);
-            FileSystem.CopyFile(source, destination, overwrite: true);
-            var encodedPath = string.Join('/', relativePath.Split('/')
-                .Select(Uri.EscapeDataString));
-            entries.Add(new WebContentEntry(
-                $"../bengine-content/{encodedPath}",
-                $"{dataDirectoryName}/{relativePath}"));
-        }
-
-        if (entries.Count == 0)
-            throw new InvalidDataException("The Web Player has no packaged content to mount.");
-
-        const string assemblyDirectoryMarker = "assembly/.bengine-directory";
-        var markerPath = PathService.Combine(
-            contentRoot, assemblyDirectoryMarker.Replace('/', PathService.DirectorySeparatorChar));
-        FileSystem.CreateDirectory(PathService.GetDirectoryName(markerPath)!);
-        FileSystem.WriteAllBytes(markerPath, []);
-        entries.Add(new WebContentEntry(
-            $"../bengine-content/{assemblyDirectoryMarker}",
-            $"{dataDirectoryName}/{assemblyDirectoryMarker}"));
-
-        var manifest = JsonSerializer.Serialize(
-            new WebContentManifest(dataDirectoryName, entries),
-            new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = true
-            });
-        FileSystem.WriteAllText(PathService.Combine(webRoot, "bengine-content.json"), manifest);
+        var settingsPath = PathService.Combine(context.Request.ProjectPath, "ProjectSettings", AssetBundleSettingsDocument.FileName);
+        var settings = FileSystem.FileExists(settingsPath)
+            ? YamlUtility.Load<AssetBundleSettingsDocument>(settingsPath, FileSystem, PathService) : null;
+        if (settings is not { Enabled: true, LoadMode: AssetBundleLoadMode.StreamingAssets }) return false;
+        var directory = settings.BuiltInDirectory.Replace('\\', '/').TrimEnd('/');
+        if (!(directory.Equals("StreamingAssets", StringComparison.OrdinalIgnoreCase) ||
+              directory.StartsWith("StreamingAssets/", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("Web direct AssetBundles must be placed under StreamingAssets.");
+        return true;
     }
 
-    private sealed record WebContentManifest(
-        string DataDirectory,
-        IReadOnlyList<WebContentEntry> Files);
-
-    private sealed record WebContentEntry(string Url, string VirtualPath);
 }

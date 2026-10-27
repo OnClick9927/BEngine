@@ -3,7 +3,7 @@ using BEngine.Rendering;
 namespace BEngine;
 
 internal sealed record PixelPerfectPolicy(int AssetsPPU, int ReferenceWidth, int ReferenceHeight, bool PixelSnapping)
-    : IRenderCameraPolicy
+    : IStableRenderCameraPolicy
 {
     public bool AlignViewportCenter => PixelSnapping;
     public RenderCamera ForViewport(RenderCamera camera, int width, int height)

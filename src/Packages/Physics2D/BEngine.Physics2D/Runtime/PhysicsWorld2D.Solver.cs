@@ -144,6 +144,11 @@ public sealed partial class PhysicsWorld2D
     }
     private static void ResolvePosition(ContactState state)
     {
+        // Bodyless contacts still generate the normal collision callbacks, but neither
+        // collider can receive a positional correction. Recheck live attachment:
+        // a joint-break callback may add a body between position iterations.
+        if (state.LeftBody is null && state.RightBody is null &&
+            state.Left.attachedRigidbody is null && state.Right.attachedRigidbody is null) return;
         if (!TryLeaf(PhysicsShapeFactory2D.Create(state.Left), state.LeftPart, out var leftShape) ||
             !TryLeaf(PhysicsShapeFactory2D.Create(state.Right), state.RightPart, out var rightShape) ||
             !CollisionAlgorithms2D.TryCollide(leftShape, rightShape, out var manifold)) return;

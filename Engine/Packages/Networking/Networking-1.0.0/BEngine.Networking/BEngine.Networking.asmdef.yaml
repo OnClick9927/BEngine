@@ -8,3 +8,4 @@ excludePlatforms: []
 defineConstraints: []
 autoReferenced: true
 editorOnly: false
+allowUnsafeCode: true

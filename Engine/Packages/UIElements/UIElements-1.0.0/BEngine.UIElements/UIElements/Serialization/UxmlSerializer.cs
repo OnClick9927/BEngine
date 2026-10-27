@@ -519,7 +519,7 @@ internal static class UxmlSerializer
     {
         var declarations = new List<string>();
         void Add(string name, object value) => declarations.Add($"{name}: {value}");
-        static string Number(float value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+        static string Number(Fix64 value) => value.ToString(null, CultureInfo.InvariantCulture);
         static string EnumName<T>(T value) where T : struct, Enum =>
             Regex.Replace(value.ToString(), "([a-z])([A-Z])", "$1-$2").ToLowerInvariant();
         if (style.IsInline(nameof(style.flexDirection))) Add("flex-direction", EnumName(style.flexDirection));
@@ -528,16 +528,16 @@ internal static class UxmlSerializer
         if (style.IsInline(nameof(style.justifyContent))) Add("justify-content", EnumName(style.justifyContent));
         if (style.IsInline(nameof(style.overflow))) Add("overflow", EnumName(style.overflow));
         if (style.IsInline(nameof(style.position))) Add("position", EnumName(style.position));
-        if (style.IsInline(nameof(style.left))) Add("left", $"{Number(style.left)}px");
-        if (style.IsInline(nameof(style.top))) Add("top", $"{Number(style.top)}px");
-        if (style.IsInline(nameof(style.right))) Add("right", $"{Number(style.right)}px");
-        if (style.IsInline(nameof(style.bottom))) Add("bottom", $"{Number(style.bottom)}px");
+        if (style.IsInline(nameof(style.left)) && style.left is { } left) Add("left", $"{Number(left)}px");
+        if (style.IsInline(nameof(style.top)) && style.top is { } top) Add("top", $"{Number(top)}px");
+        if (style.IsInline(nameof(style.right)) && style.right is { } right) Add("right", $"{Number(right)}px");
+        if (style.IsInline(nameof(style.bottom)) && style.bottom is { } bottom) Add("bottom", $"{Number(bottom)}px");
         if (style.IsInline(nameof(style.width))) Add("width", $"{Number(style.width)}px");
         if (style.IsInline(nameof(style.height))) Add("height", $"{Number(style.height)}px");
         if (style.IsInline(nameof(style.minWidth))) Add("min-width", $"{Number(style.minWidth)}px");
         if (style.IsInline(nameof(style.minHeight))) Add("min-height", $"{Number(style.minHeight)}px");
-        if (style.IsInline(nameof(style.maxWidth))) Add("max-width", $"{Number(style.maxWidth)}px");
-        if (style.IsInline(nameof(style.maxHeight))) Add("max-height", $"{Number(style.maxHeight)}px");
+        if (style.IsInline(nameof(style.maxWidth)) && style.maxWidth is { } maxWidth) Add("max-width", $"{Number(maxWidth)}px");
+        if (style.IsInline(nameof(style.maxHeight)) && style.maxHeight is { } maxHeight) Add("max-height", $"{Number(maxHeight)}px");
         if (style.IsInline(nameof(style.flexGrow))) Add("flex-grow", Number(style.flexGrow));
         if (style.IsInline(nameof(style.flexShrink))) Add("flex-shrink", Number(style.flexShrink));
         if (style.IsInline(nameof(style.marginLeft))) Add("margin-left", $"{Number(style.marginLeft)}px");

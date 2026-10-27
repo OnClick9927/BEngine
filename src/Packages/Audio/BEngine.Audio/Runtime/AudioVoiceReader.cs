@@ -67,34 +67,15 @@ internal sealed class AudioVoiceReader : IDisposable
         }
         catch { _reader.Dispose(); throw; }
     }
-    // Integer-rate decoded PCM uses a contiguous block loop. Streaming, fractional
-    // resampling and fade-in retain TryStereo so their interpolation/timing is unchanged.
+    // Decoded PCM mixes in the Core kernel; streaming retains its bounded reader window.
     internal bool TryMixPcm(Span<float> output, int channels, Fix64 step, float leftGain, float rightGain,
         bool loop, ref Fix64 cursor, out bool ended)
     {
         ended = false;
-        if (_decodedPcm.Length == 0 || _fadeIn != 0 || step != Fix64.One || cursor.RawValue % Fix64.One.RawValue != 0) return false;
-        var samples = _decodedPcm.Length / _channels;
-        var frame = Mathf.FloorToInt(cursor); var outputFrames = output.Length / channels; var written = 0;
-        using var budget = LoopExecutionGuard.AllowIterations(outputFrames + 1);
-        while (written < outputFrames)
-        {
-            if (frame >= samples) { if (!loop) break; frame %= samples; }
-            var count = Math.Min(samples - frame, outputFrames - written);
-            for (var i = 0; i < count; i++)
-            {
-                var index = (frame + i) * _channels;
-                var left = _decodedPcm[index] * leftGain;
-                var right = (_channels > 1 ? _decodedPcm[index + 1] : _decodedPcm[index]) * rightGain;
-                if (channels == 1) output[written + i] += (left + right) * .5f;
-                else { var at = (written + i) * channels; output[at] += left; output[at + 1] += right; }
-                LastLeft = left; LastRight = right;
-            }
-            written += count; frame += count;
-        }
-        if (loop) frame %= samples;
-        else { frame = Math.Min(frame, samples); ended = frame >= samples; }
-        cursor = frame; return true;
+        if (_decodedPcm.Length == 0) return false;
+        ended = PcmSampleMixer.MixDecoded(_decodedPcm, _channels, output, channels, step,
+            leftGain, rightGain, loop, ref cursor, ref _fadeIn, ref LastLeft, ref LastRight);
+        return true;
     }
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     internal bool TryStereo(Fix64 cursor, bool loop, out float left, out float right)
@@ -166,3 +147,4 @@ internal sealed class AudioVoiceReader : IDisposable
     }
     public void Dispose() { _decodedPcm = []; _reader.Dispose(); }
 }
+

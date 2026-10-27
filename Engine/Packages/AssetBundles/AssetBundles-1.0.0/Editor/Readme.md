@@ -1,11 +1,17 @@
 # AssetBundles
 
+HTTP 读取 AB 使用 `AssetBundleRuntimeOptions.HttpInactivityTimeout`（默认 60 秒）限制连续无进展的时长；有数据持续到达时不限制总下载时长。响应头或接收字节推进会刷新计时，网络停滞会失败并按 `MaxRetries` 重试。随包 HTTP 读取继续使用 `no-store`，不写入沙盒或浏览器缓存。
+
 ### AssetBundle Package 与增量构建
 
 `assetbundle package` 是构建时的资源分组，一个包可以包含多个 Bundle。
 例如把字体、图片、配置分别归入 `fonts`、`images`、`config`：只修改配置后，
 构建会重新生成有变化的配置 Bundle，字体和图片直接复用已验证的压缩产物。
 仍会扫描、校验输入并生成完整发布清单；复用不是完全跳过资源检查。
+
+构建默认输出紧凑的运行时目录 `catalog.bin`，减少下载体积和启动解析开销。
+`version.yaml` 的 `CatalogFile` 指向该发布实际使用的目录文件，不应在业务代码中固定文件名。
+项目配置继续使用 YAML，运行时仍兼容旧 YAML 目录；现有资源加载、更新和修复 API 无需调整。
 
 编辑器菜单 **Assets → AssetBundle Packages...** 可配置、保存并构建；
 **Project Settings → Asset Bundles → Configure AssetBundle Packages...** 也可打开。
@@ -124,3 +130,40 @@ await using AssetBundleHandle<string> text =
 同一 manager 支持并发初始化和并发加载：相同内容 hash 只创建一个 loaded bundle task，句柄使用引用计数；每个句柄都必须释放，之后可调用 `UnloadUnused`。初始化、Apply、Rollback 和 Cleanup 串行修改管理状态；加载先捕获当前不可变快照，因此更新发布新状态时不会原地改变正在读取的 catalog。并发提交同一更新计划只有一次实际激活。
 
 远程元数据和 bundle 都执行大小、SHA-256 与目录边界校验。bundle 使用 `HttpNetworkRequest` 的流式响应入口逐块写入 staging、增量计算 hash，验证后才移动到 content-addressed object cache；catalog 和 active/previous 指针采用临时文件原子替换。验证失败保留旧 active 状态并清理 `.part`，`RollbackAsync` 只在已验证指针间切换而不重新下载。运行时契约是只读：不要修改 `ActiveCatalog` 后期待影响 manager，不要改写索引或 bundle 内容，也不要让运行时保存回 `Assets`；新版本必须通过构建 catalog、检查、下载、验证和原子 Apply 发布。
+
+
+### 轮询加载进度
+
+需要进度时使用 `InitializeRequest()`、`LoadBytesRequest(address)`、`LoadTextRequest(address)`。
+这些操作继承 `AsyncOperation`，外部逐帧读取只读的 `progress`（0～1）、`isDone`、`status`、`exception`。运行时不提供进度通知事件，`completed` 完成事件保留。
+直接 `InitializeAsync` / `LoadBytesAsync` / `LoadTextAsync` 的 await 入口保持可用。
+
+```csharp
+using var initialization = bundles.InitializeRequest();
+while (!initialization.isDone)
+{
+    // UI reads these properties; the manager does not call user progress handlers.
+    var detail = initialization.loadProgress;
+    DrawProgress(initialization.progress, detail.Resource, detail.ProcessedBytes, detail.TotalBytes);
+    await BEngine.BTask.Yield();
+}
+if (initialization.exception is { } initializationError) throw initializationError;
+
+using var request = bundles.LoadBytesRequest("Assets/Data/config.json");
+while (!request.isDone)
+{
+    var detail = request.loadProgress;
+    DrawProgress(request.progress, detail.Resource, detail.ProcessedBytes, detail.TotalBytes);
+    await BEngine.BTask.Yield();
+}
+if (request.exception is { } loadError) throw loadError;
+byte[] bytes = request.asset!; // retain/copy ownership before disposing the request as appropriate
+```
+
+`loadProgress` 包含当前资源的 Kind、Phase、Resource、ProcessedBytes、TotalBytes、Attempt。
+Phase 区分等待、接收、校验、解析、读取/解压、重试、完成、失败、取消；未知长度的 TotalBytes 为 null，不能伪造分母。
+依赖包可通过 `bundleCount` 和 `GetBundleProgress(index)` 逐个读取，不分配快照数组。
+相同 hash 的并发请求共享实际传输和状态；汇总多个请求时，应通过 catalog 的 bundle hash 去重。
+`progress` 是依赖读取、校验、解压工作的单调阶段进度，不等于网络字节比例；当前文件的字节比例应由 detail 计算。
+只有操作成功才到 1，取消和校验失败保留部分进度。完成接收后仍会执行完整性和格式检查。
+所有属性在引擎所属线程读取；工作线程仅更新内部计数，不调用 UI。

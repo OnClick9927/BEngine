@@ -9,4 +9,8 @@ public readonly record struct UIRenderStatistics(
 {
     /// <summary>Alpha-one SolidRect draws that overwrite without destination blending.</summary>
     public int OpaqueSolidDrawCalls { get; init; }
+    /// <summary>SDF text commands whose prepared CPU vertices were reused.</summary>
+    public int TextGeometryCacheHits { get; init; }
+    /// <summary>SDF glyphs regenerated this submission, including outlined glyphs only once.</summary>
+    public int TextGeometryRebuiltGlyphs { get; init; }
 }

@@ -1,0 +1,7 @@
+format: BEngine.AssetBundleVersion
+schemaVersion: 1
+packageName: snake
+version: v27
+catalogFile: catalog.bin
+catalogSha256: 239cdc04407ed9c76f4ab18dd8ad4e8f9f48b318f308a6a187c42d8e5a79d673
+catalogSize: 723629

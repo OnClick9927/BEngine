@@ -162,8 +162,8 @@ public static class AssetBundleAssetLoader
 
         var sprite = Sprite.FromTexture(AssetBundleResourceProvider.ToVirtualPath(asset.Address),
             new Vector2(
-                (Fix64)(double)ReadPivot(asset.ImporterSettings, "spritePivotX"),
-                (Fix64)(double)ReadPivot(asset.ImporterSettings, "spritePivotY")),
+                ReadPivot(asset.ImporterSettings, "spritePivotX"),
+                ReadPivot(asset.ImporterSettings, "spritePivotY")),
             asset.Address);
         sprite.Id = asset.Guid;
         sprite.border = new(ReadSpriteNumber("spriteBorderLeft", 0), ReadSpriteNumber("spriteBorderBottom", 0),
@@ -174,9 +174,9 @@ public static class AssetBundleAssetLoader
         sprite.assetType = nameof(Sprite);
         return sprite;
 
-        Fix64 ReadSpriteNumber(string key, double fallback) => asset.ImporterSettings.TryGetValue(key, out var text) &&
-            double.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, out var value) && double.IsFinite(value)
-            ? (Fix64)Math.Max(0, value) : (Fix64)fallback;
+        Fix64 ReadSpriteNumber(string key, Fix64 fallback) => asset.ImporterSettings.TryGetValue(key, out var text) &&
+            Fix64.TryParse(text, CultureInfo.InvariantCulture, out var value)
+            ? Fix64.Max(0, value) : fallback;
     }
 
     private static BAsset? DecodeAsset(
@@ -234,12 +234,11 @@ public static class AssetBundleAssetLoader
             (candidate.OwnerGuid == Guid.Empty ? candidate.Guid : candidate.OwnerGuid) == ownerGuid);
     }
 
-    private static float ReadPivot(IReadOnlyDictionary<string, string> settings, string key) =>
+    private static Fix64 ReadPivot(IReadOnlyDictionary<string, string> settings, string key) =>
         settings.TryGetValue(key, out var value) &&
-        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var pivot) &&
-        float.IsFinite(pivot)
-            ? Math.Clamp(pivot, 0, 1)
-            : 0.5f;
+        Fix64.TryParse(value, CultureInfo.InvariantCulture, out var pivot)
+            ? Mathf.Clamp01(pivot)
+            : Fix64.Half;
 
     private static bool ReadBoolean(
         IReadOnlyDictionary<string, string> settings,

@@ -40,8 +40,8 @@ public static class Mathf
         Abs(target - current) <= maxDelta ? target : current + (target > current ? maxDelta : -maxDelta);
     public static Fix64 Sign(Fix64 value) => value >= Fix64.Zero ? Fix64.One : -Fix64.One;
     public static int FloorToInt(Fix64 value) => (int)(value.RawValue >> Fix64.FractionalBits);
-    public static int CeilToInt(Fix64 value) => FloorToInt(value) +
-        ((value.RawValue & (Fix64.OneRaw - 1)) == 0 ? 0 : 1);
+    public static int CeilToInt(Fix64 value) => checked(FloorToInt(value) +
+        ((value.RawValue & (Fix64.OneRaw - 1)) == 0 ? 0 : 1));
     public static int RoundToInt(Fix64 value)
     {
         var floor = FloorToInt(value);

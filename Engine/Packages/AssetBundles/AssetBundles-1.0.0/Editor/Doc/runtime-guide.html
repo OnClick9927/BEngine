@@ -21,6 +21,7 @@ if (plan.HasUpdates)
 await using var text =
     await bundles.LoadTextAsync("Assets/Data/config.json", stop.Token);</code></pre>
         <h3>AssetBundle Package：构建分组与按包维护</h3>
+        <p>构建默认生成紧凑的运行时目录 <code>catalog.bin</code>，减少下载体积和启动解析开销；<code>version.yaml</code> 的 <code>CatalogFile</code> 指向该发布实际使用的目录文件。项目配置继续使用 YAML，运行时也兼容旧 YAML 目录，业务加载、更新与修复 API 无需调整。</p>
         <p><code>assetbundle package</code> 是构建和维护单元，例如 <code>fonts</code>、<code>images</code>、<code>config</code>。完整 catalog 的 <code>Packages</code> 记录唯一的 bundle 归属与引擎计算的内容指纹；更换整个发布版本号或下载来源不会改变包内容指纹。旧 schema 1–4 和没有显式归属的 catalog 使用隐式 <code>default</code> 包。原有 <code>AssetBundleRuntimeOptions.PackageName</code> 仍标识整个游戏内容发布，不是此次拆分的包名。</p>
         <p>运行时通过可选 <code>IAssetBundlePackageManager</code> 接口选择更新或修复范围。加载仍使用全局 address，<code>LoadBytesAsync</code>、<code>LoadTextAsync</code> 和资产引用均不增加包参数。包名不是 address 前缀，跨包重复 address 或 GUID 会被拒绝。</p>
         <pre><code>IAssetBundlePackageManager packages = bundles;
@@ -44,6 +45,14 @@ await using var config = await bundles.LoadTextAsync("Assets/Data/config.json", 
         <p>按包更新从最新完整远程 catalog 取得目标包，递归纳入 bundle 依赖所属的完整包。下载与激活只处理这个前向闭包；新的本地扁平 catalog 保留未选择包的 bundle、资产和内容版本，不会用整个远程 catalog 替换它们。每个 bundle 的 <code>SourceVersion</code> 保留实际不可变发布来源，因此字体仍在 v1 而配置已在 v2 时，字体修复仍从 v1 获取。服务器需保留客户端仍可能使用的旧不可变发布目录。涉及全局 address 冲突、bundle 移动或引用契约协同变化时，应显式选择相关包一起更新；不会自动反向更新所有使用方。</p>
         <p>更新计划是防御性快照，并绑定检查时的 active catalog；另一次更新、回滚或安装改变了基线后，旧包计划会被拒绝，需要重新检查。对象先完成大小与 SHA-256 校验，再原子提交 catalog 和 active 指针，沿用全局 pending 提交与 <code>RollbackAsync</code> 机制。相同内容的包不会因为远端发布号改变而切换版本。删除包内部分资产可正常发布；当前构建器不生成空包，若需要将整个包移除，应使用完整发布更新。</p>
         <p><code>RepairPackageAsync</code> 只修复当前包及其前向依赖闭包中的缺失、截断或 SHA-256 不符对象，保持 catalog 和 active 指针。有效内置内容可在无远程源时修复同 hash 的损坏缓存：通过临时文件复制、回读校验、原子替换完成，网络下载计数为 0。若无法从内置内容修复，则要求持久缓存与可用的远程来源。需要替换的损坏对象仍有加载句柄时会拒绝修复，应先释放句柄；有效旧句柄可继续持有不可变对象。维护期间拒绝新的加载，状态更改由同一状态锁串行执行。</p>
+        <h3>直接从 StreamingAssets 加载（全平台）</h3>
+        <p>单机项目可在 AssetBundle Settings 中选择 <code>Load Mode: StreamingAssets</code>，或在 <code>ProjectSettings/AssetBundles.yaml</code> 设置 <code>loadMode: StreamingAssets</code>、<code>builtInDirectory: StreamingAssets/AssetBundles</code>。将标准发布内容放入 <code>Assets/StreamingAssets/AssetBundles/&lt;packageName&gt;</code>，关闭 Remote Base URL 和 Startup Update。Player 与 AOT 启动阶段均直接使用该内置版本，不调用安装器，不在 <code>Application.persistentDataPath</code> 创建 AB 副本、objects、staging 或 active 指针；存档仍可使用持久目录。</p>
+        <pre><code>using var bundles = new AssetBundleManager(
+    AssetBundleRuntimeOptions.FromStreamingAssets("game"));
+await bundles.InitializeAsync();
+using var config = await bundles.LoadTextAsync("Assets/Data/config.json");</code></pre>
+        <p>初始化校验 catalog 的 SHA-256；文件来源另校验 AB 的存在、长度，每个 AB 首次打开时再校验 SHA-256，保留依赖、加密和句柄生命周期检查。Desktop、iOS 直接读取随包文件；Android 从 APK 挂载 StreamingAssets，AB 使用有界可定位文件流，无需解包到沙盒；其他被 APK 压缩的原始文件按需解压到内存。Web 不预下载或挂载 StreamingAssets：启动时只通过 HTTP 读取 version/catalog，使用 AB 时才将 AB 及依赖读取到内存，使用 <code>HttpNetworkRequest.BypassCache</code> 和 <code>fetch cache: no-store</code>，不写入 VFS、IndexedDB、HTTP cache 或沙盒。使用期间共享内存，卸载后再次使用会重新请求网络。Web 首次使用资源前需异步加载或预加载；页面放在子目录时自动使用对应 StreamingAssets URL，跨域来源需允许 CORS。需要下载更新、安装、修复或回滚的工程继续选择默认的 <code>PersistentCache</code> 模式；旧工程和旧 runtime metadata 保持原模式。</p>
+        <p>UI 或场景仍可能同步读取 AB 内容时，应保留异步加载返回的 <code>AssetBundleHandle</code>，直到该作用域退出再 Dispose。<code>DownloadDependenciesAsync</code> 只预取到内存，不持有使用引用；<code>UnloadUnused</code> 可释放这些预取内容，后续同步读取前需再次异步准备。</p>
         <h3>选择将 StreamingAssets 安装到持久目录</h3>
         <p>工程可在加载任何 AB 之前调用 <code>IAssetBundleLocalInstaller.InstallBuiltInReleaseAsync</code>。传入的不可变发布目录直接包含 <code>version.yaml</code>、catalog 和 <code>bundles/</code>；manager 的 <code>CacheDirectory</code> 可设为 <code>Application.persistentDataPath</code>。此方法会初始化或刷新空 manager，不要求先调用 <code>InitializeAsync</code>。若需要所有读取都来自持久目录，应不配置 <code>BuiltInDirectory</code> 的直接读取回退。</p>
         <pre><code>await using var bundles = new AssetBundleManager(new AssetBundleRuntimeOptions

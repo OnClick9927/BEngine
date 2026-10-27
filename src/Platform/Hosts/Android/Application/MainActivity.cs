@@ -114,6 +114,9 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         var projectPath = BEnginePlayer.ResolveDefaultProjectPath(root);
         var persistentRoot = Path.Combine(FilesDir.AbsolutePath, "BEnginePersistentData");
         var services = new ServiceCollection();
+        services.AddSingleton<IFileSystem>(AndroidStreamingAssets.Mount(
+            Assets, ApplicationInfo!.SourceDir!, dataDirectories[0],
+            Path.Combine(root, dataDirectories[0], "StreamingAssets")));
         services.AddSingleton<BEngine.Rendering.ITextRasterizer, AndroidTextRasterizer>();
         _session = BEnginePlayer.CreateRuntimeSession(
             services, projectPath, declareAotInterpreter: true,
@@ -553,6 +556,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
 
     private void ExtractAssetDirectory(string assetPath, string destination)
     {
+        if (assetPath.EndsWith("/StreamingAssets", StringComparison.Ordinal)) return;
         var children = Assets!.List(assetPath) ?? [];
         if (children.Length == 0)
         {

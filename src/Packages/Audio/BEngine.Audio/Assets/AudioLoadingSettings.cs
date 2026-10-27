@@ -15,6 +15,8 @@ public static class AudioLoadingSettings
     public static long memoryPressureCollections { get; private set; }
     /// <summary>Coalesces file loads by path, modification time, size and load transform. SetData detaches shared PCM.</summary>
     public static bool shareDecodedResources { get; set; } = true;
+    /// <summary>Allows asynchronous platform decoders for encoded clips. Unsupported formats fall back to the managed decoder.</summary>
+    public static bool usePlatformDecoding { get; set; } = true;
     /// <summary>Opt-in loading-screen policy. Ordinary playback/loading never forces a blocking
     /// collection to admit PCM: reloadable clips use their Streaming fallback instead.</summary>
     public static bool allowBlockingCollectionOnPcmPressure { get; set; }

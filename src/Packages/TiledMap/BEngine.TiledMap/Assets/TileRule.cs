@@ -20,7 +20,7 @@ public sealed class TileRule
 public sealed class TileAnimationFrame
 {
     public int TileId { get; set; }
-    public float Duration { get; set; } = 0.1f;
+    public Fix64 Duration { get; set; } = Fix64.Parse("0.1");
 }
 
 /// <summary>Resolves visual variants without changing serialized cells or collision geometry.</summary>
@@ -38,14 +38,14 @@ public static class TileVisualResolver
         var total = Fix64.Zero;
         foreach (var frame in visual.Animation)
         {
-            if (!float.IsFinite(frame.Duration) || frame.Duration <= 0) return visual;
-            total += (Fix64)(double)frame.Duration;
+            if (frame.Duration <= 0 || frame.Duration.RawValue > long.MaxValue - total.RawValue) return visual;
+            total += frame.Duration;
         }
         if (total <= Fix64.Zero) return visual;
         var time = Fix64.Max(Fix64.Zero, elapsedTime) % total;
         foreach (var frame in visual.Animation)
         {
-            var duration = (Fix64)(double)frame.Duration;
+            var duration = frame.Duration;
             if (time < duration) return definitions.GetValueOrDefault(frame.TileId) ?? visual;
             time -= duration;
         }

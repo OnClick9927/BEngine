@@ -27,20 +27,38 @@ internal static class AssetBundleSettingsProvider
         EnsureLoaded();
         DrawToggle("Enabled", _draft.Enabled, value => _draft.Enabled = value);
         DrawTextField("Package Name", _draft.PackageName, value => _draft.PackageName = value);
+        var loadMode = (AssetBundleLoadMode)EditorGUILayout.EnumPopup("Load Mode", _draft.LoadMode);
+        if (loadMode != _draft.LoadMode)
+        {
+            _draft.LoadMode = loadMode;
+            if (loadMode == AssetBundleLoadMode.StreamingAssets)
+            {
+                if (string.IsNullOrWhiteSpace(_draft.BuiltInDirectory))
+                    _draft.BuiltInDirectory = "StreamingAssets/AssetBundles";
+                _draft.RemoteBaseUrl = string.Empty;
+                _draft.CheckForUpdatesOnStartup = _draft.ApplyUpdatesOnStartup = false;
+                _draft.FailStartupWhenUpdateFails = false;
+            }
+            Changed();
+        }
         DrawProjectFolderField("Built-in Directory", _draft.BuiltInDirectory,
             "Choose Built-in AssetBundle Directory", value => _draft.BuiltInDirectory = value);
+        EditorGUI.BeginDisabledGroup(_draft.LoadMode == AssetBundleLoadMode.StreamingAssets);
         DrawTextField("Remote Base URL", _draft.RemoteBaseUrl, value => _draft.RemoteBaseUrl = value);
         DrawCacheFolderField();
+        EditorGUI.EndDisabledGroup();
         if (GUILayout.Button("Configure AssetBundle Packages...")) AssetBundlePackagesWindow.Open();
 
         GUILayout.Space(8);
         GUILayout.Label("Startup Update", EditorStyles.boldLabel);
+        EditorGUI.BeginDisabledGroup(_draft.LoadMode == AssetBundleLoadMode.StreamingAssets);
         DrawToggle("Check for Updates on Startup", _draft.CheckForUpdatesOnStartup,
             value => _draft.CheckForUpdatesOnStartup = value);
         DrawToggle("Apply Updates on Startup", _draft.ApplyUpdatesOnStartup,
             value => _draft.ApplyUpdatesOnStartup = value);
         DrawToggle("Fail Startup When Update Fails", _draft.FailStartupWhenUpdateFails,
             value => _draft.FailStartupWhenUpdateFails = value);
+        EditorGUI.EndDisabledGroup();
 
         GUILayout.Space(8);
         GUILayout.Label("Download", EditorStyles.boldLabel);
@@ -285,6 +303,11 @@ internal static class AssetBundleSettingsProvider
         try
         {
             var candidate = NormalizedCopy(value);
+            if (!Enum.IsDefined(candidate.LoadMode)) return "Load Mode is invalid.";
+            if (candidate.LoadMode == AssetBundleLoadMode.StreamingAssets &&
+                (candidate.BuiltInDirectory.Length == 0 || candidate.RemoteBaseUrl.Length > 0 ||
+                 candidate.CheckForUpdatesOnStartup || candidate.ApplyUpdatesOnStartup))
+                return "StreamingAssets mode requires a built-in directory and disabled remote/startup updates.";
             if (candidate.PackageName.Length == 0) return "Package Name is required.";
             if (candidate.PackageName.Length > 128) return "Package Name cannot exceed 128 characters.";
             if (!IsPackageNameCharacter(candidate.PackageName[0], first: true) ||
@@ -330,6 +353,7 @@ internal static class AssetBundleSettingsProvider
         Format = value.Format,
         Version = value.Version,
         Enabled = value.Enabled,
+        LoadMode = value.LoadMode,
         PackageName = value.PackageName?.Trim() ?? string.Empty,
         BuiltInDirectory = NormalizeRelativePath(value.BuiltInDirectory),
         RemoteBaseUrl = value.RemoteBaseUrl?.Trim().TrimEnd('/') ?? string.Empty,

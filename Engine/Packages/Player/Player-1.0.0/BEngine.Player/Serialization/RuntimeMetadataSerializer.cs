@@ -91,7 +91,7 @@ public static class RuntimeMetadataSerializer
             (SectionId.Project, 1, WriteSection(writer => WriteProject(writer, document.Project))),
             (SectionId.ProjectSettings, 2,
                 WriteSection(writer => WriteProjectSettings(writer, document.ProjectSettings))),
-            (SectionId.AssetBundles, 1,
+            (SectionId.AssetBundles, 2,
                 WriteSection(writer => WriteAssetBundleSettings(writer, document.AssetBundles))),
             (SectionId.EnabledPackages, 1,
                 WriteSection(writer => WritePackages(writer, document.EnabledPackages)))
@@ -176,6 +176,7 @@ public static class RuntimeMetadataSerializer
                     throw new InvalidDataException($"Runtime metadata contains duplicate section '{id}'.");
                 var sectionVersion = reader.ReadUInt16();
                 if (sectionVersion != 1 &&
+                    !(id == SectionId.AssetBundles && sectionVersion == 2) &&
                     !(id == SectionId.ProjectSettings && sectionVersion == 2) &&
                     !(id == SectionId.PlayerBootstrap && sectionVersion is 2 or 3 or 4))
                     throw new InvalidDataException(
@@ -226,7 +227,7 @@ public static class RuntimeMetadataSerializer
                 document.ProjectSettings = ReadProjectSettings(reader, version);
                 break;
             case SectionId.AssetBundles:
-                document.AssetBundles = ReadAssetBundleSettings(reader);
+                document.AssetBundles = ReadAssetBundleSettings(reader, version);
                 break;
             case SectionId.EnabledPackages:
                 document.EnabledPackages = ReadPackages(reader);
@@ -350,9 +351,10 @@ public static class RuntimeMetadataSerializer
         WriteBoolean(writer, settings.FailStartupWhenUpdateFails);
         WriteBoolean(writer, settings.RequireHttps);
         writer.Write(settings.MaxRetries);
+        writer.Write((int)settings.LoadMode);
     }
 
-    private static AssetBundleSettingsDocument ReadAssetBundleSettings(BinaryReader reader) => new()
+    private static AssetBundleSettingsDocument ReadAssetBundleSettings(BinaryReader reader, ushort version) => new()
     {
         Format = ReadString(reader),
         Version = reader.ReadInt32(),
@@ -365,7 +367,8 @@ public static class RuntimeMetadataSerializer
         ApplyUpdatesOnStartup = ReadBoolean(reader),
         FailStartupWhenUpdateFails = ReadBoolean(reader),
         RequireHttps = ReadBoolean(reader),
-        MaxRetries = reader.ReadInt32()
+        MaxRetries = reader.ReadInt32(),
+        LoadMode = version >= 2 ? (AssetBundleLoadMode)reader.ReadInt32() : AssetBundleLoadMode.PersistentCache
     };
 
     private static void WritePackages(

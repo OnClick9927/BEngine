@@ -8,35 +8,72 @@
     <RootNamespace>BEngine.Player.Hosts.Web</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <WasmBuildNative>true</WasmBuildNative>
+    <!-- Keep runtime-loaded AssetBundle code supported alongside native host AOT. -->
+    <AOTMode>LLVMOnlyInterp</AOTMode>
     <WasmMainHTMLPath>..\WebResources\index.html</WasmMainHTMLPath>
     <WasmMainJSPath>..\WebResources\main.js</WasmMainJSPath>
-    <!-- BEngine's managed scene/package layer relies on reflection and runtime loading. -->
-    <WasmDedup>false</WasmDedup>
+    <!-- Runtime-loaded packages keep their IL and interpreter fallback. -->
+    <WasmDedup>true</WasmDedup>
+    <!-- A single framework.bin downloads every locale shard anyway. The full ICU
+         dataset avoids duplicated tables while retaining all supported locales. -->
+    <WasmIncludeFullIcuData Condition="'$(WasmIncludeFullIcuData)' == '' and '$(WasmIcuDataFileName)' == ''">true</WasmIncludeFullIcuData>
+    <BlazorWebAssemblyLoadAllGlobalizationData Condition="'$(BlazorWebAssemblyLoadAllGlobalizationData)' == ''">$(WasmIncludeFullIcuData)</BlazorWebAssemblyLoadAllGlobalizationData>
   </PropertyGroup>
+  <Import Project="$(BEngineWebPrecompiledProps)" Condition="'$(BEngineWebPrecompiledProps)' != ''" />
   <ItemGroup Condition="'$(BEngineContentRoot)' != '' and '$(BEngineDataDirectoryName)' != ''">
     <WasmFilesToIncludeInFileSystem Include="$(BEngineContentRoot)\$(BEngineDataDirectoryName)\**\*">
       <TargetPath>$(BEngineDataDirectoryName)\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
     </WasmFilesToIncludeInFileSystem>
+    <WasmFilesToIncludeInFileSystem Remove="$(BEngineContentRoot)\$(BEngineDataDirectoryName)\StreamingAssets\**\*"
+                                  Condition="'$(BEngineHttpStreamingAssets)' == 'true'" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="BuildTools/**/*.cs" />
     <Content Include="..\WebResources\index.html"
              Link="wwwroot\index.html"
              CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\WebResources\main.js"
              Link="wwwroot\main.js"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\WebResources\framework.js" Link="wwwroot\framework.js" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\WebResources\video.js" Link="wwwroot\video.js" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\WebResources\text.js" Link="wwwroot\text.js" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\WebResources\brotli-decoder.wasm" Link="wwwroot\brotli-decoder.wasm" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\WebResources\BrotliDecoder.LICENSE.txt" Link="wwwroot\BrotliDecoder.LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup Condition="Exists('..\..\BEngine.Web\BEngine.Web.csproj')">
     <ProjectReference Include="..\..\BEngine.Web\BEngine.Web.csproj" />
   </ItemGroup>
+  <!-- The .NET SDK currently has no public native-intermediate path property.
+       Its native AOT compiler can silently omit Windows MAX_PATH token files.
+       Use our isolated build root while the SDK computes all related paths,
+       then restore managed obj paths. Only this Web Host applies the override. -->
+  <Target Name="_BEngineBeginWasmIntermediateInitialization"
+          BeforeTargets="_InitializeCommonProperties"
+          Condition="'$(BEngineWasmIntermediateRoot)' != ''">
+    <PropertyGroup>
+      <_BEngineManagedIntermediateOutputPath>$(IntermediateOutputPath)</_BEngineManagedIntermediateOutputPath>
+      <IntermediateOutputPath>$(BEngineWasmIntermediateRoot)</IntermediateOutputPath>
+    </PropertyGroup>
+  </Target>
+  <Target Name="_BEngineEndWasmIntermediateInitialization"
+          AfterTargets="_InitializeCommonProperties"
+          Condition="'$(BEngineWasmIntermediateRoot)' != ''">
+    <PropertyGroup>
+      <IntermediateOutputPath>$(_BEngineManagedIntermediateOutputPath)</IntermediateOutputPath>
+    </PropertyGroup>
+  </Target>
   <Target Name="_BEngineConfigureHybridWasmRuntime"
           AfterTargets="_GetDefaultWasmAssembliesToBundle"
           Condition="'$(RunAOTCompilation)' == 'true'">
     <ItemGroup>
+      <!-- Cold external decoder generics can exhaust the AOT compiler's memory.
+           Reloadable packages remain interpreted; Core and the platform/Host
+           use the generated static-method profile with interpreter fallback. -->
       <WasmAssembliesToBundle
-          Condition="'%(WasmAssembliesToBundle.FileName)' == 'BEngine' or '%(WasmAssembliesToBundle.FileName)' == 'AssetRipper.TextureDecoder' or ($([System.String]::Copy('%(WasmAssembliesToBundle.FileName)').StartsWith('BEngine.')) and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Player.WebHost' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Web' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Platform.DotNet')"
+          Condition="'%(WasmAssembliesToBundle.FileName)' == 'AssetRipper.TextureDecoder' or ($([System.String]::Copy('%(WasmAssembliesToBundle.FileName)').StartsWith('BEngine.')) and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Player.WebHost' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Player' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Web' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Platform.DotNet')"
           AOT_InternalForceToInterpret="true" />
     </ItemGroup>
   </Target>
+  <Import Project="BEngine.WasmAotProfile.targets" />
 </Project>

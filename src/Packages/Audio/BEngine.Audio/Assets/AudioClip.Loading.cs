@@ -69,6 +69,11 @@ public sealed partial class AudioClip
         private readonly int _count;
         private AudioLoadingSettings.PcmReservation? _reservation;
         private AudioSampleReader? _reader;
+        private WebAudioDecoder? _platformDecoder;
+        private readonly byte[]? _encoded;
+        private readonly bool _mono;
+        private readonly float _gain;
+        private bool _platformAttempted;
         private float[]? _pcm;
         private int _offset;
         private bool _slot, _disposed;
@@ -76,7 +81,8 @@ public sealed partial class AudioClip
         internal DecodeRequest(AudioClip owner, Func<AudioSampleReader> factory, int count,
             AudioLoadingSettings.PcmReservation reservation, PcmKey? key)
         { _owners.Add(owner); _frames = owner.samples; _channels = owner.channels; _frequency = owner.frequency;
-          _key = key; _factory = factory; _count = count; _reservation = reservation; AudioLoadingSettings.AddPending(this); }
+          _key = key; _factory = factory; _count = count; _reservation = reservation;
+          _encoded = owner._encoded; _mono = owner._mono; _gain = owner._gain; AudioLoadingSettings.AddPending(this); }
         internal void AddOwner(AudioClip owner)
         { if (_owners.Count >= 8192) throw new InvalidOperationException("A shared audio load already has 8192 subscribers."); _owners.Add(owner); }
         internal void RemoveOwner(AudioClip owner) { _owners.Remove(owner); if (_owners.Count == 0) Dispose(); }
@@ -84,10 +90,43 @@ public sealed partial class AudioClip
         internal CooperativeWorkStatus Step()
         {
             if (_disposed) return CooperativeWorkStatus.Complete;
-            if (_reader is null)
+            if (!_slot)
             {
                 if (!AudioLoadingSettings.TryOpenDecoder()) return CooperativeWorkStatus.Blocked;
                 _slot = true;
+            }
+            if (OperatingSystem.IsBrowser() && !_platformAttempted)
+            {
+                _platformAttempted = true;
+                _platformDecoder = WebAudioDecoder.TryCreate(_encoded, _frames, _channels, _frequency, _mono, _gain);
+            }
+            if (OperatingSystem.IsBrowser() && _platformDecoder is { } decoder)
+            {
+                var state = decoder.status;
+                if (state == 0) return CooperativeWorkStatus.Blocked;
+                if (state < 0)
+                {
+                    decoder.Dispose(); _platformDecoder = null;
+                    // Native format/duration differences must never change the
+                    // authored clip or retry the same browser decoder forever.
+                }
+                else
+                {
+                    if (_pcm is null) { _pcm = new float[_count]; _reservation!.Allocated(); }
+                    // Transfer whole sample frames in bounded blocks. Explicit
+                    // loading frames can submit 256 KiB; ordinary gameplay uses
+                    // 128 KiB and retains its existing scheduler time guards.
+                    var blockSamples = FrameWorkBudget.isLoading ? 65536 : 32768;
+                    var count = Math.Min(_count - _offset, Math.Max(1, blockSamples / _channels) * _channels);
+                    var copied = decoder.Copy(_offset / _channels, _pcm.AsSpan(_offset, count));
+                    if (copied != count) throw new InvalidDataException("The platform audio decoder returned an incomplete PCM block.");
+                    _offset += copied;
+                    if (_offset < _count) return CooperativeWorkStatus.Continue;
+                    return Complete();
+                }
+            }
+            if (_reader is null)
+            {
                 var reader = _factory();
                 if (_disposed) { reader.Dispose(); return CooperativeWorkStatus.Complete; }
                 _reader = reader;
@@ -102,6 +141,11 @@ public sealed partial class AudioClip
             if (read == 0) throw new InvalidDataException("Truncated audio sample data.");
             _offset += read;
             if (_offset < _count) return CooperativeWorkStatus.Continue;
+            return Complete();
+        }
+
+        private CooperativeWorkStatus Complete()
+        {
             _reservation!.Commit();
             if (_key is { } key)
             {
@@ -135,10 +179,14 @@ public sealed partial class AudioClip
                 if (ReferenceEquals(owner._pendingLoad, this))
                 { owner._pendingLoad = null; owner._loadState = AudioDataLoadState.Unloaded; owner.loadError = ""; }
             _owners.Clear();
-            try { _reader?.Dispose(); }
+            try
+            {
+                _reader?.Dispose();
+                if (OperatingSystem.IsBrowser()) _platformDecoder?.Dispose();
+            }
             finally
             {
-                _reader = null; _pcm = null; _reservation?.Dispose(); _reservation = null;
+                _reader = null; _platformDecoder = null; _pcm = null; _reservation?.Dispose(); _reservation = null;
                 if (_slot) { _slot = false; AudioLoadingSettings.CloseDecoder(); }
                 AudioLoadingSettings.RemovePending(this);
             }

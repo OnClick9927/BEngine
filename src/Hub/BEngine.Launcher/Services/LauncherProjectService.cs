@@ -12,7 +12,10 @@ internal sealed class LauncherProjectService
         LauncherProjectWorkspace.Open(Path.GetFullPath(projectPath));
 
     internal LauncherProjectWorkspace Create(string locationPath, string projectName) =>
-        LauncherProjectWorkspace.Create(ResolveTargetPath(locationPath, projectName), projectName);
+        Create(locationPath, projectName, EngineVersion.Current);
+
+    internal LauncherProjectWorkspace Create(string locationPath, string projectName, string engineVersion) =>
+        LauncherProjectWorkspace.Create(ResolveTargetPath(locationPath, projectName), projectName, engineVersion);
 
     internal string ResolveTargetPath(string locationPath, string projectName)
     {

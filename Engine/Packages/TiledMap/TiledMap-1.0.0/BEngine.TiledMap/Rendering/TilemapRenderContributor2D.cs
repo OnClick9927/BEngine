@@ -17,6 +17,7 @@ internal sealed class TilemapRenderContributor2D(IGraphicsDevice device) : IScen
     private int _payloadCount;
 
     public string packageId => "com.bengine.tiledmap";
+    public bool processesQuads => false;
 
     public void BeginFrame() => _payloadCount = 0;
 

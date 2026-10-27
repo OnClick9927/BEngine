@@ -249,7 +249,7 @@ public static class AssetDatabase
                 textureType: TextureImporterType.Sprite
             } importer) return null;
         var sprite = Sprite.FromTexture(texture.assetPath,
-            new Vector2((Fix64)importer.spritePivotX, (Fix64)importer.spritePivotY), texture.assetPath);
+            new Vector2(importer.spritePivotX, importer.spritePivotY), texture.assetPath);
         sprite.Id = texture.Id;
         sprite.BindAssetFile(texture.assetPath, texture.sourcePath, texture.Id, nameof(Sprite));
         var parentGuid = texture.parentAssetGuid ?? texture.Id;

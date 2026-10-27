@@ -55,8 +55,12 @@ public readonly record struct RenderCamera(
 
     public Vector2 SnapWorldPoint(Vector2 point) => Policy?.SnapWorldPoint(point) ?? point;
 
-    public bool ContainsLayer(ulong layer) =>
-        SortingLayer.IsValid(layer) && (CullingMask & SortingLayer.ToMask(layer)) != 0;
+    public bool ContainsLayer(ulong layer)
+    {
+        var offset = unchecked(layer - (ulong)SortingLayer.MinimumIndex);
+        return offset <= (ulong)(SortingLayer.MaximumIndex - SortingLayer.MinimumIndex) &&
+            (CullingMask & (1UL << (int)offset)) != 0;
+    }
 
     public bool IsVisible(Vector2 center, Fix64 rotation, Vector2 size, int width, int height)
     {

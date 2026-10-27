@@ -78,8 +78,8 @@ public sealed class NodeCanvas : VisualElement
         size = new Vector2(Fix64.Max(1, size.x), Fix64.Max(1, size.y));
         if (_viewport == size) return;
         _viewport = size;
-        style.width = (float)size.x;
-        style.height = (float)size.y;
+        style.width = size.x;
+        style.height = size.y;
         Refresh();
     }
 
@@ -194,20 +194,20 @@ public sealed class NodeCanvas : VisualElement
             }
             var rect = NodeRect(node);
             SetRect(view.Root, rect);
-            var inset = Math.Clamp((float)(8 * _zoom), 3f, 8f);
-            view.Root.style.borderWidth = Math.Clamp((float)(2 * _zoom), 1f, 2f);
+            var inset = Fix64.Clamp(8 * _zoom, 3, 8);
+            view.Root.style.borderWidth = Fix64.Clamp(2 * _zoom, 1, 2);
             view.Root.style.backgroundColor = node.Color;
             view.Root.style.borderColor = _selection.Contains(node.Id) || node.Selected
                 ? SelectionColor : new UIColor(18, 18, 20);
             view.Title.style.left = inset;
             view.Title.style.right = inset;
-            view.Title.style.top = Math.Clamp((float)(3 * _zoom), 1f, 3f);
-            view.Title.style.height = Math.Min(22f, Math.Max(10f, (float)rect.height - 2));
-            view.Title.style.fontSize = Math.Clamp((float)(13 * _zoom), 8f, 13f);
+            view.Title.style.top = Fix64.Clamp(3 * _zoom, 1, 3);
+            view.Title.style.height = Fix64.Min(22, Fix64.Max(10, rect.height - 2));
+            view.Title.style.fontSize = Fix64.Clamp(13 * _zoom, 8, 13);
             view.Title.text = node.Title;
             view.Detail.text = rect.height >= 46 && rect.width >= 140 ? node.Detail : string.Empty;
             view.Detail.visible = view.Detail.text.Length > 0;
-            view.Progress.style.width = (float)Fix64.Max(0, (rect.width - 4) * Mathf.Clamp(node.Progress, 0, 1));
+            view.Progress.style.width = Fix64.Max(0, (rect.width - 4) * Mathf.Clamp(node.Progress, 0, 1));
             view.Progress.visible = node.Progress > 0;
             DrawPorts(view.Ports, node);
         }
@@ -288,11 +288,11 @@ public sealed class NodeCanvas : VisualElement
                 AddRect(parent, new Rect(x, y, 8 * _zoom, 8 * _zoom), port.Color);
                 var label = new BEngine.UIElements.Label { text = port.Label };
                 label.style.position = Position.Absolute;
-                label.style.left = (float)((output ? node.Size.x / 2 : 14) * _zoom);
-                label.style.top = (float)((27 + index * 22) * _zoom);
-                label.style.width = (float)((node.Size.x / 2 - 16) * _zoom);
-                label.style.height = (float)(20 * _zoom);
-                label.style.fontSize = Math.Clamp((float)(11 * _zoom), 8, 13);
+                label.style.left = ((output ? node.Size.x / 2 : 14) * _zoom);
+                label.style.top = ((27 + index * 22) * _zoom);
+                label.style.width = ((node.Size.x / 2 - 16) * _zoom);
+                label.style.height = (20 * _zoom);
+                label.style.fontSize = Fix64.Clamp(11 * _zoom, 8, 13);
                 label.style.color = port.Color;
                 parent.Add(label);
             }
@@ -501,10 +501,10 @@ public sealed class NodeCanvas : VisualElement
 
     private static void SetRect(VisualElement element, Rect rect)
     {
-        element.style.left = (float)rect.x;
-        element.style.top = (float)rect.y;
-        element.style.width = (float)Fix64.Max(1, rect.width);
-        element.style.height = (float)Fix64.Max(1, rect.height);
+        element.style.left = rect.x;
+        element.style.top = rect.y;
+        element.style.width = Fix64.Max(1, rect.width);
+        element.style.height = Fix64.Max(1, rect.height);
     }
 
     private static VisualElement AddRect(VisualElement parent, Rect rect, UIColor color, UIColor? border = null)

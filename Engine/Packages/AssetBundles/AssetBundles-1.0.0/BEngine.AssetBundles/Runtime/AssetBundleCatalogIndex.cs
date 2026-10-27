@@ -17,11 +17,11 @@ public sealed class AssetBundleCatalogIndex
     {
     }
 
-    internal AssetBundleCatalogIndex(AssetBundleCatalog catalog, bool cloneCatalog)
+    internal AssetBundleCatalogIndex(AssetBundleCatalog catalog, bool cloneCatalog, bool catalogValidated = false)
     {
         ArgumentNullException.ThrowIfNull(catalog);
-        if (cloneCatalog) catalog = CloneCatalog(catalog);
-        catalog.Validate();
+        if (!catalogValidated) catalog.Validate();
+        if (cloneCatalog) catalog = AssetBundleCatalogSerializer.CloneCatalog(catalog);
         _bundlesByPackage = AssetBundlePackageUtility.GetPackages(catalog).ToFrozenDictionary(
             package => package.Name,
             package => (IReadOnlyList<string>)new ReadOnlyCollection<string>(
@@ -123,13 +123,6 @@ public sealed class AssetBundleCatalogIndex
         foreach (var dependency in bundle.Descriptor.Dependencies)
             CollectClosure(dependency, visited, ordered);
         ordered.Add(bundle);
-    }
-
-    private static AssetBundleCatalog CloneCatalog(AssetBundleCatalog catalog)
-    {
-        ArgumentNullException.ThrowIfNull(catalog);
-        return AssetBundleCatalogSerializer.DeserializeCatalog(
-            AssetBundleCatalogSerializer.SerializeCatalog(catalog));
     }
 
     internal sealed record IndexedBundle(

@@ -56,6 +56,10 @@ public sealed class SceneQuadPayload2D
             else _values[_index] = value;
         }
     }
+    /// <summary>Reads the current effect tag without returning a complete quad value.</summary>
+    public object? EffectData =>
+        _values is { } values && (uint)_index < (uint)values.Count ? values[_index].EffectData : null;
+
     internal void Bind(FrameDataBuffer<SceneQuad2D> values, int index) { _values = values; _index = index; }
     internal void Unbind() { _values = null; _index = 0; }
 }

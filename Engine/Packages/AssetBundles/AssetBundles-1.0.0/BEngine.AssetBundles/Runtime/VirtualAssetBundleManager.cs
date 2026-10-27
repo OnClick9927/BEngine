@@ -19,10 +19,10 @@ public sealed class VirtualAssetBundleManager : IAssetBundleManager
         ArgumentNullException.ThrowIfNull(snapshot);
         // The index and public snapshots must describe the same privately owned
         // metadata, even if a caller later edits the source snapshot objects.
-        _catalog = AssetBundleCatalogSerializer.DeserializeCatalog(
-            AssetBundleCatalogSerializer.SerializeCatalog(snapshot.Catalog));
-        _version = AssetBundleCatalogSerializer.DeserializeVersion(
-            AssetBundleCatalogSerializer.SerializeVersion(snapshot.Version));
+        snapshot.Catalog.Validate();
+        snapshot.Version.Validate();
+        _catalog = AssetBundleCatalogSerializer.CloneCatalog(snapshot.Catalog);
+        _version = AssetBundleCatalogSerializer.CloneVersion(snapshot.Version);
         _index = CreateIndex(_catalog);
         _addresses = _index.Addresses;
         _read = address => FindEntry(address).Read();
@@ -63,13 +63,11 @@ public sealed class VirtualAssetBundleManager : IAssetBundleManager
 
     public AssetBundleCatalog? ActiveCatalog => _initialized == 0
         ? null
-        : AssetBundleCatalogSerializer.DeserializeCatalog(
-            AssetBundleCatalogSerializer.SerializeCatalog(_catalog));
+        : AssetBundleCatalogSerializer.CloneCatalog(_catalog);
 
     public AssetBundleVersion? ActiveVersion => _initialized == 0
         ? null
-        : AssetBundleCatalogSerializer.DeserializeVersion(
-            AssetBundleCatalogSerializer.SerializeVersion(_version));
+        : AssetBundleCatalogSerializer.CloneVersion(_version);
 
     internal AssetBundleResourceRevision ResourceRevision => _initialized == 0
         ? default
@@ -94,7 +92,7 @@ public sealed class VirtualAssetBundleManager : IAssetBundleManager
     private static AssetBundleCatalogIndex CreateIndex(AssetBundleCatalog catalog)
     {
         using var catalogBudget = LoopExecutionGuard.AllowIterations(Math.Max(catalog.Assets.Count, catalog.Bundles.Count));
-        return new AssetBundleCatalogIndex(catalog, cloneCatalog: false);
+        return new AssetBundleCatalogIndex(catalog, cloneCatalog: false, catalogValidated: true);
     }
 
     public bool IsInitialized => _initialized != 0;

@@ -18,6 +18,8 @@ public sealed class PlayerBuildRequest
     public bool SelfContained { get; init; } = true;
     public PlayerGarbageCollectionMode WindowsGarbageCollection { get; init; } = PlayerGarbageCollectionMode.RuntimeDefault;
     public int WindowsGcHeapCount { get; init; }
+    public WebScriptCompilationMode WebScriptCompilation { get; init; } =
+        WebScriptCompilationMode.Interpreter;
     public bool IncludeDebugSymbols { get; init; }
     public bool EncryptContent { get; init; }
     /// <summary>Build-time secret; do not log or persist in project settings.</summary>
@@ -117,6 +119,9 @@ public sealed class PlayerBuildContext
     public IReadOnlyList<GraphicsBackend> GraphicsBackends { get; internal set; } = [];
     public string? HostContractPath { get; internal set; }
     internal IReadOnlyList<string> RuntimeManagedCodeAssemblyPaths { get; set; } = [];
+    internal IReadOnlyList<string> WebPrecompiledManagedCodeAssemblyPaths { get; set; } = [];
+    internal IReadOnlyList<string> WebPrecompiledManagedCodeReferencePaths { get; set; } = [];
+    internal IReadOnlyList<string> WebPrecompiledSharedManagedCodeAssemblyPaths { get; set; } = [];
     internal string? StrippingWorkDirectory { get; set; }
     internal string? StrippingReportPath { get; set; }
     internal PlayerStrippingReport? StrippingReport { get; set; }

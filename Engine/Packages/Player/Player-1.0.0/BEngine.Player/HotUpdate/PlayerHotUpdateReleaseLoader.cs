@@ -23,7 +23,7 @@ internal static class PlayerHotUpdateReleaseLoader
         {
             if (builtInResources is null ||
                 !builtInResources.ContainsAddress(ManagedCodeReleaseManifest.DefaultAddress)) return null;
-            return LoadFromBuiltInResources(builtInResources, cancellationToken);
+            return await LoadFromBuiltInResourcesAsync(builtInResources, cancellationToken);
         }
         if (assetBundles is { IsInitialized: true } &&
             assetBundles.EnumerateAddresses().Contains(
@@ -33,52 +33,31 @@ internal static class PlayerHotUpdateReleaseLoader
         return LoadWorkspaceRelease(workspace, fileSystem, cancellationToken);
     }
 
-    private static ManagedCodeRelease LoadFromBuiltInResources(
+    private static async BValueTask<ManagedCodeRelease> LoadFromBuiltInResourcesAsync(
         PlayerBuiltInResourceProvider resources,
         BCancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var manifestBytes = resources.ReadBytes(ManagedCodeReleaseManifest.DefaultAddress);
-        var manifest = ManagedCodeReleaseManifestSerializer.Deserialize(manifestBytes);
-        var modules = new List<ManagedCodeModule>(manifest.Modules.Count);
-        foreach (var module in manifest.Modules)
+        using var operation = new ManagedCodeReleaseLoadOperation((address, context) =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var assembly = resources.ReadBytes(module.AssemblyAddress);
-            byte[] symbols = [];
-            if (!string.IsNullOrWhiteSpace(module.SymbolsAddress) &&
-                resources.ContainsAddress(module.SymbolsAddress))
-                symbols = resources.ReadBytes(module.SymbolsAddress);
-            modules.Add(new ManagedCodeModule(
-                module.Name, module.BuildId, assembly, symbols, module.Dependencies));
-        }
-        return new ManagedCodeRelease(manifest.ReleaseId, modules, manifest.ContractVersion);
+            context.cancellationToken.ThrowIfCancellationRequested();
+            return BValueTask<ManagedCodeResource>.FromResult(new(resources.ReadBytes(address)));
+        }, resourceExists: resources.ContainsAddress, cancellationToken: cancellationToken);
+        await operation;
+        return operation.release!;
     }
 
     private static async BValueTask<ManagedCodeRelease> LoadFromAssetBundlesAsync(
         IAssetBundleManager assetBundles,
         BCancellationToken cancellationToken)
     {
-        using var manifestHandle = await assetBundles.LoadBytesAsync(
-            ManagedCodeReleaseManifest.DefaultAddress, cancellationToken);
-        var manifest = ManagedCodeReleaseManifestSerializer.Deserialize(manifestHandle.Value);
-        var modules = new List<ManagedCodeModule>(manifest.Modules.Count);
-        foreach (var module in manifest.Modules)
+        var addresses = assetBundles.EnumerateAddresses().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        using var operation = new ManagedCodeReleaseLoadOperation(async (address, context) =>
         {
-            using var assembly = await assetBundles.LoadBytesAsync(
-                module.AssemblyAddress, cancellationToken);
-            byte[]? symbols = null;
-            if (!string.IsNullOrWhiteSpace(module.SymbolsAddress) &&
-                assetBundles.EnumerateAddresses().Contains(module.SymbolsAddress, StringComparer.OrdinalIgnoreCase))
-            {
-                using var symbolsHandle = await assetBundles.LoadBytesAsync(
-                    module.SymbolsAddress, cancellationToken);
-                symbols = (byte[])symbolsHandle.Value.Clone();
-            }
-            modules.Add(new ManagedCodeModule(
-                module.Name, module.BuildId, assembly.Value, symbols ?? [], module.Dependencies));
-        }
-        return new ManagedCodeRelease(manifest.ReleaseId, modules, manifest.ContractVersion);
+            var handle = await assetBundles.LoadBytesAsync(address, context.cancellationToken);
+            return new ManagedCodeResource(handle.Value, handle);
+        }, resourceExists: addresses.Contains, cancellationToken: cancellationToken);
+        await operation;
+        return operation.release!;
     }
 
     private static ManagedCodeRelease? LoadWorkspaceRelease(

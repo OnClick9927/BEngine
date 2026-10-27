@@ -150,6 +150,8 @@ public static class PlayerBuildSettingsStore
             settings.ContentUpdatePolicy = PlayerContentUpdatePolicy.FallbackToLastValid;
         if (!Enum.IsDefined(settings.ManagedStripping))
             settings.ManagedStripping = PlayerManagedStrippingLevel.Disabled;
+        if (!Enum.IsDefined(settings.WebScriptCompilation))
+            settings.WebScriptCompilation = WebScriptCompilationMode.Interpreter;
         settings.CacheDirectory = PlayerBootstrapManifest.NormalizeCacheDirectory(
             settings.CacheDirectory);
         settings.SplashImage = settings.SplashImage?.Trim().Replace('\\', '/') ?? string.Empty;

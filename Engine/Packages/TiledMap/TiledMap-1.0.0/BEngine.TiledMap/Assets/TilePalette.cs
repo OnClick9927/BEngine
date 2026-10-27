@@ -50,8 +50,8 @@ public sealed class TilePalette : ScriptableObject
         var count = tileCount < 0 ? checked(Columns * Rows) : Math.Clamp(tileCount, 0, checked(Columns * Rows));
         if (count > 65536) throw new ArgumentOutOfRangeException(nameof(tileCount), "A palette is limited to 65536 tiles.");
         var previous = Tiles.ToDictionary(tile => tile.Id);
-        var width = 1f / Columns;
-        var height = 1f / Rows;
+        var width = Fix64.One / Columns;
+        var height = Fix64.One / Rows;
         Tiles = Enumerable.Range(0, count).Select(index =>
         {
             var id = index + 1;
@@ -85,10 +85,10 @@ public sealed class TilePalette : ScriptableObject
                 {
                     Id = index + 1,
                     Name = sprite.Name,
-                    UvX = (float)uv.x,
-                    UvY = (float)uv.y,
-                    UvWidth = (float)uv.width,
-                    UvHeight = (float)uv.height,
+                    UvX = uv.x,
+                    UvY = uv.y,
+                    UvWidth = uv.width,
+                    UvHeight = uv.height,
                     Red = previous?.Red ?? byte.MaxValue,
                     Green = previous?.Green ?? byte.MaxValue,
                     Blue = previous?.Blue ?? byte.MaxValue,

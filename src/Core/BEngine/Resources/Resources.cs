@@ -24,6 +24,18 @@ public static class Resources
         return new ResourceRequest((AsyncLoadContext context) => ResourceLoader.LoadAsync(path, type, "Resources", context));
     }
 
+    /// <summary>Loads and optionally prepares resources concurrently, with ordered results and owned leases.</summary>
+    public static ResourceBatchRequest<T> LoadBatchAsync<T>(IEnumerable<string> paths,
+        int maximumConcurrency = 4, Func<T, AsyncLoadContext, BValueTask>? prepare = null,
+        BCancellationToken cancellationToken = default) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        var values = paths.Take(65537).ToArray();
+        if (values.Length > 65536) throw new ArgumentOutOfRangeException(nameof(paths));
+        foreach (var path in values) ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return new ResourceBatchRequest<T>(values, maximumConcurrency, prepare, cancellationToken);
+    }
+
     public static ResourceHandle<T> Acquire<T>(string path) where T : class =>
         ResourceLeaseRegistry.Acquire<T>(path, "Resources");
 

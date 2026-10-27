@@ -227,6 +227,9 @@ internal static partial class DotNetBuildHostLocator
             "PublishSingleFile", "IncludeNativeLibrariesForSelfExtract", "UseAppHost",
             "RunAOTCompilation", "WasmBuildNative", "AotAssemblies", "UseInterpreter",
             "AndroidUseInterpreter", "MtouchInterpreter", "ArtifactsPath", "UseArtifactsOutput",
+            "MonoAndroidAssetsDirIntermediate",
+            "BEngineWasmIntermediateRoot",
+            "BEngineWebPrecompiledProps", "BEngineWebPrecompiledManifest",
             "BaseOutputPath", "BaseIntermediateOutputPath", "MSBuildProjectExtensionsPath",
             "BEngineTrimmerRootDescriptor", "BEngineFullTrimming", "BEngineIncludeTextBindings", "TrimMode", "JsonSerializerIsReflectionEnabledByDefault", "ApplicationId", "SupportedOSPlatformVersion",
             "AndroidPackageFormat", "BEnginePlayerPlatform", "CodesignKey", "CodesignProvision",
@@ -238,7 +241,10 @@ internal static partial class DotNetBuildHostLocator
             var overridesWindowsGc = request.WindowsGarbageCollection != PlayerGarbageCollectionMode.RuntimeDefault &&
                 request.TargetId.StartsWith("windows", StringComparison.OrdinalIgnoreCase) &&
                 name.Equals("ServerGarbageCollection", StringComparison.OrdinalIgnoreCase);
-            if (!MsBuildPropertyNamePattern().IsMatch(name) || reserved.Contains(name) || overridesWindowsGc)
+            var overridesWebPrecompilation = request.WebScriptCompilation == WebScriptCompilationMode.AheadOfTime &&
+                request.TargetId.StartsWith("web", StringComparison.OrdinalIgnoreCase) &&
+                WebPrecompiledScriptBuild.IsProtectedPublishProperty(name);
+            if (!MsBuildPropertyNamePattern().IsMatch(name) || reserved.Contains(name) || overridesWindowsGc || overridesWebPrecompilation)
                 throw new ArgumentException($"MSBuild property '{name}' is invalid or reserved.",
                     nameof(request.AdditionalMsBuildProperties));
             if (value.Contains('\r') || value.Contains('\n') || value.IndexOf('\0') >= 0)
@@ -289,6 +295,22 @@ internal static class DotNetPublishRunner
         process.Arguments.Add(outputDirectory ?? context.StagingDirectory);
         process.Arguments.Add("--artifacts-path");
         process.Arguments.Add(buildArtifactsDirectory);
+        if (context.Target.Platform == BuildTargetPlatform.Android)
+        {
+            // AAPT2 on Windows silently skips asset directories past its native
+            // path limit. Avoid the extra obj/host/configuration nesting while
+            // retaining this build's isolated, automatically cleaned Temp root.
+            process.Arguments.Add($"-p:MonoAndroidAssetsDirIntermediate={pathService.Combine(buildArtifactsDirectory, "assets")}{Path.DirectorySeparatorChar}");
+        }
+        else if (context.Target.Platform == BuildTargetPlatform.Web)
+        {
+            // .NET Mono's native AOT compiler may return success without writing
+            // a method-token path past Windows MAX_PATH. The SDK currently
+            // initializes its private output paths from IntermediateOutputPath.
+            // The Web Host uses this root only during that SDK initialization,
+            // preserving its regular managed obj paths and nested-publish split.
+            process.Arguments.Add($"-p:BEngineWasmIntermediateRoot={buildArtifactsDirectory}{Path.DirectorySeparatorChar}");
+        }
         process.Arguments.Add("--nologo");
         process.Arguments.Add("--disable-build-servers");
         process.Arguments.Add("-nodeReuse:false");
@@ -384,6 +406,10 @@ internal static class DotNetPublishRunner
         process.Arguments.Add("-p:RestoreIgnoreFailedSources=true");
         var engineRoot = DotNetBuildHostLocator.ResolveExportedEngineRoot(projectPath);
         if (engineRoot is not null) process.Arguments.Add($"-p:BEngineEngineRoot={engineRoot}");
+        if (context.Target.Platform == BuildTargetPlatform.Web &&
+            context.Request.WebScriptCompilation == WebScriptCompilationMode.AheadOfTime &&
+            context.WebPrecompiledManagedCodeAssemblyPaths.Count > 0)
+            process.Arguments.Add($"-p:BEngineWebPrecompiledProps={WebPrecompiledScriptBuild.Write(context, buildArtifactsDirectory)}");
         configure?.Invoke(process);
         DotNetBuildHostLocator.AddAdditionalProperties(process, context.Request);
         BEngine.Tooling.ToolEnvironment.ApplyToDotNetBuild(process.EnvironmentVariables);

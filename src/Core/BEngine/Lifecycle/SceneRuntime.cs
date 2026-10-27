@@ -92,23 +92,36 @@ public sealed class SceneRuntime
         var previousScene = SetCurrentScene(Scene);
         var frameDelta = Time.deltaTime;
         var fixedDelta = Time.FrameFixedDelta;
+        var profile = SceneRuntimeDiagnostics.Enabled;
+        var sample = profile ? SceneRuntimeDiagnostics.BeginTick(_systems.Length) : default;
 
         try
         {
             RuntimeLifecycle.BeginFrame(Scene, frameDelta);
+            if (profile) sample.MoveTo(SceneRuntimePhase.BehaviourStart);
             foreach (var dispatch in EnabledBehaviours())
                 if (!dispatch.Started) EnsureStarted(dispatch);
+            if (profile)
+            {
+                SceneRuntimeDiagnostics.RecordDispatchCount(_enabledSnapshot.Length);
+                sample.MoveTo(SceneRuntimePhase.BeforeUpdateSystems);
+            }
             foreach (var system in _systems)
             {
                 if (!IsRunning) return;
                 InvokeSystemBeforeUpdate(system, Scene, frameDelta);
             }
+            if (profile) sample.MoveTo(SceneRuntimePhase.FixedUpdate);
             for (var step = 0; step < Time.FrameFixedSteps && IsRunning; step++)
             {
+                if (profile) SceneRuntimeDiagnostics.RecordFixedStep();
                 Time.BeginFixedStepUnchecked(step);
                 foreach (var dispatch in EnabledBehaviours())
                     if ((!dispatch.Started || dispatch.Callbacks.FixedUpdate) && EnsureStarted(dispatch) && dispatch.Callbacks.FixedUpdate)
+                    {
+                        if (profile) SceneRuntimeDiagnostics.RecordFixedCallback();
                         InvokeBehaviourFixedUpdate(dispatch.Behaviour);
+                    }
 
                 foreach (var system in _systems)
                 {
@@ -119,25 +132,36 @@ public sealed class SceneRuntime
                 Time.EndFixedStepUnchecked();
             }
 
+            if (profile) sample.MoveTo(SceneRuntimePhase.BehaviourUpdate);
             foreach (var dispatch in EnabledBehaviours())
                 if ((!dispatch.Started || dispatch.Callbacks.Update) && EnsureStarted(dispatch) && dispatch.Callbacks.Update)
+                {
+                    if (profile) SceneRuntimeDiagnostics.RecordUpdateCallback();
                     InvokeBehaviourUpdate(dispatch.Behaviour);
+                }
 
             if (!IsRunning) return;
 
+            if (profile) sample.MoveTo(SceneRuntimePhase.UpdateSystems);
             foreach (var system in _systems)
             {
                 if (!IsRunning) return;
                 InvokeSystemUpdate(system, Scene, frameDelta);
             }
 
+            if (profile) sample.MoveTo(SceneRuntimePhase.LateUpdate);
             foreach (var dispatch in EnabledBehaviours())
                 if ((!dispatch.Started || dispatch.Callbacks.LateUpdate) && EnsureStarted(dispatch) && dispatch.Callbacks.LateUpdate)
+                {
+                    if (profile) SceneRuntimeDiagnostics.RecordLateCallback();
                     InvokeBehaviourLateUpdate(dispatch.Behaviour);
+                }
+            if (profile) sample.MoveTo(SceneRuntimePhase.LifecycleEnd);
             if (IsRunning) RuntimeLifecycle.CompleteFrame(Scene, frameDelta);
         }
         finally
         {
+            if (profile) sample.Complete();
             Time.EndFixedStepUnchecked();
             SetCurrentScene(previousScene);
         }
@@ -303,6 +327,7 @@ public sealed class SceneRuntime
     public static FrameScope BeginFrame(Fix64 deltaTime)
     {
         Time.BeginFrame(deltaTime);
+        SceneRuntimeDiagnostics.BeginFrame(Time.FrameSequence);
         return new FrameScope(Time.FrameSequence);
     }
 
@@ -321,12 +346,17 @@ public sealed class SceneRuntime
             if (!ReferenceEquals(capturedScenes[0], runtime.Scene))
                 capturedScenes = runtime._singleFrameScenes = [runtime.Scene];
             var systems = runtime.CaptureSingleFrameSystems();
+            var frameSystemsStarted = SceneRuntimeDiagnostics.StartFrameSystems();
             foreach (var system in systems) InvokeFrameSystem(system, capturedScenes, deltaTime, begin: true);
-            try { runtime.Tick(deltaTime); }
+            SceneRuntimeDiagnostics.EndFrameSystems(frameSystemsStarted, begin: true);
+            // A frame-system callback may unload this scene after the capture.
+            try { if (runtime.IsRunning) runtime.Tick(deltaTime); }
             finally
             {
+                frameSystemsStarted = SceneRuntimeDiagnostics.StartFrameSystems();
                 for (var index = systems.Length - 1; index >= 0; index--)
                     InvokeFrameSystem(systems[index], capturedScenes, deltaTime, begin: false);
+                SceneRuntimeDiagnostics.EndFrameSystems(frameSystemsStarted, begin: false);
             }
             return;
         }
@@ -338,15 +368,22 @@ public sealed class SceneRuntime
             .GroupBy(system => system.frameGroupId, StringComparer.Ordinal)
             .Select(group => group.First())
             .ToArray();
+        var beginSystemsStarted = SceneRuntimeDiagnostics.StartFrameSystems();
         foreach (var system in frameSystems) InvokeFrameSystem(system, scenes, deltaTime, begin: true);
+        SceneRuntimeDiagnostics.EndFrameSystems(beginSystemsStarted, begin: true);
         try
         {
-            foreach (var runtime in running) runtime.Tick(deltaTime);
+            // An earlier scene's Update may synchronously unload a later scene.
+            // Keep the paired frame-system snapshot, but do not tick stopped runtimes.
+            foreach (var runtime in running)
+                if (runtime.IsRunning) runtime.Tick(deltaTime);
         }
         finally
         {
+            var endSystemsStarted = SceneRuntimeDiagnostics.StartFrameSystems();
             for (var index = frameSystems.Length - 1; index >= 0; index--)
                 InvokeFrameSystem(frameSystems[index], scenes, deltaTime, begin: false);
+            SceneRuntimeDiagnostics.EndFrameSystems(endSystemsStarted, begin: false);
         }
     }
 
@@ -399,6 +436,7 @@ public sealed class SceneRuntime
     private static void InvokeFrameSystem(IRuntimeFrameSystem system, IReadOnlyList<Scene> scenes,
         Fix64 deltaTime, bool begin)
     {
+        var sampled = SceneRuntimeDiagnostics.StartCallback();
         try
         {
             if (begin) system.BeginFrame(scenes, deltaTime);
@@ -409,13 +447,22 @@ public sealed class SceneRuntime
             Debug.LogError($"{system.GetType().FullName}.{(begin ? "BeginFrame" : "EndFrame")} failed: " +
                            $"{exception.GetType().FullName}: {exception}");
         }
+        finally
+        {
+            if (sampled != 0) SceneRuntimeDiagnostics.EndCallback(sampled, system, begin ? "BeginFrame" : "EndFrame");
+        }
     }
 
     public readonly struct FrameScope : IDisposable
     {
         private readonly long _sequence;
         internal FrameScope(long sequence) => _sequence = sequence;
-        public void Dispose() { if (_sequence != 0 && _sequence == Time.FrameSequence) Time.EndFrame(); }
+        public void Dispose()
+        {
+            if (_sequence == 0 || _sequence != Time.FrameSequence) return;
+            SceneRuntimeDiagnostics.EndFrame(_sequence);
+            Time.EndFrame();
+        }
     }
 
     private void DisableBehaviour(MonoBehaviour behaviour)
@@ -473,14 +520,14 @@ public sealed class SceneRuntime
 
     private void OnApplicationFocus(bool focused)
     {
-        foreach (var behaviour in _awakened.ToArray())
+        foreach (var behaviour in _behaviours.Where(_awakened.Contains).ToArray())
             InvokeBehaviour(behaviour, () => behaviour.OnApplicationFocus(focused),
                 nameof(MonoBehaviour.OnApplicationFocus));
     }
 
     private void OnApplicationPause(bool paused)
     {
-        foreach (var behaviour in _awakened.ToArray())
+        foreach (var behaviour in _behaviours.Where(_awakened.Contains).ToArray())
             InvokeBehaviour(behaviour, () => behaviour.OnApplicationPause(paused),
                 nameof(MonoBehaviour.OnApplicationPause));
     }
@@ -489,7 +536,7 @@ public sealed class SceneRuntime
     {
         if (_applicationQuitInvoked) return;
         _applicationQuitInvoked = true;
-        foreach (var behaviour in _awakened.ToArray())
+        foreach (var behaviour in _behaviours.Where(_awakened.Contains).ToArray())
             InvokeBehaviour(behaviour, behaviour.OnApplicationQuit, nameof(MonoBehaviour.OnApplicationQuit));
     }
 
@@ -693,11 +740,26 @@ public sealed class SceneRuntime
     private static void InvokeSystemStart(ISceneRuntimeSystem system, Scene scene)
     { try { system.Start(scene); } catch (Exception exception) { LogSystemFailure(system, "Start", exception); } }
     private static void InvokeSystemBeforeUpdate(ISceneRuntimeSystem system, Scene scene, Fix64 deltaTime)
-    { try { system.BeforeUpdate(scene, deltaTime); } catch (Exception exception) { LogSystemFailure(system, "BeforeUpdate", exception); } }
+    {
+        var sampled = SceneRuntimeDiagnostics.StartCallback();
+        try { system.BeforeUpdate(scene, deltaTime); }
+        catch (Exception exception) { LogSystemFailure(system, "BeforeUpdate", exception); }
+        finally { if (sampled != 0) SceneRuntimeDiagnostics.EndCallback(sampled, UnwrapSystem(system), "BeforeUpdate"); }
+    }
     private static void InvokeSystemFixedUpdate(ISceneRuntimeSystem system, Scene scene, Fix64 fixedDeltaTime)
-    { try { system.FixedUpdate(scene, fixedDeltaTime); } catch (Exception exception) { LogSystemFailure(system, "FixedUpdate", exception); } }
+    {
+        var sampled = SceneRuntimeDiagnostics.StartCallback();
+        try { system.FixedUpdate(scene, fixedDeltaTime); }
+        catch (Exception exception) { LogSystemFailure(system, "FixedUpdate", exception); }
+        finally { if (sampled != 0) SceneRuntimeDiagnostics.EndCallback(sampled, UnwrapSystem(system), "FixedUpdate"); }
+    }
     private static void InvokeSystemUpdate(ISceneRuntimeSystem system, Scene scene, Fix64 deltaTime)
-    { try { system.Update(scene, deltaTime); } catch (Exception exception) { LogSystemFailure(system, "Update", exception); } }
+    {
+        var sampled = SceneRuntimeDiagnostics.StartCallback();
+        try { system.Update(scene, deltaTime); }
+        catch (Exception exception) { LogSystemFailure(system, "Update", exception); }
+        finally { if (sampled != 0) SceneRuntimeDiagnostics.EndCallback(sampled, UnwrapSystem(system), "Update"); }
+    }
     private static void InvokeSystemStop(ISceneRuntimeSystem system, Scene scene, string callbackName)
     { try { system.Stop(scene); } catch (Exception exception) { LogSystemFailure(system, callbackName, exception); } }
 
@@ -706,11 +768,26 @@ public sealed class SceneRuntime
                        $"{exception.GetType().FullName}: {exception}");
 
     private static void InvokeBehaviourFixedUpdate(MonoBehaviour behaviour)
-    { try { behaviour.FixedUpdate(); } catch (Exception exception) { LogBehaviourFailure(behaviour, "FixedUpdate", exception); } }
+    {
+        var sampled = SceneRuntimeDiagnostics.StartCallback();
+        try { behaviour.FixedUpdate(); }
+        catch (Exception exception) { LogBehaviourFailure(behaviour, "FixedUpdate", exception); }
+        finally { if (sampled != 0) SceneRuntimeDiagnostics.EndCallback(sampled, behaviour, "FixedUpdate"); }
+    }
     private static void InvokeBehaviourUpdate(MonoBehaviour behaviour)
-    { try { behaviour.Update(); } catch (Exception exception) { LogBehaviourFailure(behaviour, "Update", exception); } }
+    {
+        var sampled = SceneRuntimeDiagnostics.StartCallback();
+        try { behaviour.Update(); }
+        catch (Exception exception) { LogBehaviourFailure(behaviour, "Update", exception); }
+        finally { if (sampled != 0) SceneRuntimeDiagnostics.EndCallback(sampled, behaviour, "Update"); }
+    }
     private static void InvokeBehaviourLateUpdate(MonoBehaviour behaviour)
-    { try { behaviour.LateUpdate(); } catch (Exception exception) { LogBehaviourFailure(behaviour, "LateUpdate", exception); } }
+    {
+        var sampled = SceneRuntimeDiagnostics.StartCallback();
+        try { behaviour.LateUpdate(); }
+        catch (Exception exception) { LogBehaviourFailure(behaviour, "LateUpdate", exception); }
+        finally { if (sampled != 0) SceneRuntimeDiagnostics.EndCallback(sampled, behaviour, "LateUpdate"); }
+    }
     private static void InvokeBehaviourOnEnable(MonoBehaviour behaviour)
     { try { behaviour.OnEnable(); } catch (Exception exception) { LogBehaviourFailure(behaviour, "OnEnable", exception); } }
     private static void InvokeBehaviourOnDisable(MonoBehaviour behaviour)

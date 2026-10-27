@@ -28,6 +28,8 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _builtInBundlePaths =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Uri> _builtInBundleUris = new(StringComparer.OrdinalIgnoreCase);
+    private readonly BCancellationSource _httpLoadsCancellation = new();
     private RuntimeState? _active;
     private RuntimeState? _builtIn;
     private bool _initialized;
@@ -55,7 +57,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         _pathService = pathService ?? throw new ArgumentNullException(nameof(pathService));
         _httpRequestFactory = httpRequestFactory ??
                               throw new ArgumentNullException(nameof(httpRequestFactory));
-        _cacheRoot = _pathService.GetFullPath(_options.CacheDirectory);
+        _cacheRoot = _options.UsePersistentCache ? _pathService.GetFullPath(_options.CacheDirectory) : string.Empty;
         _builtInRoot = string.IsNullOrWhiteSpace(_options.BuiltInDirectory)
             ? null
             : _pathService.GetFullPath(_options.BuiltInDirectory);
@@ -83,38 +85,52 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
 
     public bool IsInitialized => _initialized;
     public string CacheDirectory => _cacheRoot;
-    public string ObjectsDirectory => _pathService.Combine(_cacheRoot, "objects");
-    public string CatalogsDirectory => _pathService.Combine(_cacheRoot, "catalogs");
-    public string StagingDirectory => _pathService.Combine(_cacheRoot, "staging");
-    public string ActivePointerPath => _pathService.Combine(_cacheRoot, ActiveFileName);
-    public string PreviousPointerPath => _pathService.Combine(_cacheRoot, PreviousFileName);
-    internal string PendingPointerPath => _pathService.Combine(_cacheRoot, PendingFileName);
+    public string ObjectsDirectory => CachePath("objects");
+    public string CatalogsDirectory => CachePath("catalogs");
+    public string StagingDirectory => CachePath("staging");
+    public string ActivePointerPath => CachePath(ActiveFileName);
+    public string PreviousPointerPath => CachePath(PreviousFileName);
+    internal string PendingPointerPath => CachePath(PendingFileName);
+    private string CachePath(string name) => _options.UsePersistentCache
+        ? _pathService.Combine(_cacheRoot, name) : string.Empty;
     public bool HasPendingActivation => _hasPendingActivation;
 
-    public async BValueTask InitializeAsync(BCancellationToken cancellationToken = default)
+    public BValueTask InitializeAsync(BCancellationToken cancellationToken = default) => InitializeTrackedAsync(cancellationToken, null);
+
+    internal async BValueTask InitializeTrackedAsync(BCancellationToken cancellationToken, AssetBundleLoadTracker? progress)
     {
         ThrowIfDisposed();
         if (IsInitialized) return;
-        using (await EnterStateGateAsync(cancellationToken))
+        var entering = EnterStateGateAsync(cancellationToken);
+        while (!entering.IsCompleted)
+        {
+            if (_initializationProgress is { } shared) progress?.Report(shared.Snapshot);
+            await BTask.Yield();
+        }
+        using (await entering)
         {
             ThrowIfDisposed();
             cancellationToken.ThrowIfCancellationRequested();
             if (IsInitialized) return;
+            progress ??= new();
+            _initializationProgress = progress;
+            progress?.Report(new(AssetBundleLoadKind.Initialization, AssetBundleLoadPhase.Opening, "catalog", 0, null));
             if (!_options.UsePersistentCache)
             {
-                _builtIn = await LoadBuiltInStateAsync(cancellationToken) ??
+                _builtIn = await LoadBuiltInStateAsync(cancellationToken, progress) ??
                            throw new InvalidDataException(
                                "The read-only built-in AssetBundle release is missing.");
                 _active = _builtIn;
                 BAssetReferenceLoader.Clear();
                 _hasPendingActivation = false;
                 _initialized = true;
+                progress?.Report(new(AssetBundleLoadKind.Initialization, AssetBundleLoadPhase.Completed, "catalog", 1, 1));
                 return;
             }
             CreateCacheLayout();
             CleanupStagingFiles();
 
-            _builtIn = await LoadBuiltInStateAsync(cancellationToken);
+            _builtIn = await LoadBuiltInStateAsync(cancellationToken, progress);
             RuntimeState? selected = null;
             try
             {
@@ -143,6 +159,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             BAssetReferenceLoader.Clear();
             _hasPendingActivation = await IsPendingActivationAsync(selected, cancellationToken);
             _initialized = true;
+            progress?.Report(new(AssetBundleLoadKind.Initialization, AssetBundleLoadPhase.Completed, "catalog", 1, 1));
         }
     }
 
@@ -197,6 +214,12 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         ThrowIfDisposed();
         var state = _active ?? throw new InvalidOperationException("There is no active catalog.");
         long size = 0;
+        if (_options.BuiltInBaseUri is not null)
+        {
+            foreach (var descriptor in ResolveBundleSelection(state.Catalog, bundleNames))
+                if (!IsHttpBundleLoaded(descriptor)) size = checked(size + descriptor.Size);
+            return size;
+        }
         foreach (var descriptor in ResolveBundleSelection(state.Catalog, bundleNames))
             if (!await HasValidBundleAsync(descriptor, cancellationToken)) size = checked(size + descriptor.Size);
         return size;
@@ -215,6 +238,8 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             EnsureInitialized();
             ThrowIfDisposed();
             var state = _active ?? throw new InvalidOperationException("There is no active catalog.");
+            if (_options.BuiltInBaseUri is not null)
+                return await PreloadHttpBundlesAsync(state, names, progress, cancellationToken);
             var downloads = new List<AssetBundleDescriptor>();
             foreach (var descriptor in ResolveBundleSelection(state.Catalog, names))
                 if (!await HasValidBundleAsync(descriptor, cancellationToken)) downloads.Add(descriptor);
@@ -261,7 +286,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     }
 
     private bool BundleFileExists(AssetBundleDescriptor descriptor) =>
-        _fileSystem.FileExists(GetObjectPath(descriptor)) ||
+        (_options.UsePersistentCache && _fileSystem.FileExists(GetObjectPath(descriptor))) ||
         (_builtInBundlePaths.TryGetValue(descriptor.Sha256, out var path) && _fileSystem.FileExists(path));
 
     private static IReadOnlyList<AssetBundleDescriptor> ResolveBundleSelection(
@@ -489,9 +514,11 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         }
     }
 
-    public async BValueTask<AssetBundleHandle<byte[]>> LoadBytesAsync(
-        string address,
-        BCancellationToken cancellationToken = default)
+    public BValueTask<AssetBundleHandle<byte[]>> LoadBytesAsync(string address, BCancellationToken cancellationToken = default) =>
+        LoadBytesTrackedAsync(address, cancellationToken, null);
+
+    internal async BValueTask<AssetBundleHandle<byte[]>> LoadBytesTrackedAsync(
+        string address, BCancellationToken cancellationToken, AssetBundleLoadTracker? progress)
     {
         EnsureInitialized();
         ThrowIfDisposed();
@@ -500,12 +527,12 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         var canonicalAddress = AssetBundleValidation.NormalizeAddress(address);
         if (!state.Index.TryGetAsset(canonicalAddress, out var asset))
             throw new KeyNotFoundException($"Asset bundle address '{canonicalAddress}' was not found.");
+        progress?.ConfigureAsset(asset, state.Index.GetBundleClosure(asset.Bundle).Select(item => GetBundleLoadTracker(item.Descriptor)));
         var leases = await AcquireBundleClosureAsync(state.Index, asset.Bundle, cancellationToken);
         try
         {
             var owner = leases[^1];
-            var bytes = await owner.Bundle.ReadAssetAsync(
-                asset, _options.MaximumAssetSize, cancellationToken);
+            var bytes = await ReadAssetWithProgressAsync(owner.Bundle, asset, cancellationToken, progress);
             return new AssetBundleHandle<byte[]>(
                 asset.Address, (byte[])bytes.Clone(), () => ReleaseBundles(leases));
         }
@@ -516,9 +543,11 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         }
     }
 
-    public async BValueTask<AssetBundleHandle<string>> LoadTextAsync(
-        string address,
-        BCancellationToken cancellationToken = default)
+    public BValueTask<AssetBundleHandle<string>> LoadTextAsync(string address, BCancellationToken cancellationToken = default) =>
+        LoadTextTrackedAsync(address, cancellationToken, null);
+
+    internal async BValueTask<AssetBundleHandle<string>> LoadTextTrackedAsync(
+        string address, BCancellationToken cancellationToken, AssetBundleLoadTracker? progress)
     {
         EnsureInitialized();
         ThrowIfDisposed();
@@ -527,12 +556,12 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         var canonicalAddress = AssetBundleValidation.NormalizeAddress(address);
         if (!state.Index.TryGetAsset(canonicalAddress, out var asset))
             throw new KeyNotFoundException($"Asset bundle address '{canonicalAddress}' was not found.");
+        progress?.ConfigureAsset(asset, state.Index.GetBundleClosure(asset.Bundle).Select(item => GetBundleLoadTracker(item.Descriptor)));
         var leases = await AcquireBundleClosureAsync(state.Index, asset.Bundle, cancellationToken);
         try
         {
             var owner = leases[^1];
-            var bytes = await owner.Bundle.ReadAssetAsync(
-                asset, _options.MaximumAssetSize, cancellationToken);
+            var bytes = await ReadAssetWithProgressAsync(owner.Bundle, asset, cancellationToken, progress);
             var text = new UTF8Encoding(false, true).GetString(bytes);
             return new AssetBundleHandle<string>(asset.Address, text, () => ReleaseBundles(leases));
         }
@@ -668,9 +697,12 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     {
         if (_disposed) return;
         _disposed = true;
+        _httpLoadsCancellation.Cancel();
+        _httpLoadsCancellation.Dispose();
         _initialized = false;
         var loaded = _loadedBundles.Values.ToArray();
         _loadedBundles.Clear();
+        _bundleLoadTrackers.Clear();
         foreach (var pending in loaded)
         {
             try
@@ -741,7 +773,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             if (!_loadedBundles.TryGetValue(hash, out var task))
             {
                 task = OpenBundleAsync(
-                    descriptor, assets, BCancellationToken.None).AsBTask();
+                    descriptor, assets, _httpLoadsCancellation.Token, GetBundleLoadTracker(descriptor)).AsBTask();
                 _loadedBundles.Add(hash, task);
             }
             LoadedAssetBundle bundle;
@@ -781,6 +813,12 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         {
             if (!_loadedBundles.TryGetValue(hash, out var task))
             {
+                // A browser cannot synchronously wait for fetch. Async loading/preloading warms this path.
+                if (_options.BuiltInBaseUri is not null)
+                {
+                    bundle = null!;
+                    return false;
+                }
                 var path = ResolveBundlePath(descriptor);
                 bundle = LoadedAssetBundle.Open(
                     _fileSystem, path, descriptor, assets, _options);
@@ -807,15 +845,40 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     private async BValueTask<LoadedAssetBundle> OpenBundleAsync(
         AssetBundleDescriptor descriptor,
         IReadOnlyList<AssetBundleAsset> assets,
-        BCancellationToken cancellationToken)
+        BCancellationToken cancellationToken, AssetBundleLoadTracker progress)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var path = ResolveBundlePath(descriptor);
-        var bundle = await LoadedAssetBundle.OpenAsync(
-            _fileSystem, path, descriptor, assets, _options, cancellationToken);
-        if (!_disposed) return bundle;
-        bundle.Dispose();
-        throw new ObjectDisposedException(nameof(AssetBundleManager));
+        LoadedAssetBundle bundle;
+        progress.Report(new(AssetBundleLoadKind.Bundle, AssetBundleLoadPhase.Opening, descriptor.Name, 0, descriptor.Size));
+        try
+        {
+            if (_builtInBundleUris.TryGetValue(descriptor.Sha256, out var uri))
+            {
+                var stream = await ReadHttpBundleAsync(uri, descriptor, cancellationToken, progress);
+                progress.Report(new(AssetBundleLoadKind.Bundle, AssetBundleLoadPhase.Opening, descriptor.Name, descriptor.Size, descriptor.Size));
+                bundle = LoadedAssetBundle.OpenVerified(stream, descriptor, assets, _options);
+            }
+            else
+            {
+                var path = ResolveBundlePath(descriptor);
+                bundle = await LoadedAssetBundle.OpenAsync(
+                    _fileSystem, path, descriptor, assets, _options, cancellationToken,
+                    count => progress.Report(new(
+                        AssetBundleLoadKind.Bundle, AssetBundleLoadPhase.Verifying, descriptor.Name, count, descriptor.Size)));
+            }
+            if (_disposed)
+            {
+                bundle.Dispose();
+                throw new ObjectDisposedException(nameof(AssetBundleManager));
+            }
+            progress.Report(new(AssetBundleLoadKind.Bundle, AssetBundleLoadPhase.Completed, descriptor.Name, descriptor.Size, descriptor.Size));
+            return bundle;
+        }
+        catch
+        {
+            progress.Report(progress.Snapshot with { Phase = AssetBundleLoadPhase.Failed });
+            throw;
+        }
     }
 
     private string ResolveBundlePath(AssetBundleDescriptor descriptor)
@@ -838,6 +901,15 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         AssetBundleDescriptor descriptor,
         BCancellationToken cancellationToken)
     {
+        if (_builtInBundleUris.TryGetValue(descriptor.Sha256, out var uri))
+        {
+            try
+            {
+                using var stream = await ReadHttpBundleAsync(uri, descriptor, cancellationToken);
+                return true;
+            }
+            catch (Exception exception) when (IsRecoverableContentFailure(exception)) { return false; }
+        }
         foreach (var path in BundleCandidates(descriptor))
         {
             if (!_fileSystem.FileExists(path)) continue;
@@ -987,7 +1059,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         Uri uri,
         AssetBundleHttpResourceKind resourceKind,
         long maximumSize,
-        BCancellationToken cancellationToken)
+        BCancellationToken cancellationToken, AssetBundleLoadTracker? progress = null)
     {
         Exception? failure = null;
         for (var attempt = 0; attempt <= _options.MaxRetries; attempt++)
@@ -997,7 +1069,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             {
                 using var handler = new LimitedMemoryDownloadHandler(uri, maximumSize);
                 await SendHttpStreamingAsync(
-                    uri, resourceKind, attempt + 1, handler, cancellationToken);
+                    uri, resourceKind, attempt + 1, handler, cancellationToken, progress: progress);
                 return handler.ToArray();
             }
             catch (HttpRequestException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
@@ -1025,17 +1097,48 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         AssetBundleHttpResourceKind resourceKind,
         int attempt,
         IHttpDownloadHandler downloadHandler,
-        BCancellationToken cancellationToken)
+        BCancellationToken cancellationToken,
+        string? progressResource = null,
+        long? expectedSize = null,
+        AssetBundleLoadTracker? progress = null)
     {
         using var request = _httpRequestFactory.Create(
             uri, HttpRequestMethod.Get, _options.HttpTransport);
+        using var disposalRegistration = _httpLoadsCancellation.Token.Register(request.Abort);
         request.Timeout = HttpNetworkRequest.InfiniteTimeout;
-        if (resourceKind == AssetBundleHttpResourceKind.VersionPointer)
+        request.InactivityTimeout = _options.HttpInactivityTimeout;
+        request.MaximumDownloadBytes = resourceKind == AssetBundleHttpResourceKind.Bundle
+            ? _options.MaximumBundleSize : _options.MaximumCatalogSize;
+        if (_options.BuiltInBaseUri is not null)
+        {
+            request.BypassCache = true;
+        }
+        if (request.BypassCache || resourceKind == AssetBundleHttpResourceKind.VersionPointer)
         {
             request.SetRequestHeader("Cache-Control", "no-cache, no-store, max-age=0");
             request.SetRequestHeader("Pragma", "no-cache");
         }
-        await request.SendAsync(downloadHandler, cancellationToken);
+        var kind = resourceKind == AssetBundleHttpResourceKind.Bundle ? AssetBundleLoadKind.Bundle
+            : resourceKind == AssetBundleHttpResourceKind.Catalog ? AssetBundleLoadKind.Catalog : AssetBundleLoadKind.Version;
+        var resource = progressResource ?? System.IO.Path.GetFileName(uri.AbsolutePath);
+        progress?.Report(new(kind, AssetBundleLoadPhase.Waiting, resource, 0, expectedSize, attempt));
+        var sending = request.SendAsync(downloadHandler, cancellationToken);
+        long previous = -1;
+        long? previousTotal = null;
+        while (!sending.IsCompleted && progress is not null)
+        {
+            var total = expectedSize ?? request.ContentLength;
+            if (previous != request.DownloadedBytes || previousTotal != total)
+            {
+                previous = request.DownloadedBytes;
+                previousTotal = total;
+                progress?.Report(new(kind, AssetBundleLoadPhase.Receiving, resource, previous, total, attempt));
+            }
+            await BTask.Yield();
+        }
+        await sending;
+        progress?.Report(new(kind, request.IsSuccess ? AssetBundleLoadPhase.Verifying : AssetBundleLoadPhase.Failed,
+            resource, request.DownloadedBytes, expectedSize ?? request.ContentLength, attempt));
         ReportHttpTransfer(new AssetBundleHttpTransferDiagnostic(
             resourceKind,
             RedactEndpoint(uri),
@@ -1075,15 +1178,16 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     }
 
     private async BValueTask<RuntimeState?> LoadBuiltInStateAsync(
-        BCancellationToken cancellationToken)
+        BCancellationToken cancellationToken, AssetBundleLoadTracker? progress = null)
     {
+        if (_options.BuiltInBaseUri is not null) return await LoadHttpBuiltInStateAsync(cancellationToken, progress);
         if (_builtInRoot is null || !_fileSystem.DirectoryExists(_builtInRoot)) return null;
         var metadataPointerPath = new[] { LatestFileName, VersionFileName }
             .Select(file => _pathService.Combine(_builtInRoot, file))
             .FirstOrDefault(_fileSystem.FileExists);
         if (metadataPointerPath is null) return null;
         var versionBytes = await ReadLimitedFileAsync(
-            metadataPointerPath, _options.MaximumCatalogSize, cancellationToken);
+            metadataPointerPath, _options.MaximumCatalogSize, cancellationToken, progress, AssetBundleLoadKind.Version);
         AssetBundleVersion version;
         if (TryDeserializeVersion(versionBytes, out version))
         {
@@ -1097,7 +1201,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
                 _builtInRoot, NormalizeVersionSegment(latest.Version));
             var pointedVersionPath = ResolveInside(pointedVersionRoot, VersionFileName);
             var pointedVersionBytes = await ReadLimitedFileAsync(
-                pointedVersionPath, _options.MaximumCatalogSize, cancellationToken);
+                pointedVersionPath, _options.MaximumCatalogSize, cancellationToken, progress, AssetBundleLoadKind.Version);
             version = AssetBundleCatalogSerializer.DeserializeVersion(pointedVersionBytes);
             if (!version.Version.Equals(latest.Version, StringComparison.Ordinal))
                 throw new InvalidDataException(
@@ -1108,17 +1212,22 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             version = AssetBundleCatalogSerializer.DeserializeVersion(versionBytes);
         }
         ValidatePackage(version.PackageName);
+        progress?.Report(new(AssetBundleLoadKind.Version, AssetBundleLoadPhase.Completed, VersionFileName, versionBytes.Length, versionBytes.Length));
         var versionSegment = NormalizeVersionSegment(version.Version);
         var versionRoot = _pathService.Combine(_builtInRoot, versionSegment);
         var catalogPath = ResolveInside(versionRoot, version.CatalogFile);
         if (!_fileSystem.FileExists(catalogPath))
             catalogPath = ResolveInside(_builtInRoot, version.CatalogFile);
         var catalogBytes = await ReadLimitedFileAsync(
-            catalogPath, _options.MaximumCatalogSize, cancellationToken);
+            catalogPath, _options.MaximumCatalogSize, cancellationToken, progress);
         VerifyPayload(catalogBytes, version.CatalogSize, version.CatalogSha256, "built-in catalog");
+        progress?.Report(new(AssetBundleLoadKind.Catalog, AssetBundleLoadPhase.Opening, version.CatalogFile, catalogBytes.Length, version.CatalogSize));
+        await BTask.Yield();
+        cancellationToken.ThrowIfCancellationRequested();
         var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes);
         ValidateCatalogPair(version, catalog);
         ValidateCatalogLimits(catalog);
+        progress?.Report(new(AssetBundleLoadKind.Catalog, AssetBundleLoadPhase.Completed, version.CatalogFile, catalogBytes.Length, version.CatalogSize));
 
         var requiredNames = GetRequiredBundles(catalog, includeInstalled: false)
             .Select(static bundle => bundle.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1128,9 +1237,14 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             if (!_fileSystem.FileExists(path))
                 path = _pathService.Combine(_builtInRoot, "bundles", descriptor.FileName);
             if (!_fileSystem.FileExists(path) && !requiredNames.Contains(descriptor.Name)) continue;
-            await AssetBundleFileVerifier.VerifyAsync(
-                _fileSystem, path, descriptor.Size, descriptor.Sha256,
-                _options.MaximumBundleSize, cancellationToken);
+            if (_options.UsePersistentCache)
+                await AssetBundleFileVerifier.VerifyAsync(
+                    _fileSystem, path, descriptor.Size, descriptor.Sha256,
+                    _options.MaximumBundleSize, cancellationToken);
+            else if (!_fileSystem.FileExists(path) || _fileSystem.GetFileLength(path) != descriptor.Size)
+                throw new InvalidDataException($"Built-in bundle '{descriptor.Name}' is missing or has the wrong size.");
+            // Immutable direct sources are hashed by LoadedAssetBundle on first
+            // access, rather than reading the entire packaged game at startup.
             _builtInBundlePaths[descriptor.Sha256] = path;
         }
         return new RuntimeState(version, catalog, catalogBytes);
@@ -1231,7 +1345,10 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     private void RemoveLoadedBundle(string hash, BTask<LoadedAssetBundle> task)
     {
         if (_loadedBundles.TryGetValue(hash, out var current) && ReferenceEquals(current, task))
+        {
             _loadedBundles.Remove(hash);
+            _bundleLoadTrackers.Remove(hash);
+        }
     }
 
     private void CreateCacheLayout()
@@ -1243,6 +1360,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
 
     private void CleanupStagingFiles()
     {
+        if (!_options.UsePersistentCache) return;
         if (!_fileSystem.DirectoryExists(StagingDirectory)) return;
         foreach (var path in _fileSystem.EnumerateFiles(StagingDirectory, "*.part"))
         {
@@ -1299,7 +1417,9 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     }
 
     private string GetObjectPath(AssetBundleDescriptor descriptor) =>
-        _pathService.Combine(ObjectsDirectory, descriptor.Sha256.ToLowerInvariant() + ".bassetbundle");
+        _options.UsePersistentCache
+            ? _pathService.Combine(ObjectsDirectory, descriptor.Sha256.ToLowerInvariant() + ".bassetbundle")
+            : string.Empty;
 
     private string GetCatalogCachePath(string hash) =>
         _pathService.Combine(CatalogsDirectory, hash.ToLowerInvariant() + ".yaml");
@@ -1360,7 +1480,8 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     private async BValueTask<byte[]> ReadLimitedFileAsync(
         string path,
         long maximumSize,
-        BCancellationToken cancellationToken)
+        BCancellationToken cancellationToken, AssetBundleLoadTracker? progress = null,
+        AssetBundleLoadKind kind = AssetBundleLoadKind.Catalog)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!_fileSystem.FileExists(path))
@@ -1376,6 +1497,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             path, FileMode.Open, FileAccess.Read, FileShare.Read,
             64 * 1024, FileOptions.SequentialScan);
         var offset = 0;
+        progress?.Report(new(kind, AssetBundleLoadPhase.Reading, _pathService.GetFileName(path), 0, fileLength));
         while (offset < bytes.Length)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -1384,6 +1506,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
                 throw new EndOfStreamException(
                     $"Asset bundle metadata '{path}' ended unexpectedly.");
             offset += read;
+            progress?.Report(new(kind, AssetBundleLoadPhase.Reading, _pathService.GetFileName(path), offset, fileLength));
             if (offset < bytes.Length) await BValueTask.Yield();
         }
         return bytes;
@@ -1454,12 +1577,18 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     }
 
     private static AssetBundleCatalog CloneCatalog(AssetBundleCatalog catalog) =>
-        AssetBundleCatalogSerializer.DeserializeCatalog(
-            AssetBundleCatalogSerializer.SerializeCatalog(catalog));
+        AssetBundleCatalogSerializer.CloneCatalog(catalog);
 
-    private static AssetBundleVersion CloneVersion(AssetBundleVersion version) =>
-        AssetBundleCatalogSerializer.DeserializeVersion(
-            AssetBundleCatalogSerializer.SerializeVersion(version));
+    private static AssetBundleVersion CloneVersion(AssetBundleVersion version) => new()
+    {
+        Format = version.Format,
+        SchemaVersion = version.SchemaVersion,
+        PackageName = version.PackageName,
+        Version = version.Version,
+        CatalogFile = version.CatalogFile,
+        CatalogSha256 = version.CatalogSha256.ToLowerInvariant(),
+        CatalogSize = version.CatalogSize
+    };
 
     private void EnsureInitialized()
     {
@@ -1603,6 +1732,13 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         out long contentLength)
     {
         contentLength = 0;
+        // Fetch exposes decoded response bytes, while Content-Length still describes
+        // the encoded wire body. Verify the decoded size and SHA-256 against the
+        // catalog instead of comparing these different representations.
+        if (response.Headers.TryGetValue("Content-Encoding", out var encodings) &&
+            encodings.Any(value => value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Any(encoding => !encoding.Equals("identity", StringComparison.OrdinalIgnoreCase))))
+            return false;
         return response.Headers.TryGetValue("Content-Length", out var values) &&
                values.Length == 1 &&
                long.TryParse(values[0], out contentLength) && contentLength >= 0;
@@ -1618,7 +1754,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             Version = version;
             Catalog = catalog;
             CatalogBytes = catalogBytes;
-            Index = new AssetBundleCatalogIndex(catalog, cloneCatalog: false);
+            Index = new AssetBundleCatalogIndex(catalog, cloneCatalog: false, catalogValidated: true);
         }
 
         internal AssetBundleVersion Version { get; }

@@ -619,15 +619,16 @@ public static partial class AssetBundleBuilder
 
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new AssetBundleBuildProgress(AssetBundleBuildPhase.WritingCatalog, 0, 1,
-                "catalog.yaml"));
-            var catalogBytes = AssetBundleCatalogSerializer.SerializeCatalog(catalog);
+                AssetBundleCatalogSerializer.RuntimeCatalogFileName));
+            var catalogBytes = AssetBundleCatalogSerializer.SerializeRuntimeCatalog(catalog);
             var catalogHash = AssetBundleCatalogSerializer.ComputeSha256(catalogBytes);
-            fileSystem.WriteAllBytes(pathService.Combine(stagingDirectory, "catalog.yaml"), catalogBytes);
+            fileSystem.WriteAllBytes(pathService.Combine(stagingDirectory,
+                AssetBundleCatalogSerializer.RuntimeCatalogFileName), catalogBytes);
             var version = new AssetBundleVersion
             {
                 PackageName = options.PackageName,
                 Version = options.Version,
-                CatalogFile = "catalog.yaml",
+                CatalogFile = AssetBundleCatalogSerializer.RuntimeCatalogFileName,
                 CatalogSha256 = catalogHash,
                 CatalogSize = catalogBytes.LongLength
             };
@@ -830,7 +831,7 @@ public static partial class AssetBundleBuilder
         PathUtility pathService,
         CancellationToken cancellationToken)
     {
-        VerifyExactFile(pathService.Combine(versionDirectory, "catalog.yaml"), catalogBytes, fileSystem,
+        VerifyExactFile(pathService.Combine(versionDirectory, AssetBundleCatalogSerializer.RuntimeCatalogFileName), catalogBytes, fileSystem,
             "The published catalog differs from this immutable version.");
         VerifyExactFile(pathService.Combine(versionDirectory, "version.yaml"), versionBytes, fileSystem,
             "The published version metadata differs from this immutable version.");

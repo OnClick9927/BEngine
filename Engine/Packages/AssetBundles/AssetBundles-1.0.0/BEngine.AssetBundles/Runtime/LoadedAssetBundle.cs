@@ -38,11 +38,12 @@ internal sealed class LoadedAssetBundle : IDisposable
         AssetBundleDescriptor descriptor,
         IReadOnlyList<AssetBundleAsset> assets,
         AssetBundleRuntimeOptions options,
-        BCancellationToken cancellationToken)
+        BCancellationToken cancellationToken,
+        Action<long>? progress = null)
     {
         await AssetBundleFileVerifier.VerifyAsync(
             fileSystem, path, descriptor.Size, descriptor.Sha256,
-            options.MaximumBundleSize, cancellationToken);
+            options.MaximumBundleSize, cancellationToken, progress);
         return OpenVerified(fileSystem, path, descriptor, assets, options);
     }
 
@@ -65,12 +66,23 @@ internal sealed class LoadedAssetBundle : IDisposable
         IReadOnlyList<AssetBundleAsset> assets,
         AssetBundleRuntimeOptions options)
     {
-        var stream = BEngine.Content.ContentEncryption.OpenRead(
-            fileSystem.OpenFile(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-                64 * 1024, FileOptions.RandomAccess), options.EncryptionKey, options.RequireEncryptedContent);
+        return OpenVerified(fileSystem.OpenFile(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            64 * 1024, FileOptions.RandomAccess), descriptor, assets, options);
+    }
+
+    // Owns the already size/hash-verified source, including when decryption or ZIP validation fails.
+    internal static LoadedAssetBundle OpenVerified(
+        Stream source,
+        AssetBundleDescriptor descriptor,
+        IReadOnlyList<AssetBundleAsset> assets,
+        AssetBundleRuntimeOptions options)
+    {
+        var stream = source;
         ZipArchive? archive = null;
         try
         {
+            stream = BEngine.Content.ContentEncryption.OpenRead(
+                source, options.EncryptionKey, options.RequireEncryptedContent);
             archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
             var expected = new Dictionary<string, AssetBundleAsset>(StringComparer.OrdinalIgnoreCase);
             foreach (var asset in assets)
@@ -138,7 +150,8 @@ internal sealed class LoadedAssetBundle : IDisposable
     internal async BValueTask<byte[]> ReadAssetAsync(
         AssetBundleAsset asset,
         long maximumSize,
-        BCancellationToken cancellationToken)
+        BCancellationToken cancellationToken,
+        Action<long>? progress = null)
     {
         ThrowIfDisposed();
         cancellationToken.ThrowIfCancellationRequested();
@@ -146,17 +159,27 @@ internal sealed class LoadedAssetBundle : IDisposable
         // Web remains cooperative; no ThreadPool worker exists there. Desktop
         // and mobile workers only touch this bundle's private stream and data.
         if (!BackgroundWorkScheduler.IsSupported)
-            return await ReadCooperatively(asset, maximumSize, cancellationToken);
+            return await ReadCooperatively(asset, maximumSize, cancellationToken, progress);
         if (_pendingReads.TryGetValue(asset.Entry, out var pending)) return await pending;
         var completion = new BTaskCompletionSource<byte[]>();
         _pendingReads.Add(asset.Entry, completion.Task);
         AcquireRead();
         try
         {
-            bytes = await BackgroundWorkScheduler.Main.Run(token =>
+            long processed = 0;
+            var reading = BackgroundWorkScheduler.Main.Run(token =>
             {
-                lock (_archiveGate) return ReadAssetCore(asset, maximumSize, token);
+                lock (_archiveGate) return ReadAssetCore(asset, maximumSize, token,
+                    progress is null ? null : count => Interlocked.Exchange(ref processed, count));
             }, cancellationToken);
+            long previous = -1;
+            while (progress is not null && !reading.IsCompleted)
+            {
+                var count = Interlocked.Read(ref processed);
+                if (count != previous) { previous = count; progress(count); }
+                await BTask.Yield();
+            }
+            bytes = await reading;
             ThrowIfDisposed();
             cancellationToken.ThrowIfCancellationRequested();
             _assetCache[asset.Entry] = bytes;
@@ -182,7 +205,7 @@ internal sealed class LoadedAssetBundle : IDisposable
         ThrowIfDisposed(); _assetCache[asset.Entry] = bytes; return bytes;
     }
 
-    private async BTask<byte[]> ReadCooperatively(AssetBundleAsset asset, long maximumSize, BCancellationToken token)
+    private async BTask<byte[]> ReadCooperatively(AssetBundleAsset asset, long maximumSize, BCancellationToken token, Action<long>? progress)
     {
         // ZipArchive shares its underlying stream. A cooperative reader owns
         // it for the read; only a bounded byte block is decompressed per step.
@@ -209,6 +232,7 @@ internal sealed class LoadedAssetBundle : IDisposable
                     var read = source.Read(bytes, offset, count);
                     if (read == 0) throw new InvalidDataException("Asset bundle entry ended early.");
                     hash.AppendData(bytes, offset, read); offset += read;
+                    progress?.Invoke(offset);
                     return CooperativeWorkStatus.Continue;
                 }
                 if (source.ReadByte() != -1 || !Convert.ToHexString(hash.GetHashAndReset()).Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -243,7 +267,8 @@ internal sealed class LoadedAssetBundle : IDisposable
     private byte[] ReadAssetCore(
         AssetBundleAsset asset,
         long maximumSize,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<long>? progress = null)
     {
         if (!_entries.TryGetValue(asset.Entry, out var entry))
             throw new FileNotFoundException($"Asset bundle entry '{asset.Entry}' is missing.");
@@ -261,6 +286,7 @@ internal sealed class LoadedAssetBundle : IDisposable
             if (read == 0) break;
             hash.AppendData(output, total, read);
             total = checked(total + read);
+            progress?.Invoke(total);
             if (total > asset.Size || total > maximumSize)
                 throw new InvalidDataException($"Asset '{asset.Address}' exceeds its declared size.");
         }

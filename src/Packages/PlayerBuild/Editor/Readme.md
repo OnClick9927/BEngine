@@ -2,6 +2,16 @@
 
 本包提供 Player 构建与发布流程。依赖见 package.yaml。
 
+Web 的 `Script Compilation` 可选择 `Interpreter`（默认）或 `AheadOfTime`。
+`AheadOfTime` 将游戏域独有的脚本预编译进 Web Player，仍通过原有 AssetBundle 加载和模块生命周期激活。
+启动域与游戏域共用的包使用同一份原始 DLL 和加载身份，避免分别裁剪或重复加载造成类型不兼容。
+其中 UIElements 和 Audio 也会预编译；其他共享包及第三方音频解码器（NLayer、NVorbis）继续解释执行。
+共享包由引用它的运行阶段共同持有，阶段切换不会提前移除另一阶段仍使用的注册。
+构建会补齐共享包的代码依赖，不扩大已确定的资源集合；游戏脚本及其依赖的原始 DLL 会检查 SHA-256 与 MVID。
+此模式下修改游戏脚本或任何固定依赖的代码，需要重新构建并部署完整 Web Player，
+不能只发布 AssetBundle 替换已编译代码。资源内容仍可通过原有内容发布流程更新。
+`PlayerBuildRequest.WebScriptCompilation` 与 Player Settings 使用同一选项。
+
 同一 Hub 下的工程通过 `Hub/Cache/ContentPublishLocks` 协调对同一输出包的并发发布。
 该目录仅在发布时创建，锁释放后保留协调文件；不要在构建进行中删除此缓存目录。
 

@@ -19,6 +19,7 @@ public static class EditorAsyncOperationProgress
         private readonly string _title;
         private readonly string _info;
         private readonly bool _cancelable;
+        private float _reportedProgress = -1;
         private int _disposed;
 
         internal Tracking(AsyncOperation operation, string title, string info, bool cancelable)
@@ -27,24 +28,26 @@ public static class EditorAsyncOperationProgress
             _title = title;
             _info = info;
             _cancelable = cancelable;
-            operation.progressChanged += OnProgressChanged;
-            operation.completed += OnCompleted;
+            EditorApplication.update += Poll;
             if (cancelable) EditorUtility.progressChanged += OnEditorProgressChanged;
-            Report();
+            Poll();
         }
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            _operation.progressChanged -= OnProgressChanged;
-            _operation.completed -= OnCompleted;
+            EditorApplication.update -= Poll;
             if (_cancelable) EditorUtility.progressChanged -= OnEditorProgressChanged;
             EditorUtility.ClearProgressBar();
         }
 
-        private void OnProgressChanged(AsyncOperation _) => Report();
-
-        private void OnCompleted(AsyncOperation _) => Dispose();
+        private void Poll()
+        {
+            if (_operation.isDone) { Dispose(); return; }
+            if (_reportedProgress == _operation.progress) return;
+            _reportedProgress = _operation.progress;
+            Report();
+        }
 
         private void OnEditorProgressChanged(EditorProgressInfo progress)
         {

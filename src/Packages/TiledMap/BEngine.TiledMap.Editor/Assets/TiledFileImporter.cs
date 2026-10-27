@@ -88,12 +88,12 @@ public static class TiledFileImporter
                 if (tileImage == image && columns > 0)
                 {
                     if (imageWidth <= 0 || imageHeight <= 0) throw new InvalidDataException("Tiled atlas dimensions are missing.");
-                    tile.UvX = (float)(margin + local % columns * (tw + spacing)) / imageWidth;
-                    tile.UvY = (float)(margin + local / columns * (th + spacing)) / imageHeight;
-                    tile.UvWidth = (float)tw / imageWidth; tile.UvHeight = (float)th / imageHeight;
+                    tile.UvX = (Fix64)checked(margin + local % columns * (tw + spacing)) / imageWidth;
+                    tile.UvY = (Fix64)checked(margin + local / columns * (th + spacing)) / imageHeight;
+                    tile.UvWidth = (Fix64)tw / imageWidth; tile.UvHeight = (Fix64)th / imageHeight;
                 }
                 if (own?["animation"] is JsonArray animation)
-                    tile.Animation = animation.Select(frame => new TileAnimationFrame { TileId = checked(first + Number(frame!.AsObject(), "tileid")), Duration = Number(frame.AsObject(), "duration") / 1000f }).ToList();
+                    tile.Animation = animation.Select(frame => new TileAnimationFrame { TileId = checked(first + Number(frame!.AsObject(), "tileid")), Duration = (Fix64)Number(frame.AsObject(), "duration") / 1000 }).ToList();
                 if (!tiles.TryAdd(id, tile)) throw new InvalidDataException("Tiled tilesets overlap global IDs.");
             }
         }
@@ -105,13 +105,13 @@ public static class TiledFileImporter
             return new(root, palettes, dependencies.ToArray());
         }
         catch { BObject.DestroyImmediate(root); foreach (var palette in palettes) BObject.DestroyImmediate(palette); throw; }
-        void ImportLayers(JsonArray layers, Transform parent, double inheritedX, double inheritedY, bool visible, double opacity, int depth = 0)
+        void ImportLayers(JsonArray layers, Transform parent, Fix64 inheritedX, Fix64 inheritedY, bool visible, Fix64 opacity, int depth = 0)
         {
             if (depth > 32) throw new InvalidDataException("Tiled groups exceed 32 levels.");
             foreach (var item in layers)
             {
                 var layer = item!.AsObject(); var type = Text(layer, "type"); var x = inheritedX + Real(layer, "offsetx"); var y = inheritedY + Real(layer, "offsety");
-                var shown = visible && (layer["visible"]?.GetValue<bool>() ?? true); var alpha = opacity * (layer["opacity"]?.GetValue<double>() ?? 1);
+                var shown = visible && (layer["visible"]?.GetValue<bool>() ?? true); var alpha = opacity * Real(layer, "opacity", Fix64.One);
                 if (type == "group") { ImportLayers(layer["layers"]!.AsArray(), parent, x, y, shown, alpha, depth + 1); continue; }
                 if (type == "objectgroup") { ImportObjects(layer, parent, x, y, shown, alpha); continue; }
                 if (type == "imagelayer")
@@ -122,19 +122,19 @@ public static class TiledFileImporter
                     if (imageWidth <= 0 || imageHeight <= 0)
                     { if (!BEngine.Rendering.ImageCodec.TryGetInfo(File.ReadAllBytes(imagePath), out imageWidth, out imageHeight)) throw new InvalidDataException("Tiled image layer has no valid image dimensions."); }
                     var imageOwner = scene.CreateGameObject(Text(layer, "name", "Image")); imageOwner.transform.SetParent(parent, false);
-                    imageOwner.transform.localPosition = new((Fix64)(x + Real(layer, "x")) / pixelsPerUnit, -(Fix64)(y + Real(layer, "y")) / pixelsPerUnit); imageOwner.SetActive(shown);
+                    imageOwner.transform.localPosition = new((x + Real(layer, "x")) / pixelsPerUnit, -(y + Real(layer, "y")) / pixelsPerUnit); imageOwner.SetActive(shown);
                     var imageMap = imageOwner.AddComponent<Tilemap>(); imageMap.cellSize = new((Fix64)imageWidth / pixelsPerUnit, (Fix64)imageHeight / pixelsPerUnit);
-                    var imagePalette = new TilePalette { Name = imageOwner.name, Tiles = [new() { Id = 1, Texture = AssetPath(imagePath), Alpha = (byte)Math.Clamp((int)Math.Round(255 * alpha), 0, 255) }] };
+                    var imagePalette = new TilePalette { Name = imageOwner.name, Tiles = [new() { Id = 1, Texture = AssetPath(imagePath), Alpha = AlphaByte(alpha) }] };
                     palettes.Add(imagePalette); imageMap.palette = imagePalette; imageMap.SetTile(new(0, -1), 1); imageOwner.AddComponent<TilemapRenderer>(); continue;
                 }
                 if (type != "tilelayer") throw new NotSupportedException($"Tiled layer type '{type}' is unsupported.");
                 var owner = scene.CreateGameObject(Text(layer, "name", "Tile Layer")); owner.transform.SetParent(parent, false);
-                owner.transform.localPosition = new((Fix64)x / pixelsPerUnit, -(Fix64)y / pixelsPerUnit); owner.SetActive(shown);
+                owner.transform.localPosition = new(x / pixelsPerUnit, -y / pixelsPerUnit); owner.SetActive(shown);
                 var tilemap = owner.AddComponent<Tilemap>(); tilemap.cellLayout = layout; tilemap.cellSize = new((Fix64)width / pixelsPerUnit, (Fix64)height / pixelsPerUnit);
                 tilemap.hexSideRatio = (Fix64)hexSide / hexDimension;
                 owner.AddComponent<TilemapRenderer>();
                 var palette = new TilePalette { Name = owner.name, Tiles = tiles.Values.Select(Clone).ToList() }; palettes.Add(palette);
-                foreach (var definition in palette.Tiles) definition.Alpha = (byte)Math.Clamp((int)Math.Round(255 * alpha), 0, 255);
+                foreach (var definition in palette.Tiles) definition.Alpha = AlphaByte(alpha);
                 palette.Validate(); tilemap.palette = palette;
                 var data = new List<TileCell>();
                 if (layer["chunks"] is JsonArray chunks)
@@ -169,10 +169,10 @@ public static class TiledFileImporter
                 }
             }
         }
-        void ImportObjects(JsonObject layer, Transform parent, double x, double y, bool visible, double alpha)
+        void ImportObjects(JsonObject layer, Transform parent, Fix64 x, Fix64 y, bool visible, Fix64 alpha)
         {
             var owner = scene.CreateGameObject(Text(layer, "name", "Objects")); owner.transform.SetParent(parent, false);
-            owner.transform.localPosition = new((Fix64)x / pixelsPerUnit, -(Fix64)y / pixelsPerUnit); owner.SetActive(visible);
+            owner.transform.localPosition = new(x / pixelsPerUnit, -y / pixelsPerUnit); owner.SetActive(visible);
             foreach (var node in layer["objects"] as JsonArray ?? [])
             {
                 var source = ResolveTemplate(node!.AsObject(), path, new HashSet<string>(StringComparer.OrdinalIgnoreCase)); var id = Number(source, "id");
@@ -181,7 +181,7 @@ public static class TiledFileImporter
                     throw new NotSupportedException("Tiled text and capsule objects require dedicated import support.");
                 var item = scene.CreateGameObject(Text(source, "name", "Object " + id)); item.transform.SetParent(owner.transform, false);
                 item.transform.localPosition = new(Coordinate("x"), -Coordinate("y"));
-                item.transform.localRotation = -(Fix64)Real(source, "rotation");
+                item.transform.localRotation = -Real(source, "rotation");
                 item.SetActive(source["visible"]?.GetValue<bool>() ?? true);
                 var data = item.AddComponent<TiledObject>(); data.objectId = id; data.className = Text(source, "class", Text(source, "type"));
                 data.isometricProjection = layout == TilemapLayout.Isometric && source["gid"] is null;
@@ -201,7 +201,7 @@ public static class TiledFileImporter
                     var flags = (gid & 0x80000000) != 0 ? TileTransformFlags.FlipX : TileTransformFlags.None;
                     if ((gid & 0x40000000) != 0) flags |= TileTransformFlags.FlipY;
                     if ((gid & 0x20000000) != 0) flags ^= TileTransformFlags.Rotate90 | TileTransformFlags.FlipX;
-                    objectMap.SetTile(new(0, 0), tileId, flags); item.AddComponent<TilemapRenderer>().opacity = (Fix64)alpha;
+                    objectMap.SetTile(new(0, 0), tileId, flags); item.AddComponent<TilemapRenderer>().opacity = alpha;
                     data.isometricProjection = false;
                 }
                 if (data.size.x < 0 || data.size.y < 0) throw new InvalidDataException("Tiled object dimensions must not be negative.");
@@ -211,7 +211,7 @@ public static class TiledFileImporter
                 if ((polygon ?? polyline) is { } vertices)
                 {
                     if (vertices.Count < (polygon is null ? 2 : 3) || vertices.Count > 65536) throw new InvalidDataException("Invalid Tiled object vertex count.");
-                    data.points = vertices.Select(vertex => new Vector2((Fix64)Real(vertex!.AsObject(), "x") / pixelsPerUnit, -(Fix64)Real(vertex.AsObject(), "y") / pixelsPerUnit)).ToList();
+                    data.points = vertices.Select(vertex => new Vector2(Real(vertex!.AsObject(), "x") / pixelsPerUnit, -Real(vertex.AsObject(), "y") / pixelsPerUnit)).ToList();
                 }
                 var properties = source["properties"] as JsonArray ?? [];
                 if (properties.Count > 1024) throw new InvalidDataException("Tiled object exceeds 1024 properties.");
@@ -226,8 +226,8 @@ public static class TiledFileImporter
                 Fix64 Coordinate(string field)
                 {
                     var value = Real(source, field);
-                    if (!double.IsFinite(value) || Math.Abs(value) > 1e9) throw new InvalidDataException("Tiled object coordinate exceeds its limits.");
-                    return (Fix64)value / pixelsPerUnit;
+                    if (value < -1000000000 || value > 1000000000) throw new InvalidDataException("Tiled object coordinate exceeds its limits.");
+                    return value / pixelsPerUnit;
                 }
             }
         }
@@ -275,7 +275,7 @@ public static class TiledFileImporter
             if (shape["gid"] is not null || shape["template"] is not null || shape["text"] is not null)
                 throw new NotSupportedException("Tile collision objects must use geometric shapes.");
             var polygon = shape["polygon"] as JsonArray; var polyline = shape["polyline"] as JsonArray;
-            var points = new List<(double X, double Y)>();
+            var points = new List<(Fix64 X, Fix64 Y)>();
             var w = Real(shape, "width"); var h = Real(shape, "height");
             if ((polygon ?? polyline) is { } vertices)
             {
@@ -286,24 +286,24 @@ public static class TiledFileImporter
             {
                 if (w <= 0 || h <= 0) continue;
                 for (var index = 0; index < 48; index++)
-                { var angle = index * Math.PI * 2 / 48; points.Add((w * (1 + Math.Cos(angle)) / 2, h * (1 + Math.Sin(angle)) / 2)); }
+                { var angle = index * Fix64.TwoPi / 48; points.Add((w * (1 + Fix64.Cos(angle)) / 2, h * (1 + Fix64.Sin(angle)) / 2)); }
             }
             else
             {
                 if (w <= 0 || h <= 0) continue;
                 points.AddRange([(0, 0), (w, 0), (w, h), (0, h)]);
             }
-            var angleRadians = Real(shape, "rotation") * Math.PI / 180;
-            var cosine = Math.Cos(angleRadians); var sine = Math.Sin(angleRadians);
+            var angleRadians = Real(shape, "rotation") * Fix64.Deg2Rad;
+            var cosine = Fix64.Cos(angleRadians); var sine = Fix64.Sin(angleRadians);
             var x = Real(shape, "x"); var y = Real(shape, "y");
             var path = new TileCollisionPath2D { Closed = polyline is null };
             foreach (var point in points)
             {
-                var px = (x + point.X * cosine - point.Y * sine) / width - .5;
-                var py = .5 - (y + point.X * sine + point.Y * cosine) / height;
-                if (!double.IsFinite(px) || !double.IsFinite(py) || Math.Abs(px) > 10000 || Math.Abs(py) > 10000)
+                var px = (x + point.X * cosine - point.Y * sine) / width - Fix64.Half;
+                var py = Fix64.Half - (y + point.X * sine + point.Y * cosine) / height;
+                if (px < -10000 || px > 10000 || py < -10000 || py > 10000)
                     throw new InvalidDataException("Tile collision coordinate exceeds its limits.");
-                path.Points.Add(new((Fix64)px, (Fix64)py));
+                path.Points.Add(new(px, py));
             }
             result.Add(path);
         }
@@ -338,7 +338,7 @@ public static class TiledFileImporter
         foreach (var attribute in element.Attributes())
         {
             var key = attribute.Name.LocalName; var text = attribute.Value;
-            result[key] = key is "visible" or "repeatx" or "repeaty" ? JsonValue.Create(text is "1" or "true") : key == "gid" ? JsonValue.Create(uint.Parse(text, CultureInfo.InvariantCulture)) : key is "opacity" or "offsetx" or "offsety" || name == "object" && key is "x" or "y" or "width" or "height" or "rotation" ? JsonValue.Create(double.Parse(text, CultureInfo.InvariantCulture))
+            result[key] = key is "visible" or "repeatx" or "repeaty" ? JsonValue.Create(text is "1" or "true") : key == "gid" ? JsonValue.Create(uint.Parse(text, CultureInfo.InvariantCulture)) : key is "opacity" or "offsetx" or "offsety" || name == "object" && key is "x" or "y" or "width" or "height" or "rotation" ? JsonValue.Create(text)
                 : key is "name" or "source" or "type" or "class" or "orientation" or "staggeraxis" or "staggerindex" or "encoding" or "compression" ? JsonValue.Create(text)
                 : int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) ? JsonValue.Create(number) : JsonValue.Create(text);
         }
@@ -359,7 +359,7 @@ public static class TiledFileImporter
             foreach (var kind in new[] { "polygon", "polyline" })
                 if (element.Element(kind) is { } shape)
                     result[kind] = new JsonArray(((string?)shape.Attribute("points") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(point =>
-                    { var pair = point.Split(','); return (JsonNode)new JsonObject { ["x"] = double.Parse(pair[0], CultureInfo.InvariantCulture), ["y"] = double.Parse(pair[1], CultureInfo.InvariantCulture) }; }).ToArray());
+                    { var pair = point.Split(','); return (JsonNode)new JsonObject { ["x"] = pair[0], ["y"] = pair[1] }; }).ToArray());
         }
         if (element.Element("properties") is { } properties)
             result["properties"] = new JsonArray(properties.Elements("property").Select(property =>
@@ -372,7 +372,11 @@ public static class TiledFileImporter
         return result;
     }
     private static int Number(JsonObject? node, string name, int fallback = 0) => node?[name]?.GetValue<int>() ?? fallback;
-    private static double Real(JsonObject node, string name) => node[name] is { } value ? double.Parse(value.ToJsonString(), CultureInfo.InvariantCulture) : 0;
+    private static Fix64 Real(JsonObject node, string name, Fix64 fallback = default) => node[name] is { } value
+        ? Fix64.Parse(value is JsonValue primitive && primitive.TryGetValue<string>(out var text)
+            ? text : value.ToJsonString(), CultureInfo.InvariantCulture)
+        : fallback;
+    private static byte AlphaByte(Fix64 alpha) => (byte)Mathf.RoundToInt(255 * Mathf.Clamp01(alpha));
     private static string Text(JsonObject? node, string name, string fallback = "") => node?[name]?.GetValue<string>() ?? fallback;
     private static string AssetPath(string path)
     { var assets = Path.GetFullPath(Application.dataPath); return path.StartsWith(assets + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ? "Assets/" + Path.GetRelativePath(assets, path).Replace('\\', '/') : path; }

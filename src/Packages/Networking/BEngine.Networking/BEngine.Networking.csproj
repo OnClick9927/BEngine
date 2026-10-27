@@ -4,6 +4,7 @@
     <AssemblyName>BEngine.Networking</AssemblyName>
     <RootNamespace>BEngine</RootNamespace>
     <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />

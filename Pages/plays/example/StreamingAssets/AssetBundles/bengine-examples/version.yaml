@@ -1,0 +1,7 @@
+format: BEngine.AssetBundleVersion
+schemaVersion: 1
+packageName: bengine-examples
+version: v13
+catalogFile: catalog.bin
+catalogSha256: fcfc2d53815bfa0748acb02ba49772090b64fcaf1a599de1a18584f6e2a21eef
+catalogSize: 26344

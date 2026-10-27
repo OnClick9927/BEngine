@@ -33,6 +33,16 @@ Use these stable category IDs. Display labels are localized by the page and are 
 
 The package page combines category tabs with keyword search. Tab counts reflect matches for the current keyword; a package in multiple categories is counted in each. Changing category, language, or theme keeps the keyword. Arrow keys, Home, and End switch tabs; tabs wrap on narrow screens.
 
+## 创作展示 / Playable showcase
+
+`examples.html` 提供 Snake 与 Example 两个网页版入口，点击在新页签打开。成品随官网同域发布，分别位于 `plays/snake/` 与 `plays/example/`，使用相对路径兼容 `/BEngine/` 项目站点前缀。两者都是单机内容，Web 通过 HTTP 直接读取各自的 `StreamingAssets`，不依赖本地 HFS 或外部热更服务器，也不将 AB 复制到持久化沙盒。
+
+`examples.html` opens Snake and Example in separate tabs. Production players are hosted on the same site at `plays/snake/` and `plays/example/`, with relative URLs supporting the `/BEngine/` project-site prefix. Both use bundled single-player content, reading StreamingAssets directly over HTTP without copying AssetBundles to persistent storage or depending on HFS or an external update server.
+
+更新作品时，先使用引擎构建正式 Web 成品，再将完整输出放入 `Pages/plays/` 中对应目录。每个目录只包含 `index.html`、`player.bin`、`framework.bin`、`resources/`、`StreamingAssets/`。保留 PlayerBuild 生成的内容哈希和入口完整性信息；不要单独替换入口、混入旧版文件或放入验证补丁。验证、截图和回滚备份仍统一放在外层 `Temp`。
+
+Update a playable project by building it with the engine and replacing its complete directory below `Pages/plays/`. Keep the generated content hashes and entry integrity metadata intact. Do not mix versions or include verification patches; keep screenshots, verification files, and backups in the outer `Temp` directory.
+
 ## 本地预览 / Local preview
 
 在引擎仓库根执行，需要 Python 3.10+ 和 Git。输出目录必须不存在，并位于 `Pages` 外：
@@ -50,15 +60,15 @@ Open `http://127.0.0.1:4173/`. Stop with Ctrl+C. Keep verification files, screen
 
 ## 发布 / Deployment
 
-GitHub Actions 工作流位于 `.github/workflows/pages.yml`。它运行 `tools/build-site.py`，复制官网至临时发布目录，并将当前 `Engine/BEngine.Hub.exe` 放入 `downloads/BEngine.Hub.exe`。网页不保存 Hub 副本，发布时始终使用当前提交中的发行文件。
+GitHub Actions 工作流位于 `.github/workflows/pages.yml`。它运行 `tools/build-site.py`，复制官网和两个 Web 成品至临时发布目录，并将当前 `Engine/BEngine.Hub.exe` 放入 `downloads/BEngine.Hub.exe`。网页不保存 Hub 副本，发布时始终使用当前提交中的发行文件。
 
 同一次构建生成 `downloads/BEngine-main-src.zip`，包含该 main 提交中受 Git 跟踪的 `src/` 与根 `LICENSE`，不包含完整发行目录、Git 历史或本机生成文件。`src/**` 变化也会触发官网部署，因此源码下载会随 main 更新。ZIP 在构建时生成，不把副本提交到 `Pages`。
 
-The GitHub Actions workflow in `.github/workflows/pages.yml` stages the website and copies the current exported `Engine/BEngine.Hub.exe` to `downloads/BEngine.Hub.exe`. The website source does not contain a duplicate binary.
+The GitHub Actions workflow in `.github/workflows/pages.yml` stages the website and both Web players, then copies the current exported `Engine/BEngine.Hub.exe` to `downloads/BEngine.Hub.exe`. The website source does not contain a duplicate Hub binary.
 
-构建器要求 Hub 文件存在且有 Windows EXE 文件头；若 `documentation/` 或 `data/documentation.json` 重新出现则拒绝构建，以免意外发布详细文档。维护脚本与 README 不进入发布目录。Hub 下载需通过构建后的站点验证，直接用静态服务器打开 `Pages` 时下载文件尚不存在。
+构建器要求 Hub 文件存在且有 Windows EXE 文件头，并验证两个 Web 成品的目录结构、入口和运行时完整性、资源引用以及 HTTP StreamingAssets 模式；若成品不完整、包含临时数据，或 `documentation/`、`data/documentation.json` 重新出现则拒绝构建。维护脚本与 README 不进入发布目录。Hub 下载需通过构建后的站点验证，直接用静态服务器打开 `Pages` 时下载文件尚不存在。
 
-The builder checks the Hub executable and rejects obsolete detailed-manual mirrors. Maintenance tools and README files are excluded from deployment. Test the Hub download against staged output; directly serving `Pages` does not provide the generated download file.
+The builder checks the Hub executable, both Web players' layout and integrity metadata, resource references, and direct HTTP StreamingAssets mode. Incomplete players, temporary data, and obsolete detailed-manual mirrors are rejected. Maintenance tools and README files are excluded from deployment. Test the Hub download against staged output; directly serving `Pages` does not provide the generated download file.
 
 仓库 Settings → Pages → Source 应为 GitHub Actions。`main` 上的 `Pages/**`、`src/**`、根 `LICENSE`、`Engine/BEngine.Hub.exe` 或工作流变更会触发部署；也可手动运行。公开地址预计为 `https://onclick9927.github.io/BEngine/`，是否上线以远端工作流成功结果为准。本地修改不会自动发布。
 

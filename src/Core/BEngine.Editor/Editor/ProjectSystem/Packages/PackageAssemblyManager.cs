@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using BEngine.Editor;
 using BEngine.Rendering;
 using BEngine.Serialization;
@@ -146,6 +147,11 @@ internal sealed class PackageAssemblyManager : IDisposable
                 assemblies.Add(hosted ?? context.LoadFromAssemblyPath(shadowPath));
             }
 
+            // Reflection-only discovery does not run module initializers. Register package
+            // importers and codecs before scanning services or importing project assets.
+            foreach (var assembly in assemblies)
+                RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+
             var serviceCollection = new ServiceCollection();
             serviceCollection.ShareBEnginePlatformState(EditorServiceAccess.GetRequiredService<IServiceProvider>());
             serviceCollection.AddBEngine(
@@ -194,12 +200,17 @@ internal sealed class PackageAssemblyManager : IDisposable
                 RuntimeSystemRegistry.Unregister(registration);
             foreach (var assembly in assemblies.Where(a => _assemblyLoading.IsCollectible(a)))
             {
+                AssetTypeRegistry.UnregisterAssembly(assembly);
+                EditorIconRegistry.UnregisterAssembly(assembly);
+                RuntimeSystemRegistry.UnregisterAssembly(assembly);
                 RuntimeAssetCodecRegistry.UnregisterAssembly(assembly);
                 SpriteSourceRegistry.UnregisterAssembly(assembly);
                 YamlUtility.UnregisterConverters(assembly);
                 RuntimeServiceContributions.UnregisterAssembly(assembly);
                 ScenePickingProviderRegistry.UnregisterAssembly(assembly);
                 SceneRenderContributor2DRegistry.UnregisterAssembly(assembly);
+                ScenePostProcessor2DRegistry.UnregisterAssembly(assembly);
+                RemoveStaticEventHandlers(assembly);
             }
             services?.Dispose();
             if (_dynamicEditorInitialization && assemblies.Count > 0)
@@ -256,6 +267,7 @@ internal sealed class PackageAssemblyManager : IDisposable
             YamlUtility.UnregisterConverters(assembly);
             RuntimeServiceContributions.UnregisterAssembly(assembly);
             SceneRenderContributor2DRegistry.UnregisterAssembly(assembly);
+            ScenePostProcessor2DRegistry.UnregisterAssembly(assembly);
             RemoveStaticEventHandlers(assembly);
         }
         PropertyDrawerRegistry.Invalidate();

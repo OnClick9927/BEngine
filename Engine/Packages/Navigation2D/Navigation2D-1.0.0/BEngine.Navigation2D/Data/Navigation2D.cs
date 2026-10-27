@@ -15,9 +15,21 @@ public static class Navigation2D
 
     internal static bool CalculatePath(Vector2 sourcePosition, Vector2 targetPosition,
         ulong areaMask, NavigationPath2D path, int? agentTypeId)
+        => CalculatePathInScene(ActiveScene, sourcePosition, targetPosition, areaMask, path, agentTypeId);
+
+    /// <summary>Queries navigation surfaces in an explicit Scene without changing the caller's scene context.</summary>
+    public static bool CalculatePath(Scene scene, Vector2 sourcePosition, Vector2 targetPosition,
+        ulong areaMask, NavigationPath2D path)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ObjectDisposedException.ThrowIf(!scene.isCreated, scene);
+        return CalculatePathInScene(scene, sourcePosition, targetPosition, areaMask, path, null);
+    }
+
+    private static bool CalculatePathInScene(Scene? scene, Vector2 sourcePosition, Vector2 targetPosition,
+        ulong areaMask, NavigationPath2D path, int? agentTypeId)
     {
         ArgumentNullException.ThrowIfNull(path);
-        var scene = ActiveScene;
         if (scene is null)
         {
             path.ClearCorners();

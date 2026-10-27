@@ -1,24 +1,36 @@
 using System.Text;
+using BEngine.ProjectSystem;
 
 namespace BEngine.Launcher;
 
-// Captured from ProjectWorkspaceFactory for this engine release. The regression
-// checks compare every generated file with that factory, normalizing only IDs.
+// Captured from ProjectWorkspaceFactory. Serialized engine type names follow the
+// selected release; system assembly versions retain the template's target runtime.
 internal static class LauncherProjectTemplate
 {
     internal static void Write(LauncherProjectWorkspace workspace)
     {
+        var assemblyVersion = ResolveAssemblyVersion(workspace.Project.EngineVersion);
         foreach (var (relative, template) in Files)
         {
             var contents = template;
             for (var index = 0; index < 7; index++) contents = contents.Replace("$GUID" + index + "$", Guid.NewGuid().ToString());
             if (relative == "ProjectSettings/ProjectSettings.yaml")
                 contents = contents.Replace("productName: TemplateProbe", "productName: " + YamlUtility.Serialize(workspace.Project.Name).TrimEnd('\n', '\r'));
-            contents = contents.Replace("Version=0.1.0.0,", "Version=" + EngineVersion.Current.Split('-')[0] + ".0,");
+            contents = contents.Replace("Version=0.1.0.0,", "Version=" + assemblyVersion + ",");
             var target = workspace.ResolveInside(relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, contents + "\n", new UTF8Encoding(false));
         }
+    }
+
+    internal static string ResolveAssemblyVersion(string engineVersion)
+    {
+        BPackageVersion.Validate(engineVersion);
+        var release = engineVersion.Split('-', '+')[0];
+        var version = Version.Parse(release);
+        if (version.Major > ushort.MaxValue || version.Minor > ushort.MaxValue || version.Build > ushort.MaxValue)
+            throw new InvalidDataException($"Engine version '{engineVersion}' cannot be represented as an assembly version.");
+        return new Version(version.Major, version.Minor, version.Build, 0).ToString(4);
     }
 
     private static readonly (string Path, string Contents)[] Files =

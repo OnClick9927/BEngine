@@ -89,13 +89,23 @@ public sealed partial class SceneTextureCache : IDisposable
         }
         else bytes = await ResourceLoader.LoadAsync(source, typeof(byte[]), "Resources", context) as byte[];
         if (bytes is null || bytes.Length == 0) return false;
-        var image = BackgroundWorkScheduler.IsSupported
-            ? await BackgroundWorkScheduler.Main.Run(token => { token.ThrowIfCancellationRequested(); return DecodeImage(bytes); }, context.cancellationToken)
-            : DecodeImage(bytes);
-        var supportsStored = TextureUpload.SupportsStoredFormat(_device, image.Format);
-        var prepared = BackgroundWorkScheduler.IsSupported
-            ? await BackgroundWorkScheduler.Main.Run(token => { token.ThrowIfCancellationRequested(); return TextureUpload.Prepare(image, supportsStored); }, context.cancellationToken)
-            : TextureUpload.Prepare(image, supportsStored);
+        using var nativeImage = _device is IGraphicsEncodedImagePreparation nativeDecoder
+            ? await nativeDecoder.PrepareEncodedImageAsync(bytes, context) : null;
+        context.cancellationToken.ThrowIfCancellationRequested();
+        var prepared = default(TextureUpload.PreparedTexture);
+        if (nativeImage is null)
+        {
+            var image = BackgroundWorkScheduler.IsSupported
+                ? await BackgroundWorkScheduler.Main.Run(token => { token.ThrowIfCancellationRequested(); return DecodeImage(bytes); }, context.cancellationToken)
+                : DecodeImage(bytes);
+            var supportsStored = TextureUpload.SupportsStoredFormat(_device, image.Format);
+            prepared = BackgroundWorkScheduler.IsSupported
+                ? await BackgroundWorkScheduler.Main.Run(token => { token.ThrowIfCancellationRequested(); return TextureUpload.Prepare(image, supportsStored); }, context.cancellationToken)
+                : TextureUpload.Prepare(image, supportsStored);
+        }
+        else if (!ImageCodec.ValidSize(nativeImage.Width, nativeImage.Height) ||
+                 nativeImage.ByteSize != (long)nativeImage.Width * nativeImage.Height * 4)
+            throw new InvalidDataException("The device returned an invalid prepared image.");
         var sampling = imported is { } settings ? (settings.Filter, settings.Wrap)
             : path is not null ? BAssetReferenceLoader.ReadTextureSamplingSettings(path)
             : Resources.Load<Texture>(source) is { } metadata ? (metadata.filterMode, metadata.wrapMode)
@@ -115,9 +125,21 @@ public sealed partial class SceneTextureCache : IDisposable
                 success = true; return CooperativeWorkStatus.Complete;
             }
             if (_textures.Remove(source, out var previous)) Retire(previous);
-            if (!Reserve(prepared.Bytes.LongLength, out var reservation)) return CooperativeWorkStatus.Complete;
+            if (!Reserve(nativeImage?.ByteSize ?? prepared.Bytes.LongLength, out var reservation)) return CooperativeWorkStatus.Complete;
             IGraphicsTexture2D texture;
-            try { texture = TextureUpload.CreatePrepared(_device, $"BEngine.Scene2D.{_paths.GetFileName(source)}", prepared, sampling.Item1, sampling.Item2); }
+            try
+            {
+                var label = $"BEngine.Scene2D.{_paths.GetFileName(source)}";
+                if (nativeImage is null) texture = TextureUpload.CreatePrepared(_device, label, prepared, sampling.Item1, sampling.Item2);
+                else
+                {
+                    var filter = sampling.Item1 == TextureFilterMode.Point ? GraphicsTextureFilter.Nearest : GraphicsTextureFilter.Linear;
+                    var wrap = sampling.Item2 == TextureWrapMode.Repeat ? GraphicsTextureAddressMode.Repeat
+                        : sampling.Item2 == TextureWrapMode.Mirror ? GraphicsTextureAddressMode.MirroredRepeat : GraphicsTextureAddressMode.ClampToEdge;
+                    texture = nativeImage.CreateTexture(label, new(nativeImage.Width, nativeImage.Height,
+                        GraphicsTextureFormat.Rgba8Unorm, GraphicsTextureUsage.Sampled, filter, filter, wrap));
+                }
+            }
             catch { reservation!.Dispose(); throw; }
             _textures[source] = new CacheEntry(stamp, texture, reservation, ++_shared.Usage);
             if (_ownedSources.Add(source)) _shared.SourceOwners[source] = _shared.SourceOwners.GetValueOrDefault(source) + 1;

@@ -14,14 +14,17 @@ public sealed class SceneLoadOperation : AsyncOperation
         Start(async cancellationToken =>
         {
             SetProgress(0.05f);
-            var prepared = await loader(LoadContext);
+            Scene prepared;
+            using (FrameWorkBudget.EnterLoading(cancellationToken))
+                prepared = await loader(LoadContext);
             preparedScene = prepared ?? throw new InvalidOperationException("The scene loader returned null.");
             SetProgress(0.9f);
             try
             {
                 await WaitForActivationAsync(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
-                scene = activation(preparedScene);
+                using (FrameWorkBudget.EnterLoading(cancellationToken))
+                    scene = activation(preparedScene);
                 SetProgress(0.99f);
             }
             finally

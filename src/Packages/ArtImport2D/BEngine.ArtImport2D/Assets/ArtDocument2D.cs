@@ -167,17 +167,17 @@ internal sealed class ArtSliceData
     public string Name { get; set; } = "";
     public List<ArtSliceKeyData> Keys { get; set; } = [];
     public static ArtSliceData From(AsepriteSlice2D slice) => new() { Name = slice.Name, Keys = slice.Keys.Select(key => new ArtSliceKeyData
-    { Frame = key.Frame, Bounds = Pack(key.Bounds), Center = key.Center is { } center ? Pack(center) : null, Pivot = key.Pivot is { } pivot ? [(double)pivot.x, (double)pivot.y] : null }).ToList() };
-    private static double[] Pack(Rect rect) => [(double)rect.x, (double)rect.y, (double)rect.width, (double)rect.height];
+    { Frame = key.Frame, Bounds = Pack(key.Bounds), Center = key.Center is { } center ? Pack(center) : null, Pivot = key.Pivot is { } pivot ? [pivot.x, pivot.y] : null }).ToList() };
+    private static Fix64[] Pack(Rect rect) => [rect.x, rect.y, rect.width, rect.height];
     public AsepriteSlice2D ToSlice() => new() { Name = Name, Keys = Keys.Select(key => new AsepriteSliceKey2D
     { Frame = key.Frame, Bounds = Unpack(key.Bounds), Center = key.Center is { } center ? Unpack(center) : null,
-      Pivot = key.Pivot is { Length: 2 } pivot ? new Vector2((Fix64)pivot[0], (Fix64)pivot[1]) : null }).ToList() };
-    private static Rect Unpack(double[] values) => values.Length == 4 ? new((Fix64)values[0], (Fix64)values[1], (Fix64)values[2], (Fix64)values[3]) : throw new InvalidDataException("Slice bounds require four coordinates.");
+      Pivot = key.Pivot is { Length: 2 } pivot ? new Vector2(pivot[0], pivot[1]) : null }).ToList() };
+    private static Rect Unpack(Fix64[] values) => values.Length == 4 ? new(values[0], values[1], values[2], values[3]) : throw new InvalidDataException("Slice bounds require four coordinates.");
 }
 internal sealed class ArtSliceKeyData
 {
     public int Frame { get; set; }
-    public double[] Bounds { get; set; } = [];
-    public double[]? Center { get; set; }
-    public double[]? Pivot { get; set; }
+    public Fix64[] Bounds { get; set; } = [];
+    public Fix64[]? Center { get; set; }
+    public Fix64[]? Pivot { get; set; }
 }

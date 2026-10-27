@@ -165,8 +165,8 @@ internal static class BAssetReferenceLoader
 
         if (Load(mainFullPath, typeof(Texture)) is not Texture texture) return null;
         var pivot = new Vector2(
-            (Fix64)(double)ReadPivot(mainMeta.Settings, "spritePivotX"),
-            (Fix64)(double)ReadPivot(mainMeta.Settings, "spritePivotY"));
+            ReadPivot(mainMeta.Settings, "spritePivotX"),
+            ReadPivot(mainMeta.Settings, "spritePivotY"));
         var sprite = texture.CreateSprite(pivot, localIdentifier);
         sprite.border = new(ReadBorder("spriteBorderLeft"), ReadBorder("spriteBorderBottom"),
             ReadBorder("spriteBorderRight"), ReadBorder("spriteBorderTop"));
@@ -177,8 +177,8 @@ internal static class BAssetReferenceLoader
         return sprite;
 
         Fix64 ReadBorder(string key) => mainMeta.Settings.TryGetValue(key, out var text) &&
-            double.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, out var value) && double.IsFinite(value)
-            ? (Fix64)Math.Max(0, value) : Fix64.Zero;
+            Fix64.TryParse(text, CultureInfo.InvariantCulture, out var value)
+            ? Fix64.Max(0, value) : Fix64.Zero;
     }
 
     private static Sprite? LoadBundledSprite(Guid ownerGuid, long localIdentifier)
@@ -618,12 +618,11 @@ internal static class BAssetReferenceLoader
         }
     }
 
-    private static float ReadPivot(IReadOnlyDictionary<string, string> settings, string key) =>
+    private static Fix64 ReadPivot(IReadOnlyDictionary<string, string> settings, string key) =>
         settings.TryGetValue(key, out var value) &&
-        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) &&
-        float.IsFinite(parsed)
-            ? Math.Clamp(parsed, 0, 1)
-            : 0.5f;
+        Fix64.TryParse(value, CultureInfo.InvariantCulture, out var parsed)
+            ? Mathf.Clamp01(parsed)
+            : Fix64.Half;
 
     internal static (TextureFilterMode FilterMode, TextureWrapMode WrapMode) ReadTextureSamplingSettings(
         string fullPath)

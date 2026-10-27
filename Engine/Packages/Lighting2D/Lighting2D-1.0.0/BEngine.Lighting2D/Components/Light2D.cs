@@ -4,6 +4,7 @@ namespace BEngine;
 public sealed partial class Light2D : MonoBehaviour, ISpriteReferenceOwner
 {
     private static readonly Fix64 MinimumRadius = Fix64.Parse("0.001");
+    private static readonly Fix64 MinimumOuterAngle = Fix64.Parse("0.1");
 
     public Light2DType lightType { get; set; } = Light2DType.Point;
     public Color color { get; set; } = Color.white;
@@ -25,7 +26,7 @@ public sealed partial class Light2D : MonoBehaviour, ISpriteReferenceOwner
     public Fix64 outerAngle
     {
         get;
-        set => field = Fix64.Clamp(value, Fix64.Parse("0.1"), 360);
+        set => field = Fix64.Clamp(value, MinimumOuterAngle, 360);
     } = 90;
     public Fix64 innerAngle
     {

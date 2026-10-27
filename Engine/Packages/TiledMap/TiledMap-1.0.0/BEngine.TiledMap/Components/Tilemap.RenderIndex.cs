@@ -25,7 +25,7 @@ public sealed partial class Tilemap
     private static (int X, int Y) RenderChunkKey(TileCoordinate position)
     {
         // Floor division also keeps negative coordinates in contiguous chunks.
-        static int Divide(int value) => (int)Math.Floor((double)value / RenderChunkSize);
+        static int Divide(int value) => value / RenderChunkSize - (value % RenderChunkSize < 0 ? 1 : 0);
         return (Divide(position.X), Divide(position.Y));
     }
 
@@ -77,7 +77,8 @@ public sealed partial class Tilemap
         var origin = cellLayout == TilemapLayout.Rectangle ? Vector2.zero : new Vector2(Fix64.Half, Fix64.Half);
         var anchor = Vector2.Scale(tileAnchor - origin, cellSize);
         var step = (1 + hexSideRatio) * Fix64.Half;
-        var lowX = double.PositiveInfinity; var lowY = lowX; var highX = double.NegativeInfinity; var highY = highX;
+        var lowX = Fix64.FromRaw(long.MaxValue); var lowY = lowX;
+        var highX = Fix64.FromRaw(long.MinValue); var highY = highX;
         foreach (var point in (ReadOnlySpan<Vector2>)[ new Vector2(localBounds.xMin, localBounds.yMin), new(localBounds.xMax, localBounds.yMin),
             new(localBounds.xMax, localBounds.yMax), new(localBounds.xMin, localBounds.yMax) ])
         {
@@ -90,14 +91,14 @@ public sealed partial class Tilemap
                 TilemapLayout.HexagonFlatTop => new Vector2(x / step, y - x / step * Fix64.Half),
                 _ => throw new InvalidOperationException("Unknown Tilemap layout.")
             };
-            lowX = Math.Min(lowX, (double)coordinate.x); highX = Math.Max(highX, (double)coordinate.x);
-            lowY = Math.Min(lowY, (double)coordinate.y); highY = Math.Max(highY, (double)coordinate.y);
+            lowX = Fix64.Min(lowX, coordinate.x); highX = Fix64.Max(highX, coordinate.x);
+            lowY = Fix64.Min(lowY, coordinate.y); highY = Fix64.Max(highY, coordinate.y);
         }
-        var minX = (long)Math.Floor(Math.Clamp(lowX - 2, int.MinValue, int.MaxValue) / RenderChunkSize);
-        var minY = (long)Math.Floor(Math.Clamp(lowY - 2, int.MinValue, int.MaxValue) / RenderChunkSize);
-        var maxX = (long)Math.Floor(Math.Clamp(highX + 2, int.MinValue, int.MaxValue) / RenderChunkSize);
-        var maxY = (long)Math.Floor(Math.Clamp(highY + 2, int.MinValue, int.MaxValue) / RenderChunkSize);
-        if ((double)(maxX - minX + 1) * (maxY - minY + 1) <= _renderChunks.Count)
+        var minX = RenderChunkBound(lowX, -2);
+        var minY = RenderChunkBound(lowY, -2);
+        var maxX = RenderChunkBound(highX, 2);
+        var maxY = RenderChunkBound(highY, 2);
+        if ((Int128)(maxX - minX + 1) * (maxY - minY + 1) <= _renderChunks.Count)
         {
             for (var x = minX; x <= maxX; x++) for (var y = minY; y <= maxY; y++)
                 if (_renderChunks.TryGetValue(((int)x, (int)y), out var candidate)) _queryChunks.Add(candidate);
@@ -140,6 +141,15 @@ public sealed partial class Tilemap
         });
         foreach (var candidate in _sortCandidates) destination.Add(candidate.Cell);
         _queryChunks.Clear(); _sortCandidates.Clear();
+    }
+
+    private static long RenderChunkBound(Fix64 value, int padding)
+    {
+        // Expand and clamp in a wider integer so padding cannot overflow at the Fix64 limits.
+        var raw = (Int128)value.RawValue + (Int128)padding * Fix64.OneRaw;
+        raw = Int128.Clamp(raw, (Int128)int.MinValue * Fix64.OneRaw, (Int128)int.MaxValue * Fix64.OneRaw);
+        const long divisor = RenderChunkSize * Fix64.OneRaw;
+        return (long)(raw / divisor - (raw % divisor < 0 ? 1 : 0));
     }
 
     private static int CompareCandidates((TileCell Cell, Vector2 Center) a,

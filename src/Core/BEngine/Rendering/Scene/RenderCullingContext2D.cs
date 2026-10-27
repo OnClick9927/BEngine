@@ -9,6 +9,7 @@ public sealed class RenderCullingContext2D
     private bool _aligned;
     private Fix64 _lastRotation, _extentCosine, _extentSine;
     private bool _hasRotation;
+    private byte _extentAxes;
 
     public RenderCullingContext2D(RenderCamera camera, int width, int height)
         => Reset(camera, width, height);
@@ -27,21 +28,34 @@ public sealed class RenderCullingContext2D
 
     public bool IsVisible(Vector2 center, Fix64 rotation, Vector2 size)
     {
-        var half = new Vector2(Fix64.Abs(size.x), Fix64.Abs(size.y)) * Fix64.Half;
+        var absolute = new Vector2(Fix64.Abs(size.x), Fix64.Abs(size.y));
+        // Multiplication by Q32.32 one half floors each raw integer. Abs and
+        // its checked exceptional order remain identical to the general path.
+        var half = new Vector2(Fix64.FromRaw(absolute.x.RawValue >> 1), Fix64.FromRaw(absolute.y.RawValue >> 1));
         var local = center - _camera.Position;
         if (!_aligned) local = new(local.x * _cosine - local.y * _sine, local.x * _sine + local.y * _cosine);
         if (!_hasRotation || rotation != _lastRotation)
         {
             var relative = (rotation - _camera.Rotation) * Fix64.Deg2Rad;
             _extentCosine = Fix64.Abs(Fix64.Cos(relative)); _extentSine = Fix64.Abs(Fix64.Sin(relative));
+            _extentAxes = _extentCosine == Fix64.One && _extentSine == Fix64.Zero ? (byte)1
+                : _extentCosine == Fix64.Zero && _extentSine == Fix64.One ? (byte)2 : (byte)0;
             _lastRotation = rotation; _hasRotation = true;
         }
-        var x = _extentCosine * half.x + _extentSine * half.y;
-        var y = _extentSine * half.x + _extentCosine * half.y;
+        Fix64 x, y;
+        if (_extentAxes == 1) { x = half.x; y = half.y; }
+        else if (_extentAxes == 2) { x = half.y; y = half.x; }
+        else
+        {
+            x = _extentCosine * half.x + _extentSine * half.y;
+            y = _extentSine * half.x + _extentCosine * half.y;
+        }
         return local.x + x >= -_halfWidth && local.x - x <= _halfWidth &&
                local.y + y >= -_halfHeight && local.y - y <= _halfHeight;
     }
-    public bool IsVisible(SceneQuad2D quad)
+    public bool IsVisible(SceneQuad2D quad) => IsVisibleCore(in quad);
+
+    internal bool IsVisibleCore(in SceneQuad2D quad)
     {
         if (quad.WorldAxisX is null || quad.WorldAxisY is null) return IsVisible(quad.Center, quad.Rotation, quad.Size);
         quad.GetWorldAxes(out var x, out var y);

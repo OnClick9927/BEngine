@@ -196,6 +196,7 @@ public static class PlayerServiceCollectionExtensions
         var remote = platformService.GetEnvironmentVariable(AssetBundleRemoteUrlEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(remote)) return;
         settings.Enabled = true;
+        settings.LoadMode = AssetBundleLoadMode.PersistentCache;
         settings.RemoteBaseUrl = remote.Trim();
         settings.CheckForUpdatesOnStartup = true;
         settings.ApplyUpdatesOnStartup = true;
@@ -228,7 +229,21 @@ public static class PlayerServiceCollectionExtensions
             ? null
             : pathService.Combine(
                 workspace.ResolveInside(settings.BuiltInDirectory), settings.PackageName);
-        var cacheRoot = ResolvePersistentCacheDirectory(
+        var direct = settings.LoadMode == AssetBundleLoadMode.StreamingAssets;
+        Uri? builtInBaseUri = null;
+        if (direct && platformService.IsBrowser)
+        {
+            var url = platformService.GetEnvironmentVariable(AssetBundleRuntimeOptions.StreamingAssetsUrlEnvironmentVariable);
+            var relative = settings.BuiltInDirectory.Replace('\\', '/').TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(url) ||
+                !(relative.Equals("StreamingAssets", StringComparison.OrdinalIgnoreCase) ||
+                  relative.StartsWith("StreamingAssets/", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("Web direct AssetBundles require the host StreamingAssets URL and a directory under StreamingAssets.");
+            builtInBaseUri = AssetBundleRuntimeOptions.ResolveStreamingAssetsUri(
+                url, relative.Length == 15 ? string.Empty : relative[16..], settings.PackageName);
+            builtInRoot = null;
+        }
+        var cacheRoot = direct ? string.Empty : ResolvePersistentCacheDirectory(
             workspace, settings, persistentDataPath, usePersistentRootAsCache,
             fileSystem, pathService, platformService, applicationPaths);
         return new AssetBundleRuntimeOptions
@@ -237,7 +252,9 @@ public static class PlayerServiceCollectionExtensions
             RequireEncryptedContent = workspace.GetContentEncryptionKey() is not null,
             PackageName = settings.PackageName,
             BuiltInDirectory = builtInRoot,
+            BuiltInBaseUri = builtInBaseUri,
             CacheDirectory = cacheRoot,
+            UsePersistentCache = !direct,
             RemoteBaseUri = string.IsNullOrWhiteSpace(settings.RemoteBaseUrl)
                 ? null
                 : new Uri(settings.RemoteBaseUrl, UriKind.Absolute),

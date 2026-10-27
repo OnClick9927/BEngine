@@ -6,6 +6,7 @@ a target adapter before calling engine APIs. Business code receives FileUtility,
 PathUtility and the other facades through DI; platform implementations consume the SPI.
 Networking and audio contracts and implementations belong to their own packages.
 See [平台接口与调用入口](PlatformBoundaries.md) for the complete mapping and examples.
+See [Web Player distribution](WebDistribution.md) for the Web output layout and deployment rules.
 
 | Assembly | Contents |
 | --- | --- |
@@ -29,12 +30,10 @@ rendering supports Vulkan on Windows and OpenGL on Windows/Linux/macOS. Linux an
 macOS binaries need testing on those systems.
 
 Android, iOS and Web have build providers, SDK lifecycle templates and runtime-only
-dependency exports. Their native rendering, input and audio hosts are not implemented
-by these templates. Android also requires a verified mixed AOT/interpreter host.
-Their build providers report these missing capabilities and refuse to publish a
-logic-only application. This repository does not yet provide complete mobile/Web
-players. iOS packaging requires macOS and Xcode; platform workloads are not installed
-on the Windows development machine used for this export.
+dependency exports. Web publishes an AOT runtime with browser rendering, input and
+audio integration. See the Web distribution guide above for its output contract.
+iOS packaging requires macOS and Xcode; mobile players require validation on their
+target devices.
 
 ExportEngine.ps1 writes BuildHosts and BuildRuntime. Android/iOS/Web subdirectories
 contain the selected platform closure without GLFW, Veldrid, Editor or Launcher.

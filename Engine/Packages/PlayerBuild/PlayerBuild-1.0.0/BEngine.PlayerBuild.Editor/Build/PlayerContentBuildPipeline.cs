@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using BEngine.AssetBundles;
+using BEngine.Build;
 using BEngine.Content;
 using BEngine.Editor.Documents;
 using BEngine.HotUpdate;
@@ -8,6 +9,7 @@ using BEngine.Platform;
 using BEngine.ProjectSystem;
 using BEngine.ProjectSystem.Editor;
 using BEngine.Rendering.Rhi;
+using BEngine.UIElements;
 using ProjectAssetDatabase = BEngine.ProjectSystem.Editor.AssetDatabase;
 using ProjectAssetMetaDocument = BEngine.ProjectSystem.Editor.AssetMetaDocument;
 using ProjectAssetRecord = BEngine.ProjectSystem.Editor.AssetRecord;
@@ -20,6 +22,11 @@ internal static class PlayerContentBuildPipeline
     internal const string AotAssemblyName = "AOT";
     internal const string AotAssetRoot = AotProjectLayout.AssetRoot;
     internal const string AotScenePath = AotProjectLayout.SceneAssetPath;
+    private static readonly HashSet<string> WebNativeSharedAssemblyNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "BEngine.UIElements",
+        "BEngine.Audio"
+    };
 
     internal static Task<string> BuildAsync(
         PlayerBuildContext context,
@@ -254,6 +261,56 @@ internal static class PlayerContentBuildPipeline
             fileSystem.WriteAllText(context.StrippingReportPath!, YamlUtility.Serialize(strippingReport));
         }
         releaseInputs = PlayerShaderBuildPipeline.AddArtifacts(context, releaseInputs, includedAssets, cancellationToken);
+        if (partition == PlayerContentPartition.BuiltInAot && context.Target.Platform == BuildTargetPlatform.Web &&
+            context.Request.WebScriptCompilation == WebScriptCompilationMode.AheadOfTime)
+        {
+            // Native scripts bind package metadata from the SDK/default context.
+            // The bootstrap must use those same original package images. Resolve
+            // only code dependencies here, after the asset closure is finalized.
+            releaseInputs = WebCanonicalScriptInputs.Select(releaseInputs, allReleaseInputs);
+            context.RuntimeManagedCodeAssemblyPaths = allReleaseInputs.Assemblies
+                .Where(static input => !input.Name.Equals(AotAssemblyName, StringComparison.OrdinalIgnoreCase))
+                .Concat(releaseInputs.Assemblies)
+                .GroupBy(static input => input.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(static group => group.Last().AssemblyPath).ToArray();
+            if (context.StrippingReport is { } canonicalReport)
+            {
+                foreach (var input in releaseInputs.Assemblies.Where(static input =>
+                             !input.Name.Equals(AotAssemblyName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var entry = canonicalReport.Assemblies.FirstOrDefault(entry =>
+                        entry.Name.Equals(input.Name, StringComparison.OrdinalIgnoreCase));
+                    if (entry is null)
+                    {
+                        entry = new PlayerStrippingReportEntry { Name = input.Name, OriginalBytes = input.AssemblySize };
+                        canonicalReport.Assemblies.Add(entry);
+                    }
+                    entry.Included = true;
+                    entry.PublishedBytes = input.AssemblySize;
+                    entry.StoredBytes = null;
+                    entry.Reason = "Canonical original image shared with precompiled Web scripts";
+                }
+                if (!string.IsNullOrWhiteSpace(context.StrippingReportPath))
+                    fileSystem.WriteAllText(context.StrippingReportPath, YamlUtility.Serialize(canonicalReport));
+            }
+            var builtInNames = releaseInputs.Assemblies.Select(static input => input.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var hotUpdateImages = allReleaseInputs.Assemblies
+                .Where(input => !input.Name.Equals(AotAssemblyName, StringComparison.OrdinalIgnoreCase) &&
+                    !DynamicManagedCodeTrimmerDescriptor.IsHostAssembly(input.Name))
+                .OrderBy(static input => input.Name, StringComparer.Ordinal)
+                .ToArray();
+            context.WebPrecompiledManagedCodeReferencePaths = hotUpdateImages
+                .Select(static input => input.AssemblyPath).ToArray();
+            context.WebPrecompiledSharedManagedCodeAssemblyPaths = hotUpdateImages
+                .Where(input => builtInNames.Contains(input.Name))
+                .Select(static input => input.AssemblyPath).ToArray();
+            context.WebPrecompiledManagedCodeAssemblyPaths = hotUpdateImages
+                .Where(input => !builtInNames.Contains(input.Name) ||
+                    input.Origin.StartsWith("package:", StringComparison.OrdinalIgnoreCase) &&
+                    WebNativeSharedAssemblyNames.Contains(input.Name))
+                .Select(static input => input.AssemblyPath).ToArray();
+        }
         if (partition == PlayerContentPartition.HotUpdate && !string.IsNullOrWhiteSpace(context.Request.HostContractPath))
             PlayerHostContract.Validate(context.Request.HostContractPath, context, releaseInputs.Assemblies.Select(static a => a.AssemblyPath));
         var versionScenes = partition == PlayerContentPartition.BuiltInAot
@@ -277,10 +334,12 @@ internal static class PlayerContentBuildPipeline
         settings.Enabled = true;
         settings.PackageName = NormalizePackageName(
             string.IsNullOrWhiteSpace(settings.PackageName) ? workspace.Project.Name : settings.PackageName);
-        settings.BuiltInDirectory = partition == PlayerContentPartition.BuiltInAot
-            ? string.Empty
-            : "AssetBundles";
+        settings.BuiltInDirectory = settings.LoadMode == AssetBundleLoadMode.StreamingAssets
+            ? (string.IsNullOrWhiteSpace(settings.BuiltInDirectory)
+                ? "StreamingAssets/AssetBundles" : settings.BuiltInDirectory)
+            : partition == PlayerContentPartition.BuiltInAot ? string.Empty : "AssetBundles";
         settings.CheckForUpdatesOnStartup =
+            settings.LoadMode != AssetBundleLoadMode.StreamingAssets &&
             context.Request.ContentUpdatePolicy != PlayerContentUpdatePolicy.Disabled;
         settings.ApplyUpdatesOnStartup = settings.CheckForUpdatesOnStartup;
         settings.FailStartupWhenUpdateFails =
@@ -314,7 +373,9 @@ internal static class PlayerContentBuildPipeline
 
         context.Progress?.Report(new PlayerBuildProgress(PlayerBuildPhase.BuildingContent,
             $"Packing {assetPaths.Count} {PartitionDisplayName(partition)} assets for {version}", 0.25f));
-        var bundleOutput = pathService.Combine(layout.ResourceDirectory, settings.BuiltInDirectory);
+        // Content publication has a stable artifact location regardless of the
+        // eventual Player's read-only or persistent-cache delivery mode.
+        var bundleOutput = pathService.Combine(layout.ResourceDirectory, "AssetBundles");
         var bundleProgress = new DirectProgress<AssetBundleBuildProgress>(value =>
             context.Progress?.Report(MapBundleProgress(value)));
         var bundleResult = await assetBundleBuildPipeline.BuildAsync(
@@ -398,7 +459,7 @@ internal static class PlayerContentBuildPipeline
         {
             BuiltInResourceArchive.Write(
                 outputPath, entries, engineCancellation.Token, fileSystem, pathService, encryptionKey,
-                compress: compress);
+                compress: PlayerResourceArchiveCompression.IsEnabled(targetPlatform, compress));
             if (strippingReport is not null)
             {
                 using var published = fileSystem.OpenRead(outputPath);
@@ -603,6 +664,17 @@ internal static class PlayerContentBuildPipeline
             !actualHash.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException(
                 $"Built-in resource '{address}' changed while the Player was being built.");
+        // Keep authoring assets and their snapshot validation unchanged. Runtime
+        // fonts use raw atlas/font bytes, avoiding JSON and Base64 during boot.
+        if (pathService.GetExtension(address).Equals(".sdfont", StringComparison.OrdinalIgnoreCase))
+        {
+            content = SdfFontAsset.CompileRuntimeBytes(content);
+            var settings = importerSettings is null
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : new Dictionary<string, string>(importerSettings, StringComparer.Ordinal);
+            settings["builtFontFormat"] = "binary-v1";
+            importerSettings = settings;
+        }
         return BuiltInResourceArchiveWriteEntry.FromMemory(
             address,
             content,
@@ -890,7 +962,7 @@ internal static class PlayerContentBuildPipeline
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var contentFormat = partition == PlayerContentPartition.BuiltInAot
-            ? $"built-in-resources-v{BuiltInResourceArchive.CurrentVersion}"
+            ? $"built-in-resources-v{BuiltInResourceArchive.CurrentVersion}/sdf-font-runtime-v1"
             : $"catalog-schema-{AssetBundleCatalog.CurrentSchemaVersion}";
         hash.AppendData(Encoding.UTF8.GetBytes(
             $"content-format\0{contentFormat}\0" +

@@ -10,11 +10,11 @@ public sealed class TextureAtlasSprite
     public int Y { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
-    public float PivotX { get; set; } = 0.5f;
-    public float PivotY { get; set; } = 0.5f;
+    public Fix64 PivotX { get; set; } = Fix64.Half;
+    public Fix64 PivotY { get; set; } = Fix64.Half;
 
     [YamlIgnore]
-    public Vector2 pivot => new((Fix64)(double)PivotX, (Fix64)(double)PivotY);
+    public Vector2 pivot => new(PivotX, PivotY);
 
     public Rect NormalizedUv(int atlasWidth, int atlasHeight)
     {
@@ -34,8 +34,7 @@ public sealed class TextureAtlasSprite
         if (Width <= 0 || Height <= 0 || X < 0 || Y < 0 ||
             (long)X + Width > atlasWidth || (long)Y + Height > atlasHeight)
             throw new InvalidDataException($"Texture atlas sprite '{Name}' is outside the atlas bounds.");
-        if (!float.IsFinite(PivotX) || !float.IsFinite(PivotY) ||
-            PivotX < 0 || PivotX > 1 || PivotY < 0 || PivotY > 1)
+        if (PivotX < 0 || PivotX > 1 || PivotY < 0 || PivotY > 1)
             throw new InvalidDataException($"Texture atlas sprite '{Name}' has an invalid pivot.");
         Source = Source.Replace('\\', '/').Trim();
         Name = Name.Trim();

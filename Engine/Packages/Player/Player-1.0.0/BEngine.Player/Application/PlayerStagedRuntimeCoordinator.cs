@@ -95,6 +95,7 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
         ArgumentNullException.ThrowIfNull(platformService);
         ArgumentNullException.ThrowIfNull(applicationPaths);
         ArgumentNullException.ThrowIfNull(managedCodeRuntimeFactory);
+        using var loadingBudget = FrameWorkBudget.EnterLoading(cancellationToken);
         var capturedHostServices = hostServices.ToArray();
         var workspace = PlayerWorkspace.OpenRuntime(
             pathService.GetFullPath(projectPath), fileSystem, pathService);
@@ -138,10 +139,12 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
                 pathService: pathService,
                 platformService: platformService,
                 applicationPaths: applicationPaths);
-            PlayerServiceCollectionExtensions.RemoveLegacyStagedCache(
-                workspace, settings, persistentDataPath, sourceOptions.CacheDirectory,
-                fileSystem, pathService, platformService, applicationPaths);
-            var updateOptions = CreateRemoteOptions(sourceOptions);
+            var direct = settings.LoadMode == AssetBundleLoadMode.StreamingAssets;
+            if (!direct)
+                PlayerServiceCollectionExtensions.RemoveLegacyStagedCache(
+                    workspace, settings, persistentDataPath, sourceOptions.CacheDirectory,
+                    fileSystem, pathService, platformService, applicationPaths);
+            var updateOptions = direct ? sourceOptions : CreateRemoteOptions(sourceOptions);
             var aotArchivePath = pathService.Combine(
                 workspace.RootPath,
                 PlayerPackagedResourceAddresses.ResourcesDirectoryName,

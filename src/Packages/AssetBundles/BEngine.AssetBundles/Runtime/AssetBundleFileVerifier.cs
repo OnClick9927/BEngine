@@ -27,14 +27,15 @@ internal static class AssetBundleFileVerifier
         long expectedSize,
         string expectedSha256,
         long maximumSize,
-        BCancellationToken cancellationToken)
+        BCancellationToken cancellationToken,
+        Action<long>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
         ValidateFile(fileSystem, path, expectedSize, maximumSize);
         using var stream = fileSystem.OpenFile(
             path, FileMode.Open, FileAccess.Read, FileShare.Read,
             64 * 1024, FileOptions.SequentialScan);
-        var actual = await AssetBundleCatalogSerializer.ComputeSha256Async(stream, cancellationToken);
+        var actual = await AssetBundleCatalogSerializer.ComputeSha256WithProgressAsync(stream, cancellationToken, 1024 * 1024, progress);
         if (!actual.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"Asset bundle '{path}' failed its SHA256 verification.");
     }

@@ -269,7 +269,7 @@ internal sealed class PlayerApplication : IDisposable
         if (_disposeOperation is not { } operation) return;
         if (PlayerRuntimeShutdownDrain.TryComplete(
                 operation,
-                elapsed => OnUpdate(elapsed.TotalSeconds),
+                OnUpdate,
                 nameof(PlayerApplication),
                 "PLAYER_APPLICATION_SHUTDOWN_DRAIN"))
             _disposeOperation = null;
@@ -335,12 +335,16 @@ internal sealed class PlayerApplication : IDisposable
         windowReady?.Invoke();
     }
 
-    private void OnUpdate(double deltaSeconds)
+    private void OnUpdate(double deltaSeconds) =>
+        OnUpdate(TimeSpan.FromSeconds(Math.Max(0, deltaSeconds)));
+
+    private void OnUpdate(TimeSpan elapsed)
     {
         try
         {
             if (!_disposed) _startupSplash?.Pump();
-            PlayerMainThread.Tick(TimeSpan.FromSeconds(Math.Max(0, deltaSeconds)));
+            if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
+            PlayerMainThread.Tick(elapsed);
             if (_disposed) return;
             TryStartRuntime();
             if (!_runtimeStarted) return;
@@ -348,7 +352,7 @@ internal sealed class PlayerApplication : IDisposable
             _inputContext?.ApplyCursorState();
             _inputContext?.Poll();
             if (!Application.isFocused && !Application.runInBackground) return;
-            SceneRuntime.TickAll(_runtimes, (Fix64)deltaSeconds);
+            SceneRuntime.TickAll(_runtimes, Fix64.FromTimeSpan(elapsed));
             if (_isAotStage)
             {
                 _stagedRuntime!.Flow.Pump();

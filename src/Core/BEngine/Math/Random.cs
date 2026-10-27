@@ -23,14 +23,20 @@ public static class Random
             return new Vector2(Fix64.Cos(angle), Fix64.Sin(angle));
         }
     }
-    public static void InitState(int seed) => _state = unchecked((ulong)seed) + 0x9E3779B97F4A7C15UL;
+    public static void InitState(int seed) => _state = unchecked((ulong)seed + 0x9E3779B97F4A7C15UL);
     public static int Range(int minInclusive, int maxExclusive)
     {
         if (maxExclusive <= minInclusive) return minInclusive;
-        return minInclusive + (int)(Next() % (uint)(maxExclusive - minInclusive));
+        var width = (ulong)((long)maxExclusive - minInclusive);
+        return (int)(minInclusive + (long)(Next() % width));
     }
-    public static Fix64 Range(Fix64 minInclusive, Fix64 maxInclusive) =>
-        maxInclusive <= minInclusive ? minInclusive : minInclusive + (maxInclusive - minInclusive) * value;
+    public static Fix64 Range(Fix64 minInclusive, Fix64 maxInclusive)
+    {
+        if (maxInclusive <= minInclusive) return minInclusive;
+        var width = (Int128)maxInclusive.RawValue - minInclusive.RawValue;
+        var offset = width * value.RawValue >> Fix64.FractionalBits;
+        return Fix64.FromRaw(checked((long)(minInclusive.RawValue + offset)));
+    }
     private static ulong Next()
     {
         var x = _state;
@@ -38,6 +44,6 @@ public static class Random
         x ^= x << 25;
         x ^= x >> 27;
         _state = x;
-        return x * 2685821657736338717UL;
+        return unchecked(x * 2685821657736338717UL);
     }
 }

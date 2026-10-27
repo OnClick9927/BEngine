@@ -156,6 +156,8 @@ internal sealed class HubLocalization
         ["Found {0} package(s) and {1} project package(s) for BEngine {2}."] = "已找到适用于 BEngine {2} 的 {0} 个扩展包和 {1} 个工程包。",
         ["No compatible packages for this engine version."] = "没有兼容此引擎版本的包。",
         ["Select an installed engine version."] = "请选择已安装的引擎版本。",
+        ["BEngine {0} is not installed. Install this engine version before opening the project."] = "未安装 BEngine {0}。请先安装此版本引擎，再打开工程。",
+        ["The editor for BEngine {0} was not found at '{1}'."] = "未找到 BEngine {0} 的编辑器：{1}。",
         ["Engine compatibility: {0}"] = "兼容引擎：{0}",
         ["Unknown"] = "未知", ["{0}  (Missing)"] = "{0}  （不存在）",
         ["No projects yet. Create a project or locate an existing one."] = "暂无工程。可以新建工程，或打开已有工程。",

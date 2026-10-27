@@ -1,6 +1,6 @@
 namespace BEngine.AssetBundles;
 
-public sealed class AssetBundleRequest<T> : AsyncOperation, IDisposable
+public sealed class AssetBundleRequest<T> : AssetBundleLoadOperation, IDisposable
 {
     private AssetBundleHandle<T>? _handle;
     private bool _disposed;
@@ -16,16 +16,28 @@ public sealed class AssetBundleRequest<T> : AsyncOperation, IDisposable
     }
 
     internal AssetBundleRequest(Func<BCancellationToken, BValueTask<AssetBundleHandle<T>>> loader)
+        : this((token, _) => loader(token)) { }
+
+    internal AssetBundleRequest(Func<BCancellationToken, AssetBundleLoadTracker, BValueTask<AssetBundleHandle<T>>> loader)
     {
         ArgumentNullException.ThrowIfNull(loader);
         Start(async cancellationToken =>
         {
-            SetProgress(0.05f);
-            var loaded = await loader(cancellationToken);
+            var loading = loader(cancellationToken, Tracker);
+            while (!loading.IsCompleted)
+            {
+                SetProgress(Tracker.Progress);
+                await BTask.Yield();
+            }
+            var loaded = await loading;
             if (_disposed) loaded.Dispose();
             else _handle = loaded;
             cancellationToken.ThrowIfCancellationRequested();
-            SetProgress(0.99f);
+            var detail = Tracker.Snapshot;
+            long? size = detail.Kind == AssetBundleLoadKind.Asset ? detail.TotalBytes : null;
+            if (loaded.Value is byte[] bytes) size = bytes.LongLength;
+            Tracker.Report(new(AssetBundleLoadKind.Asset, AssetBundleLoadPhase.Completed,
+                loaded.Address, size ?? 0, size));
         });
     }
 

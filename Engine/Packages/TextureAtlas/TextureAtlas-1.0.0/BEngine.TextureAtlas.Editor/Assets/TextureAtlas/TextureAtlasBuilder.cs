@@ -347,7 +347,7 @@ public static class TextureAtlasBuilder
     }
 
     private sealed record AtlasSource(
-        string Name, string Reference, string Texture, float PivotX, float PivotY, string Guid);
+        string Name, string Reference, string Texture, Fix64 PivotX, Fix64 PivotY, string Guid);
     private sealed record SourceImage(
         AtlasSource Source, string FullPath, int Width, int Height, byte[] Pixels);
     private sealed record Placement(SourceImage Image, int X, int Y);

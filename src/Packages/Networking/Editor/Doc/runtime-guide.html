@@ -1,5 +1,6 @@
 <!doctype html><meta charset="utf-8"><title>Networking</title>      <section id="networking">
         <h2>跨平台 TCP、UDP、HTTP 与 WebSocket</h2>
+        <p><code>HttpNetworkRequest</code> 支持异步 HTTP、进度、取消和自定义 <code>IHttpDownloadHandler</code>。设置 <code>BypassCache = true</code> 后，Web 使用 <code>fetch cache: no-store</code>，每次从网络读取且不写入浏览器 HTTP cache；适合直接读取 StreamingAssets。数据只在当前请求/使用期间保留在内存，不自动写入文件或 IndexedDB。</p>
         <p><code>BEngine.Networking</code> 组合 .NET 标准 <code>TcpClient</code>、<code>UdpClient</code>、<code>HttpClient</code> 和 <code>ClientWebSocket</code>，不自行实现协议。所有异步操作接受 <code>CancellationToken</code>；TCP、UDP、WebSocket 暴露 <code>Timeout/LastResult/Error/Exception</code>，HTTP 暴露 <code>Result/Error/ResponseCode/DownloadData/DownloadText</code>。区分 TimedOut、Canceled、ConnectionError、ProtocolError 和 DataProcessingError，并始终释放客户端、请求和句柄。</p>
         <pre><code>using System.Net;
 using System.Text;

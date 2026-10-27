@@ -45,6 +45,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
     private int _quadPayloadCount;
     private int _quadPayloadUsedCount;
     private readonly List<ISceneRenderContributor2D> _frameContributors = [];
+    private readonly List<QuadProcessor> _processQuadContributors = [];
     private bool _contributorsPrepared;
     private readonly List<ISceneRenderContributor2D?> _batchContributors = [];
     private readonly List<CoreBatchRange> _coreBatchRanges = [];
@@ -66,6 +67,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
     private long _geometryUploadCount, _geometryUploadBytes;
     private IGraphicsRenderTarget? _postProcessTarget;
     private int _rendering;
+    private SceneRenderDiagnostics.CaptureContext? _renderDiagnostics;
     private bool _disposed;
 
     public GraphicsBackend Backend => _device.Backend;
@@ -395,8 +397,11 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
             drawUi, drawExtensions, objectFilter);
         _collectMilliseconds += Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds;
         stageStarted = Stopwatch.GetTimestamp();
-        if (_submissionSort.Sort(submissions)) _reusedSorts++; else _fullSorts++;
-        var batchCount = RenderBatchBuilder2D.BuildContiguous(submissions, _batches);
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.Sort))
+        { if (_submissionSort.Sort(submissions)) _reusedSorts++; else _fullSorts++; }
+        int batchCount;
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.BuildContiguous))
+        { batchCount = RenderBatchBuilder2D.BuildContiguous(submissions, _batches); }
         _sortMilliseconds += Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds;
         try
         {
@@ -427,7 +432,8 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
                     }
                     if (_batchContributors[index] is { } contributor)
                     {
-                        contributor.Render(batch, camera, renderWidth, renderHeight, viewport);
+                        using (SceneRenderDiagnostics.MeasureRenderer(contributor))
+                            contributor.Render(batch, camera, renderWidth, renderHeight, viewport);
                         PrepareViewport(viewport);
                         continue;
                     }
@@ -482,6 +488,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
             hasCompleteDrawStatistics)
         {
             CollectMilliseconds = _collectMilliseconds,
+            RenderBreakdown = SceneRenderDiagnostics.CaptureStatistics(cameraCount),
             CoreCollectMilliseconds = _coreCollectMilliseconds,
             ExtensionCollectMilliseconds = _extensionCollectMilliseconds,
             SortMilliseconds = _sortMilliseconds,
@@ -520,6 +527,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
                     {
                         _frameContributors.Add(contributor);
                         contributor.BeginFrame();
+                        if (contributor.processesQuads) _processQuadContributors.Add(new QuadProcessor(contributor));
                     }
         }
         PrepareCulling(camera, width, height);
@@ -534,9 +542,13 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
             var context = new SceneRenderContext2D(scene, camera, width, height, _hierarchyOrder, objectFilter);
             var masks = scene.ComponentsSpanUnchecked<SpriteMask>();
             var extensionStarted = Stopwatch.GetTimestamp();
-            foreach (var contributor in _frameContributors) contributor.BeginScene(in context);
+            foreach (var contributor in _frameContributors)
+                using (SceneRenderDiagnostics.MeasureRenderer(contributor))
+                    contributor.BeginScene(in context);
             _extensionCollectMilliseconds += Stopwatch.GetElapsedTime(extensionStarted).TotalMilliseconds;
             var coreStarted = Stopwatch.GetTimestamp();
+            using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.SimpleSprites))
+            {
             foreach (var renderer in scene.ComponentsSpanUnchecked<SpriteRenderer>())
             {
                 if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
@@ -577,7 +589,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
                             renderer.flipY ^ renderer.size.y * scale.y < 0, visual.IsTextured);
                         sliced = WithSpriteAxes(sliced, renderer.transform, slice.Center, slice.Size, camera);
                         if (!culling.IsVisible(sliced)) continue;
-                        if (renderer.receiveLighting) sliced = ApplySurfaceEffects(sliced, renderer.gameObject);
+                        if (renderer.receiveLighting) ApplySurfaceEffectsReferenced(ref sliced, renderer.gameObject);
                         _submissions.Add(new RenderSubmission2D(new RenderSortKey2D(renderer.sortingLayer,
                             renderer.orderInLayer, _hierarchyOrder.GetValueOrDefault(renderer.gameObject),
                             renderer.TransparencyUnchecked(color), sequence++), renderer.BatchKey(visual) with { MaskGroup = maskGroup }, ReusePayload(sliced))
@@ -589,7 +601,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
                 var simpleMaskGroup = GetMaskGroup(renderer, masks);
                 if (simpleMaskGroup < 0) continue;
                 if (renderer.receiveLighting)
-                    quad = ApplySurfaceEffects(quad, renderer.gameObject);
+                    ApplySurfaceEffectsReferenced(ref quad, renderer.gameObject);
                 _submissions.Add(new RenderSubmission2D(
                     new RenderSortKey2D(renderer.sortingLayer, renderer.orderInLayer,
                         _hierarchyOrder.GetValueOrDefault(renderer.gameObject), renderer.TransparencyUnchecked(color),
@@ -597,14 +609,23 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
                     renderer.BatchKey(visual) with { MaskGroup = simpleMaskGroup },
                     ReusePayload(quad)) { SceneQuadIndex = _quadPayloadCount });
             }
+            }
             var sink = _geometrySink;
             sink.Reset(camera, width, height, sequence);
-            foreach (var renderer in scene.ComponentsSpanUnchecked<Renderer2D>())
+            // Preserve public filter callback order/count when a filter is supplied.
+            var geometryRenderers = objectFilter is null
+                ? scene.NonSpriteRenderersSpanUnchecked()
+                : scene.ComponentsSpanUnchecked<Renderer2D>();
+            using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.NonSpriteRenderers))
+            {
+            foreach (var renderer in geometryRenderers)
             {
                 if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
                 if (objectFilter is not null && !objectFilter(renderer.gameObject)) continue;
                 if (!camera.ContainsLayer(renderer.sortingLayer)) continue;
-                renderer.CollectGeometry(sink);
+                using (SceneRenderDiagnostics.MeasureRenderer(renderer))
+                { renderer.CollectGeometry(sink); }
+            }
             }
             sequence = sink.Sequence;
             _coreCollectMilliseconds += Stopwatch.GetElapsedTime(coreStarted).TotalMilliseconds;
@@ -612,7 +633,8 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
             if (drawExtensions)
                 foreach (var contributor in _frameContributors)
                     if (drawUi || !contributor.rendersUi)
-                        sequence = contributor.Collect(in context, _submissions, sequence);
+                        using (SceneRenderDiagnostics.MeasureRenderer(contributor))
+                            sequence = contributor.Collect(in context, _submissions, sequence);
             _extensionCollectMilliseconds += Stopwatch.GetElapsedTime(extensionStarted).TotalMilliseconds;
         }
         var visibleCount = 0;
@@ -743,7 +765,11 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
     public static void AddTexturedQuad(List<float> output, Quad quad, RenderViewportTransform2D projection) =>
         WriteTexturedQuadAt(output, output.Count, quad, projection);
 
-    private static void WriteTexturedQuadAt(List<float> output, int offset, Quad quad, RenderViewportTransform2D projection)
+    /// <summary>Appends a quad using borrowed stable inputs during a synchronous render callback.</summary>
+    public static void AddTexturedQuadReferenced(List<float> output, in Quad quad, in RenderViewportTransform2D projection) =>
+        WriteTexturedQuadAt(output, output.Count, in quad, in projection);
+
+    private static void WriteTexturedQuadAt(List<float> output, int offset, in Quad quad, in RenderViewportTransform2D projection)
     {
         var u0 = (float)quad.Uv.x;
         var u1 = (float)quad.Uv.xMax;
@@ -752,7 +778,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
         if (quad.FlipX) (u0, u1) = (u1, u0);
         if (quad.FlipY) (v0, v1) = (v1, v0);
         Span<NVector2> corners = stackalloc NVector2[4];
-        projection.FillQuadCorners(corners, quad);
+        projection.FillQuadCornersReferenced(corners, in quad);
         var a = corners[0]; var b = corners[1]; var c = corners[2]; var d = corners[3];
         var uvA = new NVector2(u0, v1);
         var uvB = new NVector2(u1, v1);
@@ -899,6 +925,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
             throw new InvalidOperationException(
                 "PortableSceneRenderer does not support concurrent or reentrant rendering.");
         _textures.PruneDestroyedRuntimeTextures();
+        var diagnostic = SceneRenderDiagnostics.BeginCapture(ref _renderDiagnostics);
         _rendering = 1;
         _contributorsPrepared = false;
         _collectMilliseconds = _sortMilliseconds = _geometryMilliseconds = _submitMilliseconds = 0;
@@ -909,7 +936,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
         _worldBuilt = _worldReused = _cullTests = _cullReused = _culledSprites = _fullSorts = _reusedSorts = 0;
         _mergedCoreRanges = 0;
         _opaqueSolidDraws = 0;
-        return new RenderScope(this);
+        return new RenderScope(this, diagnostic);
     }
 
     private void ExitRender()
@@ -923,7 +950,8 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
         }
         finally
         {
-            _frameContributors.Clear(); _batchContributors.Clear(); _coreBatchRanges.Clear();
+            _frameContributors.Clear(); _processQuadContributors.Clear();
+            _batchContributors.Clear(); _coreBatchRanges.Clear();
             _contributorsPrepared = false;
             for (var index = 0; index < _quadPayloadUsedCount; index++) _quadPayloads[index].Unbind();
             _quadData.Clear();
@@ -980,10 +1008,25 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
         bool isTextured) => new(center, rotation, size, color, color, color, color,
             texture, uv, flipX, flipY, isTextured);
 
-    private Quad ApplySurfaceEffects(Quad quad, GameObject target)
+    private readonly struct QuadProcessor
     {
-        foreach (var contributor in _frameContributors) quad = contributor.ProcessQuad(quad, target);
-        return quad;
+        private readonly ISceneRenderContributor2D _legacy;
+        private readonly ISceneQuadReferenceProcessor2D? _referenced;
+        public QuadProcessor(ISceneRenderContributor2D contributor)
+        {
+            _legacy = contributor;
+            _referenced = contributor as ISceneQuadReferenceProcessor2D;
+        }
+        public void Process(scoped ref Quad quad, GameObject target)
+        {
+            if (_referenced is { } referenced) referenced.ProcessQuadReferenced(ref quad, target);
+            else quad = _legacy.ProcessQuad(quad, target);
+        }
+    }
+
+    private void ApplySurfaceEffectsReferenced(scoped ref Quad quad, GameObject target)
+    {
+        foreach (var contributor in _processQuadContributors) contributor.Process(ref quad, target);
     }
     private static Quad WithSpriteAxes(Quad quad, Transform transform, Vector2 localCenter, Vector2 localSize, RenderCamera camera)
     {
@@ -996,7 +1039,7 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
         return quad with { Center = camera.SnapWorldPoint(matrix.TransformPoint(localCenter)), WorldAxisX = x, WorldAxisY = y };
     }
 
-    private object ReusePayload(Quad quad)
+    private object ReusePayload(in Quad quad)
     {
         var dataIndex = _quadData.Add(quad);
         // Core-only frames consume numeric indices directly. Material/effect extensions
@@ -1028,29 +1071,91 @@ public sealed partial class PortableSceneRenderer : ISceneRenderer
 
     private readonly record struct CameraRenderItem(Camera2D Camera, int Sequence);
 
-    private readonly struct RenderScope(PortableSceneRenderer owner) : IDisposable
+    private readonly struct RenderScope(PortableSceneRenderer owner, SceneRenderDiagnostics.CaptureScope diagnostic) : IDisposable
     {
-        public void Dispose() => owner.ExitRender();
+        public void Dispose()
+        {
+            try { owner.ExitRender(); diagnostic.CleanupCompleted(); }
+            finally { diagnostic.Dispose(); }
+        }
     }
 
 
     private readonly Scene[] _singleScene = new Scene[1];
 
-    private sealed class GeometrySink(PortableSceneRenderer owner) : ISceneGeometrySink2D
+    private sealed class GeometrySink(PortableSceneRenderer owner) : ISceneGeometrySink2D, ISceneFillBarSink2D, ISceneQuadBatchSink2D, ISceneOwnedQuadBatchSink2D
     {
         public RenderCamera Camera { get; private set; }
         public int Width { get; private set; }
         public int Height { get; private set; }
         public long Sequence { get; private set; }
+        private bool _fillBarCullMatches;
         internal void Reset(RenderCamera camera, int width, int height, long sequence)
-        { Camera = camera; Width = width; Height = height; Sequence = sequence; }
-        public void Submit(Renderer2D renderer, SceneQuad2D quad, RenderBatchKey2D batchKey)
         {
-            if (!owner._culling.IsVisible(quad)) return;
-            if (renderer.receiveLighting && quad.ApplySurfaceEffects) quad = owner.ApplySurfaceEffects(quad, renderer.gameObject);
+            Camera = camera; Width = width; Height = height; Sequence = sequence;
+            _fillBarCullMatches = camera.Rotation % 360 == 0;
+        }
+        public void SubmitFillBar(Renderer2D renderer, Vector2 center, Vector2 size,
+            Color color, RenderBatchKey2D batch)
+        {
+            // At full turns both visibility queries use identical fixed-point
+            // arithmetic. Other rotations retain the original first query:
+            // Transform.RotateVector has exact cardinal-angle branches.
+            if (!_fillBarCullMatches && !Camera.IsVisible(center, 0, size, Width, Height)) return;
+            Submit(renderer, SceneQuad2D.Create(center, 0, size, color, "",
+                new Rect(0, 0, 1, 1), false, false, false), batch);
+        }
+        public void SubmitQuads(Renderer2D renderer, List<SceneQuadSubmission2D> quads, bool snapCenters)
+        {
+            // Keep the original enumerator, including mutation checks after a
+            // callback, even if that callback changes the final list element.
+            foreach (var item in quads)
+            {
+                var quad = item.Quad;
+                if (snapCenters)
+                {
+                    var camera = Camera;
+                    if (camera.Policy is not null) quad = quad with { Center = camera.SnapWorldPoint(quad.Center) };
+                }
+                // The local copy is intentional: policy/contributor callbacks
+                // may mutate or grow the source List while this item is active.
+                SubmitCore(renderer, in quad, item.Key);
+            }
+        }
+
+        public void SubmitOwnedQuads(Renderer2D renderer, SpriteQuadBuffer2D quads, bool snapCenters)
+        {
+            var cursor = quads.CreateCursor();
+            while (cursor.MoveNext(out var quad, out var key))
+            {
+                if (snapCenters)
+                {
+                    var camera = Camera;
+                    if (camera.Policy is not null) quad = quad with { Center = camera.SnapWorldPoint(quad.Center) };
+                }
+                SubmitCore(renderer, in quad, key);
+            }
+        }
+
+        public void Submit(Renderer2D renderer, SceneQuad2D quad, RenderBatchKey2D batchKey) =>
+            SubmitCore(renderer, in quad, batchKey);
+
+        private void SubmitCore(Renderer2D renderer, in SceneQuad2D quad, RenderBatchKey2D batchKey)
+        {
+            if (!owner._culling.IsVisibleCore(in quad)) return;
+            // Preserve the stable input and the live renderer reads after all
+            // contributor callbacks without copying the unmodified value again.
+            SceneQuad2D processed;
+            scoped ref readonly SceneQuad2D submitted = ref quad;
+            if (renderer.receiveLighting && quad.ApplySurfaceEffects)
+            {
+                processed = quad;
+                owner.ApplySurfaceEffectsReferenced(ref processed, renderer.gameObject);
+                submitted = ref processed;
+            }
             owner._submissions.Add(new RenderSubmission2D(new RenderSortKey2D(renderer.sortingLayer,
                 renderer.orderInLayer, owner._hierarchyOrder.GetValueOrDefault(renderer.gameObject),
-                renderer.TransparencyUnchecked(quad.ColorA), Sequence++), batchKey, owner.ReusePayload(quad))
+                renderer.TransparencyUnchecked(submitted.ColorA), Sequence++), batchKey, owner.ReusePayload(in submitted))
                 { SceneQuadIndex = owner._quadPayloadCount });
         }
     }

@@ -68,7 +68,7 @@ public sealed class SilkInputSession : IDisposable
         if (_touchInput is not null)
         {
             var now = System.Diagnostics.Stopwatch.GetTimestamp();
-            var elapsed = (Fix64)System.Diagnostics.Stopwatch.GetElapsedTime(_lastTouchPoll, now).TotalSeconds;
+            var elapsed = Fix64.FromTimeSpan(System.Diagnostics.Stopwatch.GetElapsedTime(_lastTouchPoll, now));
             _lastTouchPoll = now;
             Input.SetTouches(_touchInput.Poll(Math.Max(1, _window.FramebufferSize.X), Math.Max(1, _window.FramebufferSize.Y), elapsed));
         }

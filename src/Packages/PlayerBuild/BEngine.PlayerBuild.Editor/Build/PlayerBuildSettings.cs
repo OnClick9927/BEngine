@@ -26,6 +26,8 @@ public sealed class PlayerBuildSettings
     public bool SelfContained { get; set; } = true;
     public PlayerGarbageCollectionMode WindowsGarbageCollection { get; set; } = PlayerGarbageCollectionMode.RuntimeDefault;
     public int WindowsGcHeapCount { get; set; }
+    public WebScriptCompilationMode WebScriptCompilation { get; set; } =
+        WebScriptCompilationMode.Interpreter;
     public string BuildVersion { get; set; } = "1.0.0";
     public string HotResourceVersion { get; set; } = "v1";
     public bool EnableHotUpdate { get; set; } = true;

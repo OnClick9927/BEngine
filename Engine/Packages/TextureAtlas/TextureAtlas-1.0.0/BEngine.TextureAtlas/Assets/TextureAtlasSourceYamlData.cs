@@ -13,8 +13,8 @@ internal sealed class TextureAtlasSourceYamlData
     public string? Path { get; set; }
     public string? AssetPath { get; set; }
     public string? Name { get; set; }
-    public float? PivotX { get; set; }
-    public float? PivotY { get; set; }
+    public Fix64? PivotX { get; set; }
+    public Fix64? PivotY { get; set; }
 
     internal static TextureAtlasSourceYamlData FromSprite(Sprite sprite)
     {
@@ -62,8 +62,8 @@ internal sealed class TextureAtlasSourceYamlData
 
         var texturePath = FirstNonEmpty(Texture, Path, AssetPath);
         var pivot = new Vector2(
-            (Fix64)(double)Math.Clamp(PivotX ?? 0.5f, 0, 1),
-            (Fix64)(double)Math.Clamp(PivotY ?? 0.5f, 0, 1));
+            Mathf.Clamp01(PivotX ?? Fix64.Half),
+            Mathf.Clamp01(PivotY ?? Fix64.Half));
         Sprite sprite;
         if (texturePath.Length > 0)
         {

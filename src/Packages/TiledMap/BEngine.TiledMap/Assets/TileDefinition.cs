@@ -9,10 +9,10 @@ public sealed class TileDefinition
     public string Texture { get; set; } = string.Empty;
     public int PixelWidth { get; set; }
     public int PixelHeight { get; set; }
-    public float UvX { get; set; }
-    public float UvY { get; set; }
-    public float UvWidth { get; set; } = 1;
-    public float UvHeight { get; set; } = 1;
+    public Fix64 UvX { get; set; }
+    public Fix64 UvY { get; set; }
+    public Fix64 UvWidth { get; set; } = 1;
+    public Fix64 UvHeight { get; set; } = 1;
     public byte Red { get; set; } = byte.MaxValue;
     public byte Green { get; set; } = byte.MaxValue;
     public byte Blue { get; set; } = byte.MaxValue;
@@ -24,8 +24,7 @@ public sealed class TileDefinition
     public List<TileAnimationFrame> Animation { get; set; } = [];
 
     [YamlIgnore]
-    public Rect uv => new((Fix64)(double)UvX, (Fix64)(double)UvY,
-        (Fix64)(double)UvWidth, (Fix64)(double)UvHeight);
+    public Rect uv => new(UvX, UvY, UvWidth, UvHeight);
 
     [YamlIgnore]
     public Color tint => new(
@@ -45,15 +44,17 @@ public sealed class TileDefinition
                 rule.Neighbors.Any(neighbor => neighbor is null || !Enum.IsDefined(neighbor.Match) ||
                     neighbor.X is < -1024 or > 1024 || neighbor.Y is < -1024 or > 1024 ||
                     neighbor.Match == TileNeighborMatch.TileId && neighbor.TileId <= 0)) ||
-            Animation.Any(frame => frame is null || frame.TileId <= 0 || !float.IsFinite(frame.Duration) || frame.Duration < 0.001f || frame.Duration > 86400))
+            Animation.Any(frame => frame is null || frame.TileId <= 0 || frame.Duration < MinimumFrameDuration || frame.Duration > 86400))
             throw new InvalidDataException($"Tile {Id} has invalid rule or animation data.");
         if (Id <= 0) throw new InvalidDataException("Tile IDs must be positive; zero is reserved for empty cells.");
         if (string.IsNullOrWhiteSpace(Name)) Name = $"Tile {Id}";
-        if (!float.IsFinite(UvX) || !float.IsFinite(UvY) || !float.IsFinite(UvWidth) ||
-            !float.IsFinite(UvHeight) || UvWidth <= 0 || UvHeight <= 0 ||
-            UvX < 0 || UvY < 0 || UvX + UvWidth > 1.0001f || UvY + UvHeight > 1.0001f)
+        if (UvWidth <= 0 || UvHeight <= 0 || UvWidth > NormalizedUvLimit || UvHeight > NormalizedUvLimit ||
+            UvX < 0 || UvY < 0 || UvX > NormalizedUvLimit - UvWidth || UvY > NormalizedUvLimit - UvHeight)
             throw new InvalidDataException($"Tile {Id} has invalid normalized UV coordinates.");
     }
+
+    private static readonly Fix64 MinimumFrameDuration = Fix64.Parse("0.001");
+    private static readonly Fix64 NormalizedUvLimit = Fix64.Parse("1.0001");
 }
 
 public sealed class TileCollisionPath2D
@@ -63,8 +64,8 @@ public sealed class TileCollisionPath2D
     [YamlMember(Alias = "points", ApplyNamingConventions = false)]
     public List<TileCollisionVertex2D> SerializedPoints
     {
-        get => Points.Select(point => new TileCollisionVertex2D { X = (double)point.x, Y = (double)point.y }).ToList();
-        set => Points = value.Select(point => new Vector2((Fix64)point.X, (Fix64)point.Y)).ToList();
+        get => Points.Select(point => new TileCollisionVertex2D { X = point.x, Y = point.y }).ToList();
+        set => Points = value.Select(point => new Vector2(point.X, point.Y)).ToList();
     }
     public bool Closed { get; set; } = true;
     public bool IsHole { get; set; }
@@ -83,6 +84,6 @@ public sealed class TileCollisionPath2D
 }
 public sealed class TileCollisionVertex2D
 {
-    public double X { get; set; }
-    public double Y { get; set; }
+    public Fix64 X { get; set; }
+    public Fix64 Y { get; set; }
 }

@@ -17,7 +17,11 @@ public sealed record HttpTransportRequest(
     HttpRequestMethod Method,
     IReadOnlyDictionary<string, string> Headers,
     byte[]? UploadData,
-    string? UploadContentType);
+    string? UploadContentType)
+{
+    /// <summary>Bypasses HTTP caches without storing the response, including the browser cache.</summary>
+    public bool BypassCache { get; init; }
+}
 
 public sealed record HttpTransportResponse(
     HttpStatusCode StatusCode,

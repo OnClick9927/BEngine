@@ -32,12 +32,12 @@ internal sealed partial class LightingRenderContributor2D
         data.Values.Add(parameters); data.Values.Add(rowU); data.Values.Add(rowV); data.Values.Add(uv);
     }
 
-    private static bool SameNormalBasis(SceneQuad2D a, SceneQuad2D b) =>
+    private static bool SameNormalBasis(in SceneQuad2D a, in SceneQuad2D b) =>
         a.EffectData is not LightingData { Surface.texture: not null } ||
         a.Rotation == b.Rotation && a.FlipX == b.FlipX && a.FlipY == b.FlipY &&
         (a.Size.x < 0) == (b.Size.x < 0) && (a.Size.y < 0) == (b.Size.y < 0);
 
-    private static void SetNormalSurface(LightingData data, SceneQuad2D quad)
+    private static void SetNormalSurface(LightingData data, in SceneQuad2D quad)
     {
         if (data.Surface is not { texture: { isDestroyed: false } } surface)
         { data.Values[3] = default; data.Values[4] = default; data.Values[5] = default; return; }

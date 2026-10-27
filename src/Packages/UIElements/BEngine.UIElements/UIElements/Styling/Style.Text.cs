@@ -3,7 +3,7 @@ namespace BEngine.UIElements;
 public sealed partial class Style
 {
     private string _fontAsset = "";
-    private float _textOutlineWidth;
+    private Fix64 _textOutlineWidth;
     private UIColor? _textOutlineColor;
     private TextDirectionMode _textDirection;
     private string _resolvedFontPath = "";
@@ -11,7 +11,7 @@ public sealed partial class Style
     private WeakReference<SdfFontAsset>? _resolvedFont;
     /// <summary>Project path, resource path or GUID of a baked .sdfont. Empty inherits the parent.</summary>
     public string fontAsset { get => _fontAsset; set => Set(ref _fontAsset, (value ?? "").Replace('\\', '/')); }
-    public float textOutlineWidth { get => _textOutlineWidth; set => Set(ref _textOutlineWidth, float.IsFinite(value) ? Math.Clamp(value, 0, 32) : 0); }
+    public Fix64 textOutlineWidth { get => _textOutlineWidth; set => Set(ref _textOutlineWidth, Fix64.Clamp(value, 0, 32)); }
     public UIColor? textOutlineColor { get => _textOutlineColor; set => Set(ref _textOutlineColor, value); }
     /// <summary>Logical direction used by the advanced text shaper. Auto resolves each paragraph with Unicode bidi.</summary>
     public TextDirectionMode textDirection { get => _textDirection; set => Set(ref _textDirection, value); }

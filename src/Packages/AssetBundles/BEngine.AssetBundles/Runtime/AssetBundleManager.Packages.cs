@@ -276,14 +276,14 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
             Packages = retained.Concat(replaced).Select(ClonePackage).ToList()
         };
         // Validation also rejects address/GUID collisions and dependencies removed by the selected update.
-        var bytes = AssetBundleCatalogSerializer.SerializeCatalog(catalog);
+        var bytes = AssetBundleCatalogSerializer.SerializeRuntimeCatalog(catalog);
         if (bytes.LongLength > _options.MaximumCatalogSize)
             throw new InvalidDataException("The merged package catalog exceeds the configured size limit.");
         ValidateCatalogLimits(catalog);
         var version = new AssetBundleVersion
         {
             PackageName = catalog.PackageName, Version = catalog.Version,
-            CatalogFile = "catalog.yaml", CatalogSize = bytes.LongLength,
+            CatalogFile = AssetBundleCatalogSerializer.RuntimeCatalogFileName, CatalogSize = bytes.LongLength,
             CatalogSha256 = AssetBundleCatalogSerializer.ComputeSha256(bytes)
         };
         return new RuntimeState(version, catalog, bytes);

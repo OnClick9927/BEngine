@@ -30,8 +30,18 @@ public static class YamlUtility
         return Configure(strict ? builder.WithEnforceNullability() : builder.IgnoreUnmatchedProperties()).Build();
     }
 
-    private static SerializerBuilder Configure(SerializerBuilder builder) { foreach (var converter in Converters) builder.WithTypeConverter(converter); return builder; }
-    private static DeserializerBuilder Configure(DeserializerBuilder builder) { foreach (var converter in Converters) builder.WithTypeConverter(converter); return builder; }
+    private static SerializerBuilder Configure(SerializerBuilder builder)
+    {
+        builder.WithTypeConverter(Fix64YamlConverter.Instance);
+        foreach (var converter in Converters) builder.WithTypeConverter(converter);
+        return builder;
+    }
+    private static DeserializerBuilder Configure(DeserializerBuilder builder)
+    {
+        builder.WithTypeConverter(Fix64YamlConverter.Instance);
+        foreach (var converter in Converters) builder.WithTypeConverter(converter);
+        return builder;
+    }
     public static void RegisterConverter(IYamlTypeConverter converter)
     {
         ArgumentNullException.ThrowIfNull(converter);
@@ -48,6 +58,7 @@ public static class YamlUtility
 
     public static T Deserialize<T>(ReadOnlySpan<byte> yaml, bool strict = false)
     {
+        if (BinaryDataSerializer.IsBinaryData(yaml)) return BinaryDataSerializer.Deserialize<T>(yaml, strict);
         try { return Deserialize<T>(Utf8.GetString(yaml), strict); }
         catch (DecoderFallbackException exception)
         {

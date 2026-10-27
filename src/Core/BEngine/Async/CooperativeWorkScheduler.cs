@@ -120,9 +120,7 @@ public sealed class CooperativeWorkScheduler
         if (_advancing) throw new InvalidOperationException("Cooperative work cannot be re-entered.");
         _advancing = true;
         var start = Stopwatch.GetTimestamp(); var steps = 0; double longest = 0; _blocked.Clear();
-        var effectiveBudget = FrameWorkBudget.IsActive
-            ? Math.Min(_budgetMilliseconds, FrameWorkBudget.budgetMilliseconds)
-            : _budgetMilliseconds;
+        var effectiveBudget = FrameWorkBudget.CooperativeBudget(_budgetMilliseconds);
         try
         {
             while (PendingCount > 0 && steps < _maximumStepsPerFrame &&
@@ -145,7 +143,7 @@ public sealed class CooperativeWorkScheduler
                     longest = Math.Max(longest, stepMilliseconds); steps++;
                     // An indivisible operation can still run past the soft
                     // budget. Do not immediately start another one in that frame.
-                    stopAfterStep = stepMilliseconds >= _maximumStepMilliseconds ||
+                    stopAfterStep = stepMilliseconds >= FrameWorkBudget.CooperativeMaximumStep(_maximumStepMilliseconds) ||
                         (FrameWorkBudget.IsActive && FrameWorkBudget.remainingMilliseconds <= 0);
                 }
                 if (!registration.Disposed && status != CooperativeWorkStatus.Complete)

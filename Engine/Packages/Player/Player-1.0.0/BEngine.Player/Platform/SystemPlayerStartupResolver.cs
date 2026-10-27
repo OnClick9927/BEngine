@@ -153,7 +153,8 @@ public sealed class SystemPlayerStartupResolver : IPlayerStartupResolver
             !actualArchive.Equals(_paths.GetFullPath(archivePath), StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException(
                 "Player resource archive location does not match its bootstrap data directories.");
-        EnsurePhysicalDirectory(manifest.ResolveAssemblyDirectory(root), "assembly");
+        if (!_platform.IsBrowser)
+            EnsurePhysicalDirectory(manifest.ResolveAssemblyDirectory(root), "assembly");
         return CreatePackagedStartup(root, manifest);
     }
 
@@ -177,7 +178,8 @@ public sealed class SystemPlayerStartupResolver : IPlayerStartupResolver
                 "Player runtime metadata location does not match its bootstrap data directories.");
         EnsurePhysicalDirectory(actualDataDirectory, "data");
         EnsurePhysicalDirectory(actualResourceDirectory, "resource");
-        EnsurePhysicalDirectory(manifest.ResolveAssemblyDirectory(root), "assembly");
+        if (!_platform.IsBrowser)
+            EnsurePhysicalDirectory(manifest.ResolveAssemblyDirectory(root), "assembly");
         return CreatePackagedStartup(root, manifest);
     }
 

@@ -52,7 +52,15 @@ internal sealed class LauncherProjectWorkspace
     }
 
     internal static LauncherProjectWorkspace Create(string rootPath, string projectName)
+        => Create(rootPath, projectName, EngineVersion.Current);
+
+    internal static LauncherProjectWorkspace Create(string rootPath, string projectName, string engineVersion)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectName);
+        // Validate before creating even the parent/staging directory. The stored
+        // release and the assembly names in the template must describe one engine.
+        engineVersion = engineVersion?.Trim()!;
+        _ = LauncherProjectTemplate.ResolveAssemblyVersion(engineVersion);
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath));
         if (File.Exists(root)) throw new IOException($"The project path is a file: {root}.");
         var targetExisted = Directory.Exists(root);
@@ -64,7 +72,7 @@ internal sealed class LauncherProjectWorkspace
         {
             var name = projectName.Trim();
             var workspace = new LauncherProjectWorkspace(staging, new ProjectData
-            { Name = name, EngineVersion = EngineVersion.Current, Window = new WindowData { Title = name } }, createLayout: true);
+            { Name = name, EngineVersion = engineVersion, Window = new WindowData { Title = name } }, createLayout: true);
             YamlUtility.Save(workspace.Project, workspace.ProjectFilePath);
             LauncherProjectTemplate.Write(workspace);
             if (File.Exists(root)) throw new IOException($"The project path became a file: {root}.");

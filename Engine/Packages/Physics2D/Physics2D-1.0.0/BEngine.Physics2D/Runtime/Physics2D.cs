@@ -55,6 +55,17 @@ public static class Physics2D
         Fix64 distance = default, ulong layerMask = ulong.MaxValue) =>
         Raycast(origin, direction, out var hit, distance, layerMask) ? hit : default;
 
+    /// <summary>Queries the specified running Scene without changing the caller's scene context.</summary>
+    public static RaycastHit2D Raycast(Scene scene, Vector2 origin, Vector2 direction,
+        Fix64 distance = default, ulong layerMask = ulong.MaxValue,
+        QueryTriggerInteraction queryTriggerInteraction = QueryTriggerInteraction.UseGlobal)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ObjectDisposedException.ThrowIf(!scene.isCreated, scene);
+        return PhysicsWorld2D.Raycast(scene, origin, direction, out var hit,
+            distance <= Fix64.Zero ? DefaultQueryDistance : distance, layerMask, queryTriggerInteraction) ? hit : default;
+    }
+
     public static int Raycast(Vector2 origin, Vector2 direction, ContactFilter2D contactFilter,
         RaycastHit2D[] results, Fix64 distance = default)
     {

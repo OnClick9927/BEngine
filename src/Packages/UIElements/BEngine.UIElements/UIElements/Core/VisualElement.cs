@@ -355,10 +355,10 @@ public class VisualElement : IBindable
         if (root._styleSheetsDirty) root.ApplyStyleSheets();
     }
 
-    internal float styleViewportWidth { get; private set; }
-    internal float styleViewportHeight { get; private set; }
+    internal Fix64 styleViewportWidth { get; private set; }
+    internal Fix64 styleViewportHeight { get; private set; }
     private bool _styleViewportDirty = true;
-    internal void SetStyleViewport(float width, float height)
+    internal void SetStyleViewport(Fix64 width, Fix64 height)
     {
         if (!_styleViewportDirty && styleViewportWidth == width && styleViewportHeight == height) return;
         var changed = SetDescendantStyleViewport(width, height);
@@ -372,7 +372,7 @@ public class VisualElement : IBindable
         }
     }
 
-    private bool SetDescendantStyleViewport(float width, float height)
+    private bool SetDescendantStyleViewport(Fix64 width, Fix64 height)
     {
         var changed = styleViewportWidth != width || styleViewportHeight != height;
         styleViewportWidth = width; styleViewportHeight = height; _styleViewportDirty = false;

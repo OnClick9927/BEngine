@@ -13,7 +13,10 @@ internal static class HotUpdateAssemblyCleanup
     internal static void Unregister(IEnumerable<Assembly> assemblies)
     {
         ArgumentNullException.ThrowIfNull(assemblies);
-        var hotAssemblies = assemblies.Distinct().ToArray();
+        // Gate/Domain rollback can call this before the runtime releases its
+        // lease. Preserve canonical callbacks/types while any stage still owns
+        // them; the last runtime releases its use before entering this method.
+        var hotAssemblies = ManagedCodePrecompiledAssemblies.GetUnleasedAssemblies(assemblies);
         if (hotAssemblies.Length == 0) return;
 
         List<Exception>? failures = null;

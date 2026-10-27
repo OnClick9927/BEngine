@@ -57,9 +57,18 @@ public sealed class SdfFontAsset : ScriptableObject
     }
     public static SdfFontAsset FromBytes(ReadOnlySpan<byte> bytes, string path = "")
     {
-        if (bytes.Length > 192 * 1024 * 1024) throw new InvalidDataException("Font asset exceeds the 192 MB asset limit.");
-        var data = JsonSerializer.Deserialize<SdfFontData>(bytes) ?? throw new InvalidDataException("SDF font is empty.");
-        return Create(data, path);
+        return Create(ReadData(bytes), path);
+    }
+    /// <summary>Compiles JSON authoring data into the deterministic, bounded runtime font format.</summary>
+    /// <remarks>All atlas, glyph and embedded shaping data are retained. Save and ToBytes still produce JSON.</remarks>
+    public static byte[] CompileRuntimeBytes(ReadOnlySpan<byte> bytes) => SdfFontBinaryCodec.Write(ReadData(bytes));
+
+    private static SdfFontData ReadData(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length > SdfFontBinaryCodec.MaximumDocumentBytes)
+            throw new InvalidDataException("Font asset exceeds the 192 MB asset limit.");
+        return SdfFontBinaryCodec.IsBinary(bytes) ? SdfFontBinaryCodec.Read(bytes) :
+            JsonSerializer.Deserialize<SdfFontData>(bytes) ?? throw new InvalidDataException("SDF font is empty.");
     }
     internal static SdfFontAsset Create(SdfFontData data, string path = "")
     {

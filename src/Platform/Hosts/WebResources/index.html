@@ -13,12 +13,143 @@
       color: transparent; background: transparent; border: 0; white-space: nowrap;
     }
     #bengine-accessibility-live { position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: .001; }
+    #bengine-startup {
+      position: fixed; inset: 0; display: grid; place-content: center; gap: 10px;
+      box-sizing: border-box; padding: 24px; color: #e4e7eb; background: #101214;
+      font: 16px/1.5 system-ui, sans-serif; text-align: center; pointer-events: none;
+    }
+    #bengine-startup-detail { max-width: 720px; color: #aeb6c2; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #bengine-startup[data-failed="true"] #bengine-startup-title { color: #ff9b9b; }
   </style>
 </head>
 <body>
   <canvas id="bengine-game" tabindex="0" aria-label="BEngine Player" aria-hidden="true"></canvas>
   <div id="bengine-accessibility"></div>
   <div id="bengine-accessibility-live" aria-live="polite" aria-atomic="true"></div>
-  <script type="module" src="./main.js"></script>
+  <div id="bengine-startup" role="status" aria-live="polite" aria-atomic="true">
+    <div id="bengine-startup-title">正在准备运行环境</div>
+    <div id="bengine-startup-detail">首次打开需要下载运行环境和游戏资源，请稍候。</div>
+  </div>
+  <script>
+    // Install before module imports so a missing or stale script is visible too.
+    (() => {
+      const host = document.querySelector('#bengine-startup');
+      const title = document.querySelector('#bengine-startup-title');
+      const detail = document.querySelector('#bengine-startup-detail');
+      let finished = false;
+      let failed = false;
+      function messageOf(reason) {
+        return typeof reason === 'string' ? reason
+          : typeof reason?.message === 'string' ? reason.message : '运行环境或游戏资源未能加载。';
+      }
+      function showFailure(reason) {
+        if (finished || failed) return;
+        failed = true;
+        host.dataset.failed = 'true';
+        title.textContent = '游戏启动失败';
+        detail.textContent = `${messageOf(reason).slice(0, 2000)}\n请刷新重试；若仍失败，请检查服务器中的 Web 文件是否完整。`;
+      }
+      function showPending(reason) {
+        if (finished || failed) return;
+        // The runtime can retry a download even when a derived Promise emits
+        // unhandledrejection. Only the awaited player startup decides failure.
+        detail.textContent = `${messageOf(reason).slice(0, 2000)}\n正在等待运行环境完成加载，后续进度会继续显示。`;
+      }
+      function onError(event) {
+        const resource = event.target?.src || event.target?.href;
+        const reason = event.error || event.message || (resource ? `无法加载资源：${resource}` : null);
+        if (event.target?.tagName === 'SCRIPT') showFailure(reason);
+        else showPending(reason);
+      }
+      function onRejection(event) { showPending(event.reason); }
+      window.addEventListener('error', onError, true);
+      window.addEventListener('unhandledrejection', onRejection);
+      globalThis.BEngineStartupStatus = {
+        fail: showFailure,
+        retry(url, attempt, total) {
+          if (finished || failed) return;
+          detail.textContent = `正在重试下载（${attempt} / ${total}）：${url}`;
+        },
+        progress(resourcesLoaded, totalResources) {
+          if (finished || failed || !Number.isSafeInteger(resourcesLoaded) || resourcesLoaded < 0 ||
+              !Number.isSafeInteger(totalResources) || totalResources < 1) return;
+          detail.textContent = `已完成 ${resourcesLoaded} / ${totalResources} 项`;
+        },
+        download(loaded, total) {
+          if (finished || failed) return;
+          const size = value => `${(value / 1048576).toFixed(1)} MB`;
+          detail.textContent = total > 0
+            ? `正在下载运行环境：${size(loaded)} / ${size(total)}（${Math.min(100, Math.floor(loaded * 100 / total))}%）`
+            : `正在下载运行环境：${size(loaded)}`;
+        },
+        complete() {
+          if (finished) return;
+          finished = true;
+          host.remove();
+          window.removeEventListener('error', onError, true);
+          window.removeEventListener('unhandledrejection', onRejection);
+          delete globalThis.BEngineStartupStatus;
+        }
+      };
+    })();
+  </script>
+  <script type="module" data-bengine-main="./player.bin" data-bengine-integrity="BENGINE_PLAYER_INTEGRITY">
+    // Revalidate the small entry document, then reuse the content-stamped module
+    // graph. No timestamps or random cache-busting URLs are added to large files.
+    const entry = document.querySelector('script[data-bengine-main]');
+    const fallback = new URL(entry.dataset.bengineMain, document.baseURI);
+    let main = fallback;
+    let integrity = entry.dataset.bengineIntegrity;
+    const index = new URL('./index.html', document.baseURI);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt) await new Promise(resolve => setTimeout(resolve, attempt === 1 ? 250 : 1000));
+        const response = await fetch(index, { cache: attempt ? 'reload' : 'no-cache', credentials: 'same-origin' });
+        if (!response.ok) {
+          const error = new Error(`Unable to revalidate the player entry (HTTP ${response.status}).`);
+          error.permanent = response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429;
+          throw error;
+        }
+        const current = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const script = current.querySelector('script[data-bengine-main]');
+        const source = script?.getAttribute('data-bengine-main');
+        if (!source) throw new Error('The current player entry does not contain a main module.');
+        const candidate = new URL(source, response.url || index);
+        if (candidate.origin !== fallback.origin || candidate.pathname !== fallback.pathname)
+          throw new Error('The current player entry contains an unexpected main module URL.');
+        main = candidate;
+        integrity = script.getAttribute('data-bengine-integrity');
+        break;
+      } catch (error) {
+        // Cached complete players can still start while the entry server is
+        // temporarily unavailable. Actual module/runtime failures remain visible.
+        if (error.permanent || attempt === 2) {
+          console.warn('Using the cached player entry.', error);
+          break;
+        }
+      }
+    }
+    async function loadPlayer() {
+      if (typeof DecompressionStream !== 'function') throw new Error('Please update your browser to load this game.');
+      if (!/^sha256-[A-Za-z0-9+/]{43}=$/.test(integrity || '')) throw new Error('The player integrity metadata is invalid.');
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          if (attempt) await new Promise(resolve => setTimeout(resolve, attempt === 1 ? 250 : 1000));
+          const response = await fetch(main, { integrity, cache: attempt ? 'reload' : 'no-cache', credentials: 'same-origin' });
+          if (!response.ok) {
+            const error = new Error(`Unable to load the player (HTTP ${response.status}).`);
+            error.permanent = response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429;
+            throw error;
+          }
+          const source = await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).text();
+          return URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+        } catch (error) { if (error.permanent || attempt === 2) throw error; }
+      }
+    }
+    let moduleUrl;
+    try { moduleUrl = await loadPlayer(); await import(moduleUrl); }
+    catch (error) { globalThis.BEngineStartupStatus?.fail?.(error); throw error; }
+    finally { if (moduleUrl) URL.revokeObjectURL(moduleUrl); }
+  </script>
 </body>
 </html>

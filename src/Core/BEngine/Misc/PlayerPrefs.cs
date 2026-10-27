@@ -15,6 +15,9 @@ public static class PlayerPrefs
     private static FileUtility? _loadedFileSystem;
     private static PathUtility? _loadedPathService;
     private static string _loadedPath = string.Empty;
+    private static IPlayerPrefsStorage? _loadedStorage;
+    private static string _loadedCompanyName = string.Empty;
+    private static string _loadedProductName = string.Empty;
 
     private static string FilePath => RuntimeServiceAccess.PathService.Combine(
         Application.persistentDataPath,
@@ -34,6 +37,12 @@ public static class PlayerPrefs
     public static void Save()
     {
         var values = Values;
+        var contents = YamlUtility.Serialize(new PlayerPrefsData { Values = values });
+        if (_loadedStorage is { } storage)
+        {
+            storage.Write(_loadedCompanyName, _loadedProductName, contents);
+            return;
+        }
         var fileSystem = RuntimeServiceAccess.FileSystem;
         var paths = RuntimeServiceAccess.PathService;
         var fullPath = paths.GetFullPath(_loadedPath);
@@ -44,7 +53,7 @@ public static class PlayerPrefs
             $".{paths.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
         try
         {
-            fileSystem.WriteAllText(temporaryPath, YamlUtility.Serialize(new PlayerPrefsData { Values = values }));
+            fileSystem.WriteAllText(temporaryPath, contents);
             fileSystem.MoveFile(temporaryPath, fullPath, overwrite: true);
         }
         finally
@@ -60,20 +69,32 @@ public static class PlayerPrefs
             var fileSystem = RuntimeServiceAccess.FileSystem;
             var paths = RuntimeServiceAccess.PathService;
             var path = paths.GetFullPath(FilePath);
+            var storage = RuntimeServiceAccess.GetService<IPlayerPrefsStorage>();
+            var companyName = Application.companyName;
+            var productName = Application.productName;
             if (!ReferenceEquals(_loadedFileSystem, fileSystem) ||
                 !ReferenceEquals(_loadedPathService, paths) ||
-                !_loadedPath.Equals(path, StringComparison.Ordinal))
+                !_loadedPath.Equals(path, StringComparison.Ordinal) ||
+                !ReferenceEquals(_loadedStorage, storage) ||
+                !_loadedCompanyName.Equals(companyName, StringComparison.Ordinal) ||
+                !_loadedProductName.Equals(productName, StringComparison.Ordinal))
             {
                 _loadedFileSystem = fileSystem;
                 _loadedPathService = paths;
                 _loadedPath = path;
+                _loadedStorage = storage;
+                _loadedCompanyName = companyName;
+                _loadedProductName = productName;
                 _values = null;
             }
             if (_values is not null) return _values;
             try
             {
-                _values = fileSystem.FileExists(path)
-                    ? YamlUtility.Deserialize<PlayerPrefsData>(fileSystem.ReadAllText(path)).Values
+                var contents = storage is not null
+                    ? storage.Read(companyName, productName)
+                    : fileSystem.FileExists(path) ? fileSystem.ReadAllText(path) : null;
+                _values = contents is not null
+                    ? YamlUtility.Deserialize<PlayerPrefsData>(contents).Values ?? []
                     : [];
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or

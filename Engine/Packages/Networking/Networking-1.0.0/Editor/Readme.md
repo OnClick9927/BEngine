@@ -2,11 +2,19 @@
 
 TCP, UDP and WebSocket asynchronous clients.
 
+HTTP 的 `Timeout` 限制请求总时长，`InactivityTimeout` 限制连续未收到响应头或数据的时长，默认不启用后者。大文件可设置 `Timeout = HttpNetworkRequest.InfiniteTimeout` 并配置有限的 `InactivityTimeout`：持续接收数据不会因下载总时长过长而中止，真正停滞仍会返回 `TimedOut`。超时检查先处理传输进展，避免主线程长帧后将已经完成的响应误判超时。取消和释放仍会立即中止请求。
+
+`DotNetHttpTransport` 对已知长度的大响应连续异步填充最多 1 MiB 的缓冲区，不再为服务器返回的每个小块等待下一游戏帧；缓冲区填满后等待所属线程消费，接收缓冲不会随下载增长。进度按实际收到的字节更新，下载回调只在所属线程的 `Poll` 中执行，每次 `Poll` 最多交付 1 MiB。未知长度的流继续及时交付部分数据。
+
+Web 默认使用浏览器原生 `fetch` 异步接收，JavaScript 预读独立于游戏帧推进，所属主线程的 `Poll` 每次最多向下载 handler 交付 1 MiB。每个请求的 JavaScript 接收缓冲在 BYOB reader 模式下最多 2 MiB，普通 reader 回退模式下最多 3.75 MiB；最终响应内容、托管交付缓冲和浏览器内部缓冲另计。`Abort` 中止接收，`Dispose` 释放请求句柄和接收缓冲。
+
+旧 Web Host 缺少原生 HTTP 桥，或桥明确未接受请求（不支持或并发已满）时，自动回退到现有 .NET HTTP 后端。已经启动的请求若失败，会保留失败结果交给上层处理，不会通过后端回退自动重发 `POST` 或其他上传请求。
+
 Enable com.bengine.networking in Package Manager. Disabling the package removes its tools and types from the project.
 
 ### 跨平台网络快速开始
 
-`BEngine.Networking` 只使用 .NET 的 `TcpClient`、`UdpClient`、`HttpClient` 和 `ClientWebSocket`，不自行实现协议。所有异步操作接受 `CancellationToken`；TCP、UDP 和 WebSocket 通过 `Timeout`、`LastResult`、`Error`、`Exception` 暴露最近状态，HTTP 请求通过 `Result`、`Error`、`ResponseCode`、`DownloadData/DownloadText` 暴露完成状态。`TimedOut`、`Canceled`、`ConnectionError`、`ProtocolError` 和 `DataProcessingError` 应分别处理。客户端和请求都必须 `Dispose`/`DisposeAsync`。
+`BEngine.Networking` 使用 .NET 的 `TcpClient`、`UdpClient`、`HttpClient` 和 `ClientWebSocket`，Web HTTP 优先使用浏览器 `fetch`，不自行实现协议。所有异步操作接受 `CancellationToken`；TCP、UDP 和 WebSocket 通过 `Timeout`、`LastResult`、`Error`、`Exception` 暴露最近状态，HTTP 请求通过 `Result`、`Error`、`ResponseCode`、`DownloadData/DownloadText` 暴露完成状态。`TimedOut`、`Canceled`、`ConnectionError`、`ProtocolError` 和 `DataProcessingError` 应分别处理。客户端和请求都必须 `Dispose`/`DisposeAsync`。
 
 ```csharp
 using System.Net;

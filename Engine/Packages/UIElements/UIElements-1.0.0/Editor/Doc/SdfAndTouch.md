@@ -4,6 +4,10 @@
 
 `.sdfont` v2 保存预烘焙字形、源字体和有序 fallback 字体；Player 不依赖目标系统已安装字体。HarfBuzz 执行 OpenType GSUB/GPOS shaping，布局按 Unicode 字素选择 fallback 并组织双向运行，支持组合字符、阿拉伯/天城文/希伯来混排、换行和按词换行。缺失字形可从内嵌字体按需栅格化并缓存；彩色 Emoji/彩色字体使用 RGBA 图集，普通轮廓继续使用单通道 SDF 和描边。旧 v1 资产仍可读取，但没有内嵌源字体时无法动态补字。
 
+Player 构建会把内置 AOT 资源中的 `.sdfont` 预编译为二进制运行时数据，省去启动时的 JSON 解析和 Base64 转换。原项目字体、编辑器保存和克隆格式保持 JSON，资源地址、GUID、字形指标、图集像素、内嵌字体及 fallback 顺序全部保留。构建缓存包含运行时字体格式版本；编译前验证原资源快照，归档再记录编译后数据的大小和 SHA-256。
+
+`SdfFontAsset.FromBytes` 同时读取 JSON 和二进制字体；自定义构建流程可调用 `SdfFontAsset.CompileRuntimeBytes`。二进制封装版本独立于字体数据的 v1/v2，使用固定小端数值和原始 IEEE 浮点位，检查长度、UTF-8、数量、版本与尾部数据，并复用字体原有的合法性验证。
+
 在 UI Builder 的 Text 区填写 SDF Font Asset（例如 `Assets/Fonts/UI.sdfont`），设置 Font Size、Outline Width 和 Outline Color。也可以使用样式表：
 
 ```css

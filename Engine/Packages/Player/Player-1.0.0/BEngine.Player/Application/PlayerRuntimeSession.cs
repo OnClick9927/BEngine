@@ -597,7 +597,7 @@ public sealed class PlayerRuntimeSession : IDisposable
             if (!_runtimeStageStarted) return;
             if (_isAotStage) _stagedRuntime!.Flow.Pump();
             if (!Application.isFocused && !Application.runInBackground) return;
-            SceneRuntime.TickAll(_runtimes, (Fix64)elapsed.TotalSeconds);
+            SceneRuntime.TickAll(_runtimes, Fix64.FromTimeSpan(elapsed));
             if (_isAotStage)
             {
                 _stagedRuntime!.Flow.Pump();

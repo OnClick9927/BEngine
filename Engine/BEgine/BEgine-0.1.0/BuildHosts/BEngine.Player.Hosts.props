@@ -25,6 +25,7 @@
     <_BEngineDesktopVariantRoot>$(BEngineEngineRoot)\Desktop\$(_BEngineDesktopVariant)</_BEngineDesktopVariantRoot>
     <BEngineResolvedRuntimeRoot>$(BEngineEngineRoot)</BEngineResolvedRuntimeRoot>
     <BEngineResolvedRuntimeRoot Condition="'$(BEnginePlayerPlatform)' == 'Desktop' and Exists('$(_BEngineDesktopVariantRoot)\BEngine.Player.dll')">$(_BEngineDesktopVariantRoot)</BEngineResolvedRuntimeRoot>
+    <BEngineResolvedRuntimeRoot Condition="'$(BEnginePlayerPlatform)' != 'Desktop' and Exists('$(BEngineEngineRoot)\$(BEnginePlayerPlatform)\BEngine.Player.dll')">$(BEngineEngineRoot)\$(BEnginePlayerPlatform)</BEngineResolvedRuntimeRoot>
     <BEngineRuntimeFallbackIdentifier Condition="'$(RuntimeIdentifier)' == 'osx-x64' or '$(RuntimeIdentifier)' == 'osx-arm64'">osx</BEngineRuntimeFallbackIdentifier>
     <PublishAot>false</PublishAot>
     <RunAOTCompilation Condition="'$(RunAOTCompilation)' == ''">false</RunAOTCompilation>
@@ -38,6 +39,11 @@
   <Target Name="ValidateExportedGraphicsVariant" BeforeTargets="ResolveReferences"
           Condition="!Exists('$(BEnginePlayerSourceProject)') and '$(BEnginePlayerPlatform)' == 'Desktop' and '$(_BEngineDesktopVariant)' != 'Both'">
     <Error Condition="!Exists('$(BEngineResolvedRuntimeRoot)\graphics-variant.txt')" Text="Exported Player runtime variant $(_BEngineDesktopVariant) is missing. Re-export the engine." />
+  </Target>
+  <Target Name="ValidateExportedPlatformRuntime" BeforeTargets="ResolveReferences"
+          Condition="!Exists('$(BEnginePlayerSourceProject)') and '$(BEnginePlayerPlatform)' != 'Desktop'">
+    <Error Condition="!Exists('$(BEngineResolvedRuntimeRoot)\BEngine.$(BEnginePlayerPlatform).dll')"
+           Text="Exported $(BEnginePlayerPlatform) runtime is missing from $(BEngineResolvedRuntimeRoot). Re-export the engine with its platform BuildRuntime closure." />
   </Target>
   <!--
     .NET 10 ILLink registers these tasks with TaskHostFactory even when the build

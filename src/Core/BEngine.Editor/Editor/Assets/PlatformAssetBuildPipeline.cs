@@ -37,6 +37,24 @@ public static class PlatformAssetBuildPipeline
             foreach (var (key, value) in authored)
                 if (key.StartsWith(prefix, StringComparison.Ordinal) && key != prefix + "overridden")
                     settings[key[prefix.Length..] == "format" ? "compressionFormat" : key[prefix.Length..]] = value;
+        // Plain data can keep YAML authoring/editor artifacts while shipping a compact runtime
+        // graph. No game assemblies or CLR type names are needed during this build conversion.
+        if (settings.TryGetValue("runtimeDataFormat", out var dataFormat) && dataFormat == "binary")
+        {
+            if (assetType != "YamlAsset" || importerName != nameof(DefaultImporter))
+                throw new InvalidDataException("runtimeDataFormat: binary requires a plain YamlAsset with DefaultImporter.");
+            cancellation.ThrowIfCancellationRequested();
+            if (files.GetFileLength(sourcePath) is <= 0 or > BinaryDataSerializer.MaximumDocumentBytes)
+                throw new InvalidDataException("Compiled YAML input must contain 1 byte to 64 MiB.");
+            var source = files.ReadAllBytes(sourcePath);
+            if (!Convert.ToHexString(SHA256.HashData(source)).Equals(sourceHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Data source changed after the build snapshot: {sourcePath}");
+            content = BinaryDataSerializer.CompileYaml(source, cancellation);
+            settings["builtDataFormat"] = "binary-v1";
+            settings["builtForPlatform"] = platform.ToString();
+            effectiveSettings = settings;
+            return true;
+        }
         if (settings.Count == authored.Count && settings.All(pair => authored.TryGetValue(pair.Key, out var value) && value == pair.Value))
             return false;
         cancellation.ThrowIfCancellationRequested();

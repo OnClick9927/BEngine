@@ -18,8 +18,31 @@ public readonly struct Vector2 : IEquatable<Vector2>
     public Fix64 x { get; }
     public Fix64 y { get; }
     public Fix64 magnitude => Fix64.Sqrt(sqrMagnitude);
-    public Fix64 sqrMagnitude => Dot(this, this);
-    public Vector2 normalized => magnitude > Fix64.Epsilon ? this / magnitude : zero;
+    public Fix64 sqrMagnitude
+    {
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            if (!OperatingSystem.IsBrowser()) return Dot(this, this);
+            var xHigh = Math.BigMul(x.RawValue, x.RawValue, out var xLow);
+            _ = checked((int)xHigh);
+            var xRaw = unchecked((long)(((ulong)xHigh << Fix64.FractionalBits) |
+                ((ulong)xLow >> Fix64.FractionalBits)));
+            var yHigh = Math.BigMul(y.RawValue, y.RawValue, out var yLow);
+            _ = checked((int)yHigh);
+            var yRaw = unchecked((long)(((ulong)yHigh << Fix64.FractionalBits) |
+                ((ulong)yLow >> Fix64.FractionalBits)));
+            return Fix64.FromRaw(checked(xRaw + yRaw));
+        }
+    }
+    public Vector2 normalized
+    {
+        get
+        {
+            var length = magnitude;
+            return length > Fix64.Epsilon ? this / length : zero;
+        }
+    }
 
     public Vector2(Fix64 x, Fix64 y)
     {
@@ -27,17 +50,48 @@ public readonly struct Vector2 : IEquatable<Vector2>
         this.y = y;
     }
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Vector2 operator +(Vector2 left, Vector2 right) => new(left.x + right.x, left.y + right.y);
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Vector2 operator -(Vector2 left, Vector2 right) => new(left.x - right.x, left.y - right.y);
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Vector2 operator -(Vector2 value) => new(-value.x, -value.y);
-    public static Vector2 operator *(Vector2 value, Fix64 scale) => new(value.x * scale, value.y * scale);
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Vector2 operator *(Vector2 value, Fix64 scale)
+    {
+        if (!OperatingSystem.IsBrowser()) return new(value.x * scale, value.y * scale);
+        var xHigh = Math.BigMul(value.x.RawValue, scale.RawValue, out var xLow);
+        _ = checked((int)xHigh);
+        var xRaw = unchecked((long)(((ulong)xHigh << Fix64.FractionalBits) |
+            ((ulong)xLow >> Fix64.FractionalBits)));
+        var yHigh = Math.BigMul(value.y.RawValue, scale.RawValue, out var yLow);
+        _ = checked((int)yHigh);
+        var yRaw = unchecked((long)(((ulong)yHigh << Fix64.FractionalBits) |
+            ((ulong)yLow >> Fix64.FractionalBits)));
+        return new(Fix64.FromRaw(xRaw), Fix64.FromRaw(yRaw));
+    }
     public static Vector2 operator *(Fix64 scale, Vector2 value) => value * scale;
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Vector2 operator /(Vector2 value, Fix64 scale) => new(value.x / scale, value.y / scale);
     public static bool operator ==(Vector2 left, Vector2 right) => left.Equals(right);
     public static bool operator !=(Vector2 left, Vector2 right) => !left.Equals(right);
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Fix64 Dot(Vector2 left, Vector2 right) => left.x * right.x + left.y * right.y;
-    public static Vector2 Scale(Vector2 left, Vector2 right) => new(left.x * right.x, left.y * right.y);
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Vector2 Scale(Vector2 left, Vector2 right)
+    {
+        if (!OperatingSystem.IsBrowser()) return new(left.x * right.x, left.y * right.y);
+        var xHigh = Math.BigMul(left.x.RawValue, right.x.RawValue, out var xLow);
+        _ = checked((int)xHigh);
+        var xRaw = unchecked((long)(((ulong)xHigh << Fix64.FractionalBits) |
+            ((ulong)xLow >> Fix64.FractionalBits)));
+        var yHigh = Math.BigMul(left.y.RawValue, right.y.RawValue, out var yLow);
+        _ = checked((int)yHigh);
+        var yRaw = unchecked((long)(((ulong)yHigh << Fix64.FractionalBits) |
+            ((ulong)yLow >> Fix64.FractionalBits)));
+        return new(Fix64.FromRaw(xRaw), Fix64.FromRaw(yRaw));
+    }
     public static Vector2 Lerp(Vector2 from, Vector2 to, Fix64 time) => from + (to - from) * Mathf.Clamp01(time);
     public static Vector2 LerpUnclamped(Vector2 from, Vector2 to, Fix64 time) => from + (to - from) * time;
     public static Fix64 Distance(Vector2 left, Vector2 right) => (left - right).magnitude;

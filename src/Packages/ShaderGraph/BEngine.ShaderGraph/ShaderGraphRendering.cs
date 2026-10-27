@@ -27,6 +27,7 @@ internal sealed class ShaderGraphRendering(IGraphicsDevice device) : ISceneRende
     private IGraphicsTexture2D? _white;
     public string? LastError { get; private set; }
     public string packageId => "com.bengine.shader-graph";
+    public bool processesQuads => false;
     public void BeginFrame()
     {
         _frameHashes.Clear();

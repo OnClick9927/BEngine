@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace BEngine.UIElements;
 
+/// <summary>Deterministic Q32.32 layout and paint values. Nullable offsets mean auto; nullable maxima mean unbounded.</summary>
 public sealed partial class Style
 {
     private readonly Action _changed;
@@ -16,28 +17,28 @@ public sealed partial class Style
     private Justify _justifyContent;
     private Overflow _overflow = Overflow.Visible;
     private Position _position;
-    private float _left = float.NaN;
-    private float _top = float.NaN;
-    private float _right = float.NaN;
-    private float _bottom = float.NaN;
-    private float _width;
-    private float _height;
-    private float _minWidth;
-    private float _minHeight;
-    private float _maxWidth = float.PositiveInfinity;
-    private float _maxHeight = float.PositiveInfinity;
-    private float _flexGrow;
-    private float _flexShrink = 1;
-    private float _marginLeft;
-    private float _marginTop;
-    private float _marginRight;
-    private float _marginBottom;
-    private float _paddingLeft;
-    private float _paddingTop;
-    private float _paddingRight;
-    private float _paddingBottom;
-    private float _fontSize;
-    private float _borderWidth;
+    private Fix64? _left;
+    private Fix64? _top;
+    private Fix64? _right;
+    private Fix64? _bottom;
+    private Fix64 _width;
+    private Fix64 _height;
+    private Fix64 _minWidth;
+    private Fix64 _minHeight;
+    private Fix64? _maxWidth;
+    private Fix64? _maxHeight;
+    private Fix64 _flexGrow;
+    private Fix64 _flexShrink = 1;
+    private Fix64 _marginLeft;
+    private Fix64 _marginTop;
+    private Fix64 _marginRight;
+    private Fix64 _marginBottom;
+    private Fix64 _paddingLeft;
+    private Fix64 _paddingTop;
+    private Fix64 _paddingRight;
+    private Fix64 _paddingBottom;
+    private Fix64 _fontSize;
+    private Fix64 _borderWidth;
     private UIColor? _color;
     private UIColor? _backgroundColor;
     private UIColor? _borderColor;
@@ -51,35 +52,35 @@ public sealed partial class Style
     public Justify justifyContent { get => _justifyContent; set => Set(ref _justifyContent, value); }
     public Overflow overflow { get => _overflow; set => Set(ref _overflow, value); }
     public Position position { get => _position; set => Set(ref _position, value); }
-    public float left { get => _left; set => Set(ref _left, value); }
-    public float top { get => _top; set => Set(ref _top, value); }
-    public float right { get => _right; set => Set(ref _right, value); }
-    public float bottom { get => _bottom; set => Set(ref _bottom, value); }
-    public float width { get => _width; set => Set(ref _width, value); }
-    public float height { get => _height; set => Set(ref _height, value); }
-    public float minWidth { get => _minWidth; set => Set(ref _minWidth, value); }
-    public float minHeight { get => _minHeight; set => Set(ref _minHeight, value); }
-    public float maxWidth { get => _maxWidth; set => Set(ref _maxWidth, value); }
-    public float maxHeight { get => _maxHeight; set => Set(ref _maxHeight, value); }
-    public float flexGrow { get => _flexGrow; set => Set(ref _flexGrow, value); }
-    public float flexShrink { get => _flexShrink; set => Set(ref _flexShrink, value); }
-    public float marginLeft { get => _marginLeft; set => Set(ref _marginLeft, value); }
-    public float marginTop { get => _marginTop; set => Set(ref _marginTop, value); }
-    public float marginRight { get => _marginRight; set => Set(ref _marginRight, value); }
-    public float marginBottom { get => _marginBottom; set => Set(ref _marginBottom, value); }
-    public float paddingLeft { get => _paddingLeft; set => Set(ref _paddingLeft, value); }
-    public float paddingTop { get => _paddingTop; set => Set(ref _paddingTop, value); }
-    public float paddingRight { get => _paddingRight; set => Set(ref _paddingRight, value); }
-    public float paddingBottom { get => _paddingBottom; set => Set(ref _paddingBottom, value); }
-    public float fontSize { get => _fontSize; set => Set(ref _fontSize, value); }
-    public float borderWidth { get => _borderWidth; set => Set(ref _borderWidth, Math.Max(0, value)); }
+    public Fix64? left { get => _left; set => Set(ref _left, value); }
+    public Fix64? top { get => _top; set => Set(ref _top, value); }
+    public Fix64? right { get => _right; set => Set(ref _right, value); }
+    public Fix64? bottom { get => _bottom; set => Set(ref _bottom, value); }
+    public Fix64 width { get => _width; set => Set(ref _width, value); }
+    public Fix64 height { get => _height; set => Set(ref _height, value); }
+    public Fix64 minWidth { get => _minWidth; set => Set(ref _minWidth, value); }
+    public Fix64 minHeight { get => _minHeight; set => Set(ref _minHeight, value); }
+    public Fix64? maxWidth { get => _maxWidth; set => Set(ref _maxWidth, value); }
+    public Fix64? maxHeight { get => _maxHeight; set => Set(ref _maxHeight, value); }
+    public Fix64 flexGrow { get => _flexGrow; set => Set(ref _flexGrow, value); }
+    public Fix64 flexShrink { get => _flexShrink; set => Set(ref _flexShrink, value); }
+    public Fix64 marginLeft { get => _marginLeft; set => Set(ref _marginLeft, value); }
+    public Fix64 marginTop { get => _marginTop; set => Set(ref _marginTop, value); }
+    public Fix64 marginRight { get => _marginRight; set => Set(ref _marginRight, value); }
+    public Fix64 marginBottom { get => _marginBottom; set => Set(ref _marginBottom, value); }
+    public Fix64 paddingLeft { get => _paddingLeft; set => Set(ref _paddingLeft, value); }
+    public Fix64 paddingTop { get => _paddingTop; set => Set(ref _paddingTop, value); }
+    public Fix64 paddingRight { get => _paddingRight; set => Set(ref _paddingRight, value); }
+    public Fix64 paddingBottom { get => _paddingBottom; set => Set(ref _paddingBottom, value); }
+    public Fix64 fontSize { get => _fontSize; set => Set(ref _fontSize, value); }
+    public Fix64 borderWidth { get => _borderWidth; set => Set(ref _borderWidth, Fix64.Max(0, value)); }
     public UIColor? color { get => _color; set => Set(ref _color, value); }
     public UIColor? backgroundColor { get => _backgroundColor; set => Set(ref _backgroundColor, value); }
     public UIColor? borderColor { get => _borderColor; set => Set(ref _borderColor, value); }
 
-    public void SetMargin(float all) => SetMargin(all, all, all, all);
+    public void SetMargin(Fix64 all) => SetMargin(all, all, all, all);
 
-    public void SetMargin(float left, float top, float right, float bottom)
+    public void SetMargin(Fix64 left, Fix64 top, Fix64 right, Fix64 bottom)
     {
         Set(ref _marginLeft, left, nameof(marginLeft));
         Set(ref _marginTop, top, nameof(marginTop));
@@ -87,9 +88,9 @@ public sealed partial class Style
         Set(ref _marginBottom, bottom, nameof(marginBottom));
     }
 
-    public void SetPadding(float all) => SetPadding(all, all, all, all);
+    public void SetPadding(Fix64 all) => SetPadding(all, all, all, all);
 
-    public void SetPadding(float left, float top, float right, float bottom)
+    public void SetPadding(Fix64 left, Fix64 top, Fix64 right, Fix64 bottom)
     {
         Set(ref _paddingLeft, left, nameof(paddingLeft));
         Set(ref _paddingTop, top, nameof(paddingTop));
@@ -185,28 +186,28 @@ public sealed partial class Style
         Reset(ref _justifyContent, Justify.FlexStart, nameof(justifyContent));
         Reset(ref _overflow, Overflow.Visible, nameof(overflow));
         Reset(ref _position, Position.Relative, nameof(position));
-        Reset(ref _left, float.NaN, nameof(left));
-        Reset(ref _top, float.NaN, nameof(top));
-        Reset(ref _right, float.NaN, nameof(right));
-        Reset(ref _bottom, float.NaN, nameof(bottom));
-        Reset(ref _width, 0f, nameof(width));
-        Reset(ref _height, 0f, nameof(height));
-        Reset(ref _minWidth, 0f, nameof(minWidth));
-        Reset(ref _minHeight, 0f, nameof(minHeight));
-        Reset(ref _maxWidth, float.PositiveInfinity, nameof(maxWidth));
-        Reset(ref _maxHeight, float.PositiveInfinity, nameof(maxHeight));
-        Reset(ref _flexGrow, 0f, nameof(flexGrow));
-        Reset(ref _flexShrink, 1f, nameof(flexShrink));
-        Reset(ref _marginLeft, 0f, nameof(marginLeft));
-        Reset(ref _marginTop, 0f, nameof(marginTop));
-        Reset(ref _marginRight, 0f, nameof(marginRight));
-        Reset(ref _marginBottom, 0f, nameof(marginBottom));
-        Reset(ref _paddingLeft, 0f, nameof(paddingLeft));
-        Reset(ref _paddingTop, 0f, nameof(paddingTop));
-        Reset(ref _paddingRight, 0f, nameof(paddingRight));
-        Reset(ref _paddingBottom, 0f, nameof(paddingBottom));
-        Reset(ref _fontSize, 0f, nameof(fontSize));
-        Reset(ref _borderWidth, 0f, nameof(borderWidth));
+        Reset<Fix64?>(ref _left, null, nameof(left));
+        Reset<Fix64?>(ref _top, null, nameof(top));
+        Reset<Fix64?>(ref _right, null, nameof(right));
+        Reset<Fix64?>(ref _bottom, null, nameof(bottom));
+        Reset(ref _width, Fix64.Zero, nameof(width));
+        Reset(ref _height, Fix64.Zero, nameof(height));
+        Reset(ref _minWidth, Fix64.Zero, nameof(minWidth));
+        Reset(ref _minHeight, Fix64.Zero, nameof(minHeight));
+        Reset<Fix64?>(ref _maxWidth, null, nameof(maxWidth));
+        Reset<Fix64?>(ref _maxHeight, null, nameof(maxHeight));
+        Reset(ref _flexGrow, Fix64.Zero, nameof(flexGrow));
+        Reset(ref _flexShrink, Fix64.One, nameof(flexShrink));
+        Reset(ref _marginLeft, Fix64.Zero, nameof(marginLeft));
+        Reset(ref _marginTop, Fix64.Zero, nameof(marginTop));
+        Reset(ref _marginRight, Fix64.Zero, nameof(marginRight));
+        Reset(ref _marginBottom, Fix64.Zero, nameof(marginBottom));
+        Reset(ref _paddingLeft, Fix64.Zero, nameof(paddingLeft));
+        Reset(ref _paddingTop, Fix64.Zero, nameof(paddingTop));
+        Reset(ref _paddingRight, Fix64.Zero, nameof(paddingRight));
+        Reset(ref _paddingBottom, Fix64.Zero, nameof(paddingBottom));
+        Reset(ref _fontSize, Fix64.Zero, nameof(fontSize));
+        Reset(ref _borderWidth, Fix64.Zero, nameof(borderWidth));
         Reset(ref _color, null, nameof(color));
         Reset(ref _backgroundColor, null, nameof(backgroundColor));
         Reset(ref _borderColor, null, nameof(borderColor));

@@ -12,6 +12,10 @@ public sealed partial class AssetBundleManager
     private bool _localInstallUsesAsyncIo;
     private long _localInstallSliceStarted;
     private int LocalInstallBatchSize => _localInstallUsesAsyncIo ? 8 : 1;
+    // Installation runs before bundle loading. Give its memory I/O enough work
+    // per browser turn without consuming more than half the target frame period.
+    private static double LocalInstallBrowserSliceMilliseconds =>
+        Application.targetFrameRate > 0 ? Math.Min(4, 500d / Application.targetFrameRate) : 4;
 
     public async BValueTask<AssetBundleInstallResult> InstallBuiltInReleaseAsync(
         string releaseDirectory,
@@ -113,7 +117,7 @@ public sealed partial class AssetBundleManager
             cancellationToken.ThrowIfCancellationRequested();
             ThrowIfDisposed();
             var count = Math.Min(LocalInstallBatchSize, selectedBundles.Count - offset);
-            var copies = new List<(AssetBundleDescriptor Descriptor, bool Repair, BValueTask<bool> Operation)>(count);
+            var copies = new List<(AssetBundleDescriptor Descriptor, bool Repair)>(count);
             // Validate the entire batch before starting any I/O, so an unavailable
             // repair source cannot abandon previously started operations.
             for (var index = 0; index < count; index++)
@@ -128,7 +132,7 @@ public sealed partial class AssetBundleManager
             {
                 var descriptor = selectedBundles[offset + index];
                 if (objectValidity[LocalObjectKey(descriptor)]) continue;
-                copies.Add((descriptor, _fileSystem.FileExists(GetObjectPath(descriptor)), default));
+                copies.Add((descriptor, _fileSystem.FileExists(GetObjectPath(descriptor))));
             }
             if (_localInstallUsesAsyncIo)
             {
@@ -140,11 +144,10 @@ public sealed partial class AssetBundleManager
                 for (var index = 0; index < copies.Count; index++)
                 {
                     var copy = copies[index];
-                    copies[index] = (copy.Descriptor, copy.Repair,
-                        CopyLocalSourceObjectAsync(root, sourceObjects[copy.Descriptor.Sha256].FileName,
-                            copy.Descriptor, cancellationToken));
+                    await CopyLocalObjectAsync(
+                        ResolveInside(root, "bundles/" + sourceObjects[copy.Descriptor.Sha256].FileName),
+                        GetObjectPath(copy.Descriptor), copy.Descriptor, cancellationToken);
                 }
-                await DrainLocalBatchAsync(copies.Select(static copy => copy.Operation).ToArray(), cancellationToken);
             }
             foreach (var copy in copies)
             {
@@ -285,9 +288,17 @@ public sealed partial class AssetBundleManager
         {
             for (var index = 0; index < descriptors.Count; index++)
             {
-                results[index] = sourceRoot is null
-                    ? await TryVerifyLocalCachedObjectAsync(descriptors[index], cancellationToken)
-                    : await VerifyLocalSourceObjectAsync(sourceRoot, descriptors[index], cancellationToken);
+                var descriptor = descriptors[index];
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var path = sourceRoot is null ? GetObjectPath(descriptor)
+                        : ResolveInside(sourceRoot, "bundles/" + descriptor.FileName);
+                    using var stream = OpenLocalInstallInput(path, descriptor);
+                    await CopyAndVerifyLocalStreamAsync(stream, null, descriptor, cancellationToken);
+                    results[index] = true;
+                }
+                catch (Exception error) when (sourceRoot is null && IsRecoverableContentFailure(error)) { }
                 completed?.Invoke(descriptors[index]);
             }
             return results;
@@ -430,7 +441,7 @@ public sealed partial class AssetBundleManager
         if (_fileSystem.GetFileLength(path) != descriptor.Size || descriptor.Size > _options.MaximumBundleSize)
             throw new InvalidDataException($"AssetBundle installation payload '{path}' has an invalid size.");
         return _fileSystem.OpenFile(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-            64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            64 * 1024, LocalInstallFileOptions);
     }
 
     private static ExceptionDispatchInfo? ObserveLocalNativeIo(IEnumerable<LocalInstallNativeIo> operations)
@@ -470,62 +481,8 @@ public sealed partial class AssetBundleManager
         internal string? Temporary;
     }
 
-    private async BValueTask<bool> TryVerifyLocalCachedObjectAsync(
-        AssetBundleDescriptor descriptor, BCancellationToken cancellationToken)
-    {
-        try
-        {
-            await VerifyLocalObjectAsync(GetObjectPath(descriptor), descriptor, cancellationToken);
-            return true;
-        }
-        catch (Exception error) when (IsRecoverableContentFailure(error))
-        {
-            return false;
-        }
-    }
-
     private static (string Hash, long Size) LocalObjectKey(AssetBundleDescriptor descriptor) =>
         (descriptor.Sha256.ToLowerInvariant(), descriptor.Size);
-
-    private static async BValueTask<bool[]> DrainLocalBatchAsync(
-        IReadOnlyList<BValueTask<bool>> operations, BCancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            var completed = true;
-            foreach (var operation in operations)
-                if (!operation.IsCompleted) { completed = false; break; }
-            if (completed) break;
-            // A failing sibling or cancellation must not dispose streams still used
-            // by another operation. Drain the whole bounded batch before throwing.
-            await BValueTask.Yield();
-        }
-        var results = new bool[operations.Count];
-        ExceptionDispatchInfo? failure = null;
-        for (var index = 0; index < operations.Count; index++)
-        {
-            try { results[index] = operations[index].GetAwaiter().GetResult(); }
-            catch (Exception error) { failure ??= ExceptionDispatchInfo.Capture(error); }
-        }
-        cancellationToken.ThrowIfCancellationRequested();
-        failure?.Throw();
-        return results;
-    }
-
-    private async BValueTask<bool> VerifyLocalSourceObjectAsync(
-        string root, AssetBundleDescriptor descriptor, BCancellationToken cancellationToken)
-    {
-        await VerifyLocalObjectAsync(ResolveInside(root, "bundles/" + descriptor.FileName), descriptor, cancellationToken);
-        return true;
-    }
-
-    private async BValueTask<bool> CopyLocalSourceObjectAsync(
-        string root, string sourceFileName, AssetBundleDescriptor descriptor, BCancellationToken cancellationToken)
-    {
-        await CopyLocalObjectAsync(ResolveInside(root, "bundles/" + sourceFileName), GetObjectPath(descriptor),
-            descriptor, cancellationToken);
-        return true;
-    }
 
     private static bool IsNewerLocalRelease(string installed, string bundled)
     {
@@ -550,7 +507,7 @@ public sealed partial class AssetBundleManager
         if (_fileSystem.GetFileLength(path) != descriptor.Size || descriptor.Size > _options.MaximumBundleSize)
             throw new InvalidDataException($"AssetBundle installation payload '{path}' has an invalid size.");
         using var stream = _fileSystem.OpenFile(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-            64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            64 * 1024, LocalInstallFileOptions);
         await CopyAndVerifyLocalStreamAsync(stream, null, descriptor, cancellationToken);
     }
 
@@ -561,9 +518,9 @@ public sealed partial class AssetBundleManager
         try
         {
             using (var input = _fileSystem.OpenFile(source, FileMode.Open, FileAccess.Read, FileShare.Read,
-                       64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                       64 * 1024, LocalInstallFileOptions))
             using (var output = _fileSystem.OpenFile(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                       64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                       64 * 1024, LocalInstallFileOptions))
             {
                 await CopyAndVerifyLocalStreamAsync(input, output, descriptor, cancellationToken);
                 _fileSystem.Flush(output, flushToDisk: true);
@@ -609,15 +566,11 @@ public sealed partial class AssetBundleManager
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var read = input.ReadAsync(buffer.AsMemory(0, 64 * 1024), stop.Token);
-                // BTask methods only accept BEngine awaiters. Drain any pending native
-                // async I/O on the frame scheduler before disposing streams, also on cancellation.
-                while (!read.IsCompleted)
-                {
-                    await BValueTask.Yield();
-                    _localInstallSliceStarted = Stopwatch.GetTimestamp();
-                }
-                var length = read.GetAwaiter().GetResult();
+                // Browser files are already mounted in memory. Async FileStream
+                // operations can still defer every block to another browser turn,
+                // adding frame waits to reading, copying and final verification.
+                // Bound synchronous memory I/O with the shared elapsed-time slice.
+                var length = input.Read(buffer, 0, 64 * 1024);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (length == 0) break;
                 total = checked(total + length);
@@ -626,15 +579,10 @@ public sealed partial class AssetBundleManager
                 hash.AppendData(buffer, 0, length);
                 if (output is not null)
                 {
-                    var write = output.WriteAsync(buffer.AsMemory(0, length), stop.Token);
-                    while (!write.IsCompleted)
-                    {
-                        await BValueTask.Yield();
-                        _localInstallSliceStarted = Stopwatch.GetTimestamp();
-                    }
-                    write.GetAwaiter().GetResult();
+                    output.Write(buffer, 0, length);
                 }
-                if (Stopwatch.GetElapsedTime(_localInstallSliceStarted).TotalMilliseconds >= 1)
+                if (Stopwatch.GetElapsedTime(_localInstallSliceStarted).TotalMilliseconds >=
+                    LocalInstallBrowserSliceMilliseconds)
                 {
                     await BValueTask.Yield();
                     _localInstallSliceStarted = Stopwatch.GetTimestamp();
@@ -654,6 +602,9 @@ public sealed partial class AssetBundleManager
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }
+
+    private FileOptions LocalInstallFileOptions => FileOptions.SequentialScan |
+        (_localInstallUsesAsyncIo ? FileOptions.Asynchronous : FileOptions.None);
 
     private static async Task CopyAndVerifyLocalStreamWithIoAsync(
         Stream input, Stream? output, long expectedSize, string expectedHash, string bundleName,

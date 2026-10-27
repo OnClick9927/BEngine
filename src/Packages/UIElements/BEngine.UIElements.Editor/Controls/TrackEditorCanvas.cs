@@ -85,8 +85,8 @@ public sealed class TrackEditorCanvas : VisualElement
     {
         viewportWidth = Math.Max(1, width);
         viewportHeight = Math.Max(1, height);
-        style.width = viewportWidth;
-        style.height = viewportHeight;
+        style.width = (Fix64)viewportWidth;
+        style.height = (Fix64)viewportHeight;
         _tracks.Clear(); _tracks.AddRange(tracks);
         _markers.Clear(); if (markers is not null) _markers.AddRange(markers);
         DrawContent();
@@ -545,7 +545,7 @@ public sealed class TrackEditorCanvas : VisualElement
         var element = new UiLabel(value);
         Place(element, x, y, width, height);
         element.style.color = color;
-        element.style.fontSize = size;
+        element.style.fontSize = (Fix64)size;
         element.userData = hit;
         AttachCapturedInput(element);
         return element;
@@ -554,10 +554,10 @@ public sealed class TrackEditorCanvas : VisualElement
     private static void Place(VisualElement element, float x, float y, float width, float height)
     {
         element.style.position = Position.Absolute;
-        element.style.left = x;
-        element.style.top = y;
-        element.style.width = Math.Max(1, width);
-        element.style.height = Math.Max(1, height);
+        element.style.left = (Fix64)x;
+        element.style.top = (Fix64)y;
+        element.style.width = Fix64.Max(1, (Fix64)width);
+        element.style.height = Fix64.Max(1, (Fix64)height);
     }
 
     private void AttachCapturedInput(VisualElement element)

@@ -88,10 +88,7 @@ public sealed partial class LineRenderer2D : Renderer2D
         var time = ((Fix64)index + Fix64.Half) / segmentCount;
         var width = Fix64.Max(Fix64.Epsilon, Mathf.Lerp(startWidth, endWidth, time));
         output.Add(new LineSegment2D((from + to) * Fix64.Half,
-            // This is render-only geometry. Avoid the fixed-point atan2 path
-            // (and its several Fix64 divisions) in a hot per-segment loop.
-            // Simulation-facing angles remain deterministic elsewhere.
-            (Fix64)(MathF.Atan2((float)delta.y, (float)delta.x) * (180f / MathF.PI)),
+            Mathf.Atan2(delta.y, delta.x) * Fix64.Rad2Deg,
             new Vector2(length, width), Lerp(startColor, endColor, time)));
     }
 

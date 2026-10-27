@@ -60,7 +60,7 @@ public static partial class UIElementLayoutEngine
         if (fragments is not null) fragments.InUse = true;
         try
         {
-        root.SetStyleViewport(viewportWidth / (float)resolvedScale, viewportHeight / (float)resolvedScale);
+        root.SetStyleViewport((Fix64)viewportWidth / resolvedScale, (Fix64)viewportHeight / resolvedScale);
         root.EnsureStyleSheets();
         root.style.ResolveLengths(root.styleViewportWidth, root.styleViewportHeight,
             root.styleViewportWidth, root.styleViewportHeight, 16);
@@ -117,14 +117,14 @@ public static partial class UIElementLayoutEngine
     {
         if (!element.visible || element.style.display == DisplayStyle.None) return;
         rect = rect with {
-            X = rect.X + (Fix64)element.style.ResolveTranslation(true, (float)(rect.Width / scale)) * scale,
-            Y = rect.Y + (Fix64)element.style.ResolveTranslation(false, (float)(rect.Height / scale)) * scale };
+            X = rect.X + element.style.ResolveTranslation(true, rect.Width / scale, element.styleViewportWidth, element.styleViewportHeight, EffectiveFontSize(element)) * scale,
+            Y = rect.Y + element.style.ResolveTranslation(false, rect.Height / scale, element.styleViewportWidth, element.styleViewportHeight, EffectiveFontSize(element)) * scale };
         output.Add(new UIElementLayout(element, rect));
         scrollAncestors.Add(scrollAncestor);
         if (element is ScrollView scrollElement)
         {
             var index = scrollers.Count;
-            scrollers.Add(new(scrollElement, scrollAncestor, Scale(scrollElement.scrollOffset, scale)));
+            scrollers.Add(new(scrollElement, scrollAncestor, ScaleScroll(scrollElement.scrollOffset, scale)));
             scrollAncestor = index;
         }
         var visibleChildCount = 0;
@@ -147,7 +147,7 @@ public static partial class UIElementLayoutEngine
             Fix64.Max(0, rect.Width - left - right), Fix64.Max(0, rect.Height - top - bottom));
         var horizontal = element.style.flexDirection == FlexDirection.Row;
         var availableMain = horizontal ? content.Width : content.Height;
-        var contentWidth = (float)(content.Width / scale); var contentHeight = (float)(content.Height / scale);
+        var contentWidth = content.Width / scale; var contentHeight = content.Height / scale;
         for (var childIndex = 0; childIndex < children.Count; childIndex++)
             ResolveChildLengths(children[childIndex], contentWidth, contentHeight);
         var spacing = Scale(horizontal ? element.style.columnGap : element.style.rowGap, scale);
@@ -224,7 +224,7 @@ public static partial class UIElementLayoutEngine
                 ? new UIElementRect(cursor, content.Y + crossLeading + crossOffset, main, cross)
                 : new UIElementRect(content.X + crossLeading + crossOffset, cursor, cross, main);
             if (element is ScrollView scroll && scroll.scrollOffset > 0)
-                childRect = childRect with { Y = childRect.Y - Scale(scroll.scrollOffset, scale) };
+                childRect = childRect with { Y = childRect.Y - ScaleScroll(scroll.scrollOffset, scale) };
             Layout(child, childRect, scale, output, scrollers, scrollAncestors, scrollAncestor, measurements, fragments);
             cursor += main + trailingMargin + gap;
         }
@@ -234,10 +234,10 @@ public static partial class UIElementLayoutEngine
             var child = children[childIndex];
             if (!child.visible || child.style.display == DisplayStyle.None ||
                 child.style.position != Position.Absolute) continue;
-            var absoluteLeft = float.IsNaN(child.style.left) ? (Fix64?)null : Scale(child.style.left, scale);
-            var absoluteTop = float.IsNaN(child.style.top) ? (Fix64?)null : Scale(child.style.top, scale);
-            var absoluteRight = float.IsNaN(child.style.right) ? (Fix64?)null : Scale(child.style.right, scale);
-            var absoluteBottom = float.IsNaN(child.style.bottom) ? (Fix64?)null : Scale(child.style.bottom, scale);
+            var absoluteLeft = child.style.left * scale;
+            var absoluteTop = child.style.top * scale;
+            var absoluteRight = child.style.right * scale;
+            var absoluteBottom = child.style.bottom * scale;
             var width = MainSize(child, horizontal: true, scale);
             var height = MainSize(child, horizontal: false, scale);
             if (width <= 0 && absoluteLeft is { } leftValue && absoluteRight is { } rightValue)
@@ -254,7 +254,7 @@ public static partial class UIElementLayoutEngine
             var y = absoluteTop is { } topOffset
                 ? content.Y + topOffset
                 : absoluteBottom is { } bottomOffset ? content.Y + content.Height - bottomOffset - height : content.Y;
-            if (element is ScrollView scroll) y -= Scale(scroll.scrollOffset, scale);
+            if (element is ScrollView scroll) y -= ScaleScroll(scroll.scrollOffset, scale);
             var childRect = new UIElementRect(x, y, width, height);
             var independent = fragments is not null && ReferenceEquals(element, fragments.Root) && scrollAncestor < 0;
             if (independent && fragments!.TryAppend(child, childRect, output, scrollAncestors)) continue;
@@ -330,7 +330,7 @@ public static partial class UIElementLayoutEngine
             var font = EffectiveFontSize(element);
             return horizontal
                 ? UIRenderListBuilder.MeasureTextWidth(htmlText.text, font, element) * scale + Scale(element.style.paddingLeft + element.style.paddingRight, scale)
-                : Scale(font * 1.4f + element.style.paddingTop + element.style.paddingBottom, scale);
+                : Scale(font * 14 / 10 + element.style.paddingTop + element.style.paddingBottom, scale);
         }
         if (horizontal)
         {
@@ -366,22 +366,25 @@ public static partial class UIElementLayoutEngine
         ? DefaultMainSize(element, horizontal: false, scale, measurements)
         : DefaultMainSize(element, horizontal: true, scale, measurements));
 
-    private static Fix64 Scale(float value, Fix64 scale) => float.IsFinite(value) ? (Fix64)value * scale : Fix64.Zero;
+    private static Fix64 Scale(Fix64 value, Fix64 scale) => value * scale;
+
+    // Scrolling controls retain float input compatibility at this boundary.
+    private static Fix64 ScaleScroll(float value, Fix64 scale) => float.IsFinite(value) ? (Fix64)value * scale : Fix64.Zero;
 
     private static Fix64 Constrain(VisualElement element, Fix64 size, bool horizontal, Fix64 scale)
     {
         var minimum = horizontal ? element.style.minWidth : element.style.minHeight;
         var maximum = horizontal ? element.style.maxWidth : element.style.maxHeight;
         size = Fix64.Max(size, Scale(minimum, scale));
-        if (float.IsFinite(maximum)) size = Fix64.Max(Scale(minimum, scale), Fix64.Min(size, Scale(maximum, scale)));
+        if (maximum is { } limit) size = Fix64.Max(Scale(minimum, scale), Fix64.Min(size, Scale(limit, scale)));
         return Fix64.Max(0, size);
     }
 
-    private static void ResolveChildLengths(VisualElement child, float width, float height) =>
+    private static void ResolveChildLengths(VisualElement child, Fix64 width, Fix64 height) =>
         child.style.ResolveLengths(width, height, child.styleViewportWidth, child.styleViewportHeight,
             EffectiveFontSize(child.parent));
 
-    internal static float EffectiveFontSize(VisualElement? element)
+    internal static Fix64 EffectiveFontSize(VisualElement? element)
     {
         for (var current = element; current is not null; current = current.parent)
             if (current.style.fontSize > 0) return current.style.fontSize;

@@ -1,4 +1,6 @@
+using System.Security.Cryptography;
 using System.Text.Json;
+using BEngine.Build;
 using Mono.Cecil;
 
 namespace BEngine.Editor;
@@ -14,6 +16,7 @@ public static class PlayerHostContract
         public string[] Backends { get; set; } = [];
         public bool RuntimeShaderCompilation { get; set; }
         public Dictionary<string, Dictionary<string, TypeContract>> Assemblies { get; set; } = new(StringComparer.Ordinal);
+        public Dictionary<string, string> PrecompiledCodeSha256 { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
     public sealed class TypeContract
@@ -31,6 +34,19 @@ public static class PlayerHostContract
         var document = new Document { Target = context.Target.TargetId,
             Backends = context.GraphicsBackends.Select(static b => b.ToString()).ToArray(),
             RuntimeShaderCompilation = context.Request.RuntimeShaderCompilation };
+        if (context.Target.Platform == BuildTargetPlatform.Web &&
+            context.Request.WebScriptCompilation == WebScriptCompilationMode.AheadOfTime)
+        {
+            // Native code also binds to its original package metadata. A code
+            // update must preserve those dependencies even when they execute IL.
+            foreach (var path in context.WebPrecompiledManagedCodeReferencePaths.Concat(context.WebPrecompiledManagedCodeAssemblyPaths)
+                         .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal))
+            {
+                var name = ReadCodeAssemblyName(path);
+                if (!document.PrecompiledCodeSha256.TryAdd(name, ComputeCodeSha256(path)))
+                    throw new InvalidDataException($"Duplicate Web precompiled code module '{name}'.");
+            }
+        }
         foreach (var path in assemblyPaths.Order(StringComparer.Ordinal))
         {
             using var assembly = AssemblyDefinition.ReadAssembly(path);
@@ -56,7 +72,8 @@ public static class PlayerHostContract
     {
         var document = JsonSerializer.Deserialize<Document>(File.ReadAllText(contractPath)) ??
             throw new InvalidDataException("Empty Host contract.");
-        if (document.Assemblies is null || document.Backends is null || document.Assemblies.Values.Any(static types =>
+        if (document.Assemblies is null || document.Backends is null || document.PrecompiledCodeSha256 is null ||
+            document.Assemblies.Values.Any(static types =>
                 types is null || types.Values.Any(static type => type is null || type.Methods is null || type.MethodNames is null ||
                     type.Fields is null || type.MethodContracts is null || type.FieldContracts is null)))
             throw new InvalidDataException("Malformed Host contract.");
@@ -65,6 +82,7 @@ public static class PlayerHostContract
             document.RuntimeShaderCompilation != context.Request.RuntimeShaderCompilation)
             throw new InvalidDataException("Host contract format, target, backend order or shader policy differs from this content update.");
         var paths = assemblyPaths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        ValidatePrecompiledCode(document.PrecompiledCodeSha256, paths);
         var roots = PlayerHostContractRoots.Build(paths);
         var missing = new List<string>();
         foreach (var assembly in roots.Elements("assembly"))
@@ -125,6 +143,54 @@ public static class PlayerHostContract
             throw new InvalidDataException("Content update requires APIs absent from the selected main Host. " +
                 "Preserve them in link.xml and rebuild the main package before publishing this update:\n" +
                 string.Join("\n", missing.Take(50)));
+    }
+
+    private static void ValidatePrecompiledCode(Dictionary<string, string> recordedHashes, IReadOnlyList<string> paths)
+    {
+        var hashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, hash) in recordedHashes)
+            if (!IsCodeAssemblyName(name) || hash is null || hash.Length != 64 ||
+                !hash.All(static character => Uri.IsHexDigit(character)) || !hashes.TryAdd(name, hash))
+                throw new InvalidDataException("Malformed Host contract Web precompiled code names or SHA-256 hashes.");
+        if (hashes.Count == 0) return;
+
+        // Content partitions may omit built-in modules. Only a module included in this
+        // update must match its native image; unchanged assets and symbols remain valid.
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in paths)
+        {
+            var name = ReadCodeAssemblyName(path);
+            if (!names.Add(name))
+                throw new InvalidDataException($"Duplicate content update code module '{name}'.");
+            if (hashes.TryGetValue(name, out var expected) &&
+                !ComputeCodeSha256(path).Equals(expected, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Content update changes Web precompiled code module '{name}'. " +
+                    "Rebuild the Web main package before publishing this code update. " +
+                    "Asset-only and symbol-only updates can retain the existing main package.");
+        }
+    }
+
+    private static string ReadCodeAssemblyName(string path)
+    {
+        using var assembly = AssemblyDefinition.ReadAssembly(path);
+        var name = assembly.Name.Name;
+        if (!IsCodeAssemblyName(name) ||
+            !name.Equals(Path.GetFileNameWithoutExtension(path), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"Code module filename '{Path.GetFileName(path)}' does not match " +
+                $"its metadata assembly name '{name}'. Web precompiled code requires correctly named modules.");
+        return name;
+    }
+
+    private static bool IsCodeAssemblyName(string? name) => !string.IsNullOrWhiteSpace(name) &&
+        name is not "." and not ".." &&
+        name.Equals(name.Trim(), StringComparison.Ordinal) &&
+        !name.Any(static character => char.IsControl(character) || character is '/' or '\\' or ',' or ':' or
+            '"' or '<' or '>' or '|' or '?' or '*');
+
+    private static string ComputeCodeSha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
     private static string MethodContract(MethodDefinition method) => TypeContractName(method.ReturnType) + " " + method.Name +

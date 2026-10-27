@@ -27,8 +27,8 @@ public static class RenderBatchBuilder2D
             for (var index = 0; index < submissions.Count;)
             {
                 var start = index++;
-                var key = submissions[start].BatchKey;
-                while (index < submissions.Count && submissions[index].BatchKey == key) index++;
+                var key = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(submissions)[start].BatchKey;
+                while (index < submissions.Count && System.Runtime.InteropServices.CollectionsMarshal.AsSpan(submissions)[index].BatchKey == key) index++;
                 if (batchCount == batches.Count) batches.Add(new RenderBatch2D());
                 batches[batchCount++].Reset(submissions, start, index - start);
             }

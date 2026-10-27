@@ -92,7 +92,6 @@ public sealed partial class PhysicsWorld2D
         PhysicsCompilationWarmup.Prepare((Action<ContactState, ContactPhase>)Dispatch);
         PhysicsCompilationWarmup.Prepare((Action<Collider2D, Collider2D, ContactState[], bool, string>)InvokeCollision);
         PhysicsCompilationWarmup.Prepare((Func<Collider2D, Collider2D, ContactKey>)ContactKey.Create);
-        PhysicsCompilationWarmup.Prepare((Comparison<ComponentSortEntry>)CompareComponents);
         // Queries can first occur long after contact simulation has begun.
         // Prepare their measured branch in the same actual world module.
         PhysicsCompilationWarmup.PrepareKnown(typeof(PhysicsWorld2D), nameof(RaycastInWorld),
@@ -118,8 +117,6 @@ public sealed partial class PhysicsWorld2D
             if (method.Name.StartsWith("<PrepareContact>g__Coupling|", StringComparison.Ordinal))
                 RuntimeHelpers.PrepareMethod(method.MethodHandle);
         PhysicsCompilationWarmup.PrepareBuffer<SolverPoint>();
-        PhysicsCompilationWarmup.PrepareBuffer<ComponentSortEntry>();
-        PhysicsCompilationWarmup.PrepareSort<ComponentSortEntry>();
         var dictionary = typeof(Dictionary<ContactKey, ContactState>);
         PhysicsCompilationWarmup.PrepareKnown(dictionary, "FindValue", typeof(ContactKey));
         PhysicsCompilationWarmup.PrepareKnown(dictionary, "Initialize", typeof(int));

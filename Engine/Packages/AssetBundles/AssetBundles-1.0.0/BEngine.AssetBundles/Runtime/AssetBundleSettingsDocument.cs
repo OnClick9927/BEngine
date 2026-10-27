@@ -9,6 +9,7 @@ public sealed class AssetBundleSettingsDocument
     public string Format { get; set; } = "BEngine.AssetBundleSettings";
     public int Version { get; set; } = 1;
     public bool Enabled { get; set; }
+    public AssetBundleLoadMode LoadMode { get; set; }
     public string PackageName { get; set; } = "main";
     public string BuiltInDirectory { get; set; } = "StreamingAssets/AssetBundles";
     public string RemoteBaseUrl { get; set; } = string.Empty;

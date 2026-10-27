@@ -1195,14 +1195,16 @@ public sealed class GpuEditorApplication : IDisposable, IEditorHost
         {
             _tasks.PumpMainThread(TimeSpan.FromMilliseconds(2));
             var delta = Math.Clamp(deltaSeconds, 0, 0.1);
-            if (!_playing) Time.AdvanceFrameUnchecked((Fix64)delta);
+            var elapsed = TimeSpan.FromSeconds(delta);
+            var fixedDelta = Fix64.FromTimeSpan(elapsed);
+            if (!_playing) Time.AdvanceFrameUnchecked(fixedDelta);
             if (Interlocked.Exchange(ref _errorPauseRequested, 0) != 0 && _playing)
                 EditorApplication.isPaused = true;
             using (EditorProfiler.BeginMethodSample(typeof(EditorApplication), nameof(EditorApplication.update),
                        EditorProfilerDomain.Editor))
                 EditorFeatureGuard.Invoke(
                     "EditorApplication.update",
-                    () => EditorApplication.RaiseUpdate(TimeSpan.FromSeconds(delta)));
+                    () => EditorApplication.RaiseUpdate(elapsed));
             CompleteEnterPlayModeTransition();
             CompleteExitPlayModeTransition();
             CompletePlayModeHotReloadTransition();
@@ -1212,14 +1214,14 @@ public sealed class GpuEditorApplication : IDisposable, IEditorHost
                 var runtimeStarted = profiling ? Stopwatch.GetTimestamp() : 0;
                 try
                 {
-                    using var runtimeFrame = SceneRuntime.BeginFrame((Fix64)delta);
+                    using var runtimeFrame = SceneRuntime.BeginFrame(fixedDelta);
                     foreach (var runtime in _runtimes.ToArray())
                     {
                         if (!runtime.IsRunning) continue;
                         using var methodSample = EditorProfiler.BeginMethodSample(runtime.GetType(),
                             "Tick", EditorProfilerDomain.Runtime);
                         EditorFeatureGuard.Invoke(runtime, "SceneRuntime.Tick",
-                            () => runtime.Tick((Fix64)delta));
+                            () => runtime.Tick(fixedDelta));
                     }
                 }
                 finally

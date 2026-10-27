@@ -194,7 +194,8 @@ public sealed partial class AudioSource : MonoBehaviour
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     private void MixVoice(Span<float> output, int outputSampleRate, int outputChannels,
         AudioClip source, Fix64 gain, Fix64 pan, ref Fix64 cursor, bool repeat, ref bool playing,
-        ref AudioVoiceReader? reader, ref bool wasVirtual, bool real = true, int virtualFrames = 0, bool retainSkippedDecoder = false)
+        ref AudioVoiceReader? reader, ref bool wasVirtual, bool real = true, int virtualFrames = 0, bool retainSkippedDecoder = false,
+        bool throwOnFailure = false)
     {
         if (reader is not null && (!reader.IsCurrent || source.isDestroyed)) { reader.Dispose(); reader = null; }
         if (!source.isDestroyed && source.loadState == AudioDataLoadState.Unloaded) source.LoadAudioData();
@@ -212,7 +213,12 @@ public sealed partial class AudioSource : MonoBehaviour
             // voice. Reopening a compressed track here decodes from its start
             // at every short queue saturation. Actual virtual-voice eviction
             // still releases the decoder and its bounded window.
-            if (!retainSkippedDecoder) { reader?.Dispose(); reader = null; }
+            if (!retainSkippedDecoder)
+            {
+                if (reader is not null) AudioPlaybackDiagnostics.Mark(real ? AudioPlaybackDiagnostics.Operation.MutedEvict : AudioPlaybackDiagnostics.Operation.VirtualEvict,
+                    source.name, Mathf.FloorToInt(cursor), -1);
+                reader?.Dispose(); reader = null;
+            }
             wasVirtual = true;
             var virtualStep = (Fix64)source.frequency / outputSampleRate * Fix64.Clamp(pitch, MinimumPitch, 3);
             cursor += virtualStep * (virtualFrames > 0 ? virtualFrames : output.Length / outputChannels);
@@ -223,7 +229,12 @@ public sealed partial class AudioSource : MonoBehaviour
         }
         try
         {
-        if (reader is null || !reader.IsCurrent) { reader?.Dispose(); reader = new AudioVoiceReader(source, wasVirtual); wasVirtual = false; }
+        if (reader is null || !reader.IsCurrent)
+        {
+            using var measurement = AudioPlaybackDiagnostics.Begin(wasVirtual ? AudioPlaybackDiagnostics.Operation.VoiceResume : AudioPlaybackDiagnostics.Operation.VoiceOpen,
+                source.name, -1, Mathf.FloorToInt(cursor));
+            reader?.Dispose(); reader = new AudioVoiceReader(source, wasVirtual); wasVirtual = false;
+        }
         else if (wasVirtual) { reader.ResumeAfterSkip(); wasVirtual = false; }
         var frames = output.Length / outputChannels;
         using var loopBudget = LoopExecutionGuard.AllowIterations(frames);
@@ -261,7 +272,12 @@ public sealed partial class AudioSource : MonoBehaviour
         if (repeat) cursor %= source.samples;
         else if (cursor >= source.samples) { cursor = source.samples; playing = false; }
         }
-        catch (Exception error) { playing = false; Debug.LogError($"Audio playback failed for '{source.name}': {error.Message}"); }
+        catch (Exception error)
+        {
+            playing = false;
+            if (throwOnFailure) throw;
+            Debug.LogError($"Audio playback failed for '{source.name}': {error.Message}");
+        }
         finally { if (!playing) { reader?.Dispose(); reader = null; } }
     }
 

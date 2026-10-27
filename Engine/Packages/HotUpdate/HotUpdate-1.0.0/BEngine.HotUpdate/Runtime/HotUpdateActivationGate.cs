@@ -23,6 +23,7 @@ public sealed class HotUpdateActivationGate
         BCancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(release);
+        using var loading = FrameWorkBudget.EnterLoading(cancellationToken);
         if (release.ContractVersion != HotUpdateContract.CurrentVersion)
             throw new InvalidDataException(
                 $"HotUpdate release contract {release.ContractVersion} is incompatible with host contract " +
@@ -127,8 +128,10 @@ public sealed class PreparedHotUpdateDomain
         BCancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(hostServices);
+        using var loading = FrameWorkBudget.EnterLoading(cancellationToken);
         if (_state != 0)
             throw new InvalidOperationException("The prepared HotUpdate domain was already activated or disposed.");
+        cancellationToken.ThrowIfCancellationRequested();
         _state = 1;
         var services = new HotUpdateServiceRegistry();
         var modules = _modules;
@@ -144,14 +147,17 @@ public sealed class PreparedHotUpdateDomain
             _typePreference = RuntimeTypeCache.PreferAssemblies(_ownedAssemblies);
             while (configured < modules.Length)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var index = configured++;
                 await modules[index].ConfigureAsync(context, cancellationToken);
             }
             while (started < modules.Length)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var index = started++;
                 await modules[index].StartAsync(cancellationToken);
             }
+            cancellationToken.ThrowIfCancellationRequested();
             _state = 2;
             _modules = [];
             _assemblies = [];

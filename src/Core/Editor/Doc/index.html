@@ -116,6 +116,7 @@
         <h3>统一 BAsset 导入链路</h3>
         <p>Scene、Texture、Font、Shader、Material、TextureAtlas 与 ScriptableObject 资产统一继承 <code>BAsset</code>，不存在并行的资产基类层级。Sprite 是 TextureImporter 从 Texture 创建的 <code>BObject</code> SubAsset，以主 Texture 的 GUID 与非零 localIdentifier 标识。</p>
         <p>编辑器读取流程为 <code>Source -&gt; AssetDatabase -&gt; AssetImporter -&gt; Artifact -&gt; BAsset</code>。AssetDatabase 管理工程路径、GUID、Source/Artifact 地址、哈希、SubAsset 身份和 BAsset 缓存；Assets 面板根据这些记录构建，不直接把磁盘目录当成资源模型。内部泛型 <code>Document&lt;TAsset&gt;</code> 只负责可序列化 BAsset 与磁盘文档的转换，不构成新的资产类型。运行时从 AssetBundle 读取 BAsset 并按需创建 GPU 对象，不能保存资源。</p>
+        <p>普通 <code>DefaultImporter</code> 的 <code>YamlAsset</code> 配置可在 <code>.meta/settings</code> 设置 <code>runtimeDataFormat: binary</code>，仅在构建时转为紧凑二进制，地址与 YAML 编辑源保持一致。运行时用 <code>YamlUtility.Deserialize&lt;T&gt;(Resources.Load&lt;byte[]&gt;(address)!)</code>，兼容原 YAML。支持公开可写的数据成员、标量、数组、List、字符串键 Dictionary 和 Fix64；最大 64 MiB、64 层。Anchor、Alias、显式 Tag、Merge Key 和非标量 Map Key 会明确导致构建失败，应继续使用 YAML；Scene、Prefab 和 BAsset 文档不使用此选项。</p>
         <div class="note">压缩导入生成带校验的 BTEX 产物。Vulkan/OpenGL 支持时直接上传块数据，否则解压全部 mip 为 RGBA8；Player 构建应用目标平台覆盖。完整范围见 <code>TextureImport.md</code>。</div>
       </section>
 

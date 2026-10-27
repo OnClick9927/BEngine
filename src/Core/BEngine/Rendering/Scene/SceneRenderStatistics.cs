@@ -13,6 +13,8 @@ public readonly record struct SceneRenderStatistics(
     int TargetHeight,
     bool HasCompleteDrawStatistics)
 {
+    /// <summary>Opt-in CPU phase samples; null during ordinary play. Inclusive samples may overlap.</summary>
+    public SceneRenderDiagnosticSnapshot? RenderBreakdown { get; init; }
     public double CollectMilliseconds { get; init; }
     public double CoreCollectMilliseconds { get; init; }
     public double ExtensionCollectMilliseconds { get; init; }

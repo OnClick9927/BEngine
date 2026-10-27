@@ -4,12 +4,12 @@ public sealed partial class Style
 {
     private readonly Dictionary<string, string> _lengths = new(StringComparer.Ordinal);
     private bool _resolvingLengths;
-    private float _rowGap, _columnGap, _translateX, _translateY;
+    private Fix64 _rowGap, _columnGap, _translateX, _translateY;
     private string _textAlign = "";
-    public float rowGap { get => _rowGap; set => Set(ref _rowGap, value); }
-    public float columnGap { get => _columnGap; set => Set(ref _columnGap, value); }
-    public float translateX { get => _translateX; set => Set(ref _translateX, value); }
-    public float translateY { get => _translateY; set => Set(ref _translateY, value); }
+    public Fix64 rowGap { get => _rowGap; set => Set(ref _rowGap, value); }
+    public Fix64 columnGap { get => _columnGap; set => Set(ref _columnGap, value); }
+    public Fix64 translateX { get => _translateX; set => Set(ref _translateX, value); }
+    public Fix64 translateY { get => _translateY; set => Set(ref _translateY, value); }
     public string textAlign { get => _textAlign; set => Set(ref _textAlign, value); }
     internal IReadOnlyDictionary<string, string> lengthExpressions => _lengths;
     internal bool hasContextDependentLengths
@@ -24,7 +24,13 @@ public sealed partial class Style
     internal Dictionary<string, string> ExportCssDeclarations()
     {
         var result = new Dictionary<string, string>();
-        string Number(float value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture) + "px";
+        string Number(Fix64 value) => value.ToString(null, System.Globalization.CultureInfo.InvariantCulture) + "px";
+        if (IsInline(nameof(left)) && left is null) result["left"] = "auto";
+        if (IsInline(nameof(top)) && top is null) result["top"] = "auto";
+        if (IsInline(nameof(right)) && right is null) result["right"] = "auto";
+        if (IsInline(nameof(bottom)) && bottom is null) result["bottom"] = "auto";
+        if (IsInline(nameof(maxWidth)) && maxWidth is null) result["max-width"] = "none";
+        if (IsInline(nameof(maxHeight)) && maxHeight is null) result["max-height"] = "none";
         if (IsInline(nameof(rowGap))) result["row-gap"] = Number(rowGap);
         if (IsInline(nameof(columnGap))) result["column-gap"] = Number(columnGap);
         if (IsInline(nameof(textAlign))) result["text-align"] = textAlign;
@@ -40,17 +46,11 @@ public sealed partial class Style
         return result;
     }
 
-    internal void SetLength(string property, string expression, Action<float> assign, float fallback = 0)
+    internal void SetLength(string property, string expression, Fix64? fallback = null)
     {
         if (_applyingStyleSheet && _inlineProperties.Contains(property)) return;
-        assign(CssLength.Resolve(expression, 0, 0, 0, 16, fallback));
-        if (expression is not ("auto" or "none")) _lengths[property] = expression;
-    }
-
-    internal void SetLength(string property, string expression, float fallback = 0)
-    {
-        if (_applyingStyleSheet && _inlineProperties.Contains(property)) return;
-        var value = CssLength.Resolve(expression, 0, 0, 0, 16, fallback);
+        var hasValue = CssLength.TryResolve(expression, 0, 0, 0, 16, out var resolved);
+        var value = hasValue ? resolved : fallback ?? Fix64.Zero;
         // Use the normal setters: callbacks may reenter stylesheet application
         // or throw, and storing the expression must still happen afterwards.
         switch (property)
@@ -59,16 +59,16 @@ public sealed partial class Style
             case nameof(columnGap): columnGap = value; break;
             case nameof(translateX): translateX = value; break;
             case nameof(translateY): translateY = value; break;
-            case nameof(left): left = value; break;
-            case nameof(top): top = value; break;
-            case nameof(right): right = value; break;
-            case nameof(bottom): bottom = value; break;
+            case nameof(left): left = hasValue ? value : fallback; break;
+            case nameof(top): top = hasValue ? value : fallback; break;
+            case nameof(right): right = hasValue ? value : fallback; break;
+            case nameof(bottom): bottom = hasValue ? value : fallback; break;
             case nameof(width): width = value; break;
             case nameof(height): height = value; break;
             case nameof(minWidth): minWidth = value; break;
             case nameof(minHeight): minHeight = value; break;
-            case nameof(maxWidth): maxWidth = value; break;
-            case nameof(maxHeight): maxHeight = value; break;
+            case nameof(maxWidth): maxWidth = hasValue ? value : fallback; break;
+            case nameof(maxHeight): maxHeight = hasValue ? value : fallback; break;
             case nameof(fontSize): fontSize = value; break;
             case nameof(marginLeft): marginLeft = value; break;
             case nameof(marginTop): marginTop = value; break;
@@ -80,20 +80,26 @@ public sealed partial class Style
             case nameof(paddingBottom): paddingBottom = value; break;
             default: throw new ArgumentOutOfRangeException(nameof(property));
         }
-        if (expression is not ("auto" or "none")) _lengths[property] = expression;
+        if (hasValue) _lengths[property] = expression;
     }
 
-    internal void ResolveLengths(float parentWidth, float parentHeight, float vw, float vh, float font)
+    internal void ResolveLengths(Fix64 parentWidth, Fix64 parentHeight, Fix64 vw, Fix64 vh, Fix64 font)
     {
         _resolvingLengths = true;
         try
         {
+            // font-size is relative to the inherited font; other em lengths use
+            // this element's resolved font, independent of declaration order.
+            if (_lengths.TryGetValue(nameof(fontSize), out var fontExpression) &&
+                CssLength.TryResolve(fontExpression, font, vw, vh, font, out var resolvedFont))
+                _fontSize = resolvedFont;
+            var effectiveFont = _fontSize > 0 ? _fontSize : font;
             foreach (var (property, expression) in _lengths)
             {
-                if (property is nameof(translateX) or nameof(translateY)) continue;
+                if (property is nameof(translateX) or nameof(translateY) or nameof(fontSize)) continue;
                 var vertical = property is nameof(height) or nameof(minHeight) or nameof(maxHeight) or
                     nameof(top) or nameof(bottom) or nameof(rowGap);
-                var value = CssLength.Resolve(expression, vertical ? parentHeight : parentWidth, vw, vh, font);
+                if (!CssLength.TryResolve(expression, vertical ? parentHeight : parentWidth, vw, vh, effectiveFont, out var value)) continue;
                 switch (property)
                 {
                     case nameof(width): _width = value; break;
@@ -106,7 +112,6 @@ public sealed partial class Style
                     case nameof(top): _top = value; break;
                     case nameof(right): _right = value; break;
                     case nameof(bottom): _bottom = value; break;
-                    case nameof(fontSize): _fontSize = CssLength.Resolve(expression, font, vw, vh, font); break;
                     case nameof(marginLeft): _marginLeft = value; break;
                     case nameof(marginTop): _marginTop = value; break;
                     case nameof(marginRight): _marginRight = value; break;
@@ -123,9 +128,9 @@ public sealed partial class Style
         finally { _resolvingLengths = false; }
     }
 
-    internal float ResolveTranslation(bool horizontal, float size) =>
+    internal Fix64 ResolveTranslation(bool horizontal, Fix64 size, Fix64 vw, Fix64 vh, Fix64 font) =>
         _lengths.TryGetValue(horizontal ? nameof(translateX) : nameof(translateY), out var expression)
-            ? CssLength.Resolve(expression, size, 0, 0, 16)
+            ? CssLength.Resolve(expression, size, vw, vh, font)
             : horizontal ? _translateX : _translateY;
 
     private void CopyCssState(Style source)

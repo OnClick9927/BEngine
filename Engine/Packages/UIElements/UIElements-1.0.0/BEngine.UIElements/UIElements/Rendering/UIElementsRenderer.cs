@@ -29,6 +29,7 @@ public sealed partial class UIElementsRenderer : IDisposable
     private readonly GraphicsMeshUploadCache _meshUploads;
     private GraphicsMeshUploadCache? _textureUploads;
     private readonly List<RenderBatch> _batches = [];
+    private readonly ScreenSpaceBatchPlanner _batchPlanner = new();
     private readonly Stack<RenderBatch> _batchPool = [];
     // Keep the old worst-case 16 MiB total vertex retention, but allow one
     // dense glyph batch to use more of it instead of rebuilding it every frame.
@@ -92,6 +93,7 @@ public sealed partial class UIElementsRenderer : IDisposable
         _textResourceResolver = _resourceResolver as ITextRasterizer ??
                                 UIElementsRuntimeServices.TextResourceResolver;
         _ownsDevice = ownsDevice;
+        _sdfCommandGeometry = new(ReferenceEqualityComparer.Instance, ReleaseSdfGeometry);
         var (vertexShader, fragmentShader) = ResolveShaderSources(device, textured: false);
         _shader = device.CreateProgram(new GraphicsShaderProgramDescription(
             "BEngine.UIElements",
@@ -103,6 +105,7 @@ public sealed partial class UIElementsRenderer : IDisposable
             VertexLayout,
             usage: GraphicsBufferUsage.Dynamic));
         _meshUploads = new GraphicsMeshUploadCache(_mesh);
+        CaptureWebSolidSources(new(vertexShader, fragmentShader));
     }
 
     public void Render(Scene scene, int width, int height)
@@ -156,14 +159,19 @@ public sealed partial class UIElementsRenderer : IDisposable
 
     private void RenderCore(CommandCursor commands, int width, int height, GraphicsRect? viewport)
     {
+        using var diagnosticRender = SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiRender);
         width = Math.Max(1, width);
         height = Math.Max(1, height);
         TrimTextureCache();
-        var build = BuildBatches(commands, width, height);
+        BatchBuildResult build;
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiBuildBatches))
+        { build = BuildBatches(commands, width, height); }
+        TrimSdfGeometry();
         if (build.Batches.Count == 0)
         {
             LastStatistics = new UIRenderStatistics(
-                build.CommandCount, 0, 0, 0, build.UnresolvedImages);
+                build.CommandCount, 0, 0, 0, build.UnresolvedImages)
+                { TextGeometryCacheHits = _textGeometryCacheHits, TextGeometryRebuiltGlyphs = _textGeometryRebuiltGlyphs };
             return;
         }
 
@@ -172,15 +180,38 @@ public sealed partial class UIElementsRenderer : IDisposable
         _device.SetDepthState(GraphicsDepthState.Disabled);
         _device.SetBlendMode(GraphicsBlendMode.AlphaBlend);
         _device.SetRasterizerState(GraphicsRasterizerState.Default);
-        UploadFrameGeometry(build.Batches);
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiWebSdfClip))
+        { PrepareWebClipGeometry(build.Batches, width, height, targetViewport); }
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiWebSolidClip))
+        { PrepareWebSolidClipGeometry(build.Batches, width, height, targetViewport); }
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiUpload))
+        {
+            UploadFrameGeometry(build.Batches);
+            UploadWebClipGeometry();
+            UploadWebSolidClipGeometry();
+        }
         IGraphicsProgram? activeProgram = null;
         var drawCalls = 0;
         var opaqueSolidDraws = 0;
         var vertexCount = 0;
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiDraw))
+        {
         try
         {
-            foreach (var batch in build.Batches)
+            for (var batchIndex = 0; batchIndex < build.Batches.Count; batchIndex++)
             {
+                var batch = build.Batches[batchIndex];
+                if (TryDrawWebSolidClipRun(build.Batches, ref batchIndex, width, height, ref activeProgram, out var solidClippedVertices))
+                {
+                    vertexCount += solidClippedVertices; drawCalls++; opaqueSolidDraws++;
+                    continue;
+                }
+                if (TryDrawWebClipRun(build.Batches, ref batchIndex, width, height, ref activeProgram, out var clippedVertices))
+                {
+                    vertexCount += clippedVertices; drawCalls++;
+                    if (batch.Opaque) opaqueSolidDraws++;
+                    continue;
+                }
                 _device.SetBlendMode(batch.Opaque ? GraphicsBlendMode.Disabled : GraphicsBlendMode.AlphaBlend);
                 _device.SetScissor(ToGraphicsRect(batch.ClipRect,
                     width, height, targetViewport.Width, targetViewport.Height));
@@ -219,12 +250,14 @@ public sealed partial class UIElementsRenderer : IDisposable
             _device.SetScissor(null);
             _device.SetDepthState(GraphicsDepthState.Default);
         }
+        }
         LastStatistics = new UIRenderStatistics(
             build.CommandCount,
             build.Batches.Count,
             drawCalls,
             vertexCount,
-            build.UnresolvedImages) { OpaqueSolidDrawCalls = opaqueSolidDraws };
+            build.UnresolvedImages) { OpaqueSolidDrawCalls = opaqueSolidDraws,
+                TextGeometryCacheHits = _textGeometryCacheHits, TextGeometryRebuiltGlyphs = _textGeometryRebuiltGlyphs };
     }
 
     public void Dispose()
@@ -232,11 +265,14 @@ public sealed partial class UIElementsRenderer : IDisposable
         if (_disposed) return;
         _textRasterProbe?.Report();
         _textures.Clear(); _textTextures.Clear(); _advancedTextures.Clear(); _sdfLayouts.Clear();
+        ClearSdfGeometry();
         _textureMesh?.Dispose();
         _textureShader?.Dispose();
         _sdfShader?.Dispose();
         _meshUploads.Dispose(); _textureUploads?.Dispose();
-        _batches.Clear(); _batchPool.Clear(); _pooledVertexCapacity = 0; _renderLists.Clear(); _documents.Clear();
+        DisposeWebClip();
+        DisposeWebSolidClip();
+        _batches.Clear(); _batchPlanner.Reset(); _batchPool.Clear(); _pooledVertexCapacity = 0; _renderLists.Clear(); _documents.Clear();
         _solidVertices.Clear(); _texturedVertices.Clear();
         _mesh.Dispose();
         _shader.Dispose();
@@ -258,6 +294,7 @@ public sealed partial class UIElementsRenderer : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _textures.Clear(); _textTextures.Clear(); _sdfLayouts.Clear();
+        ClearSdfGeometry();
     }
 
     private void TrimTextureCache()
@@ -269,6 +306,7 @@ public sealed partial class UIElementsRenderer : IDisposable
 
     private BatchBuildResult BuildBatches(CommandCursor commands, int width, int height)
     {
+        _batchPlanner.Reset();
         foreach (var previous in _batches)
         {
             previous.ClearReferences();
@@ -283,6 +321,7 @@ public sealed partial class UIElementsRenderer : IDisposable
         var batches = _batches; batches.Clear();
         var commandCount = 0;
         var unresolvedImages = 0;
+        _textGeometryCacheHits = _textGeometryRebuiltGlyphs = 0;
         UIRenderBudgetDiagnostics.culledCommands = 0;
         UIRenderBudgetDiagnostics.translucentRectangleCoverage = 0;
         try
@@ -445,16 +484,30 @@ public sealed partial class UIElementsRenderer : IDisposable
     {
         var solidVertices = _solidVertices; solidVertices.Clear();
         var texturedVertices = _texturedVertices; texturedVertices.Clear();
+        var batchIndex = 0;
+        var hasTexturedBatches = false;
         foreach (var batch in batches)
         {
+            var clipIndex = batchIndex++;
+            if (batch.Texture is not null)
+            {
+                hasTexturedBatches = true;
+                // This batch is drawn exclusively from the clip mesh below.
+                // Preserve the old stream only for batches using its fallback.
+                if (clipIndex < _webClipRanges.Count && _webClipRanges[clipIndex].Valid) continue;
+            }
+            if (clipIndex < _webSolidClipRanges.Count && _webSolidClipRanges[clipIndex].Valid) continue;
             var destination = batch.Texture is null ? solidVertices : texturedVertices;
             var stride = batch.Texture is null ? VertexLayout.StrideBytes : TextureVertexLayout.StrideBytes;
             batch.FirstVertex = destination.Count * sizeof(float) / stride;
             destination.AddRange(batch.Vertices);
         }
         if (solidVertices.Count > 0) _meshUploads.Update(CollectionsMarshal.AsSpan(solidVertices));
-        if (texturedVertices.Count <= 0) return;
+        if (!hasTexturedBatches) return;
+        // Keep texture-pipeline capability/shader validation and ownership even
+        // when every textured batch uses the clip mesh for this frame.
         EnsureTexturePipeline();
+        if (texturedVertices.Count <= 0) return;
         _textureUploads ??= new GraphicsMeshUploadCache(_textureMesh!);
         _textureUploads.Update(CollectionsMarshal.AsSpan(texturedVertices));
     }
@@ -467,43 +520,23 @@ public sealed partial class UIElementsRenderer : IDisposable
         UIElementRect clipRect,
         IGraphicsTexture2D? texture, UIElementRect bounds, float? sdfThreshold = null, bool opaque = false)
     {
-        // Moving a command into an earlier batch is safe only when it cannot
-        // touch any intervening geometry. Bound the search to keep CPU cost
-        // constant, and conservatively include a pixel of rasterization fringe.
-        bounds = ClipBounds(bounds, clipRect);
-        for (int index = batches.Count - 1, limit = EnableDisjointBatching ? Math.Max(0, batches.Count - 12) : batches.Count - 1;
-             index >= limit && index >= 0; index--)
+        // Keep the whole numeric search in stable Core, including cache hits.
+        // The planner retains only the twelve batches this search may revisit.
+        var index = _batchPlanner.FindOrAdd(
+            new ScreenSpaceBatchRect(clipRect.X, clipRect.Y, clipRect.Width, clipRect.Height), texture,
+            new ScreenSpaceBatchRect(bounds.X, bounds.Y, bounds.Width, bounds.Height),
+            sdfThreshold, EnableDisjointBatching);
+        if (index < batches.Count)
         {
             var candidate = batches[index];
-            if (candidate.ClipRect == clipRect && ReferenceEquals(candidate.Texture, texture) &&
-                candidate.SdfThreshold == sdfThreshold)
-            {
-                // Preserve existing batching exactly, including mixed-alpha
-                // batches. Never add draws/pipeline switches to obtain this fast path.
-                candidate.IncludeOpacity(opaque);
-                candidate.IncludeBounds(bounds);
-                return candidate;
-            }
-            if (Intersects(candidate.Bounds, bounds)) break;
+            candidate.IncludeOpacity(opaque);
+            return candidate;
         }
         var batch = _batchPool.TryPop(out var reused) ? reused : new RenderBatch();
         if (reused is not null) _pooledVertexCapacity -= reused.Vertices.Capacity;
-        batch.Reset(clipRect, texture, sdfThreshold, opaque); batch.IncludeBounds(bounds); batches.Add(batch);
+        batch.Reset(clipRect, texture, sdfThreshold, opaque); batches.Add(batch);
         return batch;
     }
-
-    private static UIElementRect ClipBounds(UIElementRect bounds, UIElementRect clip)
-    {
-        var left = Fix64.Max(bounds.X - 1, clip.X - 1);
-        var top = Fix64.Max(bounds.Y - 1, clip.Y - 1);
-        var right = Fix64.Min(bounds.X + bounds.Width + 1, clip.X + clip.Width + 1);
-        var bottom = Fix64.Min(bounds.Y + bounds.Height + 1, clip.Y + clip.Height + 1);
-        return new(left, top, Fix64.Max(0, right - left), Fix64.Max(0, bottom - top));
-    }
-
-    private static bool Intersects(UIElementRect a, UIElementRect b) =>
-        a.X < b.X + b.Width && b.X < a.X + a.Width &&
-        a.Y < b.Y + b.Height && b.Y < a.Y + a.Height;
 
     private static void AddText(
         List<float> output,
@@ -577,12 +610,7 @@ public sealed partial class UIElementsRenderer : IDisposable
         var y0 = (float)rect.Y;
         var y1 = (float)(rect.Y + rect.Height);
         var rgba = new NVector4(color.R / 255f, color.G / 255f, color.B / 255f, color.A / 255f);
-        AddVertex(output, x0, y0, rgba);
-        AddVertex(output, x1, y0, rgba);
-        AddVertex(output, x1, y1, rgba);
-        AddVertex(output, x0, y0, rgba);
-        AddVertex(output, x1, y1, rgba);
-        AddVertex(output, x0, y1, rgba);
+        ScreenSpaceGeometryWriter.AppendSolidQuad(output, x0, y0, x1, y1, rgba);
     }
 
     private static void AddTexturedQuad(List<float> output, UIElementRect rect, UIColor color)
@@ -592,12 +620,7 @@ public sealed partial class UIElementsRenderer : IDisposable
         var y0 = (float)rect.Y;
         var y1 = (float)(rect.Y + rect.Height);
         var rgba = new NVector4(color.R / 255f, color.G / 255f, color.B / 255f, color.A / 255f);
-        AddTexturedVertex(output, x0, y0, rgba, 0, 0);
-        AddTexturedVertex(output, x1, y0, rgba, 1, 0);
-        AddTexturedVertex(output, x1, y1, rgba, 1, 1);
-        AddTexturedVertex(output, x0, y0, rgba, 0, 0);
-        AddTexturedVertex(output, x1, y1, rgba, 1, 1);
-        AddTexturedVertex(output, x0, y1, rgba, 0, 1);
+        ScreenSpaceGeometryWriter.AppendTexturedQuad(output, x0, y0, x1, y1, rgba, 0, 0, 1, 1);
     }
 
     private static void AddMissingImage(List<float> output, UIElementRect rect)
@@ -614,29 +637,6 @@ public sealed partial class UIElementsRenderer : IDisposable
             rect.Y + halfHeight,
             rect.Width - halfWidth,
             rect.Height - halfHeight), dark);
-    }
-
-    private static void AddVertex(List<float> output, float x, float y, NVector4 color)
-    {
-        output.Add(x);
-        output.Add(y);
-        output.Add(color.X);
-        output.Add(color.Y);
-        output.Add(color.Z);
-        output.Add(color.W);
-    }
-
-    private static void AddTexturedVertex(
-        List<float> output,
-        float x,
-        float y,
-        NVector4 color,
-        float u,
-        float v)
-    {
-        AddVertex(output, x, y, color);
-        output.Add(u);
-        output.Add(v);
     }
 
     private bool TryResolveTexture(string source, out IGraphicsTexture2D? texture)
@@ -753,22 +753,13 @@ public sealed partial class UIElementsRenderer : IDisposable
         public IGraphicsTexture2D? Texture { get; private set; }
         public float? SdfThreshold { get; private set; }
         public bool Opaque { get; private set; }
-        public UIElementRect Bounds { get; private set; }
-        private bool _hasBounds;
         public List<float> Vertices { get; } = [];
         public int FirstVertex { get; set; }
         public int VertexCount => Vertices.Count * sizeof(float) /
                                   (Texture is null ? VertexLayout.StrideBytes : TextureVertexLayout.StrideBytes);
         public void Reset(UIElementRect clip, IGraphicsTexture2D? texture, float? threshold, bool opaque)
-        { ClipRect = clip; Texture = texture; SdfThreshold = threshold; Opaque = opaque; FirstVertex = 0; Vertices.Clear(); _hasBounds = false; }
+        { ClipRect = clip; Texture = texture; SdfThreshold = threshold; Opaque = opaque; FirstVertex = 0; Vertices.Clear(); }
         public void IncludeOpacity(bool opaque) => Opaque &= opaque;
-        public void IncludeBounds(UIElementRect bounds)
-        {
-            if (!_hasBounds) { Bounds = bounds; _hasBounds = true; return; }
-            var left = Fix64.Min(Bounds.X, bounds.X); var top = Fix64.Min(Bounds.Y, bounds.Y);
-            Bounds = new(left, top, Fix64.Max(Bounds.X + Bounds.Width, bounds.X + bounds.Width) - left,
-                Fix64.Max(Bounds.Y + Bounds.Height, bounds.Y + bounds.Height) - top);
-        }
         public void ClearReferences() { Texture = null; Vertices.Clear(); }
     }
 

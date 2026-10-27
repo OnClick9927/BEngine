@@ -10,7 +10,7 @@ public static partial class UIElementLayoutEngine
         {
             internal bool Stable;
             internal int Axes;
-            internal float Font;
+            internal Fix64 Font;
             internal Fix64 Width, Height;
         }
         private readonly Dictionary<VisualElement, Entry> _entries = new(ReferenceEqualityComparer.Instance);
@@ -28,12 +28,12 @@ public static partial class UIElementLayoutEngine
                 }
             _entries[element] = new() { Stable = stable }; return stable;
         }
-        internal bool TryGet(VisualElement element, bool horizontal, float font, out Fix64 size)
+        internal bool TryGet(VisualElement element, bool horizontal, Fix64 font, out Fix64 size)
         {
             var entry = _entries[element]; size = horizontal ? entry.Width : entry.Height;
             return entry.Font == font && (entry.Axes & (horizontal ? 1 : 2)) != 0;
         }
-        internal void Store(VisualElement element, bool horizontal, float font, Fix64 size)
+        internal void Store(VisualElement element, bool horizontal, Fix64 font, Fix64 size)
         {
             var entry = _entries[element];
             if (entry.Font != font) entry.Axes = 0;

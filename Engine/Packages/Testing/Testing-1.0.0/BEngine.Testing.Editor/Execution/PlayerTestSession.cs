@@ -58,6 +58,7 @@ public static class PlayerTestSession
             SelfContained = settings.SelfContained || (targetId ?? settings.TargetId).StartsWith("android", StringComparison.OrdinalIgnoreCase),
             WindowsGarbageCollection = settings.WindowsGarbageCollection,
             WindowsGcHeapCount = settings.WindowsGcHeapCount,
+            WebScriptCompilation = settings.WebScriptCompilation,
             IncludeDebugSymbols = settings.IncludeDebugSymbols,
             ReplaceExisting = false,
             BuildVersion = settings.BuildVersion,

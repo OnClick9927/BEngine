@@ -64,8 +64,8 @@ public static class Time
     {
         get
         {
-            return (Fix64)RuntimeServiceAccess.PlatformService
-                .GetElapsedTime(_realtimeStartTimestamp).TotalSeconds;
+            return Fix64.FromTimeSpan(RuntimeServiceAccess.PlatformService
+                .GetElapsedTime(_realtimeStartTimestamp));
         }
     }
     public static Fix64 timeScale

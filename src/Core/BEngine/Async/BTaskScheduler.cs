@@ -215,15 +215,23 @@ public sealed class BTaskScheduler
             }
         }
 
-        var callbacksToRun = Math.Min(_callbacks.Count, _maximumCallbacksPerTick);
+        // Loading may advance newly queued completion continuations in this
+        // tick, avoiding a frame of latency for each layer of an async loader.
+        // Explicit Yield/Delay still complete only at the next tick's delay
+        // phase. The callback count and shared elapsed-time guards still apply.
+        var originalCallbacks = Math.Min(_callbacks.Count, _maximumCallbacksPerTick);
+        var callbacksToRun = FrameWorkBudget.isLoading ? _maximumCallbacksPerTick : originalCallbacks;
         var callbackStart = System.Diagnostics.Stopwatch.GetTimestamp();
 
         var processed = 0;
         for (; processed < callbacksToRun && _callbacks.Count > 0; processed++)
         {
+            // The final scope can end inside a callback. Finish callbacks from
+            // the original snapshot, but defer any loading-only extension.
+            if (!FrameWorkBudget.isLoading && processed >= originalCallbacks) break;
             var callbackBudget = _callbackBudgetMilliseconds;
             if (FrameWorkBudget.IsActive && callbackBudget > 0)
-                callbackBudget = Math.Min(callbackBudget, FrameWorkBudget.budgetMilliseconds);
+                callbackBudget = FrameWorkBudget.CooperativeBudget(callbackBudget);
             if (processed > 0 && callbackBudget > 0 &&
                 System.Diagnostics.Stopwatch.GetElapsedTime(callbackStart).TotalMilliseconds >= callbackBudget) break;
             if (processed > 0 && FrameWorkBudget.remainingMilliseconds <= 0) break;

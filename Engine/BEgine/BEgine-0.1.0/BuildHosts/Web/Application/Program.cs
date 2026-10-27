@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Stopwatch = System.Diagnostics.Stopwatch;
 using System.Linq;
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
@@ -8,6 +9,7 @@ using System.Text.Json.Serialization;
 using BEngine;
 using BEngine.Platform;
 using BEngine.Player;
+using BEngine.Rendering;
 using BEngine.Rendering.Rhi;
 
 namespace BEngine.Player.Hosts.Web;
@@ -28,6 +30,8 @@ public static partial class Program
     private static long _wheelEvents;
     private static long _gamepadReports;
     private static long _logEntries;
+    private static double _updateMilliseconds, _renderMilliseconds;
+    private static WebPhaseMemoryStatistics _updateMemory, _renderMemory;
     private static string _lastLog = string.Empty;
     private static string _lastError = string.Empty;
     private static readonly Dictionary<int, Touch> Touches = [];
@@ -79,8 +83,22 @@ public static partial class Program
             : 0;
         _hasPreviousTimestamp = true;
         _previousTimestampMilliseconds = timestampMilliseconds;
+        var measure = SceneRuntimeDiagnostics.Enabled;
+        var startedMemory = measure ? WebPhaseMemorySnapshot.Capture() : default;
+        var started = measure ? Stopwatch.GetTimestamp() : 0;
         session.Tick(TimeSpan.FromMilliseconds(elapsedMilliseconds));
+        var updated = measure ? Stopwatch.GetTimestamp() : 0;
+        var updatedMemory = measure ? WebPhaseMemorySnapshot.Capture() : default;
         session.Render(_width, _height);
+        if (measure)
+        {
+            var rendered = Stopwatch.GetTimestamp();
+            var renderedMemory = WebPhaseMemorySnapshot.Capture();
+            _updateMilliseconds = Stopwatch.GetElapsedTime(started, updated).TotalMilliseconds;
+            _renderMilliseconds = Stopwatch.GetElapsedTime(updated, rendered).TotalMilliseconds;
+            _updateMemory = updatedMemory.Since(startedMemory);
+            _renderMemory = renderedMemory.Since(updatedMemory);
+        }
         _renderedFrames++;
         return true;
     }
@@ -201,12 +219,41 @@ public static partial class Program
     }
 
     [JSExport]
-    public static string GetDiagnostics()
+    public static string GetDiagnostics() => CreateDiagnostics(includeColorReadback: false);
+
+    /// <summary>Captures diagnostic pixels explicitly because GPU readback can stall rendering.</summary>
+    [JSExport]
+    public static string CaptureDiagnostics() => CreateDiagnostics(includeColorReadback: true);
+
+    /// <summary>Enables optional runtime phase sampling; ordinary play leaves it disabled.</summary>
+    [JSExport]
+    public static void SetPerformanceProfiling(bool enabled)
+    {
+        SceneRuntimeDiagnostics.Enabled = enabled;
+        _updateMilliseconds = _renderMilliseconds = 0;
+        _updateMemory = _renderMemory = default;
+    }
+
+    /// <summary>Returns the most recent sampled frame without GPU readback.</summary>
+    [JSExport]
+    public static string GetPerformanceDiagnostics() => JsonSerializer.Serialize(
+        new WebPerformanceDiagnostics
+        {
+            Enabled = SceneRuntimeDiagnostics.Enabled,
+            UpdateMilliseconds = _updateMilliseconds,
+            RenderMilliseconds = _renderMilliseconds,
+            UpdateMemory = _updateMemory,
+            RenderMemory = _renderMemory,
+            Runtime = SceneRuntimeDiagnostics.LastFrame,
+            Rendering = _session?.LastRenderStatistics ?? default
+        }, WebHostJsonContext.Default.WebPerformanceDiagnostics);
+
+    private static string CreateDiagnostics(bool includeColorReadback)
     {
         var graphics = _graphics;
         var startup = _session?.StartupFlow?.Current;
         var nonBackgroundPixels = 0;
-        if (graphics is not null && _width > 0 && _height > 0)
+        if (includeColorReadback && graphics is not null && _width > 0 && _height > 0)
         {
             var size = Math.Min(32, Math.Min(_width, _height));
             using var request = graphics.RequestColorReadback(
@@ -388,6 +435,33 @@ internal sealed class GamepadStateSnapshot
     public double[]? Buttons { get; set; }
 }
 
+internal sealed class WebPerformanceDiagnostics
+{
+    public bool Enabled { get; set; }
+    public double UpdateMilliseconds { get; set; }
+    public double RenderMilliseconds { get; set; }
+    public WebPhaseMemoryStatistics UpdateMemory { get; set; }
+    public WebPhaseMemoryStatistics RenderMemory { get; set; }
+    public SceneRuntimeFrameStatistics Runtime { get; set; }
+    public SceneRenderStatistics Rendering { get; set; }
+}
+
+internal readonly record struct WebPhaseMemoryStatistics(
+    long AllocatedBytes, int Gen0Collections, int Gen1Collections, int Gen2Collections);
+
+// Allocation counts belong to this thread. Collection counts are process-wide
+// events observed during the phase; they do not identify what triggered a GC.
+internal readonly record struct WebPhaseMemorySnapshot(
+    long AllocatedBytes, int Gen0Collections, int Gen1Collections, int Gen2Collections)
+{
+    public static WebPhaseMemorySnapshot Capture() => new(
+        GC.GetAllocatedBytesForCurrentThread(), GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
+
+    public WebPhaseMemoryStatistics Since(WebPhaseMemorySnapshot before) => new(
+        AllocatedBytes - before.AllocatedBytes, Gen0Collections - before.Gen0Collections,
+        Gen1Collections - before.Gen1Collections, Gen2Collections - before.Gen2Collections);
+}
+
 internal sealed class WebPlayerDiagnostics
 {
     public bool Playing { get; set; }
@@ -511,6 +585,7 @@ internal sealed class WebAccessibilityNode
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
 [JsonSerializable(typeof(GamepadStateSnapshot[]))]
 [JsonSerializable(typeof(WebPlayerDiagnostics))]
+[JsonSerializable(typeof(WebPerformanceDiagnostics))]
 [JsonSerializable(typeof(WebAccessibilityDocument))]
 [JsonSerializable(typeof(WebTextInputRequest))]
 internal sealed partial class WebHostJsonContext : JsonSerializerContext;

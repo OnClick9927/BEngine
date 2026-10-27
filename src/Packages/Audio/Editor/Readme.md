@@ -51,6 +51,9 @@ Priority、Loop、Mute 和 Play On Awake，并调用 Play、Pause、UnPause、St
 - `AudioSource.time` 与 `timeSamples` 可定位播放游标；`isPlaying` 查询状态。
 - `AudioOutput.current` 可安装平台专用 `IAudioOutput`；`ResetToSystemDefault()` 恢复默认设备选择。
 - `RuntimeAssetCodecRegistry` 让 Resources 和 AssetBundle 从字节恢复 AudioClip，而不依赖 Editor。
+- `AudioLoadingSettings.usePlatformDecoding` 默认启用。在 Web 上，后台解压的编码音频可使用浏览器异步解码，随后按块提交 PCM；保持导入的采样率、声道与帧数。格式不支持或结果不匹配时回退到托管解码。设为 `false` 可强制使用托管解码。Streaming 与同步加载策略不变。
+- 加载阶段可用 `using var loading = FrameWorkBudget.EnterLoading(token);` 为协作准备分配有界帧预算；Web PCM 普通帧每块最多 128 KiB，加载作用域内最多 256 KiB，保持完整声道帧。作用域支持嵌套、取消与幂等释放；退出后恢复原游戏帧预算，不改变音频采样率、音量或回收策略。
+- `await source.PreparePlaybackAsync(clips, context)` 在有界协作步骤中准备音频及声源的 Mixer 路由；两条独立 Reader 使用主声音和 One-shot 共用的混音路径，丢弃每步最多 128 帧 PCM，不向设备提交，不修改实际播放状态，不需要临时播放后等待固定游戏帧。声源在准备期间必须保持启用、场景激活及路由稳定；Streaming 不会因此全量解码，取消会释放准备 Reader 和 DSP 缓冲。
 
 示例：
 

@@ -10,6 +10,7 @@ public sealed partial class AudioClip : BAsset
     private Func<AudioSampleReader>? _factory;
     private bool _mono;
     private float _gain = 1;
+    private bool _encodedFormatKnown;
     private readonly HashSet<AudioSampleReader> _readers = [];
     internal int dataVersion { get; private set; }
     public int samples { get; private set; }
@@ -193,6 +194,7 @@ public sealed partial class AudioClip : BAsset
         // Snapshot dependencies before starting work; no background task mutates the asset.
         var factory = _factory; var encoded = _encoded; var path = _streamPath; var offset = _streamOffset;
         var mono = _mono; var gain = _gain; var files = RuntimeServiceAccess.FileSystem;
+        var diagnosticName = name;
         return () =>
         {
             AudioSampleReader reader;
@@ -203,7 +205,7 @@ public sealed partial class AudioClip : BAsset
                     path is not null ? files.OpenFile(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 4096, FileOptions.SequentialScan) :
                     throw new InvalidOperationException("Audio source is no longer available.");
                 if (encoded is null && offset > 0) stream = new IO.OffsetReadStream(stream, offset);
-                reader = AudioDecoder.Open(stream);
+                reader = AudioDecoder.Open(stream, diagnosticName);
             }
             return mono || gain != 1 ? new TransformReader(reader, mono, gain) : reader;
         };
@@ -211,29 +213,43 @@ public sealed partial class AudioClip : BAsset
     private void InitializeFormat(bool applyLoadPolicy = false)
     {
         if (!Enum.IsDefined(loadType)) throw new InvalidDataException("Invalid audio load type.");
-        using var reader = CreateSourceReader(); ValidateFormat(reader.samples, reader.channels, reader.frequency);
-        samples = reader.samples; channels = reader.channels; frequency = reader.frequency;
-        if (applyLoadPolicy && !preloadAudioData) { loadState = AudioDataLoadState.Unloaded; return; }
-        loadError = "";
-        if (loadType == AudioClipLoadType.DecompressOnLoad)
+        AudioSampleReader? reader = null;
+        try
         {
-            var count = (long)samples * channels;
-            if (count > MaxDecodedSamples) throw new InvalidDataException("Audio PCM exceeds 256 MiB. Use Streaming.");
-            try
+            // Bundle payloads are private, immutable encoded bytes. Their
+            // validated format survives UnloadAudioData and need not reopen a
+            // Vorbis/MP3 decoder just to start the asynchronous/native decoder.
+            // Files and custom factories may change and are always inspected.
+            if (_encoded is null || !_encodedFormatKnown)
             {
-                if (loadInBackground) { StartPendingLoad(); return; }
-                _pcm = DecodePcm(reader, CancellationToken.None);
+                reader = CreateSourceReader(); ValidateFormat(reader.samples, reader.channels, reader.frequency);
+                samples = reader.samples; channels = reader.channels; frequency = reader.frequency;
+                _encodedFormatKnown = _encoded is not null;
             }
-            catch (AudioLoadingSettings.PcmBudgetExceededException)
+            if (applyLoadPolicy && !preloadAudioData) { loadState = AudioDataLoadState.Unloaded; return; }
+            loadError = "";
+            if (loadType == AudioClipLoadType.DecompressOnLoad)
             {
-                // A clip whose authored policy is DecompressOnLoad must still be
-                // usable on devices that cannot admit its full PCM payload. The
-                // encoded source is retained and the reader path is used instead.
-                SwitchToStreamingAfterBudget("format");
-                return;
+                var count = (long)samples * channels;
+                if (count > MaxDecodedSamples) throw new InvalidDataException("Audio PCM exceeds 256 MiB. Use Streaming.");
+                try
+                {
+                    if (loadInBackground) { StartPendingLoad(); return; }
+                    reader ??= CreateSourceReader();
+                    _pcm = DecodePcm(reader, CancellationToken.None);
+                }
+                catch (AudioLoadingSettings.PcmBudgetExceededException)
+                {
+                    // A clip whose authored policy is DecompressOnLoad must still be
+                    // usable on devices that cannot admit its full PCM payload. The
+                    // encoded source is retained and the reader path is used instead.
+                    SwitchToStreamingAfterBudget("format");
+                    return;
+                }
             }
+            dataVersion++; loadState = AudioDataLoadState.Loaded;
         }
-        dataVersion++; loadState = AudioDataLoadState.Loaded;
+        finally { reader?.Dispose(); }
     }
     private static void ValidateFormat(int frames, int channels, int frequency)
     {

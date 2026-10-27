@@ -125,6 +125,8 @@ public static class PlayerBuildPipeline
             parent, $".{pathService.GetFileName(output)}.{Guid.NewGuid():N}.staging");
         EnsureDirectChild(parent, staging, pathService);
         var target = BEngine.Platform.BuildTargetUtility.Current.Get(request.TargetId);
+        if (target.Platform == BuildTargetPlatform.Web && !Enum.IsDefined(request.WebScriptCompilation))
+            throw new ArgumentOutOfRangeException(nameof(request.WebScriptCompilation));
         if (request.EncryptContent && target.Platform == BuildTargetPlatform.Web)
             throw new NotSupportedException("Content encryption currently requires a native Player; browser AES-GCM content loading is not supported.");
         var provider = ResolveProvider(target, providers);
@@ -142,6 +144,7 @@ public static class PlayerBuildPipeline
             SelfContained = request.SelfContained,
             WindowsGarbageCollection = request.WindowsGarbageCollection,
             WindowsGcHeapCount = request.WindowsGcHeapCount,
+            WebScriptCompilation = request.WebScriptCompilation,
             IncludeDebugSymbols = request.IncludeDebugSymbols,
             EncryptContent = request.EncryptContent,
             EncryptionKey = request.EncryptionKey,

@@ -4,7 +4,7 @@ using BEngine.Serialization;
 
 namespace BEngine.AssetBundles;
 
-public static class AssetBundleCatalogSerializer
+public static partial class AssetBundleCatalogSerializer
 {
 
     public static byte[] Serialize(AssetBundleCatalog catalog) => SerializeCatalog(catalog);
@@ -37,9 +37,25 @@ public static class AssetBundleCatalogSerializer
 
     public static AssetBundleCatalog DeserializeCatalog(ReadOnlySpan<byte> yaml)
     {
-        var catalog = YamlUtility.Deserialize<AssetBundleCatalog>(yaml, strict: true);
+        var catalog = IsRuntimeCatalog(yaml)
+            ? DeserializeRuntimeCatalog(yaml)
+            : YamlUtility.Deserialize<AssetBundleCatalog>(yaml, strict: true);
         catalog.Validate();
         return catalog;
+    }
+
+    /// <summary>Creates a detached canonical snapshot without serializing or revalidating trusted state.</summary>
+    public static AssetBundleCatalog CloneCatalog(AssetBundleCatalog catalog)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        return Canonicalize(catalog);
+    }
+
+    /// <summary>Creates a detached version snapshot without serializing or revalidating trusted state.</summary>
+    public static AssetBundleVersion CloneVersion(AssetBundleVersion version)
+    {
+        ArgumentNullException.ThrowIfNull(version);
+        return Canonicalize(version);
     }
 
     public static AssetBundleVersion DeserializeVersion(string yaml) =>
@@ -76,6 +92,10 @@ public static class AssetBundleCatalogSerializer
         Stream stream,
         BCancellationToken cancellationToken = default,
         int bytesPerFrame = 1024 * 1024)
+        => await ComputeSha256WithProgressAsync(stream, cancellationToken, bytesPerFrame, null);
+
+    internal static async BValueTask<string> ComputeSha256WithProgressAsync(
+        Stream stream, BCancellationToken cancellationToken, int bytesPerFrame, Action<long>? progress)
     {
         ArgumentNullException.ThrowIfNull(stream);
         if (bytesPerFrame <= 0) throw new ArgumentOutOfRangeException(nameof(bytesPerFrame));
@@ -84,12 +104,25 @@ public static class AssetBundleCatalogSerializer
             // The stream is private to this verification request. Hashing and
             // synchronous file reads therefore stay off the frame thread; the
             // scheduler only publishes the result back on the owning thread.
-            return await BackgroundWorkScheduler.Main.Run(token =>
-                ComputeSha256OnWorker(stream, bytesPerFrame, token), cancellationToken);
+            long processedBytes = 0;
+            var hashing = BackgroundWorkScheduler.Main.Run(token =>
+                ComputeSha256OnWorker(stream, bytesPerFrame, token,
+                    progress is null ? null : count => Interlocked.Exchange(ref processedBytes, count)), cancellationToken);
+            long previous = -1;
+            while (progress is not null && !hashing.IsCompleted)
+            {
+                var count = Interlocked.Read(ref processedBytes);
+                if (count != previous) { previous = count; progress(count); }
+                await BTask.Yield();
+            }
+            var result = await hashing;
+            progress?.Invoke(Interlocked.Read(ref processedBytes));
+            return result;
         }
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var buffer = new byte[Math.Min(64 * 1024, bytesPerFrame)];
         var processed = 0;
+        long total = 0;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -97,6 +130,8 @@ public static class AssetBundleCatalogSerializer
             if (read == 0) break;
             hash.AppendData(buffer, 0, read);
             processed += read;
+            total += read;
+            progress?.Invoke(total);
             if (processed >= bytesPerFrame)
             {
                 await BValueTask.Yield();
@@ -106,16 +141,19 @@ public static class AssetBundleCatalogSerializer
         return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
     }
 
-    private static string ComputeSha256OnWorker(Stream stream, int chunkSize, CancellationToken cancellationToken)
+    private static string ComputeSha256OnWorker(Stream stream, int chunkSize, CancellationToken cancellationToken, Action<long>? progress = null)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var buffer = new byte[Math.Min(64 * 1024, chunkSize)];
+        long processed = 0;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var read = stream.Read(buffer, 0, buffer.Length);
             if (read == 0) break;
             hash.AppendData(buffer, 0, read);
+            processed += read;
+            progress?.Invoke(processed);
         }
         return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
     }

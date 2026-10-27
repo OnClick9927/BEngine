@@ -15,6 +15,18 @@ internal static class TextureAtlasResolver
         internal TextureAtlas? Atlas;
         internal TextureAtlasSprite? Region;
         internal SpriteRenderData2D Data;
+        internal int AtlasWidth, AtlasHeight, X, Y, Width, Height;
+
+        internal bool MatchesPackedData(TextureAtlas atlas, TextureAtlasSprite region) =>
+            Data.Texture == atlas.Texture && AtlasWidth == atlas.Width && AtlasHeight == atlas.Height &&
+            X == region.X && Y == region.Y && Width == region.Width && Height == region.Height &&
+            Data.Pivot.x == region.PivotX && Data.Pivot.y == region.PivotY;
+
+        internal void CapturePackedData(TextureAtlas atlas, TextureAtlasSprite region)
+        {
+            AtlasWidth = atlas.Width; AtlasHeight = atlas.Height;
+            X = region.X; Y = region.Y; Width = region.Width; Height = region.Height;
+        }
     }
 
     internal static bool TryResolve(Sprite sprite, out SpriteRenderData2D data)
@@ -27,7 +39,10 @@ internal static class TextureAtlasResolver
             cached.Owner == sprite.OwnerGuid && cached.Local == sprite.LocalIdentifier &&
             cached.Path == sprite.assetPath && cached.Texture == sprite.Texture &&
             cached.Atlas is { isDestroyed: false } && cached.Region is { } region &&
-            cached.Data == ResolvePackedCached(cached.Data.BatchIdentity, cached.Atlas, region))
+            // A hit must still observe mutable atlas/region data. Compare the inputs
+            // instead of rebuilding UVs (four fixed-point divisions) just to test
+            // whether the already resolved value is unchanged.
+            cached.MatchesPackedData(cached.Atlas, region))
         { data = cached.Data; return true; }
         if (!TryGetPackedAtlas(sprite, out var reference, out var atlas, out var packed))
         { data = default; return false; }
@@ -39,6 +54,7 @@ internal static class TextureAtlasResolver
             entry.Owner = sprite.OwnerGuid; entry.Local = sprite.LocalIdentifier;
             entry.Path = sprite.assetPath; entry.Texture = sprite.Texture;
             entry.Atlas = atlas; entry.Region = packed; entry.Data = data;
+            entry.CapturePackedData(atlas, packed);
         }
         return true;
     }

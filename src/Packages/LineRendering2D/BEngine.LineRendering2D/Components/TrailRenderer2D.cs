@@ -59,7 +59,7 @@ public sealed partial class TrailRenderer2D : Renderer2D
                 : Mathf.Clamp01((Time.time - (_points[index].Time + _points[index + 1].Time) * Fix64.Half) / time);
             var width = Fix64.Max(Fix64.Epsilon, Mathf.Lerp(startWidth, endWidth, normalizedAge));
             output.Add(new LineSegment2D((from + to) * Fix64.Half,
-                (Fix64)(MathF.Atan2((float)delta.y, (float)delta.x) * (180f / MathF.PI)),
+                Mathf.Atan2(delta.y, delta.x) * Fix64.Rad2Deg,
                 new Vector2(length, width), LineRenderer2D.Lerp(startColor, endColor, normalizedAge)));
         }
     }

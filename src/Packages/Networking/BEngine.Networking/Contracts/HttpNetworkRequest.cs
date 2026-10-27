@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -29,6 +30,10 @@ public sealed class HttpNetworkRequest : IDisposable
     public Uri Uri { get; }
     public HttpRequestMethod Method { get; }
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
+    /// <summary>Maximum time without response headers or received bytes. Independent of the total timeout.</summary>
+    public TimeSpan InactivityTimeout { get; set; } = InfiniteTimeout;
+    /// <summary>Fetches from the network without reading or populating the HTTP cache.</summary>
+    public bool BypassCache { get; set; }
     /// <summary>Applies to buffered and streaming downloads; raise explicitly for large files.</summary>
     public long MaximumDownloadBytes { get; set; } = NetworkMemorySettings.maximumResponseBytes;
     public byte[]? UploadData { get; set; }
@@ -166,6 +171,7 @@ public sealed class HttpNetworkRequest : IDisposable
         Error = null;
         Exception = null;
         var startedAt = BTaskScheduler.Main.Elapsed;
+        var lastActivity = Stopwatch.GetTimestamp();
         var observer = new ObservingDownloadHandler(this, downloadHandler);
         var entered = false;
 
@@ -181,7 +187,7 @@ public sealed class HttpNetworkRequest : IDisposable
                     Method,
                     new Dictionary<string, string>(_headers, StringComparer.OrdinalIgnoreCase),
                     UploadData,
-                    UploadContentType),
+                    UploadContentType) { BypassCache = BypassCache },
                 observer);
             await BTask.Yield();
             while (true)
@@ -189,19 +195,34 @@ public sealed class HttpNetworkRequest : IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 if (_aborted) throw new BOperationCanceledException(BCancellationToken.None);
                 if (_activeOperation!.Status != NetworkOperationStatus.Running) break;
-                if (Timeout != InfiniteTimeout &&
-                    BTaskScheduler.Main.Elapsed - startedAt >= Timeout)
-                {
-                    _activeOperation.Abort();
-                    throw new TimeoutException($"The HTTP request timed out after {Timeout}.");
-                }
+                var previousBytes = DownloadedBytes;
+                var hadResponse = _activeOperation.Response is not null;
                 _activeOperation.Poll();
                 cancellationToken.ThrowIfCancellationRequested();
                 if (_aborted) throw new BOperationCanceledException(BCancellationToken.None);
                 DownloadedBytes = _activeOperation.DownloadedBytes;
                 ContentLength = _activeOperation.ContentLength;
+                if (DownloadedBytes > previousBytes || !hadResponse && _activeOperation.Response is not null)
+                    lastActivity = Stopwatch.GetTimestamp();
                 if (_activeOperation.Status == NetworkOperationStatus.Running)
+                {
+                    // Poll first: buffered data or completion must be observed before
+                    // a long owning-thread frame can be mistaken for a dead connection.
+                    if (Timeout != InfiniteTimeout && BTaskScheduler.Main.Elapsed - startedAt >= Timeout)
+                    {
+                        _activeOperation.Abort();
+                        throw new TimeoutException($"The HTTP request timed out after {Timeout}.");
+                    }
+                    if (InactivityTimeout != InfiniteTimeout &&
+                        Stopwatch.GetElapsedTime(lastActivity) >= InactivityTimeout)
+                    {
+                        _activeOperation.Abort();
+                        var endpoint = Uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped);
+                        throw new TimeoutException(
+                            $"HTTP response from '{endpoint}' made no progress for {InactivityTimeout} ({DownloadedBytes} bytes received).");
+                    }
                     await BTask.Yield();
+                }
             }
 
             if (_activeOperation.Status == NetworkOperationStatus.Failed)
@@ -294,6 +315,9 @@ public sealed class HttpNetworkRequest : IDisposable
         if (Timeout <= TimeSpan.Zero && Timeout != InfiniteTimeout)
             throw new InvalidOperationException(
                 $"Timeout must be positive or {nameof(InfiniteTimeout)}.");
+        if (InactivityTimeout <= TimeSpan.Zero && InactivityTimeout != InfiniteTimeout)
+            throw new InvalidOperationException(
+                $"InactivityTimeout must be positive or {nameof(InfiniteTimeout)}.");
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);

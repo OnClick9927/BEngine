@@ -6,7 +6,6 @@ public class AsyncOperation
     private readonly BTaskCompletionSource _completion = new();
     private BTaskCompletionSource _activation = new();
     private Action<AsyncOperation>? _completed;
-    private Action<AsyncOperation>? _progressChanged;
     private AsyncOperationStatus _status = AsyncOperationStatus.Created;
     private Exception? _exception;
     private float _progress;
@@ -57,16 +56,6 @@ public class AsyncOperation
         remove => _completed -= value;
     }
 
-    public event Action<AsyncOperation>? progressChanged
-    {
-        add
-        {
-            ArgumentNullException.ThrowIfNull(value);
-            _progressChanged += value;
-        }
-        remove => _progressChanged -= value;
-    }
-
     protected AsyncOperation()
     {
         _activation.SetResult();
@@ -96,7 +85,6 @@ public class AsyncOperation
         value = Math.Clamp(value, 0f, 0.999999f);
         if (value <= _progress) return;
         _progress = value;
-        InvokeHandlers(_progressChanged);
     }
 
     protected BValueTask WaitForActivationAsync(BCancellationToken cancellationToken)
@@ -148,11 +136,8 @@ public class AsyncOperation
                 break;
         }
 
-        var progressHandlers = _progressChanged;
         var completedHandlers = _completed;
-        _progressChanged = null;
         _completed = null;
-        InvokeHandlers(progressHandlers);
         InvokeHandlers(completedHandlers);
     }
 

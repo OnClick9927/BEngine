@@ -207,11 +207,11 @@ public static partial class AssetBundleBuilder
 
     private static string GetBuildBaselinePath(string cacheRoot, AssetBundleBuildOptions options, PathUtility paths)
     {
-        var configuration = $"baseline-v1\0{typeof(AssetBundleBuilder).Assembly.ManifestModule.ModuleVersionId:D}\0" +
+        var configuration = $"baseline-v2\0{typeof(AssetBundleBuilder).Assembly.ManifestModule.ModuleVersionId:D}\0" +
             $"{typeof(AssetBundleCatalog).Assembly.ManifestModule.ModuleVersionId:D}\0{Environment.Version}\0" +
             $"{options.TargetPlatform}\0{options.CompressionMode}\0{options.EncryptionKey?.Fingerprint}";
         return paths.Combine(cacheRoot, "baselines", AssetBundleCatalogSerializer.ComputeSha256(
-            Encoding.UTF8.GetBytes(configuration)) + ".yaml");
+            Encoding.UTF8.GetBytes(configuration)) + ".bin");
     }
 
     private static void ValidateUnselectedPackages(

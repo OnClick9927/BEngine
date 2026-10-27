@@ -9,7 +9,7 @@ using QuadPayload = BEngine.Rendering.SceneQuadPayload2D;
 
 namespace BEngine.Rendering;
 
-internal sealed partial class LightingRenderContributor2D : ISceneRenderContributor2D
+internal sealed partial class LightingRenderContributor2D : ISceneRenderContributor2D, ISceneQuadReferenceProcessor2D
 {
     private static readonly string[] CookieUniformNames =
         ["uCookie0", "uCookie1", "uCookie2", "uCookie3", "uCookie4", "uCookie5"];
@@ -46,6 +46,12 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
     }
     public SceneQuad2D ProcessQuad(SceneQuad2D quad, GameObject target)
     {
+        ProcessQuadReferenced(ref quad, target);
+        return quad;
+    }
+
+    public void ProcessQuadReferenced(scoped ref SceneQuad2D quad, GameObject target)
+    {
         var lighting = GetLighting(target);
         if (lighting is not null && lighting.Values[0].W == 0 &&
             quad.ColorA.Equals(quad.ColorB) && quad.ColorA.Equals(quad.ColorC) && quad.ColorA.Equals(quad.ColorD))
@@ -59,22 +65,23 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
             color = new Color((Fix64)Math.Clamp((float)color.r * ambient.X, 0, 1),
                 (Fix64)Math.Clamp((float)color.g * ambient.Y, 0, 1),
                 (Fix64)Math.Clamp((float)color.b * ambient.Z, 0, 1), color.a);
-            return quad with { ColorA = color, ColorB = color, ColorC = color, ColorD = color, EffectData = null };
+            quad = quad with { ColorA = color, ColorB = color, ColorC = color, ColorD = color, EffectData = null };
+            return;
         }
-        return quad with { EffectData = lighting };
+        quad = quad with { EffectData = lighting };
     }
     public long Collect(Scene scene, RenderCamera camera, int width, int height, ICollection<RenderSubmission2D> submissions, long submissionOrder) => submissionOrder;
     public bool CanRender(RenderBatch2D batch)
     {
         using var submissionBudget = LoopExecutionGuard.AllowIterations(batch.SubmissionSpan.Length);
-        foreach (var submission in batch.SubmissionSpan)
-            if (submission.Payload is QuadPayload { Value.EffectData: LightingData }) return true;
+        foreach (ref readonly var submission in batch.SubmissionSpan)
+            if (submission.Payload is QuadPayload { EffectData: LightingData }) return true;
         return false;
     }
     public void Render(RenderBatch2D batch, RenderCamera camera, int width, int height, GraphicsRect viewport) => DrawLightingBatch(batch, camera, width, height);
     public void EndFrame()
     {
-        _viewContext = null; _sceneLighting.Clear(); _shadowOwners.Clear(); RecyclePaths();
+        _viewContext = null; _sceneLighting.Clear(); ResetOrdinaryLighting(); _shadowOwners.Clear(); RecyclePaths();
         _lights = Array.Empty<Light2D>();
         _shadowCasters = Array.Empty<ShadowCaster2D>();
         _lightingEnvironments = Array.Empty<LightingEnvironment2D>();
@@ -89,6 +96,23 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
     public void Dispose() { EndFrame(); DisposeLighting(); _textures.Dispose(); _texturedMesh?.Dispose(); _texturedProgram?.Dispose(); }
 
     private readonly Dictionary<(ulong Layer, GameObject? Self, NormalSurfaceKey? Surface), LightingData?> _sceneLighting = [];
+    private bool _lastOrdinaryLightingValid;
+    private ulong _lastOrdinaryLightingLayer;
+    private LightingData? _lastOrdinaryLighting;
+
+    private void RememberOrdinaryLighting(ulong layer, LightingData? data)
+    {
+        _lastOrdinaryLightingLayer = layer;
+        _lastOrdinaryLighting = data;
+        _lastOrdinaryLightingValid = true;
+    }
+
+    private void ResetOrdinaryLighting()
+    {
+        _lastOrdinaryLightingValid = false;
+        _lastOrdinaryLighting = null;
+    }
+
     private readonly HashSet<GameObject> _shadowOwners = new(ReferenceEqualityComparer.Instance);
     private readonly List<LightingData> _lightingData = [];
     private readonly Dictionary<ShadowCaster2D, List<Vector2>> _worldShadowPaths = [];
@@ -99,7 +123,7 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
 
     private void BeginSceneLighting()
     {
-        _sceneLighting.Clear();
+        _sceneLighting.Clear(); ResetOrdinaryLighting();
         _shadowOwners.Clear();
         RecyclePaths();
         using var sceneBudget = LoopExecutionGuard.AllowIterations(Math.Max(_lights.Count, _shadowCasters.Count));
@@ -139,8 +163,17 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
         if (_lights.Count == 0 && _lightingEnvironments.Count == 0) return null;
         var surface = target.GetComponent<NormalMap2D>() is { enabled: true, texture: { isDestroyed: false } } receiver ? receiver : null;
         NormalSurfaceKey? surfaceKey = surface is null ? null : new(surface.texture!, surface.strength, surface.uvScale, surface.uvOffset);
-        var key = (target.layer, _shadowOwners.Contains(target) ? target : null, surfaceKey);
-        if (_sceneLighting.TryGetValue(key, out var cached)) return cached;
+        var layer = target.layer;
+        var self = _shadowOwners.Contains(target) ? target : null;
+        var ordinary = surfaceKey is null && self is null;
+        if (ordinary && _lastOrdinaryLightingValid && _lastOrdinaryLightingLayer == layer)
+            return _lastOrdinaryLighting;
+        var key = (layer, self, surfaceKey);
+        if (_sceneLighting.TryGetValue(key, out var cached))
+        {
+            if (ordinary) RememberOrdinaryLighting(layer, cached);
+            return cached;
+        }
         if (_lightingDataCount == _lightingData.Count) _lightingData.Add(new LightingData());
         var data = _lightingData[_lightingDataCount++];
         var values = data.Values;
@@ -232,6 +265,7 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
         values[0] = new NVector4(ambient, lightCount);
         var result = hasLighting ? data : null;
         _sceneLighting.Add(key, result);
+        if (ordinary) RememberOrdinaryLighting(layer, result);
         return result;
     }
 
@@ -240,8 +274,10 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
         // Preserve transparency order when a material batch mixes lit, unlit, and self-shadow-excluded objects.
         _texturedVertices.Clear();
         var first = default(Quad);
+        var projection = default(RenderViewportTransform2D);
+        var projectionReady = false;
         using var submissionBudget = LoopExecutionGuard.AllowIterations(batch.SubmissionSpan.Length);
-        foreach (var submission in batch.SubmissionSpan)
+        foreach (ref readonly var submission in batch.SubmissionSpan)
         {
             if (submission.Payload is not QuadPayload payload) continue;
             var quad = payload.Value;
@@ -253,12 +289,22 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
                 _texturedVertices.Clear();
             }
             if (_texturedVertices.Count == 0) first = quad;
-            PortableSceneRenderer.AddTexturedQuad(_texturedVertices, quad, camera, width, height);
+            if (camera.Policy is not null and not IStableRenderCameraPolicy)
+                PortableSceneRenderer.AddTexturedQuad(_texturedVertices, quad, camera, width, height);
+            else
+            {
+                if (!projectionReady)
+                {
+                    projection = camera.CreateViewportTransform(width, height);
+                    projectionReady = true;
+                }
+                PortableSceneRenderer.AddTexturedQuadReferenced(_texturedVertices, in quad, in projection);
+            }
         }
         if (_texturedVertices.Count > 0) FlushLightingRun(first, camera, width, height);
     }
 
-    private void FlushLightingRun(Quad first, RenderCamera camera, int width, int height)
+    private void FlushLightingRun(in Quad first, RenderCamera camera, int width, int height)
     {
         if (first.EffectData is not LightingData data)
         {
@@ -362,7 +408,7 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
         _lightingPipelines.Clear();
         _lightingWhiteTexture?.Dispose();
         _lightingData.Clear();
-        _sceneLighting.Clear();
+        _sceneLighting.Clear(); ResetOrdinaryLighting();
         _shadowOwners.Clear();
         RecyclePaths();
         _pathPool.Clear();

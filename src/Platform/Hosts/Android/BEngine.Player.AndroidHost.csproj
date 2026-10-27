@@ -13,6 +13,8 @@
     <SuppressTrimAnalysisWarnings Condition="'$(RunAOTCompilation)' == 'true'">true</SuppressTrimAnalysisWarnings>
     <ILLinkTreatWarningsAsErrors Condition="'$(RunAOTCompilation)' == 'true'">false</ILLinkTreatWarningsAsErrors>
     <AndroidEnableMarshalMethods>false</AndroidEnableMarshalMethods>
+    <!-- Bundles already contain their own compression; permit seekable APK asset fd reads. -->
+    <AndroidStoreUncompressedFileExtensions>$(AndroidStoreUncompressedFileExtensions);.bassetbundle</AndroidStoreUncompressedFileExtensions>
     <AndroidPackageFormat>aab</AndroidPackageFormat>
     <AndroidManifest Condition="'$(BEngineTestPlayer)' == 'true'">..\AndroidResources\TestAndroidManifest.xml</AndroidManifest>
   </PropertyGroup>

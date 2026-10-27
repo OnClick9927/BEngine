@@ -452,7 +452,7 @@ public static class UIRenderListBuilder
         if (!string.IsNullOrWhiteSpace(text) && HasArea(elementClip))
             commands.Add(new UIRenderCommand(
                 UIRenderCommandType.Text, element, AlignText(element, rect, text, scale), elementClip, ResolveTextColor(element), text,
-                UIElementLayoutEngine.EffectiveFontSize(element)));
+                (float)UIElementLayoutEngine.EffectiveFontSize(element)));
 
         var childClip = element is not ScrollView && element.style.overflow == Overflow.Visible ? inheritedClip : elementClip;
         if (useChildRanges && snapshot is not null && snapshot.TryGetVisibleChildRange(element, childClip, out var children, out var first, out var end))
@@ -535,7 +535,7 @@ public static class UIRenderListBuilder
             element.style.borderColor ?? new UIColor(29, 29, 29));
         if (element.sourceTag.Length > 0)
         {
-            var inset = (Fix64)Math.Max(0, element.style.paddingLeft - 4) * scale;
+            var inset = Fix64.Max(0, element.style.paddingLeft - 4) * scale;
             valueRect = valueRect with { X = valueRect.X + inset,
                 Width = Fix64.Max(0, valueRect.Width - inset - (Fix64)element.style.paddingRight * scale) };
         }
@@ -573,7 +573,7 @@ public static class UIRenderListBuilder
             if (string.IsNullOrEmpty(displayValue) && !search.isTextEditing && !search.focused)
                 commands.Add(new UIRenderCommand(UIRenderCommandType.Text, element, contentRect, clip,
                     new UIColor(125, 125, 125), search.placeholderText,
-                    UIElementLayoutEngine.EffectiveFontSize(element)));
+                    (float)UIElementLayoutEngine.EffectiveFontSize(element)));
             else
             {
                 AddTextSelection(commands, element, contentRect, clip, displayValue, scale);
@@ -589,7 +589,7 @@ public static class UIRenderListBuilder
             if (element is TextField placeholder && string.IsNullOrEmpty(field.Value.Value) &&
                 !placeholder.isTextEditing && !placeholder.focused && placeholder.placeholderText.Length > 0)
                 commands.Add(new UIRenderCommand(UIRenderCommandType.Text, element, valueRect, clip,
-                    new UIColor(125, 125, 125), placeholder.placeholderText, UIElementLayoutEngine.EffectiveFontSize(element)));
+                    new UIColor(125, 125, 125), placeholder.placeholderText, (float)UIElementLayoutEngine.EffectiveFontSize(element)));
             if (element is TextField or FloatField or IntegerField)
                 AddTextSelection(commands, element, valueRect, clip, field.Value.Value, scale);
             AddText(commands, element, valueRect, clip, field.Value.Value);
@@ -616,7 +616,7 @@ public static class UIRenderListBuilder
             element.textEditingSelectionEnd), 0, displayText.Length);
         if (end <= start) return;
 
-        var fontSize = UIElementLayoutEngine.EffectiveFontSize(element) * (float)scale;
+        var fontSize = UIElementLayoutEngine.EffectiveFontSize(element) * scale;
         var inset = TextInset(element, fontSize);
         var lineHeight = TextLineHeight(element, fontSize);
         var selectionClip = Intersect(clip, contentRect);
@@ -655,18 +655,18 @@ public static class UIRenderListBuilder
         var prefix = displayText.AsSpan(0, index);
         var lastLineBreak = prefix.LastIndexOf('\n');
         if (lastLineBreak >= 0) prefix = prefix[(lastLineBreak + 1)..];
-        var fontSize = (UIElementLayoutEngine.EffectiveFontSize(element)) * (float)scale;
+        var fontSize = (UIElementLayoutEngine.EffectiveFontSize(element)) * scale;
         var advance = EstimateTextWidth(prefix, fontSize);
         var lineHeight = TextLineHeight(element, fontSize);
         if (Style.ResolveFont(element) is { } font)
         {
-            advance = (Fix64)font.MeasureAdvance(prefix.ToString(), fontSize);
-            lineHeight = (Fix64)(font.lineHeight * fontSize / font.samplingSize);
+            advance = (Fix64)(double)font.MeasureAdvance(prefix.ToString(), (float)fontSize);
+            lineHeight = (Fix64)(double)font.lineHeight * fontSize / (Fix64)(double)font.samplingSize;
         }
-        else if (UIElementsRuntimeServices.TextResourceResolver?.TryMeasureText(prefix.ToString(), fontSize, out var measured, out var measuredHeight) == true)
+        else if (UIElementsRuntimeServices.TextResourceResolver?.TryMeasureText(prefix.ToString(), (float)fontSize, out var measured, out var measuredHeight) == true)
         {
-            advance = (Fix64)measured;
-            lineHeight = (Fix64)measuredHeight;
+            advance = (Fix64)(double)measured;
+            lineHeight = (Fix64)(double)measuredHeight;
         }
         var inset = TextInset(element, fontSize);
         var x = contentRect.X + inset + advance;
@@ -689,37 +689,46 @@ public static class UIRenderListBuilder
                 caretClip, ResolveTextColor(element)));
     }
 
-    private static Fix64 EstimateTextWidth(ReadOnlySpan<char> text, float fontSize)
+    private static Fix64 EstimateTextWidth(ReadOnlySpan<char> text, Fix64 fontSize)
     {
-        double units = 0;
+        // Hundredths keep this fallback independent of hardware floating-point math.
+        long units = 0;
         foreach (var character in text)
         {
             units += character switch
             {
-                '\t' => 2.2,
-                ' ' => 0.35,
-                'i' or 'l' or 'I' or '.' or ',' or ':' or ';' or '!' or '|' or '\'' => 0.3,
-                'm' or 'w' or 'M' or 'W' or '@' => 0.85,
-                _ when character >= 0x2E80 => 1.0,
-                _ when char.IsUpper(character) => 0.62,
-                _ => 0.55
+                '\t' => 220,
+                ' ' => 35,
+                'i' or 'l' or 'I' or '.' or ',' or ':' or ';' or '!' or '|' or '\'' => 30,
+                'm' or 'w' or 'M' or 'W' or '@' => 85,
+                _ when character >= 0x2E80 => 100,
+                _ when char.IsUpper(character) => 62,
+                _ => 55
             };
         }
-        return (Fix64)(units * fontSize * 0.62);
+        return (Fix64)units * fontSize * 62 / 10000;
     }
 
-    internal static Fix64 TextInset(VisualElement element, float fontSize) => Style.ResolveFont(element) is not null ? Fix64.Zero :
-        (Fix64)Math.Min(6, Math.Max(0, (int)Math.Round(fontSize / 3)));
-    internal static Fix64 TextLineHeight(VisualElement element, float fontSize) => Style.ResolveFont(element) is { } font
-        ? (Fix64)(font.lineHeight * fontSize / font.samplingSize) : (Fix64)(fontSize * 1.4f);
+    internal static Fix64 TextInset(VisualElement element, Fix64 fontSize) =>
+        Style.ResolveFont(element) is not null ? Fix64.Zero : Fix64.Min(6, Fix64.Max(0, RoundToEven(fontSize / 3)));
 
-    internal static Fix64 MeasureTextAdvance(string text, float fontSize, VisualElement? element = null) =>
-        // Preserve the measured float before fixed-point conversion. The direct
-        // float-to-decimal conversion used by (Fix64)float rounds significant
-        // digits and can make an aligned SDF label narrower than its own text.
-        Style.ResolveFont(element) is { } font ? (Fix64)(double)font.MeasureAdvance(text, fontSize) :
-        UIElementsRuntimeServices.TextResourceResolver?.TryMeasureText(text, fontSize, out var width, out _) == true
-            ? (Fix64)width : EstimateTextWidth(text, fontSize);
+    private static Fix64 RoundToEven(Fix64 value)
+    {
+        var whole = value.RawValue >> Fix64.FractionalBits;
+        var fraction = value.RawValue & (Fix64.OneRaw - 1);
+        if (fraction > Fix64.OneRaw / 2 || fraction == Fix64.OneRaw / 2 && (whole & 1) != 0) whole++;
+        return (Fix64)whole;
+    }
+
+    internal static Fix64 TextLineHeight(VisualElement element, Fix64 fontSize) => Style.ResolveFont(element) is { } font
+        ? (Fix64)(double)font.lineHeight * fontSize / (Fix64)(double)font.samplingSize : fontSize * 14 / 10;
+
+    internal static Fix64 MeasureTextAdvance(string text, Fix64 fontSize, VisualElement? element = null) =>
+        // The platform font provider remains a floating-point boundary. Preserve
+        // all returned float bits before entering deterministic layout arithmetic.
+        Style.ResolveFont(element) is { } font ? (Fix64)(double)font.MeasureAdvance(text, (float)fontSize) :
+        UIElementsRuntimeServices.TextResourceResolver?.TryMeasureText(text, (float)fontSize, out var width, out _) == true
+            ? (Fix64)(double)width : EstimateTextWidth(text, fontSize);
 
     private static bool TryBuildCollection(
         VisualElement element,
@@ -845,7 +854,7 @@ public static class UIRenderListBuilder
     {
         if (string.IsNullOrEmpty(text)) return;
         commands.Add(new UIRenderCommand(UIRenderCommandType.Text, element, rect, clip,
-            ResolveTextColor(element), text, UIElementLayoutEngine.EffectiveFontSize(element)));
+            ResolveTextColor(element), text, (float)UIElementLayoutEngine.EffectiveFontSize(element)));
     }
 
     private static string FormatColor(BEngine.Color color, bool showAlpha)
@@ -891,8 +900,8 @@ public static class UIRenderListBuilder
             _ => UIColor.Clear
         };
 
-    internal static Fix64 MeasureTextWidth(string text, float fontSize, VisualElement? element = null) => MeasureTextAdvance(text, fontSize, element) +
-        (Style.ResolveFont(element) is not null ? Fix64.Zero : (Fix64)(UIElementsRuntimeServices.TextResourceResolver?.GetHorizontalPadding(fontSize) ?? 0));
+    internal static Fix64 MeasureTextWidth(string text, Fix64 fontSize, VisualElement? element = null) => MeasureTextAdvance(text, fontSize, element) +
+        (Style.ResolveFont(element) is not null ? Fix64.Zero : (Fix64)(UIElementsRuntimeServices.TextResourceResolver?.GetHorizontalPadding((float)fontSize) ?? 0));
 
     private static UIElementRect FitImage(Image image, UIElementRect rect)
     {
@@ -913,14 +922,14 @@ public static class UIRenderListBuilder
             // Buttons have an intrinsic centered caption on every platform.
             // Keep explicit left/right alignment for authored compound controls.
             if (align.Length == 0) align = "center";
-            var lineHeight = TextLineHeight(element, UIElementLayoutEngine.EffectiveFontSize(element) * (float)scale);
+            var lineHeight = TextLineHeight(element, UIElementLayoutEngine.EffectiveFontSize(element) * scale);
             var height = Fix64.Min(rect.Height, lineHeight * (text.AsSpan().Count('\n') + 1));
             rect = rect with { Y = rect.Y + (rect.Height - height) / 2, Height = height };
         }
         for (var current = element.parent; align.Length == 0 && current is not null; current = current.parent)
             align = current.style.textAlign;
         if (align is not ("center" or "right")) return rect;
-        var width = Fix64.Min(rect.Width, MeasureTextWidth(text, UIElementLayoutEngine.EffectiveFontSize(element) * (float)scale, element));
+        var width = Fix64.Min(rect.Width, MeasureTextWidth(text, UIElementLayoutEngine.EffectiveFontSize(element) * scale, element));
         return rect with { X = rect.X + (rect.Width - width) / (align == "center" ? 2 : 1), Width = width };
     }
 

@@ -19,7 +19,10 @@ public static class LocalizedTextFormatter
         ArgumentNullException.ThrowIfNull(text);
         var names = new SortedSet<string>(StringComparer.Ordinal);
         Inspect(text, names, 0);
-        return names.ToArray();
+        var result = new string[names.Count];
+        var index = 0;
+        foreach (var name in names) result[index++] = name;
+        return result;
     }
 
     private static void Inspect(string text, SortedSet<string> names, int depth)

@@ -207,7 +207,7 @@ public sealed class StyleSheet : ScriptableObject
             case "row-gap": style.SetLength(nameof(style.rowGap), value); break;
             case "column-gap": style.SetLength(nameof(style.columnGap), value); break;
             case "gap":
-                var gaps = declaration?.Parts ?? value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var gaps = declaration?.Parts ?? SplitLengths(value);
                 if (gaps.Length > 0) {
                     style.SetLength(nameof(style.rowGap), gaps[0]);
                     style.SetLength(nameof(style.columnGap), gaps.Length > 1 ? gaps[1] : gaps[0]);
@@ -227,24 +227,24 @@ public sealed class StyleSheet : ScriptableObject
             case "justify-content": style.justifyContent = declaration is null ? ParseEnum(value, Justify.FlexStart) : (Justify)declaration.Parsed!; break;
             case "overflow": style.overflow = declaration is null ? ParseEnum(value, Overflow.Visible) : (Overflow)declaration.Parsed!; break;
             case "position": style.position = declaration is null ? ParseEnum(value, Position.Relative) : (Position)declaration.Parsed!; break;
-            case "left": style.SetLength(nameof(style.left), value, float.NaN); break;
-            case "top": style.SetLength(nameof(style.top), value, float.NaN); break;
-            case "right": style.SetLength(nameof(style.right), value, float.NaN); break;
-            case "bottom": style.SetLength(nameof(style.bottom), value, float.NaN); break;
+            case "left": style.SetLength(nameof(style.left), value, null); break;
+            case "top": style.SetLength(nameof(style.top), value, null); break;
+            case "right": style.SetLength(nameof(style.right), value, null); break;
+            case "bottom": style.SetLength(nameof(style.bottom), value, null); break;
             case "width": style.SetLength(nameof(style.width), value); break;
             case "height": style.SetLength(nameof(style.height), value); break;
             case "min-width": style.SetLength(nameof(style.minWidth), value); break;
             case "min-height": style.SetLength(nameof(style.minHeight), value); break;
-            case "max-width": style.SetLength(nameof(style.maxWidth), value, float.PositiveInfinity); break;
-            case "max-height": style.SetLength(nameof(style.maxHeight), value, float.PositiveInfinity); break;
-            case "flex-grow": style.flexGrow = declaration is null ? ParseFloat(value) : (float)declaration.Parsed!; break;
-            case "flex-shrink": style.flexShrink = declaration is null ? ParseFloat(value) : (float)declaration.Parsed!; break;
+            case "max-width": style.SetLength(nameof(style.maxWidth), value, null); break;
+            case "max-height": style.SetLength(nameof(style.maxHeight), value, null); break;
+            case "flex-grow": style.flexGrow = declaration is null ? ParseNumber(value) : (Fix64)declaration.Parsed!; break;
+            case "flex-shrink": style.flexShrink = declaration is null ? ParseNumber(value) : (Fix64)declaration.Parsed!; break;
             case "font-size": style.SetLength(nameof(style.fontSize), value); break;
             case "font-asset": style.fontAsset = declaration is null ? Style.FontPath(value) : (string)declaration.Parsed!; break;
-            case "text-outline-width": style.textOutlineWidth = declaration is null ? ParseLength(value) : (float)declaration.Parsed!; break;
+            case "text-outline-width": style.textOutlineWidth = declaration is null ? ParseLength(value) : (Fix64)declaration.Parsed!; break;
             case "text-outline-color": style.textOutlineColor = declaration is null ? ParseColor(value) : (UIColor?)declaration.Parsed; break;
             case "text-direction": style.textDirection = declaration is null ? ParseTextDirection(value) : (TextDirectionMode)declaration.Parsed!; break;
-            case "border-width": style.borderWidth = declaration is null ? ParseLength(value) : (float)declaration.Parsed!; break;
+            case "border-width": style.borderWidth = declaration is null ? ParseLength(value) : (Fix64)declaration.Parsed!; break;
             case "color": style.color = declaration is null ? ParseColor(value) : (UIColor?)declaration.Parsed; break;
             case "background-color": style.backgroundColor = declaration is null ? ParseColor(value) : (UIColor?)declaration.Parsed; break;
             case "border-color": style.borderColor = declaration is null ? ParseColor(value) : (UIColor?)declaration.Parsed; break;
@@ -280,11 +280,26 @@ public sealed class StyleSheet : ScriptableObject
         return match.Success ? [match.Groups[1].Value, match.Groups[2].Value] : [];
     }
 
-    private static void ApplySpacing(Style style, bool padding, string value, float[]? prepared = null)
+    private static string[] SplitLengths(string value)
     {
-        var values = prepared ?? value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Select(item => ParseLength(item)).ToArray();
-        if (values.Length == 0) return;
+        var values = new List<string>();
+        var start = 0;
+        var depth = 0;
+        for (var i = 0; i <= value.Length; i++)
+        {
+            if (i < value.Length && value[i] == '(') depth++;
+            else if (i < value.Length && value[i] == ')') depth--;
+            if (i < value.Length && (depth > 0 || !char.IsWhiteSpace(value[i]))) continue;
+            if (i > start) values.Add(value[start..i]);
+            start = i + 1;
+        }
+        return values.ToArray();
+    }
+
+    private static void ApplySpacing(Style style, bool padding, string value, string[]? prepared = null)
+    {
+        var values = prepared ?? SplitLengths(value);
+        if (values.Length is < 1 or > 4) return;
         var (top, right, bottom, left) = values.Length switch
         {
             1 => (values[0], values[0], values[0], values[0]),
@@ -292,8 +307,10 @@ public sealed class StyleSheet : ScriptableObject
             3 => (values[0], values[1], values[2], values[1]),
             _ => (values[0], values[1], values[2], values[3])
         };
-        if (padding) style.SetPadding(left, top, right, bottom);
-        else style.SetMargin(left, top, right, bottom);
+        style.SetLength(padding ? nameof(style.paddingLeft) : nameof(style.marginLeft), left);
+        style.SetLength(padding ? nameof(style.paddingTop) : nameof(style.marginTop), top);
+        style.SetLength(padding ? nameof(style.paddingRight) : nameof(style.marginRight), right);
+        style.SetLength(padding ? nameof(style.paddingBottom) : nameof(style.marginBottom), bottom);
     }
 
     private sealed class PreparedDeclaration
@@ -302,7 +319,7 @@ public sealed class StyleSheet : ScriptableObject
         internal readonly bool Important;
         internal readonly object? Parsed;
         internal readonly string[]? Parts;
-        internal readonly float[]? Spacing;
+        internal readonly string[]? Spacing;
 
         internal PreparedDeclaration(string property, string rawValue)
         {
@@ -316,7 +333,7 @@ public sealed class StyleSheet : ScriptableObject
                 "justify-content" => ParseEnum(Value, Justify.FlexStart),
                 "overflow" => ParseEnum(Value, Overflow.Visible),
                 "position" => ParseEnum(Value, Position.Relative),
-                "flex-grow" or "flex-shrink" => ParseFloat(Value),
+                "flex-grow" or "flex-shrink" => ParseNumber(Value),
                 "font-asset" => Style.FontPath(Value),
                 "text-outline-width" or "border-width" => ParseLength(Value),
                 "text-outline-color" or "color" or "background-color" or "border-color" => ParseColor(Value),
@@ -325,12 +342,12 @@ public sealed class StyleSheet : ScriptableObject
             };
             Parts = Property switch
             {
-                "gap" => Value.Split(' ', StringSplitOptions.RemoveEmptyEntries),
+                "gap" => SplitLengths(Value),
                 "transform" => TranslationParts(Value),
                 _ => null
             };
             if (Property is "margin" or "padding")
-                Spacing = Value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(item => ParseLength(item)).ToArray();
+                Spacing = SplitLengths(Value);
         }
     }
 
@@ -340,18 +357,21 @@ public sealed class StyleSheet : ScriptableObject
         return Enum.TryParse<T>(normalized, true, out var parsed) ? parsed : fallback;
     }
 
-    private static float ParseLength(string value, float fallback = 0)
-    {
-        var normalized = value.Trim();
-        if (normalized.Equals("none", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Equals("auto", StringComparison.OrdinalIgnoreCase)) return fallback;
-        if (normalized.EndsWith("px", StringComparison.OrdinalIgnoreCase)) normalized = normalized[..^2];
-        return float.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed : fallback;
-    }
+    private static Fix64 ParseLength(string value, Fix64 fallback = default) =>
+        CssLength.Resolve(value, 0, 0, 0, 16, fallback);
 
-    private static float ParseFloat(string value) =>
-        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
+    private static Fix64 ParseNumber(string value) =>
+        Fix64.TryParse(value, out var parsed) ? parsed : Fix64.Zero;
+
+    private static byte RoundChannel(Fix64 value)
+    {
+        // CSS color channels use round-to-even, implemented without floating point.
+        value = Fix64.Clamp(value, 0, 255);
+        var whole = (int)value;
+        var fraction = value.RawValue & (Fix64.OneRaw - 1);
+        if (fraction > Fix64.OneRaw / 2 || fraction == Fix64.OneRaw / 2 && (whole & 1) != 0) whole++;
+        return (byte)whole;
+    }
 
     private static UIColor? ParseColor(string value)
     {
@@ -369,10 +389,10 @@ public sealed class StyleSheet : ScriptableObject
             var channels = rgb.Groups[1].Value.Split(',', StringSplitOptions.TrimEntries);
             if (channels.Length is 3 or 4)
             {
-                byte Channel(string v) => (byte)Math.Clamp((int)Math.Round(v.EndsWith('%')
-                    ? ParseFloat(v[..^1]) * 2.55f : ParseFloat(v)), 0, 255);
+                byte Channel(string v) => RoundChannel(v.EndsWith('%')
+                    ? ParseNumber(v[..^1]) * 255 / 100 : ParseNumber(v));
                 return new UIColor(Channel(channels[0]), Channel(channels[1]), Channel(channels[2]),
-                    channels.Length == 4 ? (byte)Math.Clamp((int)Math.Round(ParseFloat(channels[3]) * 255), 0, 255) : (byte)255);
+                    channels.Length == 4 ? RoundChannel(ParseNumber(channels[3]) * 255) : (byte)255);
             }
         }
         var text = value.Trim().TrimStart('#');
@@ -428,7 +448,7 @@ public sealed class StyleSheet : ScriptableObject
         public int Specificity { get; }
         public int SourceOrder { get; }
         private string Condition { get; }
-        public bool MatchesViewport(float width, float height)
+        public bool MatchesViewport(Fix64 width, Fix64 height)
         {
             if (Condition.Length == 0) return true;
             foreach (Match match in Regex.Matches(Condition, @"\((min|max)-(width|height)\s*:\s*([^)]+)\)", RegexOptions.IgnoreCase))

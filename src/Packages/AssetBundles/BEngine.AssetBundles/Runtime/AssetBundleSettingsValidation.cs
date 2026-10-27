@@ -15,6 +15,14 @@ internal static class AssetBundleSettingsValidation
             throw new InvalidDataException("AssetBundle package name is invalid.");
         AssetDataValidation.ValidateOptionalRelativePath(document.BuiltInDirectory, nameof(document.BuiltInDirectory));
         AssetDataValidation.ValidateOptionalRelativePath(document.CacheDirectory, nameof(document.CacheDirectory));
+        if (!Enum.IsDefined(document.LoadMode))
+            throw new InvalidDataException("AssetBundle load mode is invalid.");
+        if (document.Enabled && document.LoadMode == AssetBundleLoadMode.StreamingAssets &&
+            (string.IsNullOrWhiteSpace(document.BuiltInDirectory) ||
+             !string.IsNullOrWhiteSpace(document.RemoteBaseUrl) || document.CheckForUpdatesOnStartup ||
+             document.ApplyUpdatesOnStartup))
+            throw new InvalidDataException(
+                "StreamingAssets mode requires a built-in directory and disabled remote/startup updates.");
         if (!string.IsNullOrWhiteSpace(document.RemoteBaseUrl) &&
             (!Uri.TryCreate(document.RemoteBaseUrl, UriKind.Absolute, out var remote) ||
              remote.Scheme is not ("http" or "https")))

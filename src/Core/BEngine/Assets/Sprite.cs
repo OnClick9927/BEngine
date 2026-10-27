@@ -17,8 +17,8 @@ public sealed class Sprite : BObject
     } = string.Empty;
     [YamlIgnore, HideInInspector] public BEngine.Texture? texture =>
         _texture ??= BAsset.Load<BEngine.Texture>(Texture);
-    public float PivotX { get; set; } = 0.5f;
-    public float PivotY { get; set; } = 0.5f;
+    public Fix64 PivotX { get; set; } = Fix64.Half;
+    public Fix64 PivotY { get; set; } = Fix64.Half;
     /// <summary>Left, bottom, right, top borders in source pixels.</summary>
     public Vector4 border { get; set; }
     public Fix64 pixelsPerUnit { get; set; } = 100;
@@ -27,7 +27,7 @@ public sealed class Sprite : BObject
     [YamlIgnore, HideInInspector] public string assetPath { get; internal set; } = string.Empty;
     [YamlIgnore, HideInInspector] public string sourcePath { get; internal set; } = string.Empty;
     [YamlIgnore, HideInInspector] public string assetType { get; internal set; } = nameof(Sprite);
-    [YamlIgnore] public Vector2 pivot => new((Fix64)(double)PivotX, (Fix64)(double)PivotY);
+    [YamlIgnore] public Vector2 pivot => new(PivotX, PivotY);
     [YamlIgnore] internal string packedSource { get; set; } = string.Empty;
     [YamlIgnore] internal string packedEntry { get; set; } = string.Empty;
     // Public for YAML reference reconstruction. Runtime code should use Texture.CreateSprite/Sprite.Create.
@@ -58,7 +58,7 @@ public sealed class Sprite : BObject
         var sprite = new Sprite
         {
             name = RuntimeServiceAccess.PathService.GetFileNameWithoutExtension(texture), Texture = texture,
-            PivotX = (float)Mathf.Clamp01(pivot.x), PivotY = (float)Mathf.Clamp01(pivot.y),
+            PivotX = Mathf.Clamp01(pivot.x), PivotY = Mathf.Clamp01(pivot.y),
             OwnerGuid = ownerGuid?.Trim() ?? string.Empty, LocalIdentifier = localIdentifier,
             assetPath = reference?.Replace('\\', '/').Trim() ?? string.Empty,
             packedSource = source?.Replace('\\', '/').Trim() ?? string.Empty,

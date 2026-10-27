@@ -526,16 +526,16 @@ public sealed class UIBuilderWindow :
         if (DrawInspectorSection("Position", "Position"))
         {
             EditEnum("Position", style.position, value => style.position = value);
-            EditFloat("Left", style.left, value => style.left = value);
-            EditFloat("Top", style.top, value => style.top = value);
-            EditFloat("Right", style.right, value => style.right = value);
-            EditFloat("Bottom", style.bottom, value => style.bottom = value);
+            EditFixed("Left", style.left, value => style.left = value);
+            EditFixed("Top", style.top, value => style.top = value);
+            EditFixed("Right", style.right, value => style.right = value);
+            EditFixed("Bottom", style.bottom, value => style.bottom = value);
         }
         if (DrawInspectorSection("Flex", "Flex"))
         {
             EditEnum("Direction", style.flexDirection, value => style.flexDirection = value);
-            EditFloat("Grow", style.flexGrow, value => style.flexGrow = value);
-            EditFloat("Shrink", style.flexShrink, value => style.flexShrink = value);
+            EditFixed("Grow", style.flexGrow, value => style.flexGrow = value);
+            EditFixed("Shrink", style.flexShrink, value => style.flexShrink = value);
         }
         if (DrawInspectorSection("Align", "Align"))
         {
@@ -544,12 +544,12 @@ public sealed class UIBuilderWindow :
         }
         if (DrawInspectorSection("Size", "Size"))
         {
-            EditFloat("Width", style.width, value => style.width = value);
-            EditFloat("Height", style.height, value => style.height = value);
-            EditFloat("Min Width", style.minWidth, value => style.minWidth = value);
-            EditFloat("Min Height", style.minHeight, value => style.minHeight = value);
-            EditFloat("Max Width", style.maxWidth, value => style.maxWidth = value);
-            EditFloat("Max Height", style.maxHeight, value => style.maxHeight = value);
+            EditFixed("Width", style.width, value => style.width = value);
+            EditFixed("Height", style.height, value => style.height = value);
+            EditFixed("Min Width", style.minWidth, value => style.minWidth = value);
+            EditFixed("Min Height", style.minHeight, value => style.minHeight = value);
+            EditFixed("Max Width", style.maxWidth, value => style.maxWidth = value, "none");
+            EditFixed("Max Height", style.maxHeight, value => style.maxHeight = value, "none");
         }
         if (DrawInspectorSection("Margin & Padding", "Margin & Padding"))
         {
@@ -560,9 +560,9 @@ public sealed class UIBuilderWindow :
         }
         if (DrawInspectorSection("Text", "Text"))
         {
-            EditFloat("Font Size", style.fontSize, value => style.fontSize = value);
+            EditFixed("Font Size", style.fontSize, value => style.fontSize = value);
             EditText("SDF Font Asset", style.fontAsset, value => style.fontAsset = value);
-            EditFloat("Outline Width", style.textOutlineWidth, value => style.textOutlineWidth = value);
+            EditFixed("Outline Width", style.textOutlineWidth, value => style.textOutlineWidth = value);
             EditColor("Outline Color", style.textOutlineColor, value => style.textOutlineColor = value);
             EditColor("Color", style.color, value => style.color = value);
         }
@@ -570,7 +570,7 @@ public sealed class UIBuilderWindow :
             EditColor("Color", style.backgroundColor, value => style.backgroundColor = value);
         if (DrawInspectorSection("Border", "Border"))
         {
-            EditFloat("Width", style.borderWidth, value => style.borderWidth = value);
+            EditFixed("Width", style.borderWidth, value => style.borderWidth = value);
             EditColor("Color", style.borderColor, value => style.borderColor = value);
         }
     }
@@ -583,21 +583,38 @@ public sealed class UIBuilderWindow :
         return next;
     }
 
-    private void EditSpacing(
-        string label,
-        float left,
-        float top,
-        float right,
-        float bottom,
-        Action<float, float, float, float> apply)
+    private void EditSpacing(string label, Fix64 left, Fix64 top, Fix64 right, Fix64 bottom,
+        Action<Fix64, Fix64, Fix64, Fix64> apply)
     {
-        var nextLeft = EditorGUILayout.FloatField(label + " Left", left);
-        var nextTop = EditorGUILayout.FloatField(label + " Top", top);
-        var nextRight = EditorGUILayout.FloatField(label + " Right", right);
-        var nextBottom = EditorGUILayout.FloatField(label + " Bottom", bottom);
-        if (Math.Abs(nextLeft - left) <= 0.0001f && Math.Abs(nextTop - top) <= 0.0001f &&
-            Math.Abs(nextRight - right) <= 0.0001f && Math.Abs(nextBottom - bottom) <= 0.0001f) return;
+        var nextLeft = ReadFixed(label + " Left", left);
+        var nextTop = ReadFixed(label + " Top", top);
+        var nextRight = ReadFixed(label + " Right", right);
+        var nextBottom = ReadFixed(label + " Bottom", bottom);
+        if (nextLeft == left && nextTop == top && nextRight == right && nextBottom == bottom) return;
         controller.Change(label, () => apply(nextLeft, nextTop, nextRight, nextBottom));
+    }
+
+    private static Fix64 ReadFixed(string label, Fix64 current)
+    {
+        var next = EditorGUILayout.TextField(label, current.ToString());
+        return Fix64.TryParse(next, out var parsed) ? parsed : current;
+    }
+
+    private void EditFixed(string label, Fix64 current, Action<Fix64> apply)
+    {
+        var next = ReadFixed(label, current);
+        if (next != current) controller.Change(label, () => apply(next));
+    }
+
+    private void EditFixed(string label, Fix64? current, Action<Fix64?> apply, string unsetKeyword = "auto")
+    {
+        var next = EditorGUILayout.TextField(label, current?.ToString() ?? unsetKeyword);
+        Fix64? parsed;
+        if (next.Trim().Equals("auto", StringComparison.OrdinalIgnoreCase) ||
+            next.Trim().Equals("none", StringComparison.OrdinalIgnoreCase)) parsed = null;
+        else if (Fix64.TryParse(next, out var value)) parsed = value;
+        else return;
+        if (parsed != current) controller.Change(label, () => apply(parsed));
     }
 
     private void DrawPreviewBar(Rect area)

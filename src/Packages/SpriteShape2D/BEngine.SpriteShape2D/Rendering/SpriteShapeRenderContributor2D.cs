@@ -7,6 +7,7 @@ namespace BEngine;
 
 internal sealed class SpriteShapeRenderContributor2D : ISceneRenderContributor2D
 {
+    public bool processesQuads => false;
     private static readonly Guid FillMaterialId = new("356b8349-58f0-45e4-a49b-63fe6a4ca45e");
     private static readonly Guid EdgeMaterialId = new("ad447a95-72fc-4c42-8894-ce644a28e5f1");
     private static readonly GraphicsVertexLayout VertexLayout = new(8 * sizeof(float),

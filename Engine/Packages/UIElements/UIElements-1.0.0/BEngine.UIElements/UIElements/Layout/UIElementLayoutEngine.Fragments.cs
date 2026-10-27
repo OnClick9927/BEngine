@@ -60,8 +60,8 @@ public static partial class UIElementLayoutEngine
                 // Relative expressions can be resolved by other subtree layouts;
                 // inherited inline text alignment can alter html-inline packing.
                 if (node is ScrollView || node.style.hasContextDependentLengths ||
-                    !float.IsFinite(node.style.width) || node.style.width <= 0 ||
-                    !float.IsFinite(node.style.height) || node.style.height <= 0 ||
+                    node.style.width <= 0 ||
+                    node.style.height <= 0 ||
                     node.ClassListContains("html-inline")) return;
                 // Reused fragments publish scrollAncestors as -1 because the
                 // current pass may have different scroller indices. Reject a

@@ -53,6 +53,7 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
 {
     private InterpreterAssemblyLoadContext? _context;
     private Assembly[] _loadedAssemblies = [];
+    private readonly HashSet<Assembly> _canonicalUses = [];
     private bool _disposed;
 
     public ManagedCodeRuntimeKind Kind => ManagedCodeRuntimeKind.AotInterpreter;
@@ -72,7 +73,10 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
         // provide a portable unload guarantee. A release is loaded once during application bootstrap; replacing it
         // requires restarting the Player process. CoreCLR uses an isolated non-collectible context only so the same
         // byte-loading path can be verified by desktop architecture tests.
-        var context = new InterpreterAssemblyLoadContext(release.Modules);
+        // Registration is the explicit opt-in contract. A trimmed Web runtime
+        // need not retain Mono.Runtime, so it must not gate code validation.
+        var precompiled = ManagedCodePrecompiledAssemblies.ValidateAndClaim(release, cancellationToken);
+        var context = new InterpreterAssemblyLoadContext(release.Modules, precompiled, cancellationToken);
         try
         {
             var assemblies = new List<Assembly>(release.Modules.Count);
@@ -82,6 +86,10 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
                 var assembly = context.LoadModule(module.Name);
                 assemblies.Add(assembly);
                 _loadedAssemblies = assemblies.Where(assembly => !ManagedCodeHostAssemblies.Contains(assembly)).ToArray();
+                if (precompiled is not null && !_canonicalUses.Contains(assembly) &&
+                    ManagedCodePrecompiledAssemblies.AcquireUse(assembly))
+                    _canonicalUses.Add(assembly);
+                cancellationToken.ThrowIfCancellationRequested();
                 var actualName = assembly.GetName().Name;
                 if (!module.Name.Equals(actualName, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException(
@@ -92,16 +100,29 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
             // through reflection. Package codecs/services must be registered
             // before game modules begin resolving resources.
             foreach (var assembly in _loadedAssemblies)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
-            var modules = _loadedAssemblies.SelectMany(GetTypesStrict)
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            var modules = _loadedAssemblies.SelectMany(assembly =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return GetTypesStrict(assembly);
+                })
                 .Where(type => type is { IsClass: true, IsAbstract: false } &&
                                (type.IsPublic || type.IsNestedPublic) &&
                                typeof(IHotUpdateModule).IsAssignableFrom(type))
                 .OrderBy(type => type.FullName, StringComparer.Ordinal)
-                .Select(type => Activator.CreateInstance(type) as IHotUpdateModule ??
-                                throw new InvalidOperationException(
-                                    $"HotUpdate module '{type.FullName}' requires a public parameterless constructor."))
+                .Select(type =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return Activator.CreateInstance(type) as IHotUpdateModule ??
+                           throw new InvalidOperationException(
+                               $"HotUpdate module '{type.FullName}' requires a public parameterless constructor.");
+                })
                 .ToArray();
+            cancellationToken.ThrowIfCancellationRequested();
             _context = context;
             IsLoaded = true;
             return BValueTask<ManagedCodeLoadResult>.FromResult(
@@ -146,6 +167,9 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
     {
         var assemblies = _loadedAssemblies;
         _loadedAssemblies = [];
+        var uses = _canonicalUses.ToArray();
+        _canonicalUses.Clear();
+        ManagedCodePrecompiledAssemblies.ReleaseUses(uses);
         HotUpdateAssemblyCleanup.Unregister(assemblies);
     }
 
@@ -192,15 +216,30 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
     {
         private readonly Dictionary<string, ManagedCodeModule> _modules;
         private readonly Dictionary<string, Assembly> _loaded = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ManagedCodePrecompiledAssemblies.ValidatedRelease? _precompiled;
+        private readonly BCancellationToken _cancellationToken;
 
-        internal InterpreterAssemblyLoadContext(IEnumerable<ManagedCodeModule> modules)
-            : base($"BEngine.AotInterpreter:{Guid.NewGuid():N}", isCollectible: false) =>
+        internal InterpreterAssemblyLoadContext(IEnumerable<ManagedCodeModule> modules,
+            ManagedCodePrecompiledAssemblies.ValidatedRelease? precompiled, BCancellationToken cancellationToken)
+            : base($"BEngine.AotInterpreter:{Guid.NewGuid():N}", isCollectible: false)
+        {
             _modules = modules.ToDictionary(module => module.Name, StringComparer.OrdinalIgnoreCase);
+            _precompiled = precompiled;
+            _cancellationToken = cancellationToken;
+        }
 
         internal Assembly LoadModule(string name)
         {
-            if (ManagedCodeHostAssemblies.Find(name) is { } hostAssembly) return hostAssembly;
             if (_loaded.TryGetValue(name, out var loaded)) return loaded;
+            // Opt-in compiled images and their exact interpreted dependencies
+            // share the Default context. AOT-generated type handles must not
+            // encounter a second AudioClip/UI/etc identity in another context.
+            if (_precompiled is not null && _precompiled.TryResolve(name, _cancellationToken, out var compiled))
+            {
+                _loaded[name] = compiled;
+                return compiled;
+            }
+            if (ManagedCodeHostAssemblies.Find(name) is { } hostAssembly) return hostAssembly;
             if (!_modules.TryGetValue(name, out var module))
                 throw new FileNotFoundException($"Managed-code module '{name}' was not found.");
             using var assemblyStream = new MemoryStream(module.GetAssemblyImage(), writable: false);

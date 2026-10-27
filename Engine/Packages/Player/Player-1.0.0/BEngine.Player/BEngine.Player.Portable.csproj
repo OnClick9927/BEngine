@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <RootNamespace>BEngine.Player</RootNamespace>
+    <AssemblyName>BEngine.Player</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants>$(DefineConstants);BENGINE_PLAYER_PORTABLE</DefineConstants>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <BEnginePackageExportOwner>false</BEnginePackageExportOwner>
+    <ArtifactsProjectName>BEngine.Player.Portable</ArtifactsProjectName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Application/Program.cs" />
+    <ProjectReference Include="../../AssetBundles/BEngine.AssetBundles/BEngine.AssetBundles.csproj" />
+    <ProjectReference Include="../../HotUpdate/BEngine.HotUpdate/BEngine.HotUpdate.csproj" />
+    <ProjectReference Include="../../Diagnostics/BEngine.Diagnostics/BEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../../Platform/BEngine.Platform.DotNet/BEngine.Platform.DotNet.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+</Project>

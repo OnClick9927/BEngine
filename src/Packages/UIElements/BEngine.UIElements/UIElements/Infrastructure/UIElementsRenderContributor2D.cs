@@ -17,6 +17,7 @@ internal sealed class UIElementsRenderContributor2D(IGraphicsDevice device) : IS
 
     public string packageId => "com.bengine.ui-elements";
     public bool rendersUi => true;
+    public bool processesQuads => false;
 
     public void BeginFrame() { _frameHasDocuments = false; _payloadCount = 0; }
     public void EndFrame()
@@ -57,6 +58,16 @@ internal sealed class UIElementsRenderContributor2D(IGraphicsDevice device) : IS
             {
                 using var commands = UIRenderListBuilder.BuildForRenderer(root, width, height,
                     document.ResolveScale(width, height));
+                // Opt-in is local to this document. Build first: layout/style or
+                // collection callbacks may change its live sorting layer. Only
+                // the exact List path has callback-free submission Add calls.
+                if (document.cullExcludedCameraSubmissions && !camera.ContainsLayer(document.sortingLayer))
+                {
+                    // Match the old per-command ++ wrap semantics so subsequent
+                    // contributors retain their original submission-order keys.
+                    submissionOrder = unchecked(submissionOrder + commands.Commands.Count);
+                    continue;
+                }
                 submissionOrder = Submit(document, root, commands.Commands, commands.Identity, commands.Revision,
                     submissions!, directSubmissions, submissionOrder);
             }

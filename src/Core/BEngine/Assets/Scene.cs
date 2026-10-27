@@ -10,6 +10,7 @@ public sealed partial class Scene : BAsset, IDisposable
     private readonly List<GameObject> _gameObjects = [];
     private readonly Dictionary<Type, object> _componentQueries = [];
     private readonly Dictionary<Type, object> _componentQueryViews = [];
+    private Renderer2D[]? _nonSpriteRenderers;
     internal long HierarchyRevision { get; private set; }
     /// <summary>Changes when hierarchy, component membership or GameObject names invalidate hierarchical lookups.</summary>
     public long hierarchyLookupVersion { get; private set; }
@@ -19,6 +20,7 @@ public sealed partial class Scene : BAsset, IDisposable
     {
         _componentQueries.Clear();
         _componentQueryViews.Clear();
+        _nonSpriteRenderers = null;
         InvalidateHierarchy();
     }
     private readonly IReadOnlyList<GameObject> _gameObjectsView;
@@ -257,6 +259,24 @@ public sealed partial class Scene : BAsset, IDisposable
     }
 
     internal ReadOnlySpan<T> ComponentsSpanUnchecked<T>() where T : class => ComponentQuery<T>();
+
+    // SpriteRenderer is sealed and uses the dedicated sprite collection path;
+    // its inherited CollectGeometry method is empty. Keep a membership snapshot
+    // so normal rendering need not visit all sprites again for custom geometry.
+    internal ReadOnlySpan<Renderer2D> NonSpriteRenderersSpanUnchecked()
+    {
+        if (_nonSpriteRenderers is not null) return _nonSpriteRenderers;
+        var renderers = ComponentQuery<Renderer2D>();
+        var count = 0;
+        foreach (var renderer in renderers)
+            if (renderer is not SpriteRenderer) count++;
+        var snapshot = count == 0 ? [] : new Renderer2D[count];
+        var index = 0;
+        foreach (var renderer in renderers)
+            if (renderer is not SpriteRenderer) snapshot[index++] = renderer;
+        _nonSpriteRenderers = snapshot;
+        return snapshot;
+    }
 
     internal bool Contains(GameObject gameObject) => _gameObjects.Contains(gameObject);
 

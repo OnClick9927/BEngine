@@ -30,15 +30,23 @@ internal sealed class RenderSubmissionSortCache2D : IComparer<int>
             var capacity = Math.Min(limit, Math.Max(values.Length, Math.Max(16, _keys.Length * 2)));
             _keys = new RenderSortKey2D[capacity]; _order = new int[capacity]; _work = new int[capacity]; _count = -1;
         }
-        var reused = _count == values.Length;
+        var sameCount = _count == values.Length;
+        var reused = sameCount;
         if (reused)
             for (var i = 0; i < values.Length; i++)
                 if (_keys[i] != values[i].SortKey) { reused = false; break; }
         if (!reused)
         {
             _count = -1;
-            for (var i = 0; i < values.Length; i++) { _keys[i] = values[i].SortKey; _order[i] = i; }
-            Array.Sort(_order, 0, values.Length, this);
+            for (var i = 0; i < values.Length; i++) _keys[i] = values[i].SortKey;
+            // The old permutation can remain stable even when individual keys
+            // change. Compare includes the original input index for equal keys.
+            reused = sameCount && IsCurrentOrderStable(values.Length);
+            if (!reused)
+            {
+                for (var i = 0; i < values.Length; i++) _order[i] = i;
+                if (!TrySortNaturalRuns(values.Length)) Array.Sort(_order, 0, values.Length, this);
+            }
             _count = values.Length;
         }
         _order.AsSpan(0, values.Length).CopyTo(_work);
@@ -57,9 +65,61 @@ internal sealed class RenderSubmissionSortCache2D : IComparer<int>
         }
         return reused;
     }
+    private bool IsCurrentOrderStable(int count)
+    {
+        for (var i = 1; i < count; i++)
+            if (Compare(_order[i - 1], _order[i]) > 0) return false;
+        return true;
+    }
+
+    // Geometry producers commonly emit a few already ordered runs. Merge only
+    // those runs, using the existing index workspace. Highly fragmented input
+    // keeps the bounded framework sort instead of paying for many merge passes.
+    private bool TrySortNaturalRuns(int count)
+    {
+        if (count < 64) return false;
+        Span<int> starts = stackalloc int[33];
+        starts[0] = 0;
+        int runs = 1;
+        for (int i = 1; i < count; i++)
+        {
+            if (Compare(_order[i - 1], _order[i]) <= 0) continue;
+            if (runs == 32) return false;
+            starts[runs++] = i;
+        }
+        starts[runs] = count;
+        int[] input = _order, output = _work;
+        while (runs > 1)
+        {
+            int mergedRuns = 0;
+            for (int run = 0; run < runs; run += 2)
+            {
+                int start = starts[run], middle = starts[run + 1];
+                int end = run + 1 < runs ? starts[run + 2] : middle;
+                starts[mergedRuns++] = start;
+                int left = start, right = middle, target = start;
+                while (left < middle && right < end)
+                {
+                    if (Compare(input[left], input[right]) <= 0) output[target++] = input[left++];
+                    else output[target++] = input[right++];
+                }
+                input.AsSpan(left, middle - left).CopyTo(output.AsSpan(target));
+                target += middle - left;
+                input.AsSpan(right, end - right).CopyTo(output.AsSpan(target));
+            }
+            starts[mergedRuns] = count;
+            runs = mergedRuns;
+            (input, output) = (output, input);
+        }
+        if (!ReferenceEquals(input, _order)) input.AsSpan(0, count).CopyTo(_order);
+        return true;
+    }
+
     public int Compare(int left, int right)
     {
-        var key = _keys[left].CompareTo(_keys[right]);
+        var key = OperatingSystem.IsBrowser()
+            ? RenderSortKey2D.Compare(in _keys[left], in _keys[right])
+            : _keys[left].CompareTo(_keys[right]);
         return key != 0 ? key : left.CompareTo(right);
     }
 

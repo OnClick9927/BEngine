@@ -201,7 +201,7 @@ public sealed partial class UIDocument : MonoBehaviour
         {
             var anchor = textField.editing.Anchor;
             var scale = ResolveScale(viewportWidth, viewportHeight);
-            var fontSize = UIElementLayoutEngine.EffectiveFontSize(textField) * (float)scale;
+            var fontSize = UIElementLayoutEngine.EffectiveFontSize(textField) * scale;
             var labelWidth = string.IsNullOrEmpty(textField.label) ? Fix64.Zero : fieldRect.Width * (Fix64)0.4;
             var localX = position.x - fieldRect.X - labelWidth - UIRenderListBuilder.TextInset(textField, fontSize);
             if (localX >= 0 || extendSelection)

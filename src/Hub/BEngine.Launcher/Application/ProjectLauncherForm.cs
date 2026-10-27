@@ -58,6 +58,7 @@ internal sealed partial class ProjectLauncherForm : Form
 
     private readonly TextBox _directoryField = new();
     private readonly TextBox _nameField = new();
+    private readonly ComboBox _createEngineSelector = new();
     private readonly Label _createStatusLabel = new();
     private readonly Button _createButton = new();
 
@@ -452,7 +453,7 @@ internal sealed partial class ProjectLauncherForm : Form
         _createPage.BackColor = PanelBackground;
         _createPage.AutoScroll = true;
 
-        var content = new Panel { Dock = DockStyle.Top, Height = 390, BackColor = PanelBackground };
+        var content = new Panel { Dock = DockStyle.Top, Height = 466, BackColor = PanelBackground };
         _createPage.Controls.Add(content);
 
         var intro = new Label
@@ -467,19 +468,32 @@ internal sealed partial class ProjectLauncherForm : Form
         content.Controls.Add(CreateFieldLabel("Project name", 0, 50));
         _nameField.Location = new Point(0, 76);
         _nameField.Size = new Size(790, 30);
+        _nameField.AccessibleName = "Project name";
         ConfigureTextField(_nameField);
         _nameField.TextChanged += (_, _) => UpdateCreateActions();
         content.Controls.Add(_nameField);
 
-        content.Controls.Add(CreateFieldLabel("Location", 0, 126));
-        _directoryField.Location = new Point(0, 152);
+        content.Controls.Add(CreateFieldLabel("Engine version", 0, 126));
+        _createEngineSelector.DropDownStyle = ComboBoxStyle.DropDownList;
+        _createEngineSelector.BackColor = FieldBackground;
+        _createEngineSelector.ForeColor = PrimaryText;
+        _createEngineSelector.DisplayMember = nameof(LauncherEngineInfo.DisplayName);
+        _createEngineSelector.AccessibleName = "Engine version";
+        _createEngineSelector.Location = new Point(0, 152);
+        _createEngineSelector.Width = 790;
+        _createEngineSelector.SelectedIndexChanged += (_, _) => UpdateCreateActions();
+        content.Controls.Add(_createEngineSelector);
+
+        content.Controls.Add(CreateFieldLabel("Location", 0, 202));
+        _directoryField.Location = new Point(0, 228);
         _directoryField.Size = new Size(660, 30);
+        _directoryField.AccessibleName = "Location";
         ConfigureTextField(_directoryField);
         _directoryField.TextChanged += (_, _) => UpdateCreateActions();
         content.Controls.Add(_directoryField);
 
         var browseButton = CreateButton("Browse...", false);
-        browseButton.Location = new Point(674, 150);
+        browseButton.Location = new Point(674, 226);
         browseButton.Size = new Size(116, 34);
         browseButton.Click += (_, _) => BrowseCreateDirectory();
         content.Controls.Add(browseButton);
@@ -489,25 +503,25 @@ internal sealed partial class ProjectLauncherForm : Form
             Text = "New projects contain only BEngine Core. Package dependencies are resolved when a package is enabled.",
             AutoSize = true,
             ForeColor = SecondaryText,
-            Location = new Point(0, 216)
+            Location = new Point(0, 292)
         };
         content.Controls.Add(packageHint);
 
-        _createStatusLabel.Location = new Point(0, 258);
+        _createStatusLabel.Location = new Point(0, 334);
         _createStatusLabel.Size = new Size(500, 48);
         _createStatusLabel.ForeColor = SecondaryText;
         content.Controls.Add(_createStatusLabel);
 
         var cancelButton = CreateButton("Cancel", false);
         cancelButton.Size = new Size(110, 36);
-        cancelButton.Location = new Point(558, 326);
+        cancelButton.Location = new Point(558, 402);
         cancelButton.Click += (_, _) => ShowProjectsPage();
         content.Controls.Add(cancelButton);
 
         _createButton.Text = "Create project";
         ConfigureButton(_createButton, true);
         _createButton.Size = new Size(122, 36);
-        _createButton.Location = new Point(678, 326);
+        _createButton.Location = new Point(678, 402);
         _createButton.Click += (_, _) => CreateProject();
         content.Controls.Add(_createButton);
 
@@ -694,6 +708,8 @@ internal sealed partial class ProjectLauncherForm : Form
 
     private void ShowCreatePage()
     {
+        var preferredEngine = SelectedEngine?.DirectoryPath;
+        ReloadEngines();
         if (!HasLocalEngine || !_primaryNavigationAllowed)
         {
             RefreshPrimaryNavigation(_primaryNavigationAllowed);
@@ -705,6 +721,7 @@ internal sealed partial class ProjectLauncherForm : Form
         SetNavigationState(null);
         _nameField.Clear();
         _directoryField.Text = ResolveSuggestedProjectDirectory();
+        RefreshCreateEngineSelector(preferredEngine);
         _nameField.Focus();
         UpdateCreateActions();
     }
@@ -757,8 +774,11 @@ internal sealed partial class ProjectLauncherForm : Form
         if (_launchingEditor) return;
         try
         {
+            var engine = SelectedCreateEngine
+                ?? throw new InvalidOperationException(T("Select an installed engine version."));
+            _ = ResolveProjectEditorPath(engine.Version);
             var workspace = _projectService.Create(
-                _directoryField.Text.Trim(), _nameField.Text.Trim());
+                _directoryField.Text.Trim(), _nameField.Text.Trim(), engine.Version);
             await LaunchEditorAsync(workspace);
         }
         catch (Exception exception)
@@ -788,23 +808,47 @@ internal sealed partial class ProjectLauncherForm : Form
         if (_launchingEditor) return;
         _launchingEditor = true;
         UpdateProjectActions();
+        UpdateCreateActions();
         try
         {
+            var editorPath = ResolveProjectEditorPath(workspace.Project.EngineVersion);
             var environment = await EnsureEditorEnvironmentAsync();
             if (environment is null) return;
-            await StartEditorAsync(workspace, environment);
+            await StartEditorAsync(workspace, environment, editorPath);
         }
         finally
         {
             _launchingEditor = false;
-            if (!IsDisposed) UpdateProjectActions();
+            if (!IsDisposed)
+            {
+                UpdateProjectActions();
+                UpdateCreateActions();
+            }
         }
     }
 
-    private async Task StartEditorAsync(LauncherProjectWorkspace workspace, DotNetEnvironmentSnapshot environment)
+    private string ResolveProjectEditorPath(string engineVersion)
     {
-        if (!File.Exists(_editorPath))
-            throw new FileNotFoundException(T("The editor was not found at '{0}'. Check the installed engine version.", _editorPath), _editorPath);
+        try
+        {
+            return LauncherProjectEngineResolver.Resolve(engineVersion, _engineCatalog.Discover(), _editorPath);
+        }
+        catch (FileNotFoundException exception)
+        {
+            throw new FileNotFoundException(T("The editor for BEngine {0} was not found at '{1}'.",
+                engineVersion, exception.FileName), exception.FileName, exception);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new InvalidOperationException(T("BEngine {0} is not installed. Install this engine version before opening the project.",
+                engineVersion), exception);
+        }
+    }
+
+    private async Task StartEditorAsync(LauncherProjectWorkspace workspace, DotNetEnvironmentSnapshot environment, string editorPath)
+    {
+        if (!File.Exists(editorPath))
+            throw new FileNotFoundException(T("The editor was not found at '{0}'. Check the installed engine version.", editorPath), editorPath);
 
         _settings = _historyStore.Remember(_settings, workspace.RootPath, workspace.Project.Name);
         RefreshProjectList();
@@ -814,7 +858,7 @@ internal sealed partial class ProjectLauncherForm : Form
         EditorStartupMonitor.TryDeleteStatus(statusPath);
         var start = new ProcessStartInfo
         {
-            FileName = _editorPath,
+            FileName = editorPath,
             WorkingDirectory = workspace.RootPath,
             UseShellExecute = false,
             ArgumentList = { workspace.ProjectFilePath, "--startup-token", startupToken }
@@ -837,7 +881,7 @@ internal sealed partial class ProjectLauncherForm : Form
                 return;
             }
 
-            var logPath = outcome.LogPath ?? WriteStartupFailureLog(workspace, editorProcess, outcome);
+            var logPath = outcome.LogPath ?? WriteStartupFailureLog(workspace, editorProcess, outcome, editorPath);
             var message = outcome.Kind switch
             {
                 EditorStartupOutcomeKind.UnexpectedExit => T("The Editor process exited before its first frame (exit code {0}).", outcome.ExitCode),
@@ -855,7 +899,8 @@ internal sealed partial class ProjectLauncherForm : Form
     private string? WriteStartupFailureLog(
         LauncherProjectWorkspace workspace,
         Process editorProcess,
-        EditorStartupOutcome outcome)
+        EditorStartupOutcome outcome,
+        string editorPath)
     {
         try
         {
@@ -867,7 +912,7 @@ internal sealed partial class ProjectLauncherForm : Form
             File.AppendAllText(logPath,
                 $"[{DateTimeOffset.Now:O}] {outcome.Kind}: {outcome.Message}{Environment.NewLine}" +
                 $"Project: {workspace.ProjectFilePath}{Environment.NewLine}" +
-                $"Editor: {_editorPath}{Environment.NewLine}" +
+                $"Editor: {editorPath}{Environment.NewLine}" +
                 $"Process: {processId}{Environment.NewLine}{Environment.NewLine}");
             return logPath;
         }
@@ -917,6 +962,19 @@ internal sealed partial class ProjectLauncherForm : Form
 
     private void UpdateCreateActions()
     {
+        _createEngineSelector.Enabled = !_launchingEditor && _createEngineSelector.Items.Count > 0;
+        if (_launchingEditor)
+        {
+            _createButton.Enabled = false;
+            return;
+        }
+        var engine = SelectedCreateEngine;
+        if (engine is null || !File.Exists(Path.Combine(engine.DirectoryPath, "BEngine.Editor.exe")))
+        {
+            _createButton.Enabled = false;
+            SetCreateStatus("Select an installed engine version.", false);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(_nameField.Text))
         {
             _createButton.Enabled = false;
@@ -953,6 +1011,7 @@ internal sealed partial class ProjectLauncherForm : Form
     {
         var width = Math.Max(360, content.ClientSize.Width);
         _nameField.Width = width;
+        _createEngineSelector.Width = width;
         browseButton.Left = Math.Max(0, width - browseButton.Width);
         _directoryField.Width = Math.Max(180, browseButton.Left - 14);
         _createStatusLabel.Width = Math.Max(180, width - cancelButton.Width - _createButton.Width - 24);

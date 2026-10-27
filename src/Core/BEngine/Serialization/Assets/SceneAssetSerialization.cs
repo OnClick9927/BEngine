@@ -104,6 +104,56 @@ internal static class SceneAssetSerialization
     internal static Scene Restore(SceneAssetData document, IServiceProvider? services = null, bool resolvePrefabs = true,
         Func<Guid, BObject?>? externalReferenceResolver = null)
     {
+        Scene? scene = null;
+        try
+        {
+            using var work = RestoreSteps(document, services, resolvePrefabs, externalReferenceResolver,
+                value => scene = value).GetEnumerator();
+            while (work.MoveNext()) { }
+            return scene!;
+        }
+        catch
+        {
+            if (scene is { isCreated: true }) scene.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>Restores objects, hierarchy and bindings on the owner thread under the shared frame budget.</summary>
+    internal static async BTask<Scene> RestoreAsync(SceneAssetData document, IServiceProvider? services,
+        AsyncLoadContext context, bool resolvePrefabs = true, Func<Guid, BObject?>? externalReferenceResolver = null)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        context.cancellationToken.ThrowIfCancellationRequested();
+        Scene? scene = null;
+        var succeeded = false;
+        try
+        {
+            using var work = RestoreSteps(document, services, resolvePrefabs, externalReferenceResolver,
+                value => scene = value).GetEnumerator();
+            var completed = 0;
+            var estimatedSteps = Math.Max(1, 1 + document.GameObjects.Count * 3 +
+                document.GameObjects.Sum(static item => item.Components.Count) + document.PrefabInstances.Count);
+            await context.RunSteps(() =>
+            {
+                if (!work.MoveNext()) return CooperativeWorkStatus.Complete;
+                context.ReportProgress(Math.Min(.99f, (float)++completed / estimatedSteps));
+                return CooperativeWorkStatus.Continue;
+            });
+            context.cancellationToken.ThrowIfCancellationRequested();
+            context.ReportProgress(1);
+            succeeded = true;
+            return scene!;
+        }
+        finally
+        {
+            if (!succeeded && scene is { isCreated: true }) scene.Dispose();
+        }
+    }
+
+    private static IEnumerable<object?> RestoreSteps(SceneAssetData document, IServiceProvider? services,
+        bool resolvePrefabs, Func<Guid, BObject?>? externalReferenceResolver, Action<Scene> created)
+    {
         AssetDataValidation.ValidateScene(document);
         if (resolvePrefabs && document.PrefabInstances.Count > 0)
         {
@@ -118,7 +168,9 @@ internal static class SceneAssetSerialization
             Id = document.Id,
             IsRuntimeOnly = document.IsRuntimeSnapshot
         };
-        var objects = new Dictionary<Guid, GameObject>();
+        created(scene);
+        yield return null;
+        var objects = new Dictionary<Guid, GameObject>(document.GameObjects.Count);
         var references = new Dictionary<Guid, BObject>();
         var componentBindings = new List<(Component Component, ComponentData Data)>();
         var transformBindings = new List<(Transform Transform, TransformData Data)>();
@@ -143,6 +195,7 @@ internal static class SceneAssetSerialization
             references.Add(gameObject.transform.Id, gameObject.transform);
             transformBindings.Add((gameObject.transform, item.Transform));
             CreateComponents(gameObject, item.Components, references, componentBindings);
+            yield return null;
         }
 
         foreach (var item in document.GameObjects.Where(item => item.Parent.HasValue))
@@ -151,6 +204,7 @@ internal static class SceneAssetSerialization
                 !objects.TryGetValue(item.Parent!.Value, out var parent))
                 throw new InvalidDataException($"Scene hierarchy contains an unknown object reference for {item.Id}.");
             child.transform.SetParent(parent.transform, worldPositionStays: false);
+            yield return null;
         }
 
         BObject? ResolveReference(Guid id) => references.GetValueOrDefault(id) ?? externalReferenceResolver?.Invoke(id);
@@ -161,6 +215,7 @@ internal static class SceneAssetSerialization
             else if (data.Fields.Count > 0)
                 ComponentFieldSerializer.Deserialize(transform, data.Fields);
             SerializationCallbackUtility.AfterDeserialize(transform);
+            yield return null;
         }
         foreach (var (component, data) in componentBindings)
         {
@@ -169,11 +224,14 @@ internal static class SceneAssetSerialization
             else
                 ComponentFieldSerializer.Deserialize(component, data.Fields);
             SerializationCallbackUtility.AfterDeserialize(component);
+            yield return null;
         }
 
         foreach (var reference in document.PrefabInstances)
+        {
             if (objects.TryGetValue(reference.Root, out var root)) root.PrefabInstance = PrefabMerge.Clone(reference);
-        return scene;
+            yield return null;
+        }
     }
 
     private static void RestoreTransformType(GameObject gameObject, TransformData document)

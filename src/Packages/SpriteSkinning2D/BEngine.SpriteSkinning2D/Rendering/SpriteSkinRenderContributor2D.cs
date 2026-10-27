@@ -8,6 +8,7 @@ namespace BEngine;
 
 internal sealed partial class SpriteSkinRenderContributor2D : ISceneRenderContributor2D
 {
+    public bool processesQuads => false;
     private static readonly Guid MaterialId = new("62b65561-97bd-4ee2-bd36-ff886746aa8f");
     private static readonly GraphicsVertexLayout VertexLayout = new(8 * sizeof(float),
     [

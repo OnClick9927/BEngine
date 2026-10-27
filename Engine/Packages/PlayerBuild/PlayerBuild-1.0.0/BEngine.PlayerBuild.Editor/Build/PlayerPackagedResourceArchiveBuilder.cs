@@ -68,7 +68,8 @@ internal static class PlayerPackagedResourceArchiveBuilder
                 pathService,
                 context?.ContentEncryptionKey,
                 embedEncryptionKey: true,
-                compress: context?.Request.CompressAssetBundles ?? true);
+                compress: PlayerResourceArchiveCompression.IsEnabled(
+                    context?.Target.Platform, context?.Request.CompressAssetBundles ?? true));
             if (context?.StrippingReport is { } report)
             {
                 using var published = fileSystem.OpenRead(layout.PlayerResourceArchivePath);

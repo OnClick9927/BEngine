@@ -120,6 +120,19 @@ internal static class PlayerSettingsProvider
                 }
             }
         }
+        if (selectedPlatform == BuildTargetPlatform.Web)
+        {
+            var scriptCompilation = (WebScriptCompilationMode)EditorGUILayout.EnumPopup(
+                EditorLocalization.Tr("Web Script Compilation"), build.WebScriptCompilation);
+            if (scriptCompilation != build.WebScriptCompilation)
+            {
+                build.WebScriptCompilation = scriptCompilation;
+                buildChanged = true;
+            }
+            if (build.WebScriptCompilation == WebScriptCompilationMode.AheadOfTime)
+                GUILayout.Label(EditorLocalization.Tr("Web Script Precompilation Notice"),
+                    EditorStyles.wordWrappedLabel);
+        }
         var managedStripping = (PlayerManagedStrippingLevel)EditorGUILayout.EnumPopup(
             "Managed Stripping", build.ManagedStripping);
         if (managedStripping != build.ManagedStripping)

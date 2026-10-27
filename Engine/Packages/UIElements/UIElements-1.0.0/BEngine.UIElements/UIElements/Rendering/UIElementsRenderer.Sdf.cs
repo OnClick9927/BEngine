@@ -15,6 +15,7 @@ public sealed partial class UIElementsRenderer
     {
         if (_sdfShader is not null) return _sdfShader;
         var sources = GraphicsUtility.Current.ResolveShaderVariant(_device.Capabilities, "Shaders/UIElements/Sdf");
+        var webClipOriginal = sources;
         // Keep the public resource's alpha-channel convention. Only this
         // renderer's atlas/program pair opts into the single-channel format;
         // custom shader overrides without the marker retain their old input.
@@ -27,6 +28,7 @@ public sealed partial class UIElementsRenderer
             try { r8Atlas = formats.SupportsTextureFormat(GraphicsTextureFormat.R8Unorm); }
             catch (NotSupportedException) { } // Optional format-query implementations may decline the query.
         }
+        CaptureWebClipSources(webClipOriginal, sources);
         var program = _device.CreateProgram(new GraphicsShaderProgramDescription("BEngine.UIElements.Sdf", sources.Vertex, sources.Fragment)
         { Uniforms = [new("uViewportWidth", 0, 1), new("uViewportHeight", 4, 1), new("uSdfThreshold", 8, 1)] });
         _sdfUsesRedDistance = redDistance;
@@ -62,6 +64,35 @@ public sealed partial class UIElementsRenderer
                 GraphicsTextureFilter.Linear, GraphicsTextureFilter.Linear, GraphicsTextureAddressMode.ClampToEdge), pixels);
             _textures.Add(key, texture, texture.Description.DataByteSize);
         }
+        // The atlas is resolved/touched above on every command, including a
+        // geometry hit. A trimmed or invalidated texture is never retained by
+        // the CPU cache, and an unresolved/destroyed font is never replayed.
+        var style = command.Element.style;
+        var effectiveSize = style.textOutlineWidth > 0 && style.textOutlineColor is { A: > 0 }
+            ? UIElementLayoutEngine.EffectiveFontSize(command.Element) : Fix64.Zero;
+        var geometryKey = new SdfGeometryKey(command, font, BAsset.cacheGeneration,
+            style.textOutlineWidth, style.textOutlineColor, effectiveSize);
+        SdfCommandGeometry? geometry = null;
+        var outlined = style.textOutlineWidth > 0 && style.textOutlineColor is { A: > 0 };
+        if (EnableSdfGeometryCache && !font.isDestroyed &&
+            command.Content.Length <= MaximumSdfCommandVertexFloats / (outlined ? 96 : 48))
+        {
+            if (_sdfCommandGeometry.TryGetValue(command.Element, out geometry))
+            {
+                if (geometry.Valid && geometry.Key == geometryKey)
+                {
+                    ReplaySdfGeometry(batches, command, texture, geometry);
+                    _textGeometryCacheHits++;
+                    return true;
+                }
+            }
+            else
+            {
+                geometry = new SdfCommandGeometry();
+                _sdfCommandGeometry.Add(command.Element, geometry);
+                TrimSdfGeometry();
+            }
+        }
         var size = command.FontSize > 0 ? command.FontSize : 14;
         var layoutKey = (font, command.Content, size, command.Rect.Width, command.Element is Label);
         if (!_sdfLayouts.TryGetValue(layoutKey, out var layout))
@@ -71,43 +102,37 @@ public sealed partial class UIElementsRenderer
             _sdfLayouts.Trim(1024, 4 * 1024 * 1024);
         }
         var top = (float)command.Rect.Y + Math.Max(0, ((float)command.Rect.Height - layout.Height) / 2);
-        float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
-        foreach (var placement in layout.Glyphs)
-        {
-            var x = (float)command.Rect.X + placement.X; var y = top + placement.Y;
-            x0 = Math.Min(x0, x); y0 = Math.Min(y0, y);
-            x1 = Math.Max(x1, x + placement.Width); y1 = Math.Max(y1, y + placement.Height);
-        }
+        var measured = ScreenSpaceGlyphGeometry.MeasureBounds(layout.Glyphs, (float)command.Rect.X, top);
+        _textGeometryRebuiltGlyphs += layout.Glyphs.Length;
         if (layout.Glyphs.Length == 0) return true;
-        var bounds = new UIElementRect((Fix64)x0, (Fix64)y0, (Fix64)(x1 - x0), (Fix64)(y1 - y0));
-        var style = command.Element.style;
+        var bounds = new UIElementRect((Fix64)measured.Left, (Fix64)measured.Top,
+            (Fix64)(measured.Right - measured.Left), (Fix64)(measured.Bottom - measured.Top));
+        float? outlineThreshold = null;
         if (style.textOutlineWidth > 0 && style.textOutlineColor is { A: > 0 } outline)
         {
-            var scale = size / UIElementLayoutEngine.EffectiveFontSize(command.Element);
-            var threshold = Math.Max(.02f, .5f - style.textOutlineWidth * scale / (font.distanceRange * 2 * size / font.samplingSize));
-            AddGlyphs(GetBatch(batches, command.ClipRect, texture, bounds, threshold).Vertices,
-                layout, command, top, font, outline);
+            var scale = size / (float)effectiveSize;
+            var threshold = Math.Max(.02f, .5f - (float)style.textOutlineWidth * scale / (font.distanceRange * 2 * size / font.samplingSize));
+            outlineThreshold = threshold;
+            if (geometry is null)
+                AddGlyphs(GetBatch(batches, command.ClipRect, texture, bounds, threshold).Vertices,
+                    layout, command, top, outline);
+        }
+        if (geometry is not null)
+        {
+            PrepareSdfGeometry(geometry, geometryKey, layout, command, top, bounds, outlineThreshold);
+            ReplaySdfGeometry(batches, command, texture, geometry);
+            return true;
         }
         AddGlyphs(GetBatch(batches, command.ClipRect, texture, bounds, .5f).Vertices,
-            layout, command, top, font, command.Color);
+            layout, command, top, command.Color);
         return true;
     }
 
-    private static void AddGlyphs(List<float> output, SdfTextLayout layout,
-        UIRenderCommand command, float top, SdfFontAsset font, UIColor color)
+    private void AddGlyphs(List<float> output, SdfTextLayout layout,
+        UIRenderCommand command, float top, UIColor color)
     {
         using var budget = LoopExecutionGuard.AllowIterations(layout.Glyphs.Length + 1);
         var rgba = new NVector4(color.R / 255f, color.G / 255f, color.B / 255f, color.A / 255f);
-        foreach (var placement in layout.Glyphs)
-        {
-            var glyph = placement.Glyph;
-            var x0 = (float)command.Rect.X + placement.X; var y0 = top + placement.Y;
-            var x1 = x0 + placement.Width; var y1 = y0 + placement.Height;
-            var u0 = glyph.X / (float)font.atlasWidth; var v0 = glyph.Y / (float)font.atlasHeight;
-            var u1 = (glyph.X + glyph.Width) / (float)font.atlasWidth; var v1 = (glyph.Y + glyph.Height) / (float)font.atlasHeight;
-            AddTexturedVertex(output, x0, y0, rgba, u0, v0); AddTexturedVertex(output, x1, y0, rgba, u1, v0);
-            AddTexturedVertex(output, x1, y1, rgba, u1, v1); AddTexturedVertex(output, x0, y0, rgba, u0, v0);
-            AddTexturedVertex(output, x1, y1, rgba, u1, v1); AddTexturedVertex(output, x0, y1, rgba, u0, v1);
-        }
+        ScreenSpaceGlyphGeometry.Append(output, layout.Glyphs, (float)command.Rect.X, top, rgba);
     }
 }

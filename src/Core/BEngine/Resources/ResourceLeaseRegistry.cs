@@ -34,6 +34,20 @@ internal static class ResourceLeaseRegistry
             .Sum(entry => entry.ReferenceCount);
     }
 
+    internal static ResourceHandle<T> AcquireLoaded<T>(string path, string folderName, T asset) where T : class
+    {
+        EnsureServiceContext();
+        ArgumentNullException.ThrowIfNull(asset);
+        var key = new ResourceKey(Normalize(path), folderName, typeof(T));
+        if (!Entries.TryGetValue(key, out var entry) || entry.Asset is BObject { isDestroyed: true })
+        {
+            entry = new Entry(asset);
+            Entries[key] = entry;
+        }
+        checked { entry.ReferenceCount++; }
+        return new ResourceHandle<T>((T)entry.Asset, () => Release(key, entry));
+    }
+
     internal static int UnloadUnused()
     {
         EnsureServiceContext();

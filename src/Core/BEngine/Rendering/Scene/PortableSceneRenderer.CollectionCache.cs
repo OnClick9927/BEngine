@@ -100,7 +100,7 @@ public sealed partial class PortableSceneRenderer
             with { WorldAxisX = entry.AxisX, WorldAxisY = entry.AxisY };
         if (!reuseVisibility)
         {
-            entry.Visible = _culling.IsVisible(quad); _cullTests++;
+            entry.Visible = _culling.IsVisibleCore(in quad); _cullTests++;
             // Do not allow a previous custom-policy result to leak into an ordinary camera.
             entry.CullingVersion = camera.Policy is null ? _cullingVersion : 0;
         }

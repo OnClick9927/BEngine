@@ -2,6 +2,8 @@
 
 BEngine Core 是引擎与编辑器的内置基础层，提供 2D Scene、GameObject、Component、Transform、Camera2D、Sprite、资源系统、序列化、输入、生命周期和 Unity 风格编辑器扩展 API。Core 始终可用，不需要在 `Packages.yaml` 中启用，也不依赖 Animation、Physics2D、Navigation2D 或 TiledMap。
 
+逻辑数值使用 Q32.32 `Fix64`；资源坐标和 UI 布局也采用定点计算。数值写法、样式 API 与确定性运行条件见 [定点数与运行一致性](Doc/FixedPoint.md)。
+
 ![Core 编辑器概览](Doc/images/overview.png)
 
 ## 包概览与依赖
@@ -23,6 +25,8 @@ Package Manager 支持按最低引擎版本筛选包、选择并固定安装版�
 | `Editor` | 图标、离线文档、示例和 AI Skill | 否 |
 
 Core 使用 `Microsoft.Extensions.DependencyInjection` 管理宿主与 Scene scope，并使用 YAML 文档保存工程、场景、Prefab 和资源元数据。运行时是单线程模型；编辑器可以在后台执行扫描、编译、哈希和文件 IO，但不能从后台线程修改场景对象。
+
+普通 `YamlAsset` 数据可在 `.meta` 的 `settings` 中设置 `runtimeDataFormat: binary`。构建时会生成紧凑二进制，保留原资源地址、YAML 编辑源和编辑器 Artifact；使用 `YamlUtility.Deserialize<T>(Resources.Load<byte[]>(address)!)` 可同时读取构建后的二进制与原 YAML。支持公开可写的数据成员、标量、数组、`List<T>`、字符串键 `Dictionary` 和 `Fix64`，不会按文件中的类型名称创建对象。文档最多 64 MiB、深度最多 64 层；Anchor、Alias、显式 Tag、Merge Key 和非标量 Map Key 会明确导致构建失败，此类文档应保留 YAML。该选项适用于 `DefaultImporter` 的普通配置，不用于 Scene、Prefab 或 BAsset 文档。
 
 Animation、Animator 状态机由 `com.bengine.animation` 包提供，Timeline 由独立的 `com.bengine.timeline` 包提供。Core 保留通用节点／轨道数据模型和窗口内容接口；保留模式控件及 NodeCanvas、TrackEditorCanvas 在 com.bengine.ui-elements 包内；启用包后双击 `.anim`、`.controller` 或 `.timeline.yaml` 可打开对应编辑窗口。具体操作见包文档。
 
@@ -325,3 +329,9 @@ public sealed class CombatModule : IEngineServiceModule
 扩展功能的说明与导入示例由各 Package 提供，示例工程 Main 主菜单提供对应入口。
 
 地图、动画、音视频预览和包 Inspector 的入口见 [编辑器资源制作](Doc/EditorAuthoring.md)。
+
+
+异步操作进度统一采用轮询：外部在 Update 中读取 `AsyncOperation.progress`、`isDone`、`status`、`exception`。
+`progress` 只读且单调递增，成功才到 1。运行时不提供进度通知事件；外部按需轮询，完成时仍可使用 `completed` 事件。编辑器专用的 `EditorUtility.progressChanged` 保持不变。
+编辑器的 `EditorAsyncOperationProgress.Track` 也在编辑器每帧读取这些属性，并在操作终止时清理进度窗口。
+`completed` 完成事件保留；取消入口仍是 `Cancel()`。

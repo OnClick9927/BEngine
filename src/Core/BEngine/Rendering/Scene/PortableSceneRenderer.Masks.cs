@@ -68,7 +68,9 @@ public sealed partial class PortableSceneRenderer
         {
             PrepareViewport(offscreen);
             _device.Clear(GraphicsClearFlags.Color, NVector4.Zero);
-            if (_batchContributors[index] is { } contributor) contributor.Render(batch, camera, width, height, offscreen);
+            if (_batchContributors[index] is { } contributor)
+                using (SceneRenderDiagnostics.MeasureRenderer(contributor))
+                    contributor.Render(batch, camera, width, height, offscreen);
             else DrawPreparedBatch(_coreBatchRanges[index], width, height);
         }
         PrepareViewport(viewport);

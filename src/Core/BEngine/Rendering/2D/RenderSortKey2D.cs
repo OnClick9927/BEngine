@@ -49,4 +49,24 @@ public readonly record struct RenderSortKey2D : IComparable<RenderSortKey2D>
         result = ((byte)Transparency).CompareTo((byte)other.Transparency);
         return result != 0 ? result : SubmissionOrder.CompareTo(other.SubmissionOrder);
     }
+
+    // Array-backed Web sorting can compare keys without copying the 64-byte
+    // right operand. Keep the public value-parameter path unchanged elsewhere.
+    internal static int Compare(in RenderSortKey2D left, in RenderSortKey2D other)
+    {
+        var result = left.Layer.CompareTo(other.Layer);
+        if (result != 0) return result;
+        result = left.GroupLayer.CompareTo(other.GroupLayer);
+        if (result != 0) return result;
+        result = left.GroupOrder.CompareTo(other.GroupOrder);
+        if (result != 0) return result;
+        result = left.GroupHierarchyOrder.CompareTo(other.GroupHierarchyOrder);
+        if (result != 0) return result;
+        result = left.OrderInLayer.CompareTo(other.OrderInLayer);
+        if (result != 0) return result;
+        result = left.HierarchyOrder.CompareTo(other.HierarchyOrder);
+        if (result != 0) return result;
+        result = ((byte)left.Transparency).CompareTo((byte)other.Transparency);
+        return result != 0 ? result : left.SubmissionOrder.CompareTo(other.SubmissionOrder);
+    }
 }

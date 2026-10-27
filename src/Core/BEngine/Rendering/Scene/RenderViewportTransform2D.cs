@@ -43,7 +43,11 @@ public readonly struct RenderViewportTransform2D : IEquatable<RenderViewportTran
         var y = relative.x * _sine + relative.y * _cosine;
         return new(_centerX + (float)x * _pixelsPerUnit, _centerY - (float)y * _pixelsPerUnit);
     }
-    public void FillQuadCorners(Span<NVector2> destination, SceneQuad2D quad)
+    public void FillQuadCorners(Span<NVector2> destination, SceneQuad2D quad) =>
+        FillQuadCornersReferenced(destination, in quad);
+
+    /// <summary>Reads a stable quad without copying its colors and material metadata.</summary>
+    public void FillQuadCornersReferenced(Span<NVector2> destination, in SceneQuad2D quad)
     {
         if (quad.WorldAxisX is null && quad.WorldAxisY is null)
         { FillQuadCorners(destination, quad.Center, quad.Size, quad.Rotation); return; }
@@ -63,6 +67,24 @@ public readonly struct RenderViewportTransform2D : IEquatable<RenderViewportTran
         var aligned = rotation % 360 == 0;
         if (aligned)
         {
+            if (_alignedCamera)
+            {
+                // Keep the complete first corner evaluation, including both
+                // checked axes before either floating-point conversion.
+                var lowerLeft = WorldToViewport(center + new Vector2(-half.x, -half.y));
+                destination[0] = lowerLeft;
+                // The omitted lower Y calculation already succeeded above.
+                // Keep the first new right-X operations in their original order.
+                var rightRelative = (center.x + half.x) - _position.x;
+                var right = _centerX + (float)rightRelative * _pixelsPerUnit;
+                destination[1] = new(right, lowerLeft.Y);
+                // Right X already succeeded; upper Y is the next new value.
+                var upperRelative = (center.y + half.y) - _position.y;
+                var upper = _centerY - (float)upperRelative * _pixelsPerUnit;
+                destination[2] = new(right, upper);
+                destination[3] = new(lowerLeft.X, upper);
+                return;
+            }
             destination[0] = WorldToViewport(center + new Vector2(-half.x, -half.y));
             destination[1] = WorldToViewport(center + new Vector2(half.x, -half.y));
             destination[2] = WorldToViewport(center + new Vector2(half.x, half.y));
@@ -72,12 +94,29 @@ public readonly struct RenderViewportTransform2D : IEquatable<RenderViewportTran
         var radians = rotation * Fix64.Deg2Rad;
         var cosine = aligned ? Fix64.One : Fix64.Cos(radians);
         var sine = aligned ? Fix64.Zero : Fix64.Sin(radians);
-        var projection = this;
-        destination[0] = Corner(-half.x, -half.y);
-        destination[1] = Corner(half.x, -half.y);
-        destination[2] = Corner(half.x, half.y);
-        destination[3] = Corner(-half.x, half.y);
+        // Keep each checked expression at its first original corner. Only
+        // products which already succeeded are reused by later corners.
+        var negativeX = -half.x; var negativeY = -half.y;
+        var negativeXCosine = negativeX * cosine;
+        var negativeYSine = negativeY * sine;
+        var lowerLeftX = negativeXCosine - negativeYSine;
+        var negativeXSine = negativeX * sine;
+        var negativeYCosine = negativeY * cosine;
+        var lowerLeftY = negativeXSine + negativeYCosine;
+        destination[0] = WorldToViewport(center + new Vector2(lowerLeftX, lowerLeftY));
 
-        NVector2 Corner(Fix64 x, Fix64 y) => projection.WorldToViewport(center + new Vector2(x * cosine - y * sine, x * sine + y * cosine));
+        var positiveXCosine = half.x * cosine;
+        var lowerRightX = positiveXCosine - negativeYSine;
+        var positiveXSine = half.x * sine;
+        var lowerRightY = positiveXSine + negativeYCosine;
+        destination[1] = WorldToViewport(center + new Vector2(lowerRightX, lowerRightY));
+
+        var positiveYSine = half.y * sine;
+        var upperRightX = positiveXCosine - positiveYSine;
+        var positiveYCosine = half.y * cosine;
+        var upperRightY = positiveXSine + positiveYCosine;
+        destination[2] = WorldToViewport(center + new Vector2(upperRightX, upperRightY));
+        destination[3] = WorldToViewport(center + new Vector2(
+            negativeXCosine - positiveYSine, negativeXSine + positiveYCosine));
     }
 }

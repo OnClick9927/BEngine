@@ -308,30 +308,14 @@ internal sealed class EditorHotUpdateSession : IEditorHotUpdateSession
     {
         if (!assetBundles.EnumerateAddresses().Contains(
                 ManagedCodeReleaseManifest.DefaultAddress, StringComparer.OrdinalIgnoreCase)) return null;
-        using var manifestHandle = await assetBundles.LoadBytesAsync(
-            ManagedCodeReleaseManifest.DefaultAddress, cancellationToken);
-        var manifest = ManagedCodeReleaseManifestSerializer.Deserialize(manifestHandle.Value);
-        var modules = new List<ManagedCodeModule>(manifest.Modules.Count);
         var addresses = assetBundles.EnumerateAddresses().ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var module in manifest.Modules)
+        using var operation = new ManagedCodeReleaseLoadOperation(async (address, context) =>
         {
-            using var assemblyHandle = await assetBundles.LoadBytesAsync(
-                module.AssemblyAddress, cancellationToken);
-            byte[] symbols = [];
-            if (!string.IsNullOrWhiteSpace(module.SymbolsAddress) && addresses.Contains(module.SymbolsAddress))
-            {
-                using var symbolsHandle = await assetBundles.LoadBytesAsync(
-                    module.SymbolsAddress, cancellationToken);
-                symbols = (byte[])symbolsHandle.Value.Clone();
-            }
-            modules.Add(new ManagedCodeModule(
-                module.Name,
-                module.BuildId,
-                assemblyHandle.Value,
-                symbols,
-                module.Dependencies));
-        }
-        return new ManagedCodeRelease(manifest.ReleaseId, modules, manifest.ContractVersion);
+            var handle = await assetBundles.LoadBytesAsync(address, context.cancellationToken);
+            return new ManagedCodeResource(handle.Value, handle);
+        }, resourceExists: addresses.Contains, cancellationToken: cancellationToken);
+        await operation;
+        return operation.release!;
     }
 
     private sealed class PreparedEditorContentBootstrapper(IAssetBundleManager assetBundles) : IContentBootstrapper

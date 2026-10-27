@@ -20,7 +20,7 @@
 <div class="layout"><nav>
   <a href="#overview">概览</a><a href="#quickstart">快速开始</a><a href="#examples">完整示例</a>
   <a href="#document">UIDocument</a><a href="#controls">组件与控件</a><a href="#uxml">UXML/USS</a>
-  <a href="#api">API 与事件</a><a href="#builder">编辑器工作流</a><a href="#extend">如何扩展</a><a href="#debug">排错</a>
+  <a href="#fixed-layout">定点布局</a><a href="#api">API 与事件</a><a href="#builder">编辑器工作流</a><a href="#extend">如何扩展</a><a href="#debug">排错</a>
 </nav><main>
 <section id="overview"><h1>UIElements 使用手册</h1>
   <p class="lead">UIElements 是 BEngine 的独立保留模式 UI 包（com.bengine.ui-elements）。它通过 UIDocument 把 VisualElement 树提交到
@@ -108,6 +108,19 @@
   Style src 时按 UXML 所在目录解析。</p>
 </section>
 
+<section id="fixed-layout"><h2>定点布局</h2>
+  <p>Style 的宽高、边距、字体大小、Flex 因子、Gap 和 Translate 使用 <code>Fix64</code>（Q32.32）。
+  BSS/BCSS 小数、百分比、calc/min/max/clamp 与 em/rem/viewport 单位直接解析为定点数；布局不经过 float 中间值。</p>
+  <pre>element.style.width = 320;
+element.style.fontSize = Fix64.FromDecimal(18.25m);
+element.style.left = null;       // auto
+element.style.maxWidth = null;   // none：没有最大宽度限制
+element.style.translateX = Fix64.FromDecimal(-0.125m);</pre>
+  <p><code>left/top/right/bottom</code> 和 <code>maxWidth/maxHeight</code> 的类型为 <code>Fix64?</code>；
+  使用 null 表示 auto 或无上限，不再使用 float.NaN/Infinity。UI Builder 对应样式字段接受定点小数与 auto/none。
+  BXML 与 UI YAML 保存完整定点精度。FloatField/Slider 等浮点数据编辑控件、系统字体测量与 GPU 提交仍在各自平台边界使用浮点数；
+  需要跨机器一致的 UI 尺寸时，请统一项目字体资源和视口设置。</p>
+</section>
 <section id="api"><h2>运行时 API 与事件</h2>
   <table><thead><tr><th>API</th><th>用途</th></tr></thead><tbody>
     <tr><td>root.Q&lt;T&gt; / Query&lt;T&gt;</td><td>按类型、name、class 查询首项或完整结果。</td></tr>

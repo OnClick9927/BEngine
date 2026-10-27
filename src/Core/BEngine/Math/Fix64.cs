@@ -24,7 +24,43 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
     private Fix64(long rawValue) => RawValue = rawValue;
 
     public static Fix64 FromRaw(long rawValue) => new(rawValue);
-    public static Fix64 FromDecimal(decimal value) => FromRaw(decimal.ToInt64(value * OneRaw));
+    private static readonly ulong[] DecimalPowersOfTen =
+    [
+        1UL, 10UL, 100UL, 1000UL, 10000UL, 100000UL, 1000000UL,
+        10000000UL, 100000000UL, 1000000000UL, 10000000000UL,
+        100000000000UL, 1000000000000UL, 10000000000000UL,
+        100000000000000UL, 1000000000000000UL, 10000000000000000UL,
+        100000000000000000UL, 1000000000000000000UL, 10000000000000000000UL
+    ];
+
+    public static Fix64 FromDecimal(decimal value)
+    {
+        Span<int> bits = stackalloc int[4];
+        decimal.GetBits(value, bits);
+        // A 32-bit coefficient times 2^32 fits exactly in both UInt64 and
+        // Decimal's 96-bit coefficient. No decimal rounding is lost here.
+        if ((bits[1] | bits[2]) == 0)
+        {
+            int scale = (bits[3] >> 16) & 0xff;
+            if (scale >= 20) return Zero;
+            ulong magnitude = (ulong)(uint)bits[0] << FractionalBits;
+            if (scale != 0) magnitude /= DecimalPowersOfTen[scale];
+            bool negative = bits[3] < 0;
+            if (magnitude > (negative ? 1UL << 63 : (ulong)long.MaxValue))
+                throw new OverflowException();
+            return FromRaw(unchecked((long)(negative ? 0UL - magnitude : magnitude)));
+        }
+        return FromRaw(decimal.ToInt64(value * OneRaw));
+    }
+
+    /// <summary>Converts elapsed time to fixed-point seconds without a floating-point intermediate.</summary>
+    public static Fix64 FromTimeSpan(TimeSpan value)
+    {
+        var ticks = value.Ticks;
+        return ticks == unchecked((int)ticks)
+            ? FromRaw((ticks << FractionalBits) / TimeSpan.TicksPerSecond)
+            : FromRaw(checked((long)((Int128)ticks * OneRaw / TimeSpan.TicksPerSecond)));
+    }
 
     public static Fix64 Parse(string value)
     {
@@ -158,20 +194,72 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
         new($"'{value.ToString()}' is not a valid fixed-point value.");
 
     public static implicit operator Fix64(int value) => FromRaw((long)value << FractionalBits);
-    public static implicit operator Fix64(long value) => FromRaw(checked(value << FractionalBits));
-    public static explicit operator Fix64(float value) => FromDecimal((decimal)value);
-    public static explicit operator Fix64(double value) => FromDecimal((decimal)value);
+    public static implicit operator Fix64(long value)
+    {
+        if (value != unchecked((int)value)) throw new OverflowException();
+        return FromRaw(value << FractionalBits);
+    }
+    public static explicit operator Fix64(float value)
+    {
+        var bits = BitConverter.SingleToUInt32Bits(value);
+        var exponent = (int)((bits >> 23) & 0xff);
+        if (exponent == 0xff) throw new OverflowException("A non-finite value cannot be converted to Fix64.");
+        var significand = (bits & 0x7fffff) | (exponent == 0 ? 0u : 1u << 23);
+        return FromBinary(significand, (exponent == 0 ? 1 : exponent) - 127 - 23 + FractionalBits,
+            (bits & 0x80000000) != 0);
+    }
+    public static explicit operator Fix64(double value)
+    {
+        var bits = BitConverter.DoubleToUInt64Bits(value);
+        var exponent = (int)((bits >> 52) & 0x7ff);
+        if (exponent == 0x7ff) throw new OverflowException("A non-finite value cannot be converted to Fix64.");
+        var significand = (bits & 0xfffffffffffff) | (exponent == 0 ? 0UL : 1UL << 52);
+        return FromBinary(significand, (exponent == 0 ? 1 : exponent) - 1023 - 52 + FractionalBits,
+            (bits & 0x8000000000000000) != 0);
+    }
+
+    private static Fix64 FromBinary(ulong significand, int shift, bool negative)
+    {
+        if (significand == 0) return Zero;
+        // Scale the exact IEEE significand, truncating toward zero just like decimal conversion.
+        // Validate before shifting: CLR integer shifts mask the shift count even in checked code.
+        ulong magnitude;
+        var limit = negative ? 1UL << 63 : (ulong)long.MaxValue;
+        if (shift >= 0)
+        {
+            if (shift >= 64 || significand > (limit >> shift))
+                throw new OverflowException("The value is outside the Fix64 range.");
+            magnitude = significand << shift;
+        }
+        else
+        {
+            magnitude = shift <= -64 ? 0 : significand >> -shift;
+        }
+        if (magnitude > limit) throw new OverflowException("The value is outside the Fix64 range.");
+        return FromRaw(unchecked((long)(negative ? 0UL - magnitude : magnitude)));
+    }
     public static explicit operator int(Fix64 value) => (int)(value.RawValue >> FractionalBits);
     public static explicit operator long(Fix64 value) => value.RawValue >> FractionalBits;
     public static explicit operator float(Fix64 value) => (float)((double)value.RawValue / OneRaw);
     public static explicit operator double(Fix64 value) => (double)value.RawValue / OneRaw;
     public static explicit operator decimal(Fix64 value) => (decimal)value.RawValue / OneRaw;
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Fix64 operator +(Fix64 left, Fix64 right) => FromRaw(checked(left.RawValue + right.RawValue));
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Fix64 operator -(Fix64 left, Fix64 right) => FromRaw(checked(left.RawValue - right.RawValue));
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Fix64 operator -(Fix64 value) => FromRaw(checked(-value.RawValue));
-    public static Fix64 operator *(Fix64 left, Fix64 right) =>
-        FromRaw(checked((long)(((Int128)left.RawValue * right.RawValue) >> FractionalBits)));
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Fix64 operator *(Fix64 left, Fix64 right)
+    {
+        // Keep all 128 product bits, including negative products' arithmetic
+        // rounding, without constructing several Int128 values in the interpreter.
+        var high = Math.BigMul(left.RawValue, right.RawValue, out var low);
+        _ = checked((int)high);
+        return FromRaw(unchecked((long)(((ulong)high << FractionalBits) |
+            ((ulong)low >> FractionalBits))));
+    }
     public static Fix64 operator /(Fix64 left, Fix64 right)
     {
         if (right.RawValue == 0)
@@ -179,7 +267,58 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
             throw new DivideByZeroException();
         }
 
+        // Exact integer divisors cancel the Q32.32 scale. Small numerators can
+        // be shifted in 64 bits. Both paths retain division toward zero and
+        // the CLR's checked MinValue / -1 overflow behavior.
+        if ((right.RawValue & (OneRaw - 1)) == 0)
+            return FromRaw(left.RawValue / (right.RawValue >> FractionalBits));
+        if (left.RawValue == unchecked((int)left.RawValue))
+            return FromRaw((left.RawValue << FractionalBits) / right.RawValue);
+        if (OperatingSystem.IsBrowser() && TryDivideBrowser(left.RawValue, right.RawValue, out var quotient))
+            return FromRaw(quotient);
         return FromRaw(checked((long)(((Int128)left.RawValue << FractionalBits) / right.RawValue)));
+    }
+
+    // Wasm implements Int128 division in software. A double supplies only a
+    // bounded quotient estimate; the unsigned 96-bit dividend and exact 128-bit
+    // product below prove the result. A rejected estimate uses the original
+    // division, including its overflow and truncation behavior.
+    private static bool TryDivideBrowser(long numerator, long denominator, out long quotient)
+    {
+        var dividend = numerator < 0 ? unchecked(0UL - (ulong)numerator) : (ulong)numerator;
+        var divisor = denominator < 0 ? unchecked(0UL - (ulong)denominator) : (ulong)denominator;
+        var estimate = (double)dividend * OneRaw / divisor;
+        if (estimate >= 9007199254740992.0) { quotient = 0; return false; }
+
+        var magnitude = (ulong)estimate;
+        var dividendHigh = dividend >> FractionalBits;
+        var dividendLow = dividend << FractionalBits;
+        var productHigh = Math.BigMul(magnitude, divisor, out var productLow);
+        if (productHigh > dividendHigh || productHigh == dividendHigh && productLow > dividendLow)
+        {
+            // Correct one unit down, then prove this product no longer exceeds
+            // the dividend. Larger estimate errors take the exact fallback.
+            magnitude--;
+            if (productLow < divisor) productHigh--;
+            productLow = unchecked(productLow - divisor);
+            if (productHigh > dividendHigh || productHigh == dividendHigh && productLow > dividendLow)
+            { quotient = 0; return false; }
+        }
+
+        var remainderHigh = unchecked(dividendHigh - productHigh - (dividendLow < productLow ? 1UL : 0UL));
+        var remainderLow = unchecked(dividendLow - productLow);
+        if (remainderHigh != 0 || remainderLow >= divisor)
+        {
+            // Correct one unit up. A remainder strictly below the divisor is
+            // the exact floor proof; no floating-point rounding is retained.
+            magnitude++;
+            if (remainderLow < divisor) remainderHigh--;
+            remainderLow = unchecked(remainderLow - divisor);
+            if (remainderHigh != 0 || remainderLow >= divisor)
+            { quotient = 0; return false; }
+        }
+        quotient = (numerator ^ denominator) < 0 ? -(long)magnitude : (long)magnitude;
+        return true;
     }
 
     public static Fix64 operator %(Fix64 left, Fix64 right) => FromRaw(left.RawValue % right.RawValue);
@@ -209,18 +348,32 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
             return Zero;
         }
 
-        var scaled = (Int128)value.RawValue << FractionalBits;
-        var upper = (ulong)(scaled >> 64);
-        var bitLength = upper != 0 ? 65 + BitOperations.Log2(upper) : 1 + BitOperations.Log2((ulong)scaled);
-        var estimate = (Int128)1 << ((bitLength + 1) / 2);
-        var next = (estimate + scaled / estimate) >> 1;
-        while (next < estimate)
-        {
-            estimate = next;
-            next = (estimate + (scaled / estimate)) >> 1;
-        }
+        var input = (ulong)value.RawValue;
+        // Floating point supplies only a starting guess. Exact 96-bit integer
+        // comparisons determine floor(sqrt(input << 32)), retaining identical
+        // results even when the initial square root rounds to either neighbor.
+        var root = (ulong)(Math.Sqrt(input) * 65536.0);
+        var high = input >> FractionalBits;
+        var low = input << FractionalBits;
+        while (SquareExceeds(root, high, low)) root--;
+        while (!SquareExceeds(root + 1, high, low)) root++;
+        return FromRaw((long)root);
+    }
 
-        return FromRaw((long)estimate);
+    private static bool SquareExceeds(ulong root, ulong high, ulong low)
+    {
+        var squareHigh = Math.BigMul(root, root, out var squareLow);
+        return squareHigh > high || (squareHigh == high && squareLow > low);
+    }
+
+    // Each thread retains at most 1024 exact folded-angle results (24 KiB).
+    [ThreadStatic] private static SinCacheEntry[]? _sinCache;
+
+    private struct SinCacheEntry
+    {
+        internal long Key;
+        internal long Value;
+        internal bool Valid;
     }
 
     public static Fix64 Sin(Fix64 radians)
@@ -232,6 +385,16 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
         // Fold into [-pi/2, pi/2] before approximation, keeping all arithmetic deterministic.
         if (x > HalfPi) x = Pi - x;
         else if (x < -HalfPi) x = -Pi - x;
+        SinCacheEntry[]? cache = null;
+        int slot = 0;
+        if (OperatingSystem.IsBrowser())
+        {
+            cache = _sinCache ??= new SinCacheEntry[1024];
+            long raw = x.RawValue;
+            slot = (int)(raw ^ (raw >> 13) ^ (raw >> 26)) & 1023;
+            ref var entry = ref cache[slot];
+            if (entry.Valid && entry.Key == raw) return FromRaw(entry.Value);
+        }
         var x2 = x * x;
         var term = x;
         var result = term;
@@ -248,7 +411,15 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
         term *= -x2 / (12 * 13);
         result += term;
         term *= -x2 / (14 * 15);
-        return result + term;
+        var value = result + term;
+        if (cache is not null)
+        {
+            ref var entry = ref cache[slot];
+            entry.Key = x.RawValue;
+            entry.Value = value.RawValue;
+            entry.Valid = true;
+        }
+        return value;
     }
 
     public static Fix64 Hypot(Fix64 x, Fix64 y)

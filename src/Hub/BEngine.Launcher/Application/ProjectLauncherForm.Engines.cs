@@ -14,6 +14,7 @@ internal sealed partial class ProjectLauncherForm
     private bool _primaryNavigationAllowed = true;
 
     private LauncherEngineInfo? SelectedEngine => _engineSelector.SelectedItem as LauncherEngineInfo;
+    private LauncherEngineInfo? SelectedCreateEngine => _createEngineSelector.SelectedItem as LauncherEngineInfo;
     private bool HasLocalEngine => _engines.Any(engine =>
         File.Exists(Path.Combine(engine.DirectoryPath, "BEngine.Editor.exe")));
 
@@ -127,6 +128,23 @@ internal sealed partial class ProjectLauncherForm
         }
         UpdateEngineDetails();
         ReloadPackages();
+        RefreshCreateEngineSelector();
+    }
+
+    private void RefreshCreateEngineSelector(string? preferredPath = null)
+    {
+        var selectedPath = preferredPath ?? SelectedCreateEngine?.DirectoryPath ?? SelectedEngine?.DirectoryPath;
+        _createEngineSelector.BeginUpdate();
+        try
+        {
+            _createEngineSelector.Items.Clear();
+            _createEngineSelector.Items.AddRange(_engines.Cast<object>().ToArray());
+            _createEngineSelector.SelectedItem = _engines.FirstOrDefault(engine =>
+                engine.DirectoryPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase))
+                ?? SelectedEngine ?? _engines.FirstOrDefault();
+        }
+        finally { _createEngineSelector.EndUpdate(); }
+        UpdateCreateActions();
     }
 
     private void UpdateEngineDetails()

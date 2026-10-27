@@ -145,6 +145,9 @@ public sealed class AssetBundleResourceProvider : IAsyncResourceProvider, IResou
             requested = requested[VirtualPathPrefix.Length..];
         if (AssetBundleValidation.TryParseSubAssetAddress(requested, out var ownerGuid, out var localIdentifier))
         {
+            if (_manager is AssetBundleManager runtime)
+                return runtime.TryGetActiveAsset(AssetBundleValidation.CreateSubAssetAddress(ownerGuid, localIdentifier), out var indexedRuntime)
+                    ? indexedRuntime.Address : null;
             if (_manager is VirtualAssetBundleManager snapshot)
                 return snapshot.TryGetActiveAsset(AssetBundleValidation.CreateSubAssetAddress(ownerGuid, localIdentifier), out var indexed)
                     ? indexed.Address : null;

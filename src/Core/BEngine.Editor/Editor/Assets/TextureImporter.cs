@@ -2,7 +2,7 @@ using BEngine.Rendering;
 
 namespace BEngine.Editor;
 
-[AssetImporterVersion(3)]
+[AssetImporterVersion(4)]
 public sealed partial class TextureImporter : AssetImporter
 {
     public TextureImporterType textureType { get; set; } = TextureImporterType.Texture;
@@ -15,12 +15,12 @@ public sealed partial class TextureImporter : AssetImporter
     public bool generateMipMaps { get; set; }
     public int maxTextureSize { get; set; } = 2048;
     public int pixelsPerUnit { get; set; } = 100;
-    public float spritePivotX { get; set; } = 0.5f;
-    public float spritePivotY { get; set; } = 0.5f;
-    public float spriteBorderLeft { get; set; }
-    public float spriteBorderBottom { get; set; }
-    public float spriteBorderRight { get; set; }
-    public float spriteBorderTop { get; set; }
+    public Fix64 spritePivotX { get; set; } = Fix64.Half;
+    public Fix64 spritePivotY { get; set; } = Fix64.Half;
+    public Fix64 spriteBorderLeft { get; set; }
+    public Fix64 spriteBorderBottom { get; set; }
+    public Fix64 spriteBorderRight { get; set; }
+    public Fix64 spriteBorderTop { get; set; }
     public List<TextureImporterPlatformSettings> platformSettings { get; set; } = [];
 
     public override void Import(AssetImportContext context)
@@ -57,12 +57,12 @@ public sealed partial class TextureImporter : AssetImporter
         generateMipMaps = Get(settings, nameof(generateMipMaps), false);
         maxTextureSize = NormalizeMaxSize(Get(settings, nameof(maxTextureSize), 2048));
         pixelsPerUnit = Math.Clamp(Get(settings, nameof(pixelsPerUnit), 100), 1, 10000);
-        spritePivotX = Math.Clamp(Get(settings, nameof(spritePivotX), 0.5f), 0, 1);
-        spritePivotY = Math.Clamp(Get(settings, nameof(spritePivotY), 0.5f), 0, 1);
-        spriteBorderLeft = Math.Max(0, Get(settings, nameof(spriteBorderLeft), 0f));
-        spriteBorderBottom = Math.Max(0, Get(settings, nameof(spriteBorderBottom), 0f));
-        spriteBorderRight = Math.Max(0, Get(settings, nameof(spriteBorderRight), 0f));
-        spriteBorderTop = Math.Max(0, Get(settings, nameof(spriteBorderTop), 0f));
+        spritePivotX = Mathf.Clamp01(ReadFixed(settings, nameof(spritePivotX), Fix64.Half));
+        spritePivotY = Mathf.Clamp01(ReadFixed(settings, nameof(spritePivotY), Fix64.Half));
+        spriteBorderLeft = Fix64.Max(0, ReadFixed(settings, nameof(spriteBorderLeft)));
+        spriteBorderBottom = Fix64.Max(0, ReadFixed(settings, nameof(spriteBorderBottom)));
+        spriteBorderRight = Fix64.Max(0, ReadFixed(settings, nameof(spriteBorderRight)));
+        spriteBorderTop = Fix64.Max(0, ReadFixed(settings, nameof(spriteBorderTop)));
         ReadPlatformSettings(settings);
     }
 
@@ -79,12 +79,12 @@ public sealed partial class TextureImporter : AssetImporter
         Set(settings, nameof(generateMipMaps), generateMipMaps);
         Set(settings, nameof(maxTextureSize), NormalizeMaxSize(maxTextureSize));
         Set(settings, nameof(pixelsPerUnit), Math.Clamp(pixelsPerUnit, 1, 10000));
-        Set(settings, nameof(spritePivotX), Math.Clamp(spritePivotX, 0, 1));
-        Set(settings, nameof(spritePivotY), Math.Clamp(spritePivotY, 0, 1));
-        Set(settings, nameof(spriteBorderLeft), Math.Max(0, spriteBorderLeft));
-        Set(settings, nameof(spriteBorderBottom), Math.Max(0, spriteBorderBottom));
-        Set(settings, nameof(spriteBorderRight), Math.Max(0, spriteBorderRight));
-        Set(settings, nameof(spriteBorderTop), Math.Max(0, spriteBorderTop));
+        Set(settings, nameof(spritePivotX), Mathf.Clamp01(spritePivotX));
+        Set(settings, nameof(spritePivotY), Mathf.Clamp01(spritePivotY));
+        Set(settings, nameof(spriteBorderLeft), Fix64.Max(0, spriteBorderLeft));
+        Set(settings, nameof(spriteBorderBottom), Fix64.Max(0, spriteBorderBottom));
+        Set(settings, nameof(spriteBorderRight), Fix64.Max(0, spriteBorderRight));
+        Set(settings, nameof(spriteBorderTop), Fix64.Max(0, spriteBorderTop));
         WritePlatformSettings(settings);
     }
 
@@ -101,6 +101,9 @@ public sealed partial class TextureImporter : AssetImporter
         texture.maxSize = NormalizeMaxSize(maxTextureSize);
         texture.pixelsPerUnit = Math.Clamp(pixelsPerUnit, 1, 10000);
     }
+
+    private static Fix64 ReadFixed(IReadOnlyDictionary<string, string> settings, string key, Fix64 fallback = default) =>
+        settings.TryGetValue(key, out var text) && Fix64.TryParse(text, out var parsed) ? parsed : fallback;
 
     private static int NormalizeMaxSize(int value)
     {
