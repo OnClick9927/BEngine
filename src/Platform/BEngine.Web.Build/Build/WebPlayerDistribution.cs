@@ -15,6 +15,13 @@ internal static class WebPlayerDistribution
         var combined = new StringBuilder();
         combined.Append("/*\n").Append(files.ReadAllText(paths.Combine(webRoot, "BrotliDecoder.LICENSE.txt"))
             .Replace("*/", "* /", StringComparison.Ordinal)).Append("\n*/\n");
+        var fontLicense = paths.Combine(webRoot, "FreeType.LICENSE.txt");
+        if (files.FileExists(fontLicense))
+        {
+            combined.Append("/* Portions of this software are copyright (c) The FreeType Project (www.freetype.org). All rights reserved.\n")
+                .Append(files.ReadAllText(fontLicense).Replace("*/", "* /", StringComparison.Ordinal)).Append("\n*/\n");
+            files.DeleteFile(fontLicense);
+        }
         foreach (var (file, binding, asynchronous) in new[]
                  {
                      ("framework.js", "prepareFrameworkRuntime", true),
@@ -48,7 +55,7 @@ internal static class WebPlayerDistribution
 
         // Only engine-owned intermediates are removed. Project content is staged
         // separately and protected from collisions by WebPlayerContentLayout.
-        foreach (var name in new[] { "main.js", "framework.js", "video.js", "text.js", "bengine-content.json", "BrotliDecoder.LICENSE.txt", "index.html" })
+        foreach (var name in new[] { "main.js", "framework.js", "video.js", "text.js", "bengine-content.json", "BrotliDecoder.LICENSE.txt", "FreeType.LICENSE.txt", "index.html" })
         {
             if (name != "index.html") files.DeleteFile(paths.Combine(webRoot, name));
             foreach (var extension in new[] { ".gz", ".br" })

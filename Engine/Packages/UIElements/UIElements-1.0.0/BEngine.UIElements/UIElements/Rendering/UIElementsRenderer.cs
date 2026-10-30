@@ -644,27 +644,57 @@ public sealed partial class UIElementsRenderer : IDisposable
         texture = null;
         if (!_device.Capabilities.Supports(GraphicsDeviceFeatures.SampledTextures)) return false;
         if (_textures.TryGetValue(source, out texture)) return true;
-        if (_resourceResolver is IUIImportedTextureResolver importedResolver &&
-            importedResolver.TryResolveImportedTexture(source, out var imported))
+        TextureImageData? imported = null;
+        var importedResolved = false;
+        RasterizedImage data = default;
+        if (_resourceResolver is FileUIRenderResourceResolver fileResolver)
         {
-            texture = TextureUpload.Create(_device, $"BEngine.UIElements.{source}", imported);
-            _textures.Add(source, texture, texture.Description.DataByteSize);
+            bool resolved;
+            using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageResolve))
+            { resolved = fileResolver.TryResolveTextureData(source, out imported, out data); }
+            if (!resolved) return false;
+            importedResolved = imported is not null;
+        }
+        else
+        {
+            if (_resourceResolver is IUIImportedTextureResolver importedResolver)
+            {
+                using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageResolve))
+                { importedResolved = importedResolver.TryResolveImportedTexture(source, out imported); }
+            }
+            bool rasterized;
+            if (!importedResolved)
+            {
+                using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageResolve))
+                { rasterized = _resourceResolver.TryResolveTexture(source, out data); }
+                if (!rasterized) return false;
+            }
+        }
+        if (importedResolved)
+        {
+            using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageUpload))
+            {
+                texture = TextureUpload.Create(_device, $"BEngine.UIElements.{source}", imported!);
+                _textures.Add(source, texture, texture.Description.DataByteSize);
+            }
             return true;
         }
-        if (!_resourceResolver.TryResolveTexture(source, out var data)) return false;
-        data.Validate();
-        texture = _device.CreateTexture2D(
-            $"BEngine.UIElements.{source}",
-            new GraphicsTextureDescription(
-                data.Width,
-                data.Height,
-                data.Format,
-                GraphicsTextureUsage.Sampled,
-                GraphicsTextureFilter.Linear,
-                GraphicsTextureFilter.Linear,
-                GraphicsTextureAddressMode.ClampToEdge),
-            data.Pixels.Span);
-        _textures.Add(source, texture, (long)texture.Description.Width * texture.Description.Height * 4);
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageUpload))
+        {
+            data.Validate();
+            texture = _device.CreateTexture2D(
+                $"BEngine.UIElements.{source}",
+                new GraphicsTextureDescription(
+                    data.Width,
+                    data.Height,
+                    data.Format,
+                    GraphicsTextureUsage.Sampled,
+                    GraphicsTextureFilter.Linear,
+                    GraphicsTextureFilter.Linear,
+                    GraphicsTextureAddressMode.ClampToEdge),
+                data.Pixels.Span);
+            _textures.Add(source, texture, (long)texture.Description.Width * texture.Description.Height * 4);
+        }
         return true;
     }
 
@@ -679,15 +709,22 @@ public sealed partial class UIElementsRenderer : IDisposable
         var key = new BasicTextKey(width, height, command.FontSize, wordWrap, command.Content);
         if (_textTextures.TryGetValue(key, out texture)) return true;
         var started = _textRasterProbe is null ? 0 : System.Diagnostics.Stopwatch.GetTimestamp();
-        if (!textResolver.TryResolveText(command.Content, width, height, command.FontSize, wordWrap, out var data)) return false;
+        RasterizedImage data;
+        bool resolved;
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiTextRaster))
+        { resolved = textResolver.TryResolveText(command.Content, width, height, command.FontSize, wordWrap, out data); }
+        if (!resolved) return false;
         var rasterized = _textRasterProbe is null ? 0 : System.Diagnostics.Stopwatch.GetTimestamp();
-        data.Validate();
-        texture = _device.CreateTexture2D(
-            "BEngine.UIElements.Text",
-            new GraphicsTextureDescription(data.Width, data.Height, data.Format,
-                GraphicsTextureUsage.Sampled, GraphicsTextureFilter.Linear, GraphicsTextureFilter.Linear),
-            data.Pixels.Span);
-        _textTextures.Add(key, texture, (long)texture.Description.Width * texture.Description.Height * 4);
+        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiTextUpload))
+        {
+            data.Validate();
+            texture = _device.CreateTexture2D(
+                "BEngine.UIElements.Text",
+                new GraphicsTextureDescription(data.Width, data.Height, data.Format,
+                    GraphicsTextureUsage.Sampled, GraphicsTextureFilter.Linear, GraphicsTextureFilter.Linear),
+                data.Pixels.Span);
+            _textTextures.Add(key, texture, (long)texture.Description.Width * texture.Description.Height * 4);
+        }
         _textRasterProbe?.Record(started, rasterized, System.Diagnostics.Stopwatch.GetTimestamp(),
             command.Element.name, key);
         return true;

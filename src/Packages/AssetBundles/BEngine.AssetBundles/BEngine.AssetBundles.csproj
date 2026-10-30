@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><AssemblyName>BEngine.AssetBundles</AssemblyName><RootNamespace>BEngine</RootNamespace><BEnginePackageExportOwner>true</BEnginePackageExportOwner><NoWarn>$(NoWarn);CA2255</NoWarn></PropertyGroup>
+  <PropertyGroup><AssemblyName>BEngine.AssetBundles</AssemblyName><RootNamespace>BEngine</RootNamespace><BEnginePackageExportOwner>true</BEnginePackageExportOwner><NoWarn>$(NoWarn);CA2255</NoWarn><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../../Core/BEngine/BEngine.csproj" /><ProjectReference Include="../../Networking/BEngine.Networking/BEngine.Networking.csproj" /><PackageReference Include="YamlDotNet" /><PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" /></ItemGroup>
 </Project>

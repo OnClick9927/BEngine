@@ -59,6 +59,7 @@ public static class PlayerTestSession
             WindowsGarbageCollection = settings.WindowsGarbageCollection,
             WindowsGcHeapCount = settings.WindowsGcHeapCount,
             WebScriptCompilation = settings.WebScriptCompilation,
+            WebFontBackend = settings.WebFontBackend,
             IncludeDebugSymbols = settings.IncludeDebugSymbols,
             ReplaceExisting = false,
             BuildVersion = settings.BuildVersion,

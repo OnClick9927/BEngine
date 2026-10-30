@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
@@ -14,6 +15,8 @@ internal static class BrowserHttpTransport
 {
     internal const int MaximumQueueBytes = 2 * 1024 * 1024;
     private const int MaximumPollBytes = 1024 * 1024;
+    private const int MaximumLoadingPollBytes = 4 * MaximumPollBytes;
+    private const int LoadingChunkBytes = 256 * 1024;
     private const int SmallBufferBytes = 64 * 1024;
 
     internal static bool TrySend(HttpTransportRequest request, IHttpDownloadHandler handler,
@@ -61,7 +64,8 @@ internal static class BrowserHttpTransport
             writer.WriteBoolean("hasUpload", request.UploadData is not null);
             writer.WriteString("uploadContentType", request.UploadContentType);
             writer.WriteBoolean("bypassCache", request.BypassCache);
-            writer.WriteNumber("maximumQueueBytes", MaximumQueueBytes);
+            writer.WriteNumber("maximumQueueBytes", FrameWorkBudget.IsActive && FrameWorkBudget.isLoading
+                ? MaximumLoadingPollBytes : MaximumQueueBytes);
             writer.WriteEndObject();
         }
         return Encoding.UTF8.GetString(bytes.WrittenSpan);
@@ -78,6 +82,7 @@ internal static class BrowserHttpTransport
         private long _deliveredBytes;
         private long? _expectedBodyLength;
         private bool _disposed;
+        private bool _polling;
 
         internal Operation(HttpTransportRequest request, IHttpDownloadHandler handler, IBrowserHttpBridge bridge)
         {
@@ -107,7 +112,9 @@ internal static class BrowserHttpTransport
 
         public void Poll()
         {
-            if (_disposed || Status != NetworkOperationStatus.Running) return;
+            if (_disposed || _polling || Status != NetworkOperationStatus.Running) return;
+            _polling = true;
+            var loadingPoll = FrameWorkBudget.IsActive && FrameWorkBudget.isLoading;
             try
             {
                 RefreshReceivedBytes();
@@ -128,10 +135,23 @@ internal static class BrowserHttpTransport
                         ? (int)Math.Min(ContentLength.Value, MaximumPollBytes) : SmallBufferBytes];
                 }
 
-                var budget = MaximumPollBytes;
+                var budget = loadingPoll ? MaximumLoadingPollBytes : MaximumPollBytes;
+                var deliveredThisPoll = 0;
+                var extraStart = 0L;
                 while (!_disposed && Status == NetworkOperationStatus.Running && budget > 0)
                 {
+                    // Preserve the original one-MiB forward-progress allowance. Only
+                    // the additional loading allowance consumes unspent frame time.
+                    if (loadingPoll && deliveredThisPoll >= MaximumPollBytes)
+                    {
+                        if (!FrameWorkBudget.isLoading || FrameWorkBudget.remainingMilliseconds <= 0) return;
+                        if (extraStart == 0) extraStart = Stopwatch.GetTimestamp();
+                        else if (FrameWorkBudget.enabled && Stopwatch.GetElapsedTime(extraStart).TotalMilliseconds >= FrameWorkBudget.CooperativeMaximumStep(2)) return;
+                    }
                     var capacity = Math.Min(budget, _buffer!.Length);
+                    if (loadingPoll)
+                        capacity = Math.Min(capacity, deliveredThisPoll < MaximumPollBytes
+                            ? MaximumPollBytes - deliveredThisPoll : LoadingChunkBytes);
                     var count = _bridge.Read(_handle, _buffer.AsSpan(0, capacity));
                     if (count == 0) return;
                     if (count == -2) throw NetworkFailure();
@@ -150,6 +170,7 @@ internal static class BrowserHttpTransport
                     _deliveredBytes += count;
                     _receivedBytes = Math.Max(_receivedBytes, _deliveredBytes);
                     budget -= count;
+                    deliveredThisPoll += count;
                     _handler.ReceiveData(_buffer.AsMemory(0, count));
                 }
             }
@@ -159,6 +180,7 @@ internal static class BrowserHttpTransport
                 Status = NetworkOperationStatus.Failed;
                 CancelBridge();
             }
+            finally { _polling = false; }
         }
 
         private HttpTransportResponse ParseResponse(string json)
@@ -275,3 +297,4 @@ internal static partial class BrowserHttpInterop
     [JSImport("globalThis.BEngineWebHttp.release")]
     internal static partial void Release(int handle);
 }
+

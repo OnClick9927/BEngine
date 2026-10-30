@@ -137,9 +137,15 @@ public sealed class SystemPlayerStartupResolver : IPlayerStartupResolver
                                      "The Player resource archive path is invalid.");
         EnsurePhysicalDirectory(resourcesDirectory, "resource");
         EnsurePhysicalFile(archivePath, "resource archive");
+        using var archiveTiming = PlayerStartupPerformanceDiagnostics.Begin("resolver.playerArchiveOpenAndIndex");
         var archive = BuiltInResourceArchive.Open(archivePath, _fileSystem, _paths);
-        var metadata = RuntimeMetadataSerializer.Deserialize(
-            archive.ReadBytes(PlayerPackagedResourceAddresses.RuntimeMetadata));
+        archiveTiming.Dispose();
+        using var readTiming = PlayerStartupPerformanceDiagnostics.Begin("resolver.readRuntimeMetadata");
+        var metadataBytes = archive.ReadBytes(PlayerPackagedResourceAddresses.RuntimeMetadata);
+        readTiming.Dispose();
+        using var metadataTiming = PlayerStartupPerformanceDiagnostics.Begin("resolver.deserializeRuntimeMetadata");
+        var metadata = RuntimeMetadataSerializer.Deserialize(metadataBytes);
+        metadataTiming.Dispose();
         var manifest = metadata.PlayerBootstrap ??
                        throw new InvalidDataException(
                            $"Player resource archive has no bootstrap metadata: '{archivePath}'.");
@@ -155,7 +161,7 @@ public sealed class SystemPlayerStartupResolver : IPlayerStartupResolver
                 "Player resource archive location does not match its bootstrap data directories.");
         if (!_platform.IsBrowser)
             EnsurePhysicalDirectory(manifest.ResolveAssemblyDirectory(root), "assembly");
-        return CreatePackagedStartup(root, manifest);
+        return CreatePackagedStartup(root, manifest, archive);
     }
 
     private PlayerStartupDescriptor LoadLoosePackagedStartup(string root, string metadataPath)
@@ -204,15 +210,20 @@ public sealed class SystemPlayerStartupResolver : IPlayerStartupResolver
 
     private PlayerStartupDescriptor CreatePackagedStartup(
         string root,
-        PlayerBootstrapManifest manifest)
+        PlayerBootstrapManifest manifest,
+        BuiltInResourceArchive? verifiedArchive = null)
     {
+        using var startupTiming = PlayerStartupPerformanceDiagnostics.Begin("resolver.createPackagedStartup");
         if (manifest.Version >= 4)
         {
             var archivePath = manifest.ResolvePlayerResourceArchive(root);
             EnsurePhysicalFile(archivePath, "resource archive");
-            var archive = BuiltInResourceArchive.Open(archivePath, _fileSystem, _paths);
-            BuildTargetManifestSerializer.SetCurrent(
-                archive.ReadBytes(manifest.BuildTargetResource));
+            var archive = verifiedArchive ?? BuiltInResourceArchive.Open(archivePath, _fileSystem, _paths);
+            using var readTiming = PlayerStartupPerformanceDiagnostics.Begin("resolver.readBuildTarget");
+            var targetBytes = archive.ReadBytes(manifest.BuildTargetResource);
+            readTiming.Dispose();
+            using var targetTiming = PlayerStartupPerformanceDiagnostics.Begin("resolver.applyBuildTarget");
+            BuildTargetManifestSerializer.SetCurrent(targetBytes);
         }
         else
         {

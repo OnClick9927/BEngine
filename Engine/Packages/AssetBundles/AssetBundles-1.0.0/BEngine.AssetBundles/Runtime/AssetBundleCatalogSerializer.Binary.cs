@@ -138,8 +138,13 @@ public static partial class AssetBundleCatalogSerializer
 
     private static bool IsRuntimeCatalog(ReadOnlySpan<byte> bytes) => bytes.StartsWith(RuntimeCatalogMagic);
 
-    private static AssetBundleCatalog DeserializeRuntimeCatalog(ReadOnlySpan<byte> bytes)
+    private static AssetBundleCatalog DeserializeRuntimeCatalog(ReadOnlySpan<byte> bytes) =>
+        DeserializeRuntimeCatalog(bytes, false, out _);
+
+    private static AssetBundleCatalog DeserializeRuntimeCatalog(ReadOnlySpan<byte> bytes, bool retainFacts,
+        out OwnedCatalogDecodeFacts? facts)
     {
+        facts = null;
         if (bytes.Length > MaximumBinaryCatalogBytes)
             throw new InvalidDataException("Runtime catalog exceeds its supported byte limit.");
         var reader = new CatalogReader(bytes);
@@ -165,6 +170,13 @@ public static partial class AssetBundleCatalogSerializer
             Version = reader.String(strings),
             IsPackageComposite = reader.Boolean()
         };
+        var canonical = true;
+        static bool Ordered<T>(IReadOnlyList<T> values, Func<T, string> key)
+        {
+            for (var index = 1; index < values.Count; index++)
+                if (StringComparer.Ordinal.Compare(key(values[index - 1]), key(values[index])) > 0) return false;
+            return true;
+        }
         var bundles = new AssetBundleDescriptor[reader.Count(MaximumCatalogBundles, 52)];
         var references = 0;
         for (var i = 0; i < bundles.Length; i++)
@@ -179,8 +191,14 @@ public static partial class AssetBundleCatalogSerializer
             };
         }
         catalog.Bundles = bundles.ToList();
+        if (retainFacts)
+        {
+            canonical = Ordered(bundles, static item => item.Name);
+            foreach (var item in bundles) canonical &= Ordered(item.Dependencies, static name => name);
+        }
         var assetCount = reader.Count(MaximumCatalogAssets, 77);
         catalog.Assets = new List<AssetBundleAsset>(assetCount);
+        var derivedEntries = retainFacts ? new bool[assetCount] : null;
         for (var i = 0; i < assetCount; i++)
         {
             var address = reader.String(strings);
@@ -205,6 +223,16 @@ public static partial class AssetBundleCatalogSerializer
                 if (!asset.ImporterSettings.TryAdd(reader.String(strings), reader.String(strings)))
                     throw new InvalidDataException("Runtime catalog contains a duplicate importer setting.");
             catalog.Assets.Add(asset);
+            if (retainFacts)
+            {
+                derivedEntries![i] = schemaVersion >= 4 && (flags & 4) != 0;
+                string? previous = null;
+                foreach (var key in asset.ImporterSettings.Keys)
+                {
+                    if (previous is not null && StringComparer.Ordinal.Compare(previous, key) > 0) canonical = false;
+                    previous = key;
+                }
+            }
         }
         var packageCount = reader.Count(MaximumCatalogBundles, 12);
         catalog.Packages = new List<AssetBundlePackageDescriptor>(packageCount);
@@ -220,6 +248,13 @@ public static partial class AssetBundleCatalogSerializer
             });
         }
         if (reader.Remaining != 0) throw new InvalidDataException("Runtime catalog contains trailing bytes.");
+        if (retainFacts)
+        {
+            canonical &= Ordered(catalog.Assets, static item => item.Address);
+            canonical &= Ordered(catalog.Packages, static item => item.Name);
+            foreach (var item in catalog.Packages) canonical &= Ordered(item.Bundles, static name => name);
+            facts = new OwnedCatalogDecodeFacts(catalog, derivedEntries!, canonical);
+        }
         return catalog;
     }
 
@@ -245,7 +280,7 @@ public static partial class AssetBundleCatalogSerializer
         public int Int32() => BinaryPrimitives.ReadInt32LittleEndian(Take(4));
         public long Int64() => BinaryPrimitives.ReadInt64LittleEndian(Take(8));
         public Guid Guid() => new(Take(16));
-        public string Hash() => Convert.ToHexString(Take(32)).ToLowerInvariant();
+        public string Hash() => Convert.ToHexStringLower(Take(32));
         public int Count(int maximum, int minimumRecordBytes)
         {
             var count = Int32();

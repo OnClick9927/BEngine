@@ -7,6 +7,12 @@ internal static class PlayerSettingsProvider
     private static string _playerBuildProjectPath = string.Empty;
     private static PlayerBuildSettings? _playerBuildSettings;
     private static string _playerBuildError = string.Empty;
+    private static bool _displayExpanded = true;
+    private static bool _splashExpanded = true;
+    private static bool _buildExpanded;
+    private static bool _graphicsExpanded;
+    private static bool _contentExpanded;
+    private static bool _diagnosticsExpanded;
     [SettingsProvider]
     private static SettingsProvider PlayerProjectSettings() => new("Project/Player", SettingsScope.Project,
         ["company", "product", "resolution", "platform", "build", "splash", "hot update",
@@ -23,7 +29,7 @@ internal static class PlayerSettingsProvider
         var buildChanged = false;
         var build = GetPlayerBuildSettings();
 
-        GUILayout.Label("Identification", EditorStyles.boldLabel);
+        GUILayout.Label("Player", EditorStyles.boldLabel);
         var company = EditorGUILayout.TextField(EditorLocalization.Tr("Company Name"), value.CompanyName);
         if (company != value.CompanyName && !string.IsNullOrWhiteSpace(company))
         {
@@ -59,202 +65,198 @@ internal static class PlayerSettingsProvider
         var selectedPlatform = BEngine.Platform.BuildTargetUtility.Current.GetPlatform(build.TargetId).Platform;
 
         GUILayout.Space(7);
-        projectChanged |= DrawPlatformPlayerSettings(
-            value, build, selectedPlatform, out var platformBuildChanged);
-        buildChanged |= platformBuildChanged;
-
+        GUILayout.Label($"Settings for {PlatformLabel(selectedPlatform)}", EditorStyles.boldLabel);
+        _displayExpanded = EditorGUILayout.Foldout(_displayExpanded, "Resolution and Presentation");
+        if (_displayExpanded)
+        {
+            projectChanged |= DrawPlatformPlayerSettings(
+                value, build, selectedPlatform, out var platformBuildChanged);
+            buildChanged |= platformBuildChanged;
+        }
+        _splashExpanded = EditorGUILayout.Foldout(_splashExpanded, "Splash Image");
+        if (_splashExpanded) buildChanged |= DrawStartupPresentation(build);
         GUILayout.Space(10);
-        GUILayout.Label("Build", EditorStyles.boldLabel);
-        var encryptContent = EditorGUILayout.Toggle("Encrypt Code And Resources", build.EncryptContent);
-        if (encryptContent != build.EncryptContent)
+        _buildExpanded = EditorGUILayout.Foldout(_buildExpanded, "Build");
+        if (_buildExpanded)
         {
-            build.EncryptContent = encryptContent;
-            buildChanged = true;
-        }
-        if (build.EncryptContent)
-            GUILayout.Label("Enter the Encryption Key when building. Use the same key for this Player and its Hot Resources. Keys are not saved in project settings.", EditorStyles.wordWrappedLabel);
-        var development = EditorGUILayout.Toggle("Development Build", build.DevelopmentBuild);
-        if (development != build.DevelopmentBuild)
-        {
-            build.DevelopmentBuild = development;
-            buildChanged = true;
-        }
-        var debugSymbols = EditorGUILayout.Toggle("Debug Symbols", build.IncludeDebugSymbols);
-        if (debugSymbols != build.IncludeDebugSymbols)
-        {
-            build.IncludeDebugSymbols = debugSymbols;
-            buildChanged = true;
-        }
-        if (selectedPlatform is BuildTargetPlatform.Windows or BuildTargetPlatform.Linux or
-            BuildTargetPlatform.MacOS)
-        {
-            var selfContained = EditorGUILayout.Toggle("Self Contained Player", build.SelfContained);
-            if (selfContained != build.SelfContained)
+            var encryptContent = EditorGUILayout.Toggle("Encrypt Code And Resources", build.EncryptContent);
+            if (encryptContent != build.EncryptContent)
             {
-                build.SelfContained = selfContained;
+                build.EncryptContent = encryptContent;
                 buildChanged = true;
             }
-        }
-        else if (!build.SelfContained)
-        {
-            build.SelfContained = true;
-            buildChanged = true;
-        }
-        if (selectedPlatform == BuildTargetPlatform.Windows)
-        {
-            var gcMode = (PlayerGarbageCollectionMode)EditorGUILayout.EnumPopup(
-                "Garbage Collection", build.WindowsGarbageCollection);
-            if (gcMode != build.WindowsGarbageCollection)
+            if (build.EncryptContent)
+                GUILayout.Label("Enter the Encryption Key when building. Use the same key for this Player and its Hot Resources. Keys are not saved in project settings.", EditorStyles.wordWrappedLabel);
+            var development = EditorGUILayout.Toggle("Development Build", build.DevelopmentBuild);
+            if (development != build.DevelopmentBuild)
             {
-                build.WindowsGarbageCollection = gcMode;
-                if (gcMode != PlayerGarbageCollectionMode.Server) build.WindowsGcHeapCount = 0;
+                build.DevelopmentBuild = development;
                 buildChanged = true;
             }
-            if (gcMode == PlayerGarbageCollectionMode.Server)
+            var debugSymbols = EditorGUILayout.Toggle("Debug Symbols", build.IncludeDebugSymbols);
+            if (debugSymbols != build.IncludeDebugSymbols)
             {
-                var heaps = Math.Max(0, EditorGUILayout.IntField("GC Heap Count (0 = Runtime Default)", build.WindowsGcHeapCount));
-                if (heaps != build.WindowsGcHeapCount)
+                build.IncludeDebugSymbols = debugSymbols;
+                buildChanged = true;
+            }
+            if (selectedPlatform is BuildTargetPlatform.Windows or BuildTargetPlatform.Linux or
+                BuildTargetPlatform.MacOS)
+            {
+                var selfContained = EditorGUILayout.Toggle("Self Contained Player", build.SelfContained);
+                if (selfContained != build.SelfContained)
                 {
-                    build.WindowsGcHeapCount = heaps;
+                    build.SelfContained = selfContained;
                     buildChanged = true;
                 }
             }
-        }
-        if (selectedPlatform == BuildTargetPlatform.Web)
-        {
-            var scriptCompilation = (WebScriptCompilationMode)EditorGUILayout.EnumPopup(
-                EditorLocalization.Tr("Web Script Compilation"), build.WebScriptCompilation);
-            if (scriptCompilation != build.WebScriptCompilation)
+            else if (!build.SelfContained)
             {
-                build.WebScriptCompilation = scriptCompilation;
+                build.SelfContained = true;
                 buildChanged = true;
             }
-            if (build.WebScriptCompilation == WebScriptCompilationMode.AheadOfTime)
-                GUILayout.Label(EditorLocalization.Tr("Web Script Precompilation Notice"),
+            if (selectedPlatform == BuildTargetPlatform.Windows)
+            {
+                var gcMode = (PlayerGarbageCollectionMode)EditorGUILayout.EnumPopup(
+                    "Garbage Collection", build.WindowsGarbageCollection);
+                if (gcMode != build.WindowsGarbageCollection)
+                {
+                    build.WindowsGarbageCollection = gcMode;
+                    if (gcMode != PlayerGarbageCollectionMode.Server) build.WindowsGcHeapCount = 0;
+                    buildChanged = true;
+                }
+                if (gcMode == PlayerGarbageCollectionMode.Server)
+                {
+                    var heaps = Math.Max(0, EditorGUILayout.IntField("GC Heap Count (0 = Runtime Default)", build.WindowsGcHeapCount));
+                    if (heaps != build.WindowsGcHeapCount)
+                    {
+                        build.WindowsGcHeapCount = heaps;
+                        buildChanged = true;
+                    }
+                }
+            }
+            if (selectedPlatform == BuildTargetPlatform.Web)
+            {
+                var scriptCompilation = (WebScriptCompilationMode)EditorGUILayout.EnumPopup(
+                    EditorLocalization.Tr("Web Script Compilation"), build.WebScriptCompilation);
+                if (scriptCompilation != build.WebScriptCompilation)
+                {
+                    build.WebScriptCompilation = scriptCompilation;
+                    buildChanged = true;
+                }
+                if (build.WebScriptCompilation == WebScriptCompilationMode.AheadOfTime)
+                    GUILayout.Label(EditorLocalization.Tr("Web Script Precompilation Notice"),
+                        EditorStyles.wordWrappedLabel);
+                var fontBackend = (WebFontBackend)EditorGUILayout.EnumPopup("Web Font Backend", build.WebFontBackend);
+                if (fontBackend != build.WebFontBackend)
+                {
+                    build.WebFontBackend = fontBackend;
+                    buildChanged = true;
+                }
+                GUILayout.Label("FreeType supports outline, bitmap and COLRv0 fonts. Use Skia for full COLRv1 and SVG font support.",
                     EditorStyles.wordWrappedLabel);
-        }
-        var managedStripping = (PlayerManagedStrippingLevel)EditorGUILayout.EnumPopup(
-            "Managed Stripping", build.ManagedStripping);
-        if (managedStripping != build.ManagedStripping)
-        {
-            build.ManagedStripping = managedStripping;
-            buildChanged = true;
-        }
-        if (build.ManagedStripping == PlayerManagedStrippingLevel.Full)
-            GUILayout.Label("Full strips the Host, AOT code and unused startup resources. Declare dynamic roots in ProjectSettings/PlayerStripping.yaml or link.xml.", EditorStyles.wordWrappedLabel);
-
-        GUILayout.Space(10);
-        GUILayout.Label("Graphics Build", EditorStyles.boldLabel);
-        var supportedBackends = PlayerGraphicsBuildSettings.GetSupported(BEngine.Platform.BuildTargetUtility.Current.Get(build.TargetId));
-        foreach (var backend in supportedBackends)
-        {
-            var selected = build.GraphicsBackends.Count == 0 || build.GraphicsBackends.Contains(backend);
-            var enabled = EditorGUILayout.Toggle(backend.ToString(), selected);
-            if (enabled == selected) continue;
-            var selection = build.GraphicsBackends.Count == 0 ? supportedBackends.ToList() : build.GraphicsBackends.ToList();
-            if (enabled) selection.Add(backend);
-            else if (selection.Count > 1) selection.Remove(backend);
-            build.GraphicsBackends = selection;
-            buildChanged = true;
-        }
-        var compileShaders = EditorGUILayout.Toggle("Compile Shaders Offline", build.CompileShaders);
-        var runtimeCompiler = EditorGUILayout.Toggle("Runtime Shader Compilation", build.RuntimeShaderCompilation);
-        var hostContract = EditorGUILayout.TextField("Hot Update Host Contract", build.HostContractPath);
-        if (compileShaders != build.CompileShaders || runtimeCompiler != build.RuntimeShaderCompilation || hostContract != build.HostContractPath)
-        {
-            build.CompileShaders = compileShaders; build.RuntimeShaderCompilation = runtimeCompiler;
-            build.HostContractPath = hostContract; buildChanged = true;
-        }
-        GUILayout.Label("Vulkan offline artifacts are built into main and hot resources. Disable runtime compilation only when all generated shaders have a build provider. Select the main build's Host contract to check future hot-update APIs.", EditorStyles.wordWrappedLabel);
-        GUILayout.Space(10);
-        GUILayout.Label("Splash Screen", EditorStyles.boldLabel);
-        var splashEnabled = EditorGUILayout.Toggle("Show Splash Screen", build.SplashScreenEnabled);
-        if (splashEnabled != build.SplashScreenEnabled)
-        {
-            build.SplashScreenEnabled = splashEnabled;
-            buildChanged = true;
-        }
-        using (new EditorGUI.DisabledScope(!splashEnabled))
-        {
-            var splashImage = EditorGUILayout.TextField("Image (Assets PNG)", build.SplashImage);
-            if (!splashImage.Equals(build.SplashImage, StringComparison.Ordinal))
+            }
+            var managedStripping = (PlayerManagedStrippingLevel)EditorGUILayout.EnumPopup(
+                "Managed Stripping", build.ManagedStripping);
+            if (managedStripping != build.ManagedStripping)
             {
-                build.SplashImage = splashImage;
+                build.ManagedStripping = managedStripping;
                 buildChanged = true;
             }
-            var splashColor = EditorGUILayout.TextField("Background", build.SplashBackgroundColor);
-            if (!splashColor.Equals(build.SplashBackgroundColor, StringComparison.Ordinal))
+            if (build.ManagedStripping == PlayerManagedStrippingLevel.Full)
+                GUILayout.Label("Full strips the Host, AOT code and unused startup resources. Declare dynamic roots in ProjectSettings/PlayerStripping.yaml or link.xml.", EditorStyles.wordWrappedLabel);
+
+        }
+        GUILayout.Space(10);
+        _graphicsExpanded = EditorGUILayout.Foldout(_graphicsExpanded, "Graphics Build");
+        if (_graphicsExpanded)
+        {
+            var supportedBackends = PlayerGraphicsBuildSettings.GetSupported(BEngine.Platform.BuildTargetUtility.Current.Get(build.TargetId));
+            foreach (var backend in supportedBackends)
             {
-                build.SplashBackgroundColor = splashColor;
+                var selected = build.GraphicsBackends.Count == 0 || build.GraphicsBackends.Contains(backend);
+                var enabled = EditorGUILayout.Toggle(backend.ToString(), selected);
+                if (enabled == selected) continue;
+                var selection = build.GraphicsBackends.Count == 0 ? supportedBackends.ToList() : build.GraphicsBackends.ToList();
+                if (enabled) selection.Add(backend);
+                else if (selection.Count > 1) selection.Remove(backend);
+                build.GraphicsBackends = selection;
                 buildChanged = true;
             }
-            var splashDuration = EditorGUILayout.FloatField(
-                "Minimum Seconds", build.SplashMinimumDurationSeconds);
-            if (!splashDuration.Equals(build.SplashMinimumDurationSeconds))
+            var compileShaders = EditorGUILayout.Toggle("Compile Shaders Offline", build.CompileShaders);
+            var runtimeCompiler = EditorGUILayout.Toggle("Runtime Shader Compilation", build.RuntimeShaderCompilation);
+            var hostContract = EditorGUILayout.TextField("Hot Update Host Contract", build.HostContractPath);
+            if (compileShaders != build.CompileShaders || runtimeCompiler != build.RuntimeShaderCompilation || hostContract != build.HostContractPath)
             {
-                build.SplashMinimumDurationSeconds = splashDuration;
+                build.CompileShaders = compileShaders; build.RuntimeShaderCompilation = runtimeCompiler;
+                build.HostContractPath = hostContract; buildChanged = true;
+            }
+            GUILayout.Label("Vulkan offline artifacts are built into main and hot resources. Disable runtime compilation only when all generated shaders have a build provider. Select the main build's Host contract to check future hot-update APIs.", EditorStyles.wordWrappedLabel);
+        }
+        GUILayout.Space(10);
+        _contentExpanded = EditorGUILayout.Foldout(_contentExpanded, "Content Delivery");
+        if (_contentExpanded)
+        {
+            var hotUpdate = EditorGUILayout.Toggle("C# Hot Update", build.EnableHotUpdate);
+            if (hotUpdate != build.EnableHotUpdate)
+            {
+                build.EnableHotUpdate = hotUpdate;
                 buildChanged = true;
             }
-        }
+            var hotResourceVersion = EditorGUILayout.TextField(
+                "Hot Resource Version", build.HotResourceVersion);
+            if (!hotResourceVersion.Equals(build.HotResourceVersion, StringComparison.Ordinal))
+            {
+                build.HotResourceVersion = hotResourceVersion;
+                buildChanged = true;
+            }
+            var startupScene = EditorGUILayout.TextField(
+                "Startup Scene", build.HotUpdateStartupScene);
+            if (!startupScene.Equals(build.HotUpdateStartupScene, StringComparison.Ordinal))
+            {
+                build.HotUpdateStartupScene = startupScene;
+                buildChanged = true;
+            }
+            var defineSymbols = EditorGUILayout.TextField(
+                "Scripting Defines", string.Join(';', build.ScriptingDefineSymbols));
+            var parsedDefines = defineSymbols.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (!parsedDefines.SequenceEqual(build.ScriptingDefineSymbols, StringComparer.Ordinal))
+            {
+                build.ScriptingDefineSymbols = parsedDefines.ToList();
+                buildChanged = true;
+            }
+            var updatePolicy = (PlayerContentUpdatePolicy)EditorGUILayout.EnumPopup(
+                "Startup Update", build.ContentUpdatePolicy);
+            if (updatePolicy != build.ContentUpdatePolicy)
+            {
+                build.ContentUpdatePolicy = updatePolicy;
+                buildChanged = true;
+            }
+            var compressBundles = EditorGUILayout.Toggle("Compress Resources",
+                build.CompressAssetBundles);
+            if (compressBundles != build.CompressAssetBundles)
+            {
+                build.CompressAssetBundles = compressBundles;
+                buildChanged = true;
+            }
+            var cacheDirectory = EditorGUILayout.TextField("Player Cache (Relative)", build.CacheDirectory);
+            if (!cacheDirectory.Equals(build.CacheDirectory, StringComparison.Ordinal))
+            {
+                build.CacheDirectory = cacheDirectory;
+                buildChanged = true;
+            }
 
+        }
         GUILayout.Space(10);
-        GUILayout.Label("Content Delivery", EditorStyles.boldLabel);
-        var hotUpdate = EditorGUILayout.Toggle("C# Hot Update", build.EnableHotUpdate);
-        if (hotUpdate != build.EnableHotUpdate)
+        _diagnosticsExpanded = EditorGUILayout.Foldout(_diagnosticsExpanded, "Diagnostics");
+        if (_diagnosticsExpanded)
         {
-            build.EnableHotUpdate = hotUpdate;
-            buildChanged = true;
-        }
-        var hotResourceVersion = EditorGUILayout.TextField(
-            "Hot Resource Version", build.HotResourceVersion);
-        if (!hotResourceVersion.Equals(build.HotResourceVersion, StringComparison.Ordinal))
-        {
-            build.HotResourceVersion = hotResourceVersion;
-            buildChanged = true;
-        }
-        var startupScene = EditorGUILayout.TextField(
-            "Startup Scene", build.HotUpdateStartupScene);
-        if (!startupScene.Equals(build.HotUpdateStartupScene, StringComparison.Ordinal))
-        {
-            build.HotUpdateStartupScene = startupScene;
-            buildChanged = true;
-        }
-        var defineSymbols = EditorGUILayout.TextField(
-            "Scripting Defines", string.Join(';', build.ScriptingDefineSymbols));
-        var parsedDefines = defineSymbols.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (!parsedDefines.SequenceEqual(build.ScriptingDefineSymbols, StringComparer.Ordinal))
-        {
-            build.ScriptingDefineSymbols = parsedDefines.ToList();
-            buildChanged = true;
-        }
-        var updatePolicy = (PlayerContentUpdatePolicy)EditorGUILayout.EnumPopup(
-            "Startup Update", build.ContentUpdatePolicy);
-        if (updatePolicy != build.ContentUpdatePolicy)
-        {
-            build.ContentUpdatePolicy = updatePolicy;
-            buildChanged = true;
-        }
-        var compressBundles = EditorGUILayout.Toggle("Compress Resources",
-            build.CompressAssetBundles);
-        if (compressBundles != build.CompressAssetBundles)
-        {
-            build.CompressAssetBundles = compressBundles;
-            buildChanged = true;
-        }
-        var cacheDirectory = EditorGUILayout.TextField("Player Cache (Relative)", build.CacheDirectory);
-        if (!cacheDirectory.Equals(build.CacheDirectory, StringComparison.Ordinal))
-        {
-            build.CacheDirectory = cacheDirectory;
-            buildChanged = true;
-        }
+            var writePlayerLog = EditorGUILayout.Toggle("Write Player Log", build.WritePlayerLog);
+            if (writePlayerLog != build.WritePlayerLog)
+            {
+                build.WritePlayerLog = writePlayerLog;
+                buildChanged = true;
+            }
 
-        GUILayout.Space(10);
-        GUILayout.Label("Diagnostics", EditorStyles.boldLabel);
-        var writePlayerLog = EditorGUILayout.Toggle("Write Player Log", build.WritePlayerLog);
-        if (writePlayerLog != build.WritePlayerLog)
-        {
-            build.WritePlayerLog = writePlayerLog;
-            buildChanged = true;
         }
 
         if (projectChanged) EditorProjectSettings.Save();
@@ -264,6 +266,40 @@ internal static class PlayerSettingsProvider
             GUILayout.Space(8);
             EditorGUILayout.HelpBox(_playerBuildError, MessageType.Error);
         }
+    }
+
+    private static bool DrawStartupPresentation(PlayerBuildSettings build)
+    {
+        var changed = false;
+        var current = string.IsNullOrWhiteSpace(build.SplashImage) ? null
+            : AssetDatabase.LoadAssetAtPath<Texture>(build.SplashImage);
+        var selected = EditorGUILayout.ObjectField("Application Logo", current, typeof(Texture), false);
+        if (!ReferenceEquals(selected, current))
+        {
+            var path = selected is null ? string.Empty : AssetDatabase.GetAssetPath(selected);
+            if (path.Length == 0 || path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            {
+                build.SplashImage = path;
+                changed = true;
+                _playerBuildError = string.Empty;
+            }
+            else _playerBuildError = "The Application Logo must be a PNG asset.";
+        }
+        var preview = GUILayoutUtility.GetControlRect(110, GUILayout.ExpandWidth(true));
+        GUI.DrawRect(preview, new Color((Fix64).063f, (Fix64).086f, (Fix64).102f));
+        var logo = new Rect(preview.x + (preview.width - 96) / 2, preview.y + 7, 96, 80);
+        GUI.DrawTexture(logo, string.IsNullOrWhiteSpace(build.SplashImage)
+            ? EditorBuiltinIcons.engineLogo : current?.sourcePath ?? build.SplashImage);
+        GUI.DrawRect(new Rect(logo.x, preview.y + 96, 96, 3), new Color((Fix64).76f, (Fix64).81f, (Fix64).87f));
+        var background = EditorGUILayout.TextField("Background (#RRGGBB)", build.SplashBackgroundColor);
+        if (background != build.SplashBackgroundColor)
+        {
+            build.SplashBackgroundColor = background;
+            changed = true;
+        }
+        GUILayout.Label("All platforms · Logo fade: 0.5 s · Environment prepares concurrently.\nThe progress bar appears only if preparation takes longer. Leave Logo empty to use BEngine.",
+            EditorStyles.wordWrappedLabel);
+        return changed;
     }
 
     private static bool DrawPlatformPlayerSettings(
@@ -444,30 +480,16 @@ internal static class PlayerSettingsProvider
         int selectedIndex)
     {
         var next = selectedIndex;
-        for (var row = 0; row < 2; row++)
+        var columns = Math.Max(1, Math.Min(platforms.Count, (int)GUIUtility.currentViewWidth / 115));
+        var rows = (platforms.Count + columns - 1) / columns;
+        var area = GUILayoutUtility.GetControlRect(rows * 28, GUILayout.ExpandWidth(true));
+        var width = area.width / columns;
+        for (var index = 0; index < platforms.Count; index++)
         {
-            GUILayout.BeginHorizontal();
-            try
-            {
-                var start = row * 3;
-                var end = Math.Min(start + 3, platforms.Count);
-                for (var index = start; index < end; index++)
-                {
-                    var selected = index == selectedIndex;
-                    var style = selected
-                        ? EditorStyles.treeViewRowSelected
-                        : EditorStyles.miniButton;
-                    if (GUILayout.Button(new GUIContent(
-                                PlatformLabel(platforms[index].Platform),
-                                tooltip: "CPU architecture is selected automatically"),
-                            style, GUILayout.ExpandWidth(true)))
-                        next = index;
-                }
-            }
-            finally
-            {
-                GUILayout.EndHorizontal();
-            }
+            var rect = new Rect(area.x + index % columns * width, area.y + index / columns * 28, width - 3, 25);
+            var style = index == selectedIndex ? EditorStyles.treeViewRowSelected : EditorStyles.miniButton;
+            if (GUI.Button(rect, new GUIContent(PlatformLabel(platforms[index].Platform),
+                tooltip: "CPU architecture is selected automatically"), style)) next = index;
         }
         return next;
     }

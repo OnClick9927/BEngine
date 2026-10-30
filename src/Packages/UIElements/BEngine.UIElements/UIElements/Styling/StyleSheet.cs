@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Buffers;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -25,7 +26,7 @@ public sealed class StyleSheet : ScriptableObject
     // Selectors compare the simple type name. Keep strings rather than Types so
     // this index cannot retain a project's collectible script assemblies.
     private readonly Dictionary<string, MatchingRules> _matchingRules = new(StringComparer.OrdinalIgnoreCase);
-    private sealed record MatchingRules(StyleRule[] Rules, StyleRule[] ImportantRules);
+    private sealed record MatchingRules(RuleCandidates Rules, RuleCandidates ImportantRules);
     private MatchingRules RulesFor(VisualElement element)
     {
         var typeName = element.GetType().Name;
@@ -34,8 +35,8 @@ public sealed class StyleSheet : ScriptableObject
     }
     private MatchingRules BuildMatchingRules(string typeName)
     {
-        var matching = new MatchingRules(_rules.Where(rule => rule.CanMatchType(typeName)).ToArray(),
-            _importantRules.Where(rule => rule.CanMatchType(typeName)).ToArray());
+        var matching = new MatchingRules(new(_rules.Where(rule => rule.CanMatchType(typeName))),
+            new(_importantRules.Where(rule => rule.CanMatchType(typeName))));
         _matchingRules.Add(typeName, matching);
         return matching;
     }
@@ -142,13 +143,9 @@ public sealed class StyleSheet : ScriptableObject
 
     private void ApplyDescendants(VisualElement root, VisualElement element)
     {
-            var matching = RulesFor(element);
-            foreach (var rule in matching.Rules)
-                if (rule.MatchesViewport(root.styleViewportWidth, root.styleViewportHeight) && rule.Matches(element))
-                    rule.Apply(element.style);
-            foreach (var rule in matching.ImportantRules)
-                if (rule.MatchesViewport(root.styleViewportWidth, root.styleViewportHeight) && rule.Matches(element))
-                    rule.Apply(element.style, important: true);
+        var matching = RulesFor(element);
+        matching.Rules.Apply(element, root);
+        matching.ImportantRules.Apply(element, root, important: true);
         using var children = element.GetChildEnumerator();
         while (children.MoveNext()) ApplyDescendants(root, children.Current);
     }
@@ -156,12 +153,115 @@ public sealed class StyleSheet : ScriptableObject
     internal void ApplyInteractionPaint(VisualElement element, VisualElement owner)
     {
         var matching = RulesFor(element);
-        foreach (var rule in matching.Rules)
-            if (rule.PaintDeclarations.Count > 0 && rule.MatchesViewport(owner.styleViewportWidth, owner.styleViewportHeight) && rule.Matches(element))
-                rule.Apply(element.style, paintOnly: true);
-        foreach (var rule in matching.ImportantRules)
-            if (rule.ImportantPaintDeclarations.Count > 0 && rule.MatchesViewport(owner.styleViewportWidth, owner.styleViewportHeight) && rule.Matches(element))
-                rule.Apply(element.style, important: true, paintOnly: true);
+        matching.Rules.Apply(element, owner, paintOnly: true);
+        matching.ImportantRules.Apply(element, owner, important: true, paintOnly: true);
+    }
+
+    // A rule belongs to exactly one rightmost selector bucket. Only immutable
+    // parsed rules and string keys are retained; elements and script Types are not.
+    private sealed class RuleCandidates
+    {
+        private readonly record struct IndexedRule(StyleRule Rule, int Order);
+        private readonly IndexedRule[] _all, _unanchored;
+        private readonly Dictionary<string, IndexedRule[]> _names = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, IndexedRule[]> _classes = new(StringComparer.Ordinal);
+        internal RuleCandidates(IEnumerable<StyleRule> rules)
+        {
+            _all = rules.Select((rule, index) => new IndexedRule(rule, index)).ToArray();
+            var names = new Dictionary<string, int>(StringComparer.Ordinal);
+            var classes = new Dictionary<string, int>(StringComparer.Ordinal);
+            var unanchoredCount = 0;
+            foreach (var item in _all)
+            {
+                var part = item.Rule.RightmostPart;
+                if (part.Name is { } name) Count(names, name);
+                else if (part.Classes.Count > 0) Count(classes, part.Classes[0]);
+                else unanchoredCount++;
+            }
+            _unanchored = new IndexedRule[unanchoredCount];
+            foreach (var (name, count) in names) _names.Add(name, new IndexedRule[count]);
+            foreach (var (name, count) in classes) _classes.Add(name, new IndexedRule[count]);
+            names.Clear(); classes.Clear();
+            var offset = 0;
+            foreach (var item in _all)
+            {
+                var part = item.Rule.RightmostPart;
+                if (part.Name is { } name) _names[name][Next(names, name)] = item;
+                else if (part.Classes.Count > 0) _classes[part.Classes[0]][Next(classes, part.Classes[0])] = item;
+                else _unanchored[offset++] = item;
+            }
+            static void Count(Dictionary<string, int> counts, string key) => counts[key] = counts.GetValueOrDefault(key) + 1;
+            static int Next(Dictionary<string, int> offsets, string key)
+            {
+                var offset = offsets.GetValueOrDefault(key); offsets[key] = offset + 1; return offset;
+            }
+        }
+        internal void Apply(VisualElement element, VisualElement owner, bool important = false, bool paintOnly = false)
+        {
+            if (_all.Length == 0) return;
+            if (_unanchored.Length == _all.Length)
+            {
+                foreach (var item in _all) ApplyOne(item.Rule, element, owner, important, paintOnly);
+                return;
+            }
+            var classCount = element.classList.Count;
+            var name = element.name;
+            _names.TryGetValue(name, out var named);
+            var count = _unanchored.Length + (named?.Length ?? 0);
+            var classes = ArrayPool<string>.Shared.Rent(classCount);
+            IndexedRule[]? candidates = null;
+            try
+            {
+                element.CopyClassesTo(classes);
+                for (var index = 0; index < classCount; index++)
+                {
+                    var className = classes[index];
+                    if (_classes.TryGetValue(className, out var values)) count += values.Length;
+                }
+                if (count == 0) return;
+                if (count == _all.Length)
+                {
+                    foreach (var item in _all) ApplyOne(item.Rule, element, owner, important, paintOnly);
+                    return;
+                }
+                candidates = ArrayPool<IndexedRule>.Shared.Rent(count);
+                _unanchored.CopyTo(candidates, 0); var offset = _unanchored.Length;
+                if (named is not null) { named.CopyTo(candidates, offset); offset += named.Length; }
+                for (var index = 0; index < classCount; index++)
+                {
+                    if (_classes.TryGetValue(classes[index], out var values))
+                    { values.CopyTo(candidates, offset); offset += values.Length; }
+                }
+                candidates.AsSpan(0, count).Sort(static (left, right) => left.Order.CompareTo(right.Order));
+                for (var index = 0; index < count; index++)
+                {
+                    var item = candidates[index];
+                    if (!ApplyOne(item.Rule, element, owner, important, paintOnly)) continue;
+                    // A synchronous style callback can change this element's
+                    // name/classes. Continue at the original next rule in that
+                    // case, observing the live cascade exactly as a full scan.
+                    if (element.name == name && element.classList.Count == classCount && SameClasses(element, classes, classCount)) continue;
+                    for (var next = item.Order + 1; next < _all.Length; next++) ApplyOne(_all[next].Rule, element, owner, important, paintOnly);
+                    break;
+                }
+            }
+            finally
+            {
+                if (candidates is not null) ArrayPool<IndexedRule>.Shared.Return(candidates, clearArray: true);
+                ArrayPool<string>.Shared.Return(classes, clearArray: true);
+            }
+        }
+        private static bool SameClasses(VisualElement element, string[] classes, int count)
+        {
+            for (var index = 0; index < count; index++) if (!element.ClassListContains(classes[index])) return false;
+            return true;
+        }
+        private static bool ApplyOne(StyleRule rule, VisualElement element, VisualElement owner, bool important, bool paintOnly)
+        {
+            if (paintOnly && (important ? rule.ImportantPaintDeclarations.Count : rule.PaintDeclarations.Count) == 0 ||
+                !rule.MatchesViewport(owner.styleViewportWidth, owner.styleViewportHeight) || !rule.Matches(element)) return false;
+            rule.Apply(element.style, important, paintOnly); return true;
+        }
     }
 
     internal static IReadOnlyDictionary<string, string> ParseDeclarations(string body)
@@ -462,6 +562,7 @@ public sealed class StyleSheet : ScriptableObject
 
         internal bool CanMatchType(string typeName) => _parts.Length > 0 &&
             (_parts[^1].Type is null || _parts[^1].Type!.Equals(typeName, StringComparison.OrdinalIgnoreCase));
+        internal SelectorPart RightmostPart => _parts[^1];
 
         public bool Matches(VisualElement element)
         {

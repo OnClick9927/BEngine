@@ -1,4 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><AssemblyName>BEngine.UIElements.Editor</AssemblyName><RootNamespace>BEngine.Editor</RootNamespace><BEnginePackageExportOwner>true</BEnginePackageExportOwner><NoWarn>$(NoWarn);CA2255</NoWarn></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../BEngine.UIElements/BEngine.UIElements.csproj" /><ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" /></ItemGroup>
-</Project>

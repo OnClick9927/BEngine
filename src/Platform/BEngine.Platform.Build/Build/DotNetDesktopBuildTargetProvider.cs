@@ -176,6 +176,8 @@ public class DotNetDesktopBuildTargetProvider :
             PlayerPackagedResourceAddresses.AssemblyDirectoryName,
             PlayerPackagedResourceAddresses.ResourcesDirectoryName
         };
+        if (_fileSystem.DirectoryExists(layout.StreamingAssetsDirectory))
+            expectedDataEntries.Add(PlayerBuildLayout.StreamingAssetsDirectoryName);
         var dataEntries = _fileSystem.EnumerateFileSystemEntries(layout.DataDirectory).ToArray();
         var actualDataEntries = dataEntries
             .Select(_pathService.GetFileName)
@@ -185,7 +187,7 @@ public class DotNetDesktopBuildTargetProvider :
         if (!expectedDataEntries.SetEquals(actualDataEntries) ||
             dataEntries.Any(path => !_fileSystem.DirectoryExists(path)))
             throw new InvalidDataException(
-                "The packaged Player data directory must contain only assembly and resources directories.");
+                "The packaged Player data directory must contain only assembly, resources and optional StreamingAssets directories.");
 
         var expectedResourceEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {

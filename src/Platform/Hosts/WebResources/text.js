@@ -8,6 +8,42 @@ export function installWebText() {
   const segmenter = typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
   const defaultFamily = 'system-ui, "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif';
+  const measurements = new Map();
+  const maximumMeasurements = 256, maximumMeasurementBytes = 512 * 1024;
+  let measurementBytes = 0, nativeMeasurements = 0, measurementHits = 0;
+  const endianProbe = new Uint8Array(new Uint32Array([0x01020304]).buffer);
+  const whiteRgbMask = endianProbe[0] === 4 ? 0x00ffffff : 0xffffff00;
+  function clearMeasurements() { measurements.clear(); measurementBytes = 0; }
+  document.fonts?.addEventListener?.('loadingdone', clearMeasurements);
+  document.fonts?.addEventListener?.('loadingerror', clearMeasurements);
+
+  function measureText(text) {
+    // FontFace loading can replace metrics without changing context.font.
+    // Never cache a measurement while that mutable transition is pending.
+    // Adding an already loaded face (or replacing it at the same set size)
+    // need not emit loadingdone. Keep dynamic CSS font sets uncached, and
+    // discard earlier system-font metrics before they can become stale.
+    const customFonts = (document.fonts?.size ?? 0) > 0;
+    if (customFonts && measurements.size) clearMeasurements();
+    const cacheable = text.length <= 2048 && context.font.length <= 2048 &&
+      document.fonts?.status !== 'loading' && !customFonts;
+    const key = cacheable ? `${context.font.length}:${context.font}${context.direction}:${text}` : null;
+    const cached = key === null ? null : measurements.get(key);
+    if (cached) {
+      measurements.delete(key); measurements.set(key, cached); measurementHits++;
+      return cached.metrics;
+    }
+    const metrics = context.measureText(text); nativeMeasurements++;
+    if (key !== null) {
+      const bytes = 128 + key.length * 2;
+      measurements.set(key, { metrics, bytes }); measurementBytes += bytes;
+      while (measurements.size > maximumMeasurements || measurementBytes > maximumMeasurementBytes) {
+        const oldest = measurements.keys().next().value;
+        measurementBytes -= measurements.get(oldest).bytes; measurements.delete(oldest);
+      }
+    }
+    return metrics;
+  }
 
   function setFont(size, family) {
     context.font = `${size}px ${family?.trim() || defaultFamily}`;
@@ -16,7 +52,7 @@ export function installWebText() {
   }
 
   function lineMetrics(size, text) {
-    const sample = context.measureText(text || 'Mg');
+    const sample = measureText(text || 'Mg');
     const ascent = sample.fontBoundingBoxAscent ?? sample.actualBoundingBoxAscent ?? size;
     const descent = sample.fontBoundingBoxDescent ?? sample.actualBoundingBoxDescent ?? size * 0.25;
     return { ascent, height: Math.max(size, ascent + descent) };
@@ -38,12 +74,18 @@ export function installWebText() {
     const lines = [];
     for (const paragraph of paragraphs(text)) {
       const paragraphDirection = direction(paragraph);
+      // Shape a fitting paragraph once. In particular, progress labels need
+      // no grapheme segmentation or repeated shaping of every growing prefix.
+      if (paragraph.length === 0 || measureText(paragraph).width <= availableWidth) {
+        lines.push({ text: paragraph, direction: paragraphDirection });
+        continue;
+      }
       const graphemes = segmenter ? Array.from(segmenter.segment(paragraph), part => part.segment) : Array.from(paragraph);
       let line = '';
       let breakAt = -1;
       for (const grapheme of graphemes) {
         const next = line + grapheme;
-        if (line && context.measureText(next).width > availableWidth) {
+        if (line && measureText(next).width > availableWidth) {
           if (breakAt > 0) {
             lines.push({ text: line.slice(0, breakAt).trimEnd(), direction: paragraphDirection });
             line = line.slice(breakAt).trimStart();
@@ -52,7 +94,7 @@ export function installWebText() {
             line = '';
           }
           // A long word or a cluster still has to make progress at narrow widths.
-          if (line && context.measureText(line + grapheme).width > availableWidth) {
+          if (line && measureText(line + grapheme).width > availableWidth) {
             lines.push({ text: line, direction: paragraphDirection });
             line = '';
           }
@@ -67,13 +109,16 @@ export function installWebText() {
   }
 
   globalThis.BEngineWebText = {
+    getDiagnostics() { return JSON.stringify({ NativeMeasurements:nativeMeasurements, MeasurementCacheHits:measurementHits,
+      CachedMeasurements:measurements.size, RetainedMeasurementBytes:measurementBytes,
+      MaximumMeasurements:maximumMeasurements, MaximumMeasurementBytes:maximumMeasurementBytes }); },
     measure(text, fontSize, family) {
       if (!Number.isFinite(fontSize) || fontSize <= 0) return '{}';
       setFont(fontSize, family);
       const lines = paragraphs(text);
       const metrics = lineMetrics(fontSize, text);
       return JSON.stringify({
-        width: lines.reduce((width, line) => Math.max(width, context.measureText(line).width), 0),
+        width: lines.reduce((width, line) => Math.max(width, measureText(line).width), 0),
         height: metrics.height * lines.length
       });
     },
@@ -101,8 +146,13 @@ export function installWebText() {
       const pixels = context.getImageData(0, 0, width, height).data;
       // Textures are a white coverage mask tinted by the UI shader. In particular,
       // transparent RGB must not darken filtered glyph edges on coloured labels.
-      for (let offset = 0; offset < pixels.length; offset += 4)
-        pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = 255;
+      if ((pixels.byteOffset & 3) === 0 && (pixels.byteLength & 3) === 0) {
+        const rgba = new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.byteLength / 4);
+        for (let index = 0; index < rgba.length; index++) rgba[index] |= whiteRgbMask;
+      } else {
+        for (let offset = 0; offset < pixels.length; offset += 4)
+          pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = 255;
+      }
       // MemoryView.set requires Uint8Array, while Canvas returns Uint8ClampedArray.
       // Copy into the caller-owned RGBA buffer before this synchronous import ends.
       destination.set(new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength));

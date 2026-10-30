@@ -19,13 +19,15 @@
       <_BEngineAotProfileAssemblyList>$(_BEngineAotProfileRoot)assemblies.txt</_BEngineAotProfileAssemblyList>
       <WasmAotProfilePath>$(_BEngineAotProfileRoot)engine.aotprofile</WasmAotProfilePath>
       <_BEnginePrecompiledManifestArgument Condition="'$(BEngineWebPrecompiledManifest)' != ''"> &quot;$(BEngineWebPrecompiledManifest)&quot;</_BEnginePrecompiledManifestArgument>
+      <_BEngineHotProfileArgument Condition="'$(BEngineWasmAotHotProfile)' != ''"> &quot;--hot-profile=$(BEngineWasmAotHotProfile)&quot;</_BEngineHotProfileArgument>
+      <_BEngineColdMethodsArgument Condition="'$(BEngineWasmAotColdMethods)' != ''"> &quot;--cold-methods=$(BEngineWasmAotColdMethods)&quot;</_BEngineColdMethodsArgument>
     </PropertyGroup>
     <Error Condition="'@(_WasmAssembliesInternal)' == ''" Text="The Web AOT profile requires the SDK's resolved static assemblies." />
     <Error Condition="'$(BEngineWasmAotBclPolicy)' != 'balanced' and '$(BEngineWasmAotBclPolicy)' != 'full'" Text="BEngineWasmAotBclPolicy must be 'balanced' or 'full'." />
     <MakeDir Directories="$(_BEngineAotProfileRoot)" />
     <WriteLinesToFile File="$(_BEngineAotProfileAssemblyList)" Lines="@(_WasmAssembliesInternal->'%(FullPath)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
     <Exec Command="&quot;$(_BEngineDotNetHost)&quot; build &quot;$(_BEngineAotProfileToolProject)&quot; --configuration Release --nologo --artifacts-path &quot;$(_BEngineAotProfileArtifacts)&quot; -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false" />
-    <Exec Command="&quot;$(_BEngineDotNetHost)&quot; &quot;$(_BEngineAotProfileArtifacts)bin/BEngine.WasmAotProfile/release/BEngine.WasmAotProfile.dll&quot; &quot;$(_BEngineAotProfileAssemblyList)&quot; &quot;$(WasmAotProfilePath)&quot;$(_BEnginePrecompiledManifestArgument) &quot;--bcl-policy=$(BEngineWasmAotBclPolicy)&quot;" />
+    <Exec Command="&quot;$(_BEngineDotNetHost)&quot; &quot;$(_BEngineAotProfileArtifacts)bin/BEngine.WasmAotProfile/release/BEngine.WasmAotProfile.dll&quot; &quot;$(_BEngineAotProfileAssemblyList)&quot; &quot;$(WasmAotProfilePath)&quot;$(_BEnginePrecompiledManifestArgument) &quot;--bcl-policy=$(BEngineWasmAotBclPolicy)&quot;$(_BEngineHotProfileArgument)$(_BEngineColdMethodsArgument)" />
     <ItemGroup>
       <FileWrites Include="$(WasmAotProfilePath);$(WasmAotProfilePath).json;$(_BEngineAotProfileAssemblyList)" />
     </ItemGroup>

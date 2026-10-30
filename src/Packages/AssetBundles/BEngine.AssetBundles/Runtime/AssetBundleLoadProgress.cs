@@ -19,6 +19,7 @@ public readonly record struct AssetBundleLoadProgress(
 public abstract class AssetBundleLoadOperation : AsyncOperation
 {
     internal AssetBundleLoadTracker Tracker { get; } = new();
+    protected override float GetProgressValue() => Tracker.Progress;
     public AssetBundleLoadProgress loadProgress => exception is null ? Tracker.Snapshot : Tracker.Snapshot with
     {
         Phase = status == AsyncOperationStatus.Canceled ? AssetBundleLoadPhase.Canceled : AssetBundleLoadPhase.Failed

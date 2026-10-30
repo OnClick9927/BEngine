@@ -207,10 +207,8 @@ public sealed partial class AssetBundleManager
         var catalogBytes = await ReadLimitedFileAsync(
             ResolveInside(root, version.CatalogFile), _options.MaximumCatalogSize, cancellationToken);
         VerifyPayload(catalogBytes, version.CatalogSize, version.CatalogSha256, "bundled install catalog");
-        var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes);
-        ValidateCatalogPair(version, catalog);
-        ValidateCatalogLimits(catalog);
-        return new RuntimeState(version, catalog, catalogBytes);
+        var catalog = DeserializeCatalogPair(version, catalogBytes, out var indexSeeds);
+        return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
     }
 
     private async BValueTask<RuntimeState?> TryReadInstalledMetadataAsync(
@@ -225,10 +223,8 @@ public sealed partial class AssetBundleManager
             var catalogBytes = await ReadLimitedFileAsync(
                 GetCatalogCachePath(version.CatalogSha256), _options.MaximumCatalogSize, cancellationToken);
             VerifyPayload(catalogBytes, version.CatalogSize, version.CatalogSha256, "installed catalog");
-            var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes);
-            ValidateCatalogPair(version, catalog);
-            ValidateCatalogLimits(catalog);
-            return new RuntimeState(version, catalog, catalogBytes);
+            var catalog = DeserializeCatalogPair(version, catalogBytes, out var indexSeeds);
+            return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
         }
         catch (Exception error) when (IsRecoverableContentFailure(error) || error is YamlException)
         {

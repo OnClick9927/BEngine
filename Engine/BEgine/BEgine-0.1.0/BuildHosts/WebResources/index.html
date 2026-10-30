@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>BEngine Player</title>
+  <link id="bengine-app-icon" rel="icon" type="image/png">
+  <link id="bengine-touch-icon" rel="apple-touch-icon">
   <style>
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #101214; }
     #bengine-game { display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
@@ -14,12 +16,22 @@
     }
     #bengine-accessibility-live { position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: .001; }
     #bengine-startup {
-      position: fixed; inset: 0; display: grid; place-content: center; gap: 10px;
-      box-sizing: border-box; padding: 24px; color: #e4e7eb; background: #101214;
+      position: fixed; inset: 0; display: grid; place-content: center;
+      box-sizing: border-box; padding: 24px; color: #e4e7eb; background: #10161a;
       font: 16px/1.5 system-ui, sans-serif; text-align: center; pointer-events: none;
     }
+    #bengine-startup-presentation { width: min(240px, 48vw); }
+    #bengine-startup-logo { display: block; width: 100%; height: min(180px, 32vh); object-fit: contain; opacity: 0; }
+    #bengine-startup-logo[data-animate] { animation: bengine-logo-in .5s linear both; }
+    @keyframes bengine-logo-in { from { opacity: 0; } to { opacity: 1; } }
+    #bengine-startup-track { height: 5px; margin-top: 28px; background: #394149; overflow: hidden; visibility: hidden; }
+    #bengine-startup[data-progress-visible] #bengine-startup-track { visibility: visible; }
+    #bengine-startup-progress { width: 100%; height: 100%; background: #c7d3df; transform: scaleX(0); transform-origin: left; }
+    #bengine-startup-title, #bengine-startup-detail { display: none; }
     #bengine-startup-detail { max-width: 720px; color: #aeb6c2; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
-    #bengine-startup[data-failed="true"] #bengine-startup-title { color: #ff9b9b; }
+    #bengine-startup[data-failed="true"] #bengine-startup-title { display: block; color: #ff9b9b; }
+    #bengine-startup[data-failed="true"] #bengine-startup-detail { display: block; }
+    #bengine-startup[data-failed="true"] #bengine-startup-presentation { display: none; }
   </style>
 </head>
 <body>
@@ -27,8 +39,12 @@
   <div id="bengine-accessibility"></div>
   <div id="bengine-accessibility-live" aria-live="polite" aria-atomic="true"></div>
   <div id="bengine-startup" role="status" aria-live="polite" aria-atomic="true">
-    <div id="bengine-startup-title">正在准备运行环境</div>
-    <div id="bengine-startup-detail">首次打开需要下载运行环境和游戏资源，请稍候。</div>
+    <div id="bengine-startup-presentation">
+      <img id="bengine-startup-logo" alt="BEngine">
+      <div id="bengine-startup-track" role="progressbar" aria-label="Preparing player" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="bengine-startup-progress"></div></div>
+    </div>
+    <div id="bengine-startup-title"></div>
+    <div id="bengine-startup-detail"></div>
   </div>
   <script>
     // Install before module imports so a missing or stale script is visible too.
@@ -36,8 +52,52 @@
       const host = document.querySelector('#bengine-startup');
       const title = document.querySelector('#bengine-startup-title');
       const detail = document.querySelector('#bengine-startup-detail');
-      let finished = false;
-      let failed = false;
+      const logo = document.querySelector('#bengine-startup-logo');
+      const track = document.querySelector('#bengine-startup-track');
+      const fill = document.querySelector('#bengine-startup-progress');
+      const config = /* BENGINE_STARTUP_PRESENTATION */ null;
+      if (config) {
+        logo.src = config.logo; host.style.background = config.background;
+        const icon = config.icon || config.logo;
+        document.querySelector('#bengine-app-icon').href = icon;
+        document.querySelector('#bengine-touch-icon').href = icon;
+      }
+      let started = performance.now();
+      let finished = false, failed = false, prepared = false, progress = 0;
+      let completion;
+      const parts = { bootstrap: 0, download: 0, unpack: 0, verified: 0, resources: 0, runtime: 0, environment: 0 };
+      let resolveFade;
+      const fade = new Promise(resolve => { resolveFade = resolve; });
+      // A composited opacity animation can continue while Wasm initializes.
+      // Start preparation immediately; only the handoff waits for this animation.
+      const animate = () => {
+        started = performance.now();
+        logo.dataset.animate = '';
+        setTimeout(() => {
+          if (!finished && !failed && !prepared) host.dataset.progressVisible = '';
+        }, 500);
+      };
+      logo.addEventListener('animationend', () => resolveFade(), { once: true });
+      // Wait for the actual image, not a blank image's animation, on a cold decode.
+      // Environment loading in the module script is independent of this promise.
+      const imageReady = logo.decode ? logo.decode().catch(() => {}) : Promise.resolve();
+      imageReady.then(animate);
+      function report(value) {
+        if (prepared || finished || failed || !Number.isFinite(value)) return;
+        progress = Math.max(progress, Math.min(.999, Math.max(0, value)));
+        fill.style.transform = `scaleX(${progress})`;
+        track.setAttribute('aria-valuenow', String(Math.floor(progress * 1000) / 10));
+      }
+      function update(part, value) {
+        if (!Number.isFinite(value)) return;
+        parts[part] = Math.max(parts[part], Math.min(1, Math.max(0, value)));
+        report(.04 * parts.bootstrap + .55 * parts.download + .08 * parts.unpack +
+          .08 * parts.verified + .02 * parts.resources + .08 * parts.runtime + .15 * parts.environment);
+      }
+      function download(part, loaded, total) {
+        if (prepared || finished || failed) return;
+        update(part, total > 0 ? loaded / total : 0);
+      }
       function messageOf(reason) {
         return typeof reason === 'string' ? reason
           : typeof reason?.message === 'string' ? reason.message : '运行环境或游戏资源未能加载。';
@@ -49,46 +109,50 @@
         title.textContent = '游戏启动失败';
         detail.textContent = `${messageOf(reason).slice(0, 2000)}\n请刷新重试；若仍失败，请检查服务器中的 Web 文件是否完整。`;
       }
-      function showPending(reason) {
-        if (finished || failed) return;
-        // The runtime can retry a download even when a derived Promise emits
-        // unhandledrejection. Only the awaited player startup decides failure.
-        detail.textContent = `${messageOf(reason).slice(0, 2000)}\n正在等待运行环境完成加载，后续进度会继续显示。`;
-      }
       function onError(event) {
-        const resource = event.target?.src || event.target?.href;
-        const reason = event.error || event.message || (resource ? `无法加载资源：${resource}` : null);
-        if (event.target?.tagName === 'SCRIPT') showFailure(reason);
-        else showPending(reason);
+        if (event.target?.tagName === 'SCRIPT') showFailure(event.error || event.message || event.target.src);
       }
-      function onRejection(event) { showPending(event.reason); }
       window.addEventListener('error', onError, true);
-      window.addEventListener('unhandledrejection', onRejection);
       globalThis.BEngineStartupStatus = {
         fail: showFailure,
-        retry(url, attempt, total) {
-          if (finished || failed) return;
-          detail.textContent = `正在重试下载（${attempt} / ${total}）：${url}`;
+        retry() { /* Keep the last measured progress during network retries. */ },
+        get elapsedMilliseconds() { return performance.now() - started; },
+        bootstrap(loaded, total) { download('bootstrap', loaded, total); },
+        bootstrapReady() { update('bootstrap', 1); },
+        progress(loaded, total) { if (total > 0) update('resources', loaded / total); },
+        download(loaded, total) { download('download', loaded, total); },
+        verified(loaded, total) {
+          if (total > 0) update('verified', loaded / total);
         },
-        progress(resourcesLoaded, totalResources) {
-          if (finished || failed || !Number.isSafeInteger(resourcesLoaded) || resourcesLoaded < 0 ||
-              !Number.isSafeInteger(totalResources) || totalResources < 1) return;
-          detail.textContent = `已完成 ${resourcesLoaded} / ${totalResources} 项`;
+        preparing(value) { update('environment', value); },
+        runtimeReady() {
+          update('verified', 1); update('resources', 1); update('runtime', 1);
         },
-        download(loaded, total) {
-          if (finished || failed) return;
-          const size = value => `${(value / 1048576).toFixed(1)} MB`;
-          detail.textContent = total > 0
-            ? `正在下载运行环境：${size(loaded)} / ${size(total)}（${Math.min(100, Math.floor(loaded * 100 / total))}%）`
-            : `正在下载运行环境：${size(loaded)}`;
-        },
+        frameworkReady() { update('unpack', 1); },
         complete() {
-          if (finished) return;
-          finished = true;
-          host.remove();
-          window.removeEventListener('error', onError, true);
-          window.removeEventListener('unhandledrejection', onRejection);
-          delete globalThis.BEngineStartupStatus;
+          if (completion) return completion;
+          completion = (async () => {
+            if (finished || failed) return;
+            // Keep an already visible bar. A fast startup still skips it entirely.
+            const showFull = host.hasAttribute('data-progress-visible') || performance.now() - started >= 500;
+            prepared = true;
+            if (showFull) host.dataset.progressVisible = '';
+            fill.style.transform = 'scaleX(1)';
+            track.setAttribute('aria-valuenow', '100');
+            await fade;
+            if (showFull && !failed) {
+              // Two rAF callbacks cross a paint boundary; a microtask does not.
+              await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+              globalThis.BEnginePlayer?.ConfirmStartupProgressPresented?.();
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            if (failed) return;
+            finished = true;
+            host.remove();
+            window.removeEventListener('error', onError, true);
+            delete globalThis.BEngineStartupStatus;
+          })();
+          return completion;
         }
       };
     })();
@@ -141,7 +205,15 @@
             error.permanent = response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429;
             throw error;
           }
-          const source = await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).text();
+          const total = Number(response.headers.get('Content-Length')) || 0;
+          let loaded = 0;
+          const measured = response.body.pipeThrough(new TransformStream({ transform(chunk, controller) {
+            loaded += chunk.byteLength;
+            globalThis.BEngineStartupStatus?.bootstrap?.(loaded, total);
+            controller.enqueue(chunk);
+          } }));
+          const source = await new Response(measured.pipeThrough(new DecompressionStream('gzip'))).text();
+          globalThis.BEngineStartupStatus?.bootstrapReady?.();
           return URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
         } catch (error) { if (error.permanent || attempt === 2) throw error; }
       }

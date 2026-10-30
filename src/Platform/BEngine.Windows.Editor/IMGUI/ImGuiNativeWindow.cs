@@ -20,6 +20,7 @@ public sealed class ImGuiNativeWindow : IEditorNativeWindow
     private readonly IWindow _window;
     private readonly SilkGraphicsSession _graphicsSession;
     private bool _loaded;
+    private BEngine.Tools.WindowsBrandingIcons? _windowIcons;
     private readonly bool _visibleOnLoad;
     private WindowState _windowStateOnLoad = WindowState.Normal;
     private readonly FileUtility _fileSystem;
@@ -315,6 +316,7 @@ public sealed class ImGuiNativeWindow : IEditorNativeWindow
 
     private void ReleaseNativeResources()
     {
+        _windowIcons?.Dispose(); _windowIcons = null;
         if (_window.IsInitialized && _window.GLContext is { IsCurrent: false } context) context.MakeCurrent();
         var input = _input;
         _gamepads?.Dispose(); _gamepads = null;
@@ -331,7 +333,11 @@ public sealed class ImGuiNativeWindow : IEditorNativeWindow
     {
         if (_window.GLContext is { IsCurrent: false } context) context.MakeCurrent();
         WindowIcon.Apply(_window);
-        if (_platformService.IsWindows) WindowsEditorTaskbar.Apply(nativeHandle);
+        if (_platformService.IsWindows)
+        {
+            WindowsEditorTaskbar.Apply(nativeHandle);
+            _windowIcons = new BEngine.Tools.WindowsBrandingIcons(nativeHandle, "BEngine.Editor");
+        }
         if (_visibleOnLoad)
         {
             _window.IsVisible = true;

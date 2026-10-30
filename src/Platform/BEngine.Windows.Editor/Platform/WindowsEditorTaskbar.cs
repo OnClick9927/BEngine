@@ -37,7 +37,8 @@ internal static class WindowsEditorTaskbar
     {
         // Project resource registration and the working directory are not available
         // consistently during bootstrap. Keep the taskbar icon in the editor itself.
-        using var stream = typeof(WindowsEditorTaskbar).Assembly.GetManifestResourceStream("BEngine.Editor.BEngine.ico")
+        var resource = widthMetric == 49 ? "BEngine.Editor.BEngine.Dark.ico" : "BEngine.Editor.BEngine.ico";
+        using var stream = typeof(WindowsEditorTaskbar).Assembly.GetManifestResourceStream(resource)
             ?? throw new InvalidOperationException("The embedded BEngine taskbar icon is missing.");
         using var icon = new Icon(stream, GetSystemMetrics(widthMetric), GetSystemMetrics(heightMetric));
         return (Icon)icon.Clone();

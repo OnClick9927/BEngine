@@ -56,8 +56,7 @@ internal sealed class UIElementsRenderContributor2D(IGraphicsDevice device) : IS
             var root = document.rootVisualElement;
             if (directSubmissions is not null)
             {
-                using var commands = UIRenderListBuilder.BuildForRenderer(root, width, height,
-                    document.ResolveScale(width, height));
+                using var commands = BuildDiagnosedRendererCommands(document, root, width, height);
                 // Opt-in is local to this document. Build first: layout/style or
                 // collection callbacks may change its live sorting layer. Only
                 // the exact List path has callback-free submission Add calls.
@@ -75,17 +74,32 @@ internal sealed class UIElementsRenderContributor2D(IGraphicsDevice device) : IS
             {
                 // An arbitrary Add can call Build or mutate the document, so
                 // these callers continue to receive a stable public snapshot.
-                var list = UIRenderListBuilder.Build(root, width, height, document.ResolveScale(width, height));
+                var list = BuildDiagnosedPublicCommands(document, root, width, height);
                 submissionOrder = Submit(document, root, list.Commands, list, 0, submissions!, directSubmissions, submissionOrder);
             }
         }
         return submissionOrder;
     }
 
+    private static UIRenderListBuilder.RendererCommandLease BuildDiagnosedRendererCommands(
+        UIDocument document, VisualElement root, int width, int height)
+    {
+        using var diagnostic = SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiLayoutAndCommands);
+        return UIRenderListBuilder.BuildForRenderer(root, width, height, document.ResolveScale(width, height));
+    }
+
+    private static UIRenderCommandList BuildDiagnosedPublicCommands(
+        UIDocument document, VisualElement root, int width, int height)
+    {
+        using var diagnostic = SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiLayoutAndCommands);
+        return UIRenderListBuilder.Build(root, width, height, document.ResolveScale(width, height));
+    }
+
     private long Submit(UIDocument document, VisualElement root, IReadOnlyList<UIRenderCommand> commands,
         object identity, long revision, ICollection<RenderSubmission2D> submissions,
         List<RenderSubmission2D>? directSubmissions, long submissionOrder)
     {
+        using var diagnostic = SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiSubmit);
         var documentSubmissionOrder = submissionOrder;
         var metadata = _submissionMetadata.GetValue(document, static item => new SubmissionMetadata(item));
         var prepared = metadata.Prepare(document, commands, identity, revision, root);

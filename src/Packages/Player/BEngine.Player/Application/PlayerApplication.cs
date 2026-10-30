@@ -42,6 +42,7 @@ internal sealed class PlayerApplication : IDisposable
     private Action? _windowReady;
     private bool _windowResourcesInitialized;
     private bool _startupSplashClosed;
+    private readonly BTaskCompletionSource _startupFramePresented = new();
     private bool _sceneManagerAttached;
     private bool _disposed;
     private bool _quitting;
@@ -251,6 +252,7 @@ internal sealed class PlayerApplication : IDisposable
         {
             _disposed = true;
             _lifetime.Cancel();
+            _startupFramePresented.TrySetCanceled(_lifetime.Token);
             if (_sceneManager is not null) DetachSceneManager();
             StopAllRuntimesSafely("PLAYER_RUNTIME_STOP");
             try { _renderContext?.Dispose(); }
@@ -319,7 +321,7 @@ internal sealed class PlayerApplication : IDisposable
     {
         Time.Reset();
         _windowLoaded = true;
-        if (_bootstrapOperation is null) InitializeWindowResources();
+        InitializeWindowResources();
         TryStartRuntime();
     }
 
@@ -366,6 +368,14 @@ internal sealed class PlayerApplication : IDisposable
     {
         if (!_runtimeStarted || _renderContext is null)
         {
+            if (_renderContext is not null && PlayerStartupEnvironment.Current is { } progress &&
+                _startupSplash?.IsVisible != true && PlayerStartupEnvironment.LogoPng.Length > 0)
+            {
+                if (!_startupFramePresented.IsCompleted) progress.RestartPresentation();
+                var framebuffer = _window.FramebufferSize;
+                if (_renderContext.RenderStartup(Math.Max(1, framebuffer.Width), Math.Max(1, framebuffer.Height), progress))
+                    _startupFramePresented.TrySetResult();
+            }
             return;
         }
 
@@ -378,6 +388,9 @@ internal sealed class PlayerApplication : IDisposable
             size.Width,
             size.Height,
             _uiElementsEnabled);
+        // Keep the native presentation in place until the first application
+        // frame has actually been submitted, avoiding a blank handoff.
+        CloseStartupSplash();
     }
 
     private void OnApplicationQuitting()
@@ -426,13 +439,19 @@ internal sealed class PlayerApplication : IDisposable
         Func<BCancellationToken, BValueTask<PlayerStagedRuntimeCoordinator>> initialize,
         PlayerSplashScreen? splash)
     {
+        // Cocoa/GLFW windows stay on the owner thread. Present the first logo
+        // frame before executing the cooperative preparation pipeline.
+        if (_startupSplash?.IsVisible != true && PlayerStartupEnvironment.Current is not null &&
+            PlayerStartupEnvironment.LogoPng.Length > 0)
+            await _startupFramePresented.Task;
+        var staged = await initialize(_lifetime.Token);
+        PlayerStartupEnvironment.Current?.Complete();
         if (splash is not null)
         {
             await splash.WaitForMinimumDurationAsync(_lifetime.Token);
             PlayerStartupDiagnostics.Phase("01_SPLASH_PLAYBACK_COMPLETED");
         }
 
-        var staged = await initialize(_lifetime.Token);
         if (_disposed)
         {
             await staged.DisposeAsync();
@@ -470,7 +489,6 @@ internal sealed class PlayerApplication : IDisposable
                 PlayerStartupDiagnostics.Phase("03_AOT_SCENE_STARTED",
                     $"graphics={SystemInfo.graphicsDeviceType};scene={_scene.path}");
                 _stagedRuntime!.Flow.Start();
-                CloseStartupSplash();
             }
             else
             {

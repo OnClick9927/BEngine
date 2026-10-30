@@ -145,6 +145,12 @@ public abstract class DotNetPlatformBuildTargetProvider :
     protected abstract void ConfigurePublish(ProcessRunRequest process, PlayerBuildContext context);
     protected abstract void ValidateOutput(PlayerBuildContext context);
 
+    protected static IReadOnlyCollection<string> GetWebPackagedAssemblySourcePaths(PlayerBuildContext context) =>
+        context.RuntimeManagedCodeAssemblyPaths.Concat(context.WebPrecompiledManagedCodeReferencePaths)
+            .Concat(context.WebPrecompiledManagedCodeAssemblyPaths)
+            .Concat(context.WebPrecompiledSharedManagedCodeAssemblyPaths)
+            .Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
     protected static PlayerBuildPrerequisite Workload(
         DotNetBuildEnvironment environment,
         string id,

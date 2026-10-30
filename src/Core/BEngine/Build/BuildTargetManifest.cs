@@ -2,6 +2,7 @@ using YamlDotNet.Serialization;
 using BEngine.Platform;
 using BEngine.Rendering.Rhi;
 using BEngine.Serialization;
+using System.Runtime.CompilerServices;
 
 namespace BEngine.Build;
 
@@ -62,6 +63,8 @@ public static class BuildTargetManifestSerializer
 {
     public const string CurrentManifestPathAppContextKey = "BEngine.BuildTarget.ManifestPath";
     public const string CurrentManifestBytesAppContextKey = "BEngine.BuildTarget.ManifestBytes";
+    private const int MaximumCachedManifestBytes = 64 * 1024;
+    private static readonly ConditionalWeakTable<object, CurrentManifestCache> CurrentManifests = new();
 
     public static byte[] Serialize(BuildTargetManifest manifest)
     {
@@ -72,7 +75,9 @@ public static class BuildTargetManifestSerializer
 
     public static BuildTargetManifest Deserialize(ReadOnlySpan<byte> bytes)
     {
-        var manifest = YamlUtility.Deserialize<BuildTargetManifest>(bytes, strict: true);
+        var manifest = BinaryDataSerializer.IsBinaryData(bytes)
+            ? BinaryDataSerializer.Deserialize<BuildTargetManifest>(bytes, strict: true)
+            : YamlUtility.Deserialize<BuildTargetManifest>(bytes, strict: true);
         manifest.Validate();
         return manifest;
     }
@@ -94,7 +99,7 @@ public static class BuildTargetManifestSerializer
         ArgumentNullException.ThrowIfNull(pathService);
         ArgumentNullException.ThrowIfNull(platformService);
         if (platformService.GetRuntimeData(CurrentManifestBytesAppContextKey) is byte[] configuredBytes)
-            return Deserialize(configuredBytes);
+            return ReadCurrentBytes(configuredBytes, platformService);
         var configuredPath = platformService.GetRuntimeData(CurrentManifestPathAppContextKey) as string;
         if (!string.IsNullOrWhiteSpace(configuredPath))
         {
@@ -114,9 +119,85 @@ public static class BuildTargetManifestSerializer
     public static void SetCurrent(ReadOnlySpan<byte> bytes)
     {
         var snapshot = bytes.ToArray();
-        _ = Deserialize(snapshot);
-        BEngine.Platform.PlatformUtility.Current.SetRuntimeData(CurrentManifestPathAppContextKey, null);
-        BEngine.Platform.PlatformUtility.Current.SetRuntimeData(CurrentManifestBytesAppContextKey, snapshot);
+        var platform = BEngine.Platform.PlatformUtility.Current;
+        _ = ReadCurrentBytes(snapshot, platform);
+        platform.SetRuntimeData(CurrentManifestPathAppContextKey, null);
+        platform.SetRuntimeData(CurrentManifestBytesAppContextKey, snapshot);
+    }
+
+    private static BuildTargetManifest ReadCurrentBytes(ReadOnlySpan<byte> bytes, PlatformUtility platform)
+    {
+        var binary = BinaryDataSerializer.IsBinaryData(bytes);
+        var converterVersion = 0;
+        if (bytes.Length > MaximumCachedManifestBytes ||
+            (!binary && !YamlUtility.TryGetDefaultConverterVersion(out converterVersion)))
+            return Deserialize(bytes);
+
+        // Runtime-data bytes are publicly reachable and mutable. A reference, path or
+        // timestamp cannot identify their content, and no returned manifest is shared.
+        var content = bytes.ToArray();
+        var cache = CurrentManifests.GetValue(platform.RuntimeDataIdentity, static _ => new());
+        lock (cache)
+        {
+            if (cache.Snapshot is { } previous && previous.ConverterVersion == converterVersion &&
+                content.AsSpan().SequenceEqual(previous.Content))
+            {
+                var result = previous.CreateManifest();
+                result.Validate();
+                return result;
+            }
+
+            var manifest = Deserialize(content);
+            if (binary || (YamlUtility.TryGetDefaultConverterVersion(out var currentVersion) &&
+                currentVersion == converterVersion))
+                cache.Snapshot = new CurrentManifestSnapshot(content, manifest, converterVersion);
+            return manifest;
+        }
+    }
+
+    private sealed class CurrentManifestCache
+    {
+        internal CurrentManifestSnapshot? Snapshot;
+    }
+
+    private sealed class CurrentManifestSnapshot
+    {
+        internal readonly byte[] Content;
+        internal readonly int ConverterVersion;
+        private readonly string _format;
+        private readonly int _version;
+        private readonly string _targetId;
+        private readonly BuildTargetPlatform _platform;
+        private readonly BuildArchitecture _architecture;
+        private readonly string _runtimeIdentifier;
+        private readonly ManagedCodeRuntimeKind _managedCodeRuntime;
+        private readonly GraphicsBackend[] _graphicsBackends;
+
+        internal CurrentManifestSnapshot(byte[] content, BuildTargetManifest manifest, int converterVersion)
+        {
+            Content = content;
+            ConverterVersion = converterVersion;
+            _format = manifest.Format;
+            _version = manifest.Version;
+            _targetId = manifest.TargetId;
+            _platform = manifest.Platform;
+            _architecture = manifest.Architecture;
+            _runtimeIdentifier = manifest.RuntimeIdentifier;
+            _managedCodeRuntime = manifest.ManagedCodeRuntime;
+            _graphicsBackends = manifest.GraphicsBackends.ToArray();
+        }
+
+        internal BuildTargetManifest CreateManifest() => new()
+        {
+            Format = _format,
+            Version = _version,
+            TargetId = _targetId,
+            Platform = _platform,
+            Architecture = _architecture,
+            RuntimeIdentifier = _runtimeIdentifier,
+            ManagedCodeRuntime = _managedCodeRuntime,
+            GraphicsBackends = _graphicsBackends.ToList()
+        };
     }
 
     public static void SetCurrentPath(string path) =>
@@ -135,8 +216,10 @@ public static class BuildTargetManifestSerializer
             throw new FileNotFoundException(
                 "The platform Player Host build-target manifest was not found.", fullPath);
         _ = Deserialize(fileSystem.ReadAllBytes(fullPath));
-        BEngine.Platform.PlatformUtility.Current.SetRuntimeData(CurrentManifestBytesAppContextKey, null);
-        BEngine.Platform.PlatformUtility.Current.SetRuntimeData(CurrentManifestPathAppContextKey, fullPath);
+        var platform = BEngine.Platform.PlatformUtility.Current;
+        CurrentManifests.Remove(platform.RuntimeDataIdentity);
+        platform.SetRuntimeData(CurrentManifestBytesAppContextKey, null);
+        platform.SetRuntimeData(CurrentManifestPathAppContextKey, fullPath);
     }
 
     public static void Save(BuildTargetManifest manifest, string directory) =>

@@ -224,28 +224,40 @@ public sealed class BTaskScheduler
         var callbackStart = System.Diagnostics.Stopwatch.GetTimestamp();
 
         var processed = 0;
-        for (; processed < callbacksToRun && _callbacks.Count > 0; processed++)
+        while (true)
         {
-            // The final scope can end inside a callback. Finish callbacks from
-            // the original snapshot, but defer any loading-only extension.
-            if (!FrameWorkBudget.isLoading && processed >= originalCallbacks) break;
-            var callbackBudget = _callbackBudgetMilliseconds;
-            if (FrameWorkBudget.IsActive && callbackBudget > 0)
-                callbackBudget = FrameWorkBudget.CooperativeBudget(callbackBudget);
-            if (processed > 0 && callbackBudget > 0 &&
-                System.Diagnostics.Stopwatch.GetElapsedTime(callbackStart).TotalMilliseconds >= callbackBudget) break;
-            if (processed > 0 && FrameWorkBudget.remainingMilliseconds <= 0) break;
-            var callback = _callbacks.Dequeue();
-            try
+            for (; processed < callbacksToRun && _callbacks.Count > 0; processed++)
             {
-                callback();
+                // The final scope can end inside a callback. Finish callbacks from
+                // the original snapshot, but defer any loading-only extension.
+                if (!FrameWorkBudget.isLoading && processed >= originalCallbacks) break;
+                var callbackBudget = _callbackBudgetMilliseconds;
+                if (FrameWorkBudget.IsActive && callbackBudget > 0)
+                    callbackBudget = FrameWorkBudget.CooperativeBudget(callbackBudget);
+                if (processed > 0 && callbackBudget > 0 &&
+                    System.Diagnostics.Stopwatch.GetElapsedTime(callbackStart).TotalMilliseconds >= callbackBudget) break;
+                if (processed > 0 && FrameWorkBudget.remainingMilliseconds <= 0) break;
+                var callback = _callbacks.Dequeue();
+                try
+                {
+                    callback();
+                }
+                catch (Exception exception)
+                {
+                    if (UnhandledException is { } handler) handler(exception);
+                    else RuntimeServiceAccess.PlatformService.WriteDiagnostic(
+                        $"Unhandled BTask callback exception: {exception}");
+                }
             }
-            catch (Exception exception)
-            {
-                if (UnhandledException is { } handler) handler(exception);
-                else RuntimeServiceAccess.PlatformService.WriteDiagnostic(
-                    $"Unhandled BTask callback exception: {exception}");
-            }
+            // A callback may have admitted the next cooperative loader layer after
+            // this tick's frame event. Reuse only its unspent loading budget, then
+            // drain completions under the original callback/time/count limits.
+            if (!ReferenceEquals(this, Main) || !FrameWorkBudget.isLoading ||
+                processed >= callbacksToRun || FrameWorkBudget.remainingMilliseconds <= 0) break;
+            var pumpBudget = _callbackBudgetMilliseconds;
+            if (pumpBudget > 0 && System.Diagnostics.Stopwatch.GetElapsedTime(callbackStart).TotalMilliseconds >=
+                FrameWorkBudget.CooperativeBudget(pumpBudget)) break;
+            if (!CooperativeWorkScheduler.Main.PumpLoadingWork() || _callbacks.Count == 0) break;
         }
         return processed;
     }

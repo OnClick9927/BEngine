@@ -37,7 +37,8 @@ public sealed class EditorIconsWindow : EditorBuiltinBrowserWindow
                 var rect = GUILayoutUtility.GetRect(142, 64);
                 if (GUI.Button(rect, new GUIContent(string.Empty, tooltip: path), EditorStyles.helpBox))
                 { model.Selected = path; GUIUtility.systemCopyBuffer = path; }
-                GUI.DrawTexture(new Rect(rect.x + (rect.width - 48) / 2, rect.y + 8, 48, 48), path);
+                GUI.DrawTexture(new Rect(rect.x + (rect.width - 48) / 2, rect.y + 8, 48, 48),
+                    path == "Icons/BEngine.png" ? EditorBuiltinIcons.engineLogo : path);
                 GUILayout.Label(EditorHostServices.Paths.GetFileNameWithoutExtension(path), EditorStyles.centeredMiniLabel, GUILayout.Height(24));
                 GUILayout.EndVertical();
             }

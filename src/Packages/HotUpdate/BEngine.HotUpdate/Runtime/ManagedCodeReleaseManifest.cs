@@ -66,9 +66,18 @@ public static class ManagedCodeReleaseManifestSerializer
         return YamlUtility.SerializeToUtf8Bytes(manifest);
     }
 
+    /// <summary>Compiles immutable runtime metadata while keeping Serialize's editable YAML format.</summary>
+    public static byte[] SerializeRuntime(ManagedCodeReleaseManifest manifest, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return BinaryDataSerializer.CompileYaml(Serialize(manifest), cancellationToken);
+    }
+
     public static ManagedCodeReleaseManifest Deserialize(ReadOnlySpan<byte> bytes)
     {
-        var manifest = YamlUtility.Deserialize<ManagedCodeReleaseManifest>(bytes, strict: true);
+        var manifest = BinaryDataSerializer.IsBinaryData(bytes)
+            ? BinaryDataSerializer.Deserialize<ManagedCodeReleaseManifest>(bytes, strict: true)
+            : YamlUtility.Deserialize<ManagedCodeReleaseManifest>(bytes, strict: true);
         manifest.Validate();
         return manifest;
     }

@@ -23,21 +23,22 @@ public sealed class AssetBundleRequest<T> : AssetBundleLoadOperation, IDisposabl
         ArgumentNullException.ThrowIfNull(loader);
         Start(async cancellationToken =>
         {
-            var loading = loader(cancellationToken, Tracker);
-            while (!loading.IsCompleted)
+            try
+            {
+                var loaded = await loader(cancellationToken, Tracker);
+                if (_disposed) loaded.Dispose();
+                else _handle = loaded;
+                cancellationToken.ThrowIfCancellationRequested();
+                var detail = Tracker.Snapshot;
+                long? size = detail.Kind == AssetBundleLoadKind.Asset ? detail.TotalBytes : null;
+                if (loaded.Value is byte[] bytes) size = bytes.LongLength;
+                Tracker.Report(new(AssetBundleLoadKind.Asset, AssetBundleLoadPhase.Completed,
+                    loaded.Address, size ?? 0, size));
+            }
+            finally
             {
                 SetProgress(Tracker.Progress);
-                await BTask.Yield();
             }
-            var loaded = await loading;
-            if (_disposed) loaded.Dispose();
-            else _handle = loaded;
-            cancellationToken.ThrowIfCancellationRequested();
-            var detail = Tracker.Snapshot;
-            long? size = detail.Kind == AssetBundleLoadKind.Asset ? detail.TotalBytes : null;
-            if (loaded.Value is byte[] bytes) size = bytes.LongLength;
-            Tracker.Report(new(AssetBundleLoadKind.Asset, AssetBundleLoadPhase.Completed,
-                loaded.Address, size ?? 0, size));
         });
     }
 

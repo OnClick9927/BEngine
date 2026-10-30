@@ -28,6 +28,7 @@ public sealed class PlayerBuildSettings
     public int WindowsGcHeapCount { get; set; }
     public WebScriptCompilationMode WebScriptCompilation { get; set; } =
         WebScriptCompilationMode.Interpreter;
+    public WebFontBackend WebFontBackend { get; set; } = WebFontBackend.Skia;
     public string BuildVersion { get; set; } = "1.0.0";
     public string HotResourceVersion { get; set; } = "v1";
     public bool EnableHotUpdate { get; set; } = true;
@@ -40,7 +41,7 @@ public sealed class PlayerBuildSettings
     public bool SplashScreenEnabled { get; set; } = true;
     public string SplashImage { get; set; } = string.Empty;
     public string SplashBackgroundColor { get; set; } = "#10161A";
-    public float SplashMinimumDurationSeconds { get; set; } = 1.5f;
+    public float SplashMinimumDurationSeconds { get; set; } = 0.5f;
     public string CacheDirectory { get; set; } = PlayerBootstrapManifest.DefaultCacheDirectory;
     public string AndroidApplicationIdentifier { get; set; } = "com.bengine.game";
     public int AndroidMinimumApiLevel { get; set; } = 26;

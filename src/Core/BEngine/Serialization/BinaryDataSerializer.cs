@@ -25,6 +25,7 @@ public static class BinaryDataSerializer
     private static readonly byte[] Magic = [(byte)'B', (byte)'D', (byte)'A', (byte)'T', 1, 0, 0, 0];
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private static readonly ConditionalWeakTable<Type, TypePlan> Plans = new();
+    private static readonly ConditionalWeakTable<Type, BindingPlan> BindingPlans = new();
     private enum Kind : byte { Null, Scalar, Sequence, Mapping }
 
     public static bool IsBinaryData(ReadOnlySpan<byte> data) => data.Length >= Magic.Length &&
@@ -196,24 +197,27 @@ public static class BinaryDataSerializer
         {
             if (depth > MaximumDepth || ++_nodes > MaximumNodes) throw new InvalidDataException("Compiled data depth or node limit exceeded.");
             var kind = (Kind)Take(1)[0];
-            var nullable = Nullable.GetUnderlyingType(expected);
+            // String tables dominate plain-data documents. These reference types
+            // need neither nullable reflection nor scalar conversion.
+            if (expected == typeof(string) || expected == typeof(object))
+            {
+                if (kind == Kind.Null) return null;
+                if (kind == Kind.Scalar) return Text();
+            }
+            var binding = BindingPlans.GetValue(expected, static type => new BindingPlan(type));
             if (kind == Kind.Null)
             {
-                if (expected.IsValueType && nullable is null) throw new InvalidDataException($"Null is invalid for '{expected.Name}'.");
+                if (!binding.AllowNull) throw new InvalidDataException($"Null is invalid for '{expected.Name}'.");
                 return null;
             }
-            expected = nullable ?? expected;
+            expected = binding.Type;
             if (kind == Kind.Scalar) return ConvertScalar(Text(), expected);
             if (kind == Kind.Sequence)
             {
                 int count = Count(MaximumCollectionCount);
                 if (count > _data.Length - _position) throw new InvalidDataException("Compiled sequence count exceeds remaining input.");
-                Type element;
-                if (expected.IsArray && expected.GetArrayRank() == 1) element = expected.GetElementType()!;
-                else if (expected.IsGenericType && expected.GetGenericTypeDefinition() == typeof(List<>)) element = expected.GetGenericArguments()[0];
-                else if (expected == typeof(object)) element = typeof(object);
-                else throw new InvalidDataException($"Compiled sequence cannot bind to '{expected.Name}'.");
-                if (expected.IsArray)
+                var element = binding.SequenceElement ?? throw new InvalidDataException($"Compiled sequence cannot bind to '{expected.Name}'.");
+                if (binding.IsArray)
                 {
                     var array = Array.CreateInstance(element, count);
                     for (int i = 0; i < count; i++) array.SetValue(Read(element, depth + 1), i);
@@ -226,31 +230,35 @@ public static class BinaryDataSerializer
             if (kind != Kind.Mapping) throw new InvalidDataException("Compiled data node kind is invalid.");
             int members = Count(MaximumCollectionCount);
             if ((long)members * 5 > _data.Length - _position) throw new InvalidDataException("Compiled map count exceeds remaining input.");
-            var seen = new HashSet<int>();
+            Span<int> smallKeys = members <= 16 ? stackalloc int[members] : default;
+            var seen = new SeenKeys(smallKeys, members);
             if (expected == typeof(Fix64))
             {
-                if (members != 1 || Key(seen) is not ("rawValue" or "RawValue"))
+                if (members != 1 || Key(ref seen, Count(_strings.Length - 1), _strings) is not ("rawValue" or "RawValue"))
                     throw new InvalidDataException("A legacy Fix64 mapping requires exactly one rawValue.");
                 return Fix64.FromRaw((long)Read(typeof(long), depth + 1)!);
             }
-            var isDictionary = expected.IsGenericType && expected.GetGenericTypeDefinition() == typeof(Dictionary<,>) && expected.GetGenericArguments()[0] == typeof(string);
-            if (isDictionary || expected == typeof(object))
+            if (binding.DictionaryValue is { } valueType)
             {
-                var valueType = isDictionary ? expected.GetGenericArguments()[1] : typeof(object);
                 var dictionary = expected == typeof(object) ? new Dictionary<string, object?>(StringComparer.Ordinal) : (IDictionary)Activator.CreateInstance(expected)!;
-                for (int i = 0; i < members; i++) { var key = Key(seen); dictionary.Add(key, Read(valueType, depth + 1)); }
+                for (int i = 0; i < members; i++)
+                {
+                    var key = Key(ref seen, Count(_strings.Length - 1), _strings);
+                    object typedKey = binding.DictionaryKey == typeof(Guid) ? Guid.Parse(key) : key;
+                    // Different textual GUID spellings can denote the same key. Match the
+                    // YAML dictionary's duplicate rejection after scalar conversion as well.
+                    if (dictionary.Contains(typedKey)) throw new InvalidDataException("Compiled data map contains duplicate converted keys.");
+                    dictionary.Add(typedKey, Read(valueType, depth + 1));
+                }
                 return dictionary;
             }
-            if (expected.IsPrimitive || expected.IsEnum || expected == typeof(decimal) || expected == typeof(Guid) ||
-                expected == typeof(DateTime) || expected == typeof(DateTimeOffset) || expected == typeof(TimeSpan) ||
-                typeof(IEnumerable).IsAssignableFrom(expected) ||
-                typeof(BObject).IsAssignableFrom(expected) || expected.IsAbstract || expected.IsInterface || expected.IsPointer || typeof(Delegate).IsAssignableFrom(expected))
+            if (!binding.PlainMapping)
                 throw new InvalidDataException($"'{expected.Name}' is not a plain compiled data type.");
             var plan = Plans.GetValue(expected, static type => new TypePlan(type));
             var result = Activator.CreateInstance(expected) ?? throw new InvalidDataException($"'{expected.Name}' needs a public default constructor.");
             for (int i = 0; i < members; i++)
             {
-                var name = Key(seen);
+                var name = Key(ref seen, Count(_strings.Length - 1), _strings);
                 if (plan.Members.TryGetValue(name, out var member))
                 {
                     var value = Read(member.Type, depth + 1);
@@ -264,11 +272,10 @@ public static class BinaryDataSerializer
             return result;
         }
 
-        private string Key(HashSet<int> seen)
+        private static string Key(scoped ref SeenKeys seen, int index, string[] strings)
         {
-            int index = Count(_strings.Length - 1);
             if (!seen.Add(index)) throw new InvalidDataException("Compiled data map contains duplicate keys.");
-            return _strings[index];
+            return strings[index];
         }
         private void Skip(int depth)
         {
@@ -279,8 +286,10 @@ public static class BinaryDataSerializer
             if (kind is not (Kind.Sequence or Kind.Mapping)) throw new InvalidDataException("Invalid skipped compiled node.");
             int count = Count(MaximumCollectionCount);
             if ((long)count * (kind == Kind.Mapping ? 5 : 1) > _data.Length - _position) throw new InvalidDataException("Invalid skipped collection length.");
-            HashSet<int>? keys = kind == Kind.Mapping ? [] : null;
-            for (int i = 0; i < count; i++) { if (keys is not null) _ = Key(keys); Skip(depth + 1); }
+            var keyCount = kind == Kind.Mapping ? count : 0;
+            Span<int> smallKeys = keyCount <= 16 ? stackalloc int[keyCount] : default;
+            var keys = new SeenKeys(smallKeys, keyCount);
+            for (int i = 0; i < count; i++) { if (kind == Kind.Mapping) _ = Key(ref keys, Count(_strings.Length - 1), _strings); Skip(depth + 1); }
         }
         internal void Finish() { if (_position != _data.Length) throw new InvalidDataException("Compiled data contains trailing bytes."); }
         private string Text() => _strings[Count(_strings.Length - 1)];
@@ -294,6 +303,55 @@ public static class BinaryDataSerializer
         {
             if (count < 0 || count > _data.Length - _position) throw new InvalidDataException("Compiled data is truncated.");
             var bytes = _data.Slice(_position, count); _position += count; return bytes;
+        }
+    }
+
+    // The key table already guarantees distinct strings, so comparing interned
+    // indices preserves duplicate-key validation without allocating for small maps.
+    private ref struct SeenKeys(Span<int> small, int count)
+    {
+        private readonly Span<int> _small = small;
+        private readonly HashSet<int>? _large = count > 16 ? new() : null;
+        private int _count;
+        internal bool Add(int key)
+        {
+            if (_large is { } large) return large.Add(key);
+            if (_small[.._count].Contains(key)) return false;
+            _small[_count++] = key;
+            return true;
+        }
+    }
+
+    // Ephemeron keys allow collectible project types and their member types to
+    // unload; a static dictionary would keep hot-update assemblies alive.
+    private sealed class BindingPlan
+    {
+        internal readonly Type Type;
+        internal readonly Type? SequenceElement, DictionaryKey, DictionaryValue;
+        internal readonly bool AllowNull, IsArray, PlainMapping;
+        internal BindingPlan(Type type)
+        {
+            var nullable = Nullable.GetUnderlyingType(type);
+            AllowNull = !type.IsValueType || nullable is not null;
+            Type = nullable ?? type;
+            IsArray = Type.IsArray;
+            if (IsArray && Type.GetArrayRank() == 1) SequenceElement = Type.GetElementType();
+            else if (Type == typeof(object)) SequenceElement = DictionaryValue = typeof(object);
+            else if (Type.IsGenericType)
+            {
+                var definition = Type.GetGenericTypeDefinition();
+                if (definition == typeof(List<>)) SequenceElement = Type.GetGenericArguments()[0];
+                else if (definition == typeof(Dictionary<,>))
+                {
+                    var arguments = Type.GetGenericArguments();
+                    if (arguments[0] == typeof(string) || arguments[0] == typeof(Guid))
+                    { DictionaryKey = arguments[0]; DictionaryValue = arguments[1]; }
+                }
+            }
+            PlainMapping = !(Type.IsPrimitive || Type.IsEnum || Type == typeof(decimal) || Type == typeof(Guid) ||
+                Type == typeof(DateTime) || Type == typeof(DateTimeOffset) || Type == typeof(TimeSpan) ||
+                typeof(IEnumerable).IsAssignableFrom(Type) || typeof(BObject).IsAssignableFrom(Type) ||
+                Type.IsAbstract || Type.IsInterface || Type.IsPointer || typeof(Delegate).IsAssignableFrom(Type));
         }
     }
 
@@ -324,32 +382,58 @@ public static class BinaryDataSerializer
         throw new InvalidDataException($"Compiled scalar cannot bind to '{type.Name}'.");
     }
 
-    private sealed class MemberPlan(Type type, Action<object, object?> set, bool allowNull)
+    private sealed class MemberPlan(Type type, Action<object, object?> set, MemberInfo member, TypePlan owner)
     {
+        private int _allowNull;
         internal Type Type { get; } = type;
-        internal bool AllowNull { get; } = allowNull;
+        internal bool AllowNull
+        {
+            get
+            {
+                var cached = Volatile.Read(ref _allowNull);
+                return cached == 0 ? owner.GetAllowNull(member, ref _allowNull) : cached == 2;
+            }
+        }
         internal void Set(object target, object? value) => set(target, value);
     }
     private sealed class TypePlan
     {
         internal readonly Dictionary<string, MemberPlan> Members = new(StringComparer.Ordinal);
         internal readonly HashSet<string> UnsupportedMembers = new(StringComparer.Ordinal);
+        private readonly object _nullabilityGate = new();
+        private NullabilityInfoContext? _nullability;
         internal TypePlan(Type type)
         {
-            var nullability = new NullabilityInfoContext();
             foreach (var property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
             {
                 if (property.GetIndexParameters().Length != 0 || property.IsDefined(typeof(YamlIgnoreAttribute))) continue;
                 if (property.SetMethod is { IsPublic: true })
-                    Add(property, new(property.PropertyType, property.SetValue, nullability.Create(property).WriteState != NullabilityState.NotNull));
+                    Add(property, new(property.PropertyType, CreatePropertySetter(property), property, this));
                 else UnsupportedMembers.Add(Name(property));
             }
             foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.Public))
             {
                 if (field.IsDefined(typeof(YamlIgnoreAttribute))) continue;
                 if (!field.IsInitOnly && !field.IsLiteral)
-                    Add(field, new(field.FieldType, field.SetValue, nullability.Create(field).WriteState != NullabilityState.NotNull));
+                    Add(field, new(field.FieldType, field.SetValue, field, this));
                 else UnsupportedMembers.Add(Name(field));
+            }
+        }
+        internal bool GetAllowNull(MemberInfo member, ref int cached)
+        {
+            lock (_nullabilityGate)
+            {
+                var state = Volatile.Read(ref cached);
+                if (state != 0) return state == 2;
+                var context = _nullability ??= new NullabilityInfoContext();
+                var allowNull = (member switch
+                {
+                    PropertyInfo property => context.Create(property).WriteState,
+                    FieldInfo field => context.Create(field).WriteState,
+                    _ => throw new InvalidOperationException("Unsupported compiled data member.")
+                }) != NullabilityState.NotNull;
+                Volatile.Write(ref cached, allowNull ? 2 : 1);
+                return allowNull;
             }
         }
         private void Add(MemberInfo member, MemberPlan plan)
@@ -364,5 +448,43 @@ public static class BinaryDataSerializer
             return setting is { ApplyNamingConventions: false } ? member.Name :
                 YamlDotNet.Serialization.NamingConventions.CamelCaseNamingConvention.Instance.Apply(member.Name);
         }
+    }
+
+    private static Action<object, object?> CreatePropertySetter(PropertyInfo property)
+    {
+        // Preserve custom PropertyInfo overrides and boxed value-type mutation.
+        // The normal runtime class-property path can avoid per-value reflection.
+        if (property.GetType().Assembly != typeof(PropertyInfo).Assembly ||
+            property.DeclaringType is not { IsValueType: false } owner || owner.ContainsGenericParameters)
+            return property.SetValue;
+        var factory = PropertySetterFactory.Method;
+        if (factory is null) return property.SetValue;
+        try
+        {
+            return (Action<object, object?>)factory.MakeGenericMethod(owner, property.PropertyType)
+                .Invoke(null, [property.SetMethod!])!;
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or
+            TargetInvocationException or MemberAccessException)
+        { return property.SetValue; }
+    }
+
+    private static Action<object, object?> CreateTypedPropertySetter<TTarget, TValue>(MethodInfo method)
+        where TTarget : class
+    {
+        var setter = method.CreateDelegate<Action<TTarget, TValue>>();
+        return (target, value) =>
+        {
+            try { setter((TTarget)target, (TValue)value!); }
+            // Reflection wraps user setter failures, even if the setter itself
+            // throws TargetInvocationException. Keep that public error chain.
+            catch (Exception error) { throw new TargetInvocationException(error); }
+        };
+    }
+
+    private static class PropertySetterFactory
+    {
+        internal static readonly MethodInfo? Method = typeof(BinaryDataSerializer).GetMethod(
+            nameof(CreateTypedPropertySetter), BindingFlags.Static | BindingFlags.NonPublic);
     }
 }

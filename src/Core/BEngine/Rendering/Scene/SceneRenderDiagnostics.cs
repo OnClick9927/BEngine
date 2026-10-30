@@ -6,6 +6,8 @@ public enum SceneRenderDiagnosticPhase
 {
     SimpleSprites, NonSpriteRenderers, Sort, BuildContiguous,
     UiRender, UiBuildBatches, UiWebSdfClip, UiWebSolidClip, UiUpload, UiDraw,
+    UiImageResolve, UiImageUpload, UiTextRaster, UiTextUpload,
+    UiLayoutAndCommands, UiSubmit,
     Count
 }
 
@@ -92,6 +94,12 @@ public static class SceneRenderDiagnostics
             SceneRenderDiagnosticPhase.UiWebSolidClip => "UI.WebSolidClip",
             SceneRenderDiagnosticPhase.UiUpload => "UI.Upload",
             SceneRenderDiagnosticPhase.UiDraw => "UI.Draw",
+            SceneRenderDiagnosticPhase.UiImageResolve => "UI.ImageResolve",
+            SceneRenderDiagnosticPhase.UiImageUpload => "UI.ImageUpload",
+            SceneRenderDiagnosticPhase.UiTextRaster => "UI.TextRaster",
+            SceneRenderDiagnosticPhase.UiTextUpload => "UI.TextUpload",
+            SceneRenderDiagnosticPhase.UiLayoutAndCommands => "UI.LayoutAndCommands",
+            SceneRenderDiagnosticPhase.UiSubmit => "UI.Submit",
             _ => "Unknown"
         };
         return Start(frame, slot);

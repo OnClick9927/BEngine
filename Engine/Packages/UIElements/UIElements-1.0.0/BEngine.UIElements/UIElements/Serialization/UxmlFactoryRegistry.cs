@@ -10,8 +10,8 @@ public static class UxmlFactoryRegistry
     private static readonly Dictionary<XName, Registration> ByName = [];
     private static readonly Dictionary<Type, Registration> ByType = [];
     public static long revision { get; private set; }
-    private static readonly HashSet<string> BuiltInNames = typeof(VisualElement).Assembly.GetExportedTypes()
-        .Where(type => typeof(VisualElement).IsAssignableFrom(type)).Select(type => type.Name).ToHashSet(StringComparer.Ordinal);
+    private static readonly Lazy<HashSet<string>> BuiltInNames = new(() => typeof(VisualElement).Assembly.GetExportedTypes()
+        .Where(type => typeof(VisualElement).IsAssignableFrom(type)).Select(type => type.Name).ToHashSet(StringComparer.Ordinal));
 
     /// <param name="elementName">An XML name, preferably namespaced, e.g. "{Game.UI}HealthBar".</param>
     /// <param name="factory">Creates a fresh element from attributes. Common attributes/styles are applied afterward.</param>
@@ -30,7 +30,7 @@ public static class UxmlFactoryRegistry
         ArgumentNullException.ThrowIfNull(options);
         var name = XName.Get(elementName);
         if (typeof(T).Assembly == typeof(VisualElement).Assembly ||
-            (name.NamespaceName.Length == 0 && (BuiltInNames.Contains(name.LocalName) || name.LocalName is "UXML" or "Style" or "SourceAttribute")))
+            (name.NamespaceName.Length == 0 && (BuiltInNames.Value.Contains(name.LocalName) || name.LocalName is "UXML" or "Style" or "SourceAttribute")))
             throw new ArgumentException("Custom factories cannot replace built-in controls or reserved tags.", nameof(elementName));
         if (ByName.ContainsKey(name) || ByType.ContainsKey(typeof(T)))
             throw new InvalidOperationException($"UXML name '{name}' or type '{typeof(T).FullName}' is already registered.");

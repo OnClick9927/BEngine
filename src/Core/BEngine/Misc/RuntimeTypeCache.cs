@@ -14,6 +14,7 @@ public static class RuntimeTypeCache
     // Index publication and preference changes must complete before another reader proceeds.
     private static readonly Lock IndexGate = new();
     private static readonly Dictionary<Assembly, AssemblyIndex> Assemblies = [];
+    private static readonly ConditionalWeakTable<Assembly, HashSet<string>> InitializerOwners = new();
     private static readonly Dictionary<string, Type> TypesByName = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, Type> SerializedTypes = new(StringComparer.Ordinal);
     private static readonly Dictionary<Type, Type[]> DerivedTypes = [];
@@ -25,6 +26,7 @@ public static class RuntimeTypeCache
     private static readonly Dictionary<MemberLookupKey, MemberInfo> MembersByName = [];
     private static readonly Dictionary<MemberInfo, RuntimeMemberAccessor> MemberAccessors = [];
     private static readonly Dictionary<RuntimeMessageKey, RuntimeMessageHandler[]> MessageHandlers = [];
+    private static readonly HashSet<Type> MessageTypes = [];
     private static readonly List<RuntimeInitializationEntry> RuntimeInitializers = [];
     private static readonly Dictionary<RuntimeInitializeLoadType, RuntimeInitializationEntry[]> InitializersByPhase = [];
     private static readonly List<AssemblyPreference> AssemblyPreferences = [];
@@ -38,6 +40,7 @@ public static class RuntimeTypeCache
     private static long _typesScanned;
     private static bool _rebuildingIndexes;
     private static bool _rebuildRequested;
+    private static AssemblyIndex[]? _indexedAssemblyOrder;
 
     static RuntimeTypeCache() => RuntimeServiceAccess.PlatformService.AssemblyLoaded += (_, args) =>
     {
@@ -59,6 +62,37 @@ public static class RuntimeTypeCache
 
     public static void Warmup() =>
         RegisterAssemblies(RuntimeServiceAccess.PlatformService.GetLoadedAssemblies());
+
+    /// <summary>
+    /// Registers a build-generated complete list of types declaring runtime initialization
+    /// methods for this exact Host assembly. An empty list is meaningful. Assemblies without
+    /// an index, including downloaded modules, retain ordinary reflection discovery.
+    /// </summary>
+    public static void RegisterRuntimeInitializerOwners(Assembly assembly, IEnumerable<string> ownerTypeNames)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+        ArgumentNullException.ThrowIfNull(ownerTypeNames);
+        var owners = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var name in ownerTypeNames)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            owners.Add(name);
+        }
+        lock (IndexGate)
+        {
+            if (InitializerOwners.TryGetValue(assembly, out var previous) && previous.SetEquals(owners)) return;
+            InitializerOwners.Remove(assembly);
+            InitializerOwners.Add(assembly, owners);
+            if (!Assemblies.ContainsKey(assembly)) return;
+            // Late registration must not leave the previously reflected initializer list
+            // active. Generated hosts normally register before their first Warmup.
+            var index = Scan(assembly);
+            Assemblies[assembly] = index;
+            _assembliesScanned++;
+            _typesScanned += index.Types.Length;
+            RebuildIndexes();
+        }
+    }
 
     public static void RegisterAssemblies(IEnumerable<Assembly> assemblies)
     {
@@ -99,7 +133,11 @@ public static class RuntimeTypeCache
         {
             ArgumentNullException.ThrowIfNull(assemblies);
             var removed = false;
-            foreach (var assembly in assemblies) removed |= Assemblies.Remove(assembly);
+            foreach (var assembly in assemblies)
+            {
+                InitializerOwners.Remove(assembly);
+                removed |= Assemblies.Remove(assembly);
+            }
             if (removed) RebuildIndexes();
         }
     }
@@ -234,6 +272,7 @@ public static class RuntimeTypeCache
         lock (IndexGate)
         {
             EnsureInitialized();
+            EnsureMessageHandlers(targetType);
             if (MessageHandlers.TryGetValue(new RuntimeMessageKey(targetType, methodName), out var handlers))
                 foreach (var handler in handlers) if (handler.HasArgument == hasArgument) return true;
             return false;
@@ -249,6 +288,7 @@ public static class RuntimeTypeCache
             ArgumentNullException.ThrowIfNull(targetType);
             ArgumentException.ThrowIfNullOrWhiteSpace(methodName);
             EnsureInitialized();
+            EnsureMessageHandlers(targetType);
             if (MessageHandlers.TryGetValue(new RuntimeMessageKey(targetType, methodName), out var handlers))
                 foreach (var handler in handlers)
                     if (argumentType is null ? !handler.HasArgument :
@@ -289,7 +329,12 @@ public static class RuntimeTypeCache
         lock (IndexGate)
         {
             EnsureInitialized();
-            return MethodsByType.GetValueOrDefault(type) ?? [];
+            if (MethodsByType.TryGetValue(type, out var cached)) return cached;
+            if (!Assemblies.TryGetValue(type.Assembly, out var index) || !index.Types.Contains(type)) return [];
+            cached = GetMethodsCore(type);
+            index.MethodsByType[type] = cached;
+            MethodsByType[type] = cached;
+            return cached;
         }
     }
 
@@ -310,8 +355,15 @@ public static class RuntimeTypeCache
         lock (IndexGate)
         {
             EnsureInitialized();
+            if (MembersByType.TryGetValue(type, out var cached)) return cached;
             // Inspectors and undo can still reference instances from a retired script assembly.
-            return MembersByType.GetValueOrDefault(type) ?? DetachedMembers.GetValue(type, GetInstanceMembersCore);
+            if (!Assemblies.TryGetValue(type.Assembly, out var index) || !index.Types.Contains(type))
+                return DetachedMembers.GetValue(type, GetInstanceMembersCore);
+            cached = GetInstanceMembersCore(type);
+            index.MembersByType[type] = cached;
+            MembersByType[type] = cached;
+            foreach (var member in cached) MembersByName.TryAdd(new MemberLookupKey(type, member.Name), member);
+            return cached;
         }
     }
 
@@ -397,11 +449,17 @@ public static class RuntimeTypeCache
         var initializers = new List<RuntimeInitializationEntry>();
         var methodsByType = new Dictionary<Type, MethodInfo[]>(types.Length);
         var membersByType = new Dictionary<Type, MemberInfo[]>(types.Length);
+        InitializerOwners.TryGetValue(assembly, out var owners);
         foreach (var type in types)
         {
-            var methods = GetMethodsCore(type);
-            methodsByType[type] = methods;
-            membersByType[type] = GetInstanceMembersCore(type);
+            if (owners is not null && (type.FullName is not { } ownerName || !owners.Contains(ownerName))) continue;
+            // Global discovery only needs declared static initialization methods.
+            // Full member graphs, accessors and component metadata are built on
+            // first use, instead of reflecting every unused type at startup.
+            MethodInfo[] methods;
+            try { methods = type.GetMethods(BindingFlags.Static | BindingFlags.Public |
+                                           BindingFlags.NonPublic | BindingFlags.DeclaredOnly); }
+            catch { continue; }
             foreach (var method in methods)
             {
                 if (!method.IsStatic) continue;
@@ -472,6 +530,24 @@ public static class RuntimeTypeCache
 
     private static void RebuildIndexesCore(AssemblyIndex[] assemblyIndexes)
     {
+        // Nested domains can prefer the same assemblies without changing lookup precedence.
+        // Keep the published index and its lazy metadata in that case. Compare index identities,
+        // rather than assembly identities, so a retried scan or late initializer hint still
+        // invalidates metadata even when the effective assembly order remains the same.
+        if (_indexedAssemblyOrder is { } previous && previous.Length == assemblyIndexes.Length)
+        {
+            var unchanged = true;
+            for (var index = 0; index < previous.Length; index++)
+                if (!ReferenceEquals(previous[index], assemblyIndexes[index]))
+                {
+                    unchanged = false;
+                    break;
+                }
+            if (unchanged) return;
+        }
+        // Publish the identity snapshot only after a complete rebuild. An exceptional or
+        // reentrant scan must not make a later request reuse a partially rebuilt index.
+        _indexedAssemblyOrder = null;
         TypesByName.Clear();
         SerializedTypes.Clear();
         DerivedTypes.Clear();
@@ -482,6 +558,7 @@ public static class RuntimeTypeCache
         MembersByName.Clear();
         MemberAccessors.Clear();
         MessageHandlers.Clear();
+        MessageTypes.Clear();
         RuntimeInitializers.Clear();
         InitializersByPhase.Clear();
         var scannedTypes = assemblyIndexes.SelectMany(index => index.Types).Distinct().ToArray();
@@ -495,25 +572,12 @@ public static class RuntimeTypeCache
                 foreach (var member in pair.Value)
                 {
                     MembersByName.TryAdd(new MemberLookupKey(pair.Key, member.Name), member);
-                    if (typeof(BObject).IsAssignableFrom(pair.Key))
-                        MemberAccessors.TryAdd(member, CreateMemberAccessor(member));
                 }
             }
             foreach (var type in index.Types)
             {
                 if (type.FullName is { } fullName) TypesByName.TryAdd(fullName, type);
                 if (type.AssemblyQualifiedName is { } qualified) TypesByName.TryAdd(qualified, type);
-                if (!type.IsAbstract && type.IsClass &&
-                    (typeof(Component).IsAssignableFrom(type) || typeof(ScriptableObject).IsAssignableFrom(type) ||
-                     typeof(ISceneRuntimeSystem).IsAssignableFrom(type)))
-                {
-                    var factory = CreateFactory(type);
-                    if (factory is not null) Factories[type] = factory;
-                }
-                if (!type.IsAbstract && typeof(Component).IsAssignableFrom(type))
-                    Components[type] = BuildComponentInfo(type);
-                if (!type.IsAbstract && typeof(MonoBehaviour).IsAssignableFrom(type))
-                    CacheMessageHandlers(type);
             }
         }
         _allTypes = scannedTypes.Where(type => type.FullName is not { } fullName ||
@@ -540,6 +604,7 @@ public static class RuntimeTypeCache
             .OrderBy(type => type.FullName, StringComparer.Ordinal)
             .ToArray();
         _generation++;
+        _indexedAssemblyOrder = assemblyIndexes;
     }
 
     private static bool TryInvokeMessageCore(
@@ -554,6 +619,7 @@ public static class RuntimeTypeCache
         lock (IndexGate)
         {
             EnsureInitialized();
+            EnsureMessageHandlers(target.GetType());
             if (!MessageHandlers.TryGetValue(new RuntimeMessageKey(target.GetType(), methodName), out handlers))
                 return false;
         }
@@ -565,6 +631,15 @@ public static class RuntimeTypeCache
             return true;
         }
         return false;
+    }
+
+    private static void EnsureMessageHandlers(Type behaviourType)
+    {
+        if (MessageTypes.Contains(behaviourType) || behaviourType.IsAbstract ||
+            !typeof(MonoBehaviour).IsAssignableFrom(behaviourType) ||
+            !Assemblies.TryGetValue(behaviourType.Assembly, out var index) || !index.Types.Contains(behaviourType)) return;
+        CacheMessageHandlers(behaviourType);
+        MessageTypes.Add(behaviourType);
     }
 
     private static void CacheMessageHandlers(Type behaviourType)
@@ -587,12 +662,12 @@ public static class RuntimeTypeCache
     private static IEnumerable<MethodInfo> EnumerateHierarchyMethods(Type type)
     {
         for (var current = type; current is not null && current != typeof(object); current = current.BaseType)
-            if (MethodsByType.TryGetValue(current, out var methods))
-                foreach (var method in methods) yield return method;
+            foreach (var method in GetMethods(current)) yield return method;
     }
 
     private static RuntimeMessageHandler CreateMessageHandler(MethodInfo method, ParameterInfo[] parameters)
     {
+        if (!RuntimeFeature.IsDynamicCodeSupported) return default;
         try
         {
             var dynamicMethod = new DynamicMethod($"Message_{method.Name}_{method.MetadataToken}", typeof(void),
@@ -627,17 +702,8 @@ public static class RuntimeTypeCache
             PropertyInfo property => property.PropertyType,
             _ => throw new ArgumentException("Only fields and properties are supported.", nameof(member))
         };
-        if (declaringType.IsValueType)
-        {
-            return member switch
-            {
-                FieldInfo field => new RuntimeMemberAccessor(valueType, field.GetValue,
-                    field.IsInitOnly ? null : field.SetValue),
-                PropertyInfo property => new RuntimeMemberAccessor(valueType, property.GetValue,
-                    property.SetMethod is null ? null : property.SetValue),
-                _ => default
-            };
-        }
+        if (declaringType.IsValueType || !RuntimeFeature.IsDynamicCodeSupported)
+            return CreateReflectedMemberAccessor(member, valueType);
         try
         {
             var getterMethod = new DynamicMethod($"Get_{member.Name}_{member.MetadataToken}", typeof(object),
@@ -681,16 +747,18 @@ public static class RuntimeTypeCache
         }
         catch
         {
-            return member switch
-            {
-                FieldInfo field => new RuntimeMemberAccessor(valueType, field.GetValue,
-                    field.IsInitOnly ? null : field.SetValue),
-                PropertyInfo property => new RuntimeMemberAccessor(valueType, property.GetValue,
-                    property.SetMethod is null ? null : property.SetValue),
-                _ => default
-            };
+            return CreateReflectedMemberAccessor(member, valueType);
         }
     }
+
+    private static RuntimeMemberAccessor CreateReflectedMemberAccessor(MemberInfo member, Type valueType) => member switch
+    {
+        FieldInfo field => new RuntimeMemberAccessor(valueType, field.GetValue,
+            field.IsInitOnly ? null : field.SetValue),
+        PropertyInfo property => new RuntimeMemberAccessor(valueType, property.GetValue,
+            property.SetMethod is null ? null : property.SetValue),
+        _ => default
+    };
 
     private static ComponentReflectionInfo BuildComponentInfo(Type type)
     {
@@ -722,6 +790,7 @@ public static class RuntimeTypeCache
         var constructor = type.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null, Type.EmptyTypes, modifiers: null);
         if (constructor is null) return null;
+        if (!RuntimeFeature.IsDynamicCodeSupported) return () => constructor.Invoke(null);
         try
         {
             var method = new DynamicMethod($"Create_{type.Name}_{type.MetadataToken}", typeof(object), Type.EmptyTypes,

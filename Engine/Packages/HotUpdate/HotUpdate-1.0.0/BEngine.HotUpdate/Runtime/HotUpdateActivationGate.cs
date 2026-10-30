@@ -33,14 +33,22 @@ public sealed class HotUpdateActivationGate
         Assembly[] ownedAssemblies = [];
         try
         {
-            var loaded = await runtime.LoadAsync(release, cancellationToken);
+            using var runtimeTiming = ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.GateRuntimeLoadSynchronousPrefix);
+            var loadOperation = runtime.LoadAsync(release, cancellationToken);
+            runtimeTiming.Dispose();
+            var loaded = await loadOperation;
             loadedAssemblies = loaded.Assemblies.ToArray();
             ownedAssemblies = loaded.OwnedAssemblies.ToArray();
-            var ordered = ValidateAndOrderModules(loaded.Modules);
+            IHotUpdateModule[] ordered;
+            using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.GateValidateAndOrderModules))
+                ordered = ValidateAndOrderModules(loaded.Modules);
             // AssemblyLoad may have caused an eager, incomplete scan before every release dependency was present.
             // Re-register the completed release as one unit and make this domain its cache owner.
-            RuntimeTypeCache.UnregisterAssemblies(ownedAssemblies);
-            RuntimeTypeCache.RegisterAssemblies(ownedAssemblies);
+            using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.GateUnregisterAssemblies))
+                RuntimeTypeCache.UnregisterAssemblies(ownedAssemblies);
+            using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.GateRegisterAssemblies))
+                RuntimeTypeCache.RegisterAssemblies(ownedAssemblies);
+            using var preparedTiming = ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.GatePreparedDomain);
             return new PreparedHotUpdateDomain(
                 release, runtime, ordered, loadedAssemblies, ownedAssemblies, _hostCapabilities);
         }

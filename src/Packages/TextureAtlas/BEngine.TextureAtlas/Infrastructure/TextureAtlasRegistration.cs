@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Text;
 namespace BEngine;
 internal sealed class TextureAtlasSourceProvider : ISpriteSourceProvider
 {
@@ -14,10 +13,12 @@ internal sealed class TextureAtlasSourceProvider : ISpriteSourceProvider
 }
 internal static class TextureAtlasRegistration
 {
+    internal static readonly TextureAtlasYamlConverter Converter = new();
+
     [ModuleInitializer] internal static void Initialize()
     {
-        YamlUtility.RegisterConverter(new TextureAtlasYamlConverter());
+        YamlUtility.RegisterConverter(Converter);
         SpriteSourceRegistry.Register(new TextureAtlasSourceProvider());
-        RuntimeAssetCodecRegistry.Register<TextureAtlas>((bytes, _) => TextureAtlas.Deserialize(Encoding.UTF8.GetString(bytes.Span)));
+        RuntimeAssetCodecRegistry.Register<TextureAtlas>((bytes, _) => TextureAtlasRuntimeData.Deserialize(bytes.Span));
     }
 }

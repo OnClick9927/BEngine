@@ -45,6 +45,10 @@ public sealed class RemoteDiagnosticsServer : IDisposable
             throw new ArgumentException(
                 "A token of at least 16 characters is required for non-loopback diagnostics.",
                 nameof(token));
+        // Browsers cannot open TCP listeners. Check the platform before allocating
+        // the server so Web builds can also discard its unreachable TCP protocol.
+        if (OperatingSystem.IsBrowser())
+            throw new PlatformNotSupportedException("TCP diagnostics is not supported in the browser.");
         var listener = new TcpListener(address, port);
         listener.Start(16);
         return new RemoteDiagnosticsServer(listener, token);

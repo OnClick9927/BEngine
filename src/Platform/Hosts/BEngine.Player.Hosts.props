@@ -35,6 +35,9 @@
          built-in COM off even when the provider interfaces are explicitly rooted. -->
     <BuiltInComInteropSupport Condition="'$(BEnginePlayerPlatform)' == 'Desktop' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">true</BuiltInComInteropSupport>
     <BEngineIncludeTextBindings Condition="'$(BEngineIncludeTextBindings)' == ''">true</BEngineIncludeTextBindings>
+    <BEngineWebFontBackend Condition="'$(BEngineWebFontBackend)' == ''">Skia</BEngineWebFontBackend>
+    <_BEngineUseFreeType Condition="'$(BEnginePlayerPlatform)' == 'Web' and '$(BEngineWebFontBackend)' == 'FreeType'">true</_BEngineUseFreeType>
+    <DefineConstants Condition="'$(_BEngineUseFreeType)' == 'true'">$(DefineConstants);BENGINE_WEB_FONTS</DefineConstants>
   </PropertyGroup>
   <Target Name="ValidateExportedGraphicsVariant" BeforeTargets="ResolveReferences"
           Condition="!Exists('$(BEnginePlayerSourceProject)') and '$(BEnginePlayerPlatform)' == 'Desktop' and '$(_BEngineDesktopVariant)' != 'Both'">
@@ -62,7 +65,7 @@
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeNativeLibrariesForSelfExtract;EnableCompressionInSingleFile;UseAppHost;PublishAot;PublishTrimmed" />
   </ItemGroup>
   <!-- Reloadable UI packages need the target-specific managed/native text closure in the static host. -->
-  <ItemGroup Condition="'$(BEngineIncludeTextBindings)' == 'true'">
+  <ItemGroup Condition="'$(BEngineIncludeTextBindings)' == 'true' and '$(_BEngineUseFreeType)' != 'true'">
     <PackageReference Include="SkiaSharp">
       <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">4.153.1</Version>
     </PackageReference>
@@ -70,13 +73,23 @@
       <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">4.153.1</Version>
     </PackageReference>
   </ItemGroup>
-  <ItemGroup Condition="'$(BEnginePlayerPlatform)' == 'Web' and '$(BEngineIncludeTextBindings)' == 'true'">
+  <ItemGroup Condition="'$(BEnginePlayerPlatform)' == 'Web' and '$(BEngineIncludeTextBindings)' == 'true' and '$(_BEngineUseFreeType)' != 'true'">
     <PackageReference Include="SkiaSharp.NativeAssets.WebAssembly">
       <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">4.153.1</Version>
     </PackageReference>
     <PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly">
       <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">14.2.1.301</Version>
     </PackageReference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(_BEngineUseFreeType)' == 'true' and '$(BEngineIncludeTextBindings)' == 'true'">
+    <PackageReference Include="HarfBuzzSharp">
+      <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">14.2.1.301</Version>
+    </PackageReference>
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly">
+      <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">14.2.1.301</Version>
+    </PackageReference>
+    <NativeFileReference Include="$(MSBuildThisFileDirectory)Web/Native/libBEngineWebFont.a" />
+    <Content Include="$(MSBuildThisFileDirectory)Web/Native/FreeType.LICENSE.txt" Link="wwwroot/FreeType.LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup Condition="'$(BEnginePlayerPlatform)' == 'Desktop' and '$(BEngineIncludeTextBindings)' == 'true' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux'))">
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies">
@@ -92,6 +105,8 @@
     </Reference>
     <Reference Remove="$(BEngineResolvedRuntimeRoot)\SkiaSharp.dll;$(BEngineResolvedRuntimeRoot)\SkiaSharp.HarfBuzz.dll;$(BEngineResolvedRuntimeRoot)\HarfBuzzSharp.dll"
                Condition="'$(BEngineIncludeTextBindings)' != 'true'" />
+    <Reference Remove="$(BEngineResolvedRuntimeRoot)\SkiaSharp.dll;$(BEngineResolvedRuntimeRoot)\SkiaSharp.HarfBuzz.dll"
+               Condition="'$(_BEngineUseFreeType)' == 'true'" />
     <_BEngineRuntimeNative Include="$(BEngineResolvedRuntimeRoot)\runtimes\$(RuntimeIdentifier)\native\*"
                            Condition="'$(RuntimeIdentifier)' != ''" />
     <_BEngineRuntimeNative Include="$(BEngineResolvedRuntimeRoot)\runtimes\$(BEngineRuntimeFallbackIdentifier)\native\*"
@@ -108,6 +123,9 @@
   <ItemGroup Condition="'$(BEngineIncludeTextBindings)' == 'true'">
     <Compile Include="$(MSBuildThisFileDirectory)Shared\PlayerTextHost.cs" Link="Application\PlayerTextHost.cs" />
   </ItemGroup>
+  <ItemGroup Condition="'$(BEngineHostAssemblyBootstrap)' != ''">
+    <Compile Include="$(BEngineHostAssemblyBootstrap)" Link="Application\BEngineStaticHostBootstrap.cs" />
+  </ItemGroup>
   <ItemGroup Condition="'$(BEngineFullTrimming)' != 'true'">
     <TrimmerRootAssembly Include="BEngine" RootMode="All" />
     <TrimmerRootAssembly Include="BEngine.Player" RootMode="All" />
@@ -123,8 +141,8 @@
     <TrimmerRootAssembly Include="System.Xml.XDocument" RootMode="All" />
     <TrimmerRootAssembly Include="System.Private.Xml.Linq" RootMode="All" />
     <TrimmerRootAssembly Include="System.Private.Xml" RootMode="All" />
-    <TrimmerRootAssembly Include="SkiaSharp" RootMode="All" />
-    <TrimmerRootAssembly Include="SkiaSharp.HarfBuzz" RootMode="All" />
+    <TrimmerRootAssembly Include="SkiaSharp" RootMode="All" Condition="'$(_BEngineUseFreeType)' != 'true'" />
+    <TrimmerRootAssembly Include="SkiaSharp.HarfBuzz" RootMode="All" Condition="'$(_BEngineUseFreeType)' != 'true'" />
     <TrimmerRootAssembly Include="HarfBuzzSharp" RootMode="All" />
   </ItemGroup>
   <ItemGroup Condition="'$(BEngineTrimmerRootDescriptor)' != ''">

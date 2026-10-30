@@ -56,12 +56,18 @@ public static class PlayerContentUpdatePipeline
         var publishRoot = pathService.Combine(
             parent, $".{pathService.GetFileName(output)}.{Guid.NewGuid():N}.content-publish");
         var timer = System.Diagnostics.Stopwatch.StartNew();
+        PlayerBuildContext? context = null;
+        var succeeded = false;
         try
         {
             var target = BEngine.Platform.BuildTargetUtility.Current.Get(request.TargetId);
+            if (target.Platform == BuildTargetPlatform.Web && !Enum.IsDefined(request.WebScriptCompilation))
+                throw new ArgumentOutOfRangeException(nameof(request.WebScriptCompilation));
+            if (target.Platform == BuildTargetPlatform.Web && !Enum.IsDefined(request.WebFontBackend))
+                throw new ArgumentOutOfRangeException(nameof(request.WebFontBackend));
             if (request.EncryptContent && target.Platform == BuildTargetPlatform.Web)
                 throw new NotSupportedException("Content encryption currently requires a native Player; browser AES-GCM content loading is not supported.");
-            var context = new PlayerBuildContext(request, target, buildRoot, progress);
+            context = new PlayerBuildContext(request, target, buildRoot, progress);
             fileSystem.CreateDirectory(buildRoot);
             progress?.Report(new PlayerBuildProgress(PlayerBuildPhase.Preparing,
                 $"Preparing content update for {target.TargetId}", 0));
@@ -86,15 +92,19 @@ public static class PlayerContentUpdatePipeline
                     ? $"Published {version}; latest is now {publication.LatestVersion}"
                     : $"Published {version}; latest remains {publication.LatestVersion}",
                 1));
-            return new PlayerContentUpdateResult(output, version, timer.Elapsed)
+            var result = new PlayerContentUpdateResult(output, version, timer.Elapsed)
             {
                 LatestVersion = publication.LatestVersion,
                 Promoted = publication.Promoted,
                 ContentEncryptionKeyFingerprint = context.ContentEncryptionKey?.Fingerprint
             };
+            succeeded = true;
+            return result;
         }
         finally
         {
+            TryDeleteStrippingWorkDirectory(succeeded, context, workspace.RootPath,
+                fileSystem, pathService, platformService);
             TryDeleteDirectory(buildRoot, fileSystem);
             TryDeleteDirectory(publishRoot, fileSystem);
         }
@@ -504,6 +514,41 @@ public static class PlayerContentUpdatePipeline
         string VersionDirectory)
     {
         public byte[]? LatestBytes { get; init; }
+    }
+
+    private static void TryDeleteStrippingWorkDirectory(
+        bool succeeded,
+        PlayerBuildContext? context,
+        string projectRoot,
+        FileUtility fileSystem,
+        PathUtility pathService,
+        PlatformUtility platformService)
+    {
+        // Failed/cancelled passes retain their linker inputs and logs. A successful
+        // request owns one GUID directory, never the shared PlayerStripping root
+        // or another concurrent request's siblings.
+        if (!succeeded || context?.StrippingWorkDirectory is not { } workDirectory) return;
+        try
+        {
+            var parent = pathService.TrimEndingDirectorySeparator(pathService.GetFullPath(
+                pathService.Combine(projectRoot, "Temp", "PlayerStripping")));
+            var work = pathService.TrimEndingDirectorySeparator(pathService.GetFullPath(workDirectory));
+            var comparison = platformService.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            if (!string.Equals(pathService.GetDirectoryName(work), parent, comparison) ||
+                !Guid.TryParseExact(pathService.GetFileName(work), "N", out _))
+                throw new InvalidDataException($"Stripping work path is not a request directory below '{parent}': '{work}'.");
+            if (!fileSystem.DirectoryExists(work)) return;
+            if ((fileSystem.GetAttributes(work) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException($"Stripping work path is a filesystem link: '{work}'.");
+            fileSystem.DeleteDirectory(work, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or
+            ArgumentException or NotSupportedException or System.Security.SecurityException)
+        {
+            // Publication already succeeded. Cleanup must not turn it into a failed
+            // update or cause a retry of an already published content version.
+            Debug.LogWarning($"Published content; stripping intermediates remain at '{workDirectory}': {exception.Message}");
+        }
     }
 
     private static void TryDeleteDirectory(string path, FileUtility fileSystem)

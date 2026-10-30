@@ -86,7 +86,8 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
         PlatformUtility platformService,
         ApplicationPathUtility applicationPaths,
         IManagedCodeRuntimeFactory managedCodeRuntimeFactory,
-        BCancellationToken cancellationToken = default)
+        BCancellationToken cancellationToken = default,
+        ProjectWorkspace? initialWorkspace = null)
     {
         ArgumentNullException.ThrowIfNull(assetBundleManagerFactory);
         ArgumentNullException.ThrowIfNull(hostServices);
@@ -95,20 +96,26 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
         ArgumentNullException.ThrowIfNull(platformService);
         ArgumentNullException.ThrowIfNull(applicationPaths);
         ArgumentNullException.ThrowIfNull(managedCodeRuntimeFactory);
+        using var workspaceTiming = PlayerStartupPerformanceDiagnostics.Begin("coordinator.workspaceIdentity");
         using var loadingBudget = FrameWorkBudget.EnterLoading(cancellationToken);
+        PlayerStartupEnvironment.Current?.Report(.05f, "project");
         var capturedHostServices = hostServices.ToArray();
-        var workspace = PlayerWorkspace.OpenRuntime(
-            pathService.GetFullPath(projectPath), fileSystem, pathService);
+        var workspace = PlayerWorkspace.ReuseOrOpenRuntime(
+            initialWorkspace, pathService.GetFullPath(projectPath), fileSystem, pathService);
         if (workspace.GetRuntimeMetadata()?.PlayerBootstrap is not { } manifest)
             throw new InvalidDataException("Staged Player startup requires packaged runtime metadata.");
         var playerRoot = PlayerPersistentDataPaths.ResolvePlayerRoot(workspace.RootPath, manifest);
+        workspaceTiming.Dispose();
         PlayerBuiltInResourceProvider? playerResources = null;
         try
         {
+            using var environmentTiming = PlayerStartupPerformanceDiagnostics.Begin("coordinator.playerResourcesAndEnvironment");
             if (manifest.Version >= 4)
             {
-                playerResources = new PlayerBuiltInResourceProvider(
-                    manifest.ResolvePlayerResourceArchive(playerRoot), fileSystem, pathService);
+                playerResources = workspace.GetPlayerResourceArchive() is { } archive
+                    ? new PlayerBuiltInResourceProvider(archive, pathService)
+                    : new PlayerBuiltInResourceProvider(
+                        manifest.ResolvePlayerResourceArchive(playerRoot), fileSystem, pathService);
                 PlayerAssetEnvironment.Initialize(
                     workspace, playerResources, fileSystem, pathService,
                     platformService, applicationPaths);
@@ -123,6 +130,9 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
                 BuildTargetManifestSerializer.SetCurrentPath(
                     manifest.ResolveBuildTargetManifest(playerRoot), fileSystem, pathService);
             }
+            environmentTiming.Dispose();
+            PlayerStartupEnvironment.Current?.Report(.12f, "settings");
+            using var settingsTiming = PlayerStartupPerformanceDiagnostics.Begin("coordinator.projectAndAssetBundleSettings");
             var projectSettings = ProjectRuntimeSettings.LoadAndApply(workspace, fileSystem, pathService);
             Application.companyName = projectSettings.CompanyName;
             Application.productName = projectSettings.ProductName;
@@ -132,7 +142,10 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
             if (!settings.Enabled)
                 throw new InvalidDataException(
                     "Staged Player startup requires remote AssetBundles for HotUpdate game content.");
+            settingsTiming.Dispose();
+            PlayerStartupEnvironment.Current?.Report(.2f, "resources");
 
+            using var optionsTiming = PlayerStartupPerformanceDiagnostics.Begin("coordinator.assetBundleOptions");
             var sourceOptions = PlayerServiceCollectionExtensions.CreateAssetBundleOptions(
                 workspace, settings, persistentDataPath, usePersistentRootAsCache: true,
                 fileSystem: fileSystem,
@@ -145,31 +158,43 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
                     workspace, settings, persistentDataPath, sourceOptions.CacheDirectory,
                     fileSystem, pathService, platformService, applicationPaths);
             var updateOptions = direct ? sourceOptions : CreateRemoteOptions(sourceOptions);
+            optionsTiming.Dispose();
+            using var archiveTiming = PlayerStartupPerformanceDiagnostics.Begin("coordinator.aotArchiveOpenAndIndex");
             var aotArchivePath = pathService.Combine(
                 workspace.RootPath,
                 PlayerPackagedResourceAddresses.ResourcesDirectoryName,
                 BuiltInResourceArchive.FileName);
             var aotResources = new PlayerBuiltInResourceProvider(
                 aotArchivePath, fileSystem, pathService, workspace.GetContentEncryptionKey());
+            archiveTiming.Dispose();
+            PlayerStartupEnvironment.Current?.Report(.35f, "managedCode");
+            using var managerTiming = PlayerStartupPerformanceDiagnostics.Begin("coordinator.updateManager");
             var updateManager = assetBundleManagerFactory.Create(updateOptions);
             var updateProvider = new AssetBundleResourceProvider(updateManager);
             var updateBootstrap = new PlayerAssetBundleBootstrap(
                 updateManager, updateProvider, settings, registerResourceProviderOnPrepare: false);
+            managerTiming.Dispose();
             PlayerAotStartupFlow? flow = null;
             PlayerHotUpdateSession? aotCode = null;
             PlayerApplicationStage? aotStage = null;
             try
             {
+                using var activationTiming = PlayerStartupPerformanceDiagnostics.Begin("coordinator.activateBuiltInResources");
                 aotResources.Activate();
                 PlayerStartupDiagnostics.Phase("03_BUILTIN_CONTENT_READY",
                     $"source=archive;entries={aotResources.Entries.Count};path={aotArchivePath}");
-                aotCode = await PlayerPackageLoader.LoadAsync(
+                activationTiming.Dispose();
+                using var codeTiming = PlayerStartupPerformanceDiagnostics.Begin("coordinator.aotReleaseSynchronousPrefix");
+                var codeOperation = PlayerPackageLoader.LoadAsync(
                                   workspace, managedCodeRuntimeFactory, null,
                                   PlayerManagedCodeStage.Aot, aotResources,
                                   cancellationToken, fileSystem, pathService, platformService,
-                                  applicationPaths) ??
+                                  applicationPaths);
+                codeTiming.Dispose();
+                aotCode = await codeOperation ??
                               throw new InvalidDataException(
                                   "The built-in AOT resource archive does not contain an AOT managed-code release.");
+                PlayerStartupEnvironment.Current?.Report(.75f, "services");
                 flow = new PlayerAotStartupFlow(
                     async cancellationToken =>
                     {
@@ -184,7 +209,8 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
                         updateManager, manifest, aotResources, cancellationToken),
                     settings.FailStartupWhenUpdateFails,
                     platformService);
-                aotStage = await CreateStageAsync(
+                using var stageTiming = PlayerStartupPerformanceDiagnostics.Begin("coordinator.aotStageSynchronousPrefix");
+                var stageOperation = CreateStageAsync(
                     workspace,
                     projectSettings,
                     settings,
@@ -198,6 +224,8 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
                     builtInResources: aotResources,
                     hostServices: capturedHostServices,
                     cancellationToken: cancellationToken);
+                stageTiming.Dispose();
+                aotStage = await stageOperation;
                 PlayerStartupDiagnostics.Phase("03_AOT_SCENE_PREPARED",
                     $"scene={workspace.Project.StartupScene}");
                 return new PlayerStagedRuntimeCoordinator(
@@ -434,6 +462,7 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
         IReadOnlyList<ServiceDescriptor> hostServices,
         BCancellationToken cancellationToken)
     {
+        using var registrationTiming = PlayerStartupPerformanceDiagnostics.Begin("stage.registration");
         var services = new ServiceCollection();
         foreach (var descriptor in hostServices)
             ((ICollection<ServiceDescriptor>)services).Add(descriptor);
@@ -464,17 +493,27 @@ internal sealed class PlayerStagedRuntimeCoordinator : IDisposable
             builtInResources,
             provider.GetRequiredService<FileUtility>(),
             provider.GetRequiredService<PathUtility>()));
+        registrationTiming.Dispose();
+        if (isAot) PlayerStartupEnvironment.Current?.Report(.8f, "services");
+        using var providerTiming = PlayerStartupPerformanceDiagnostics.Begin("stage.providerAndAttach");
         var provider = services.BuildServiceProvider(new ServiceProviderOptions
         {
             ValidateOnBuild = true,
             ValidateScopes = true
         });
         using var runtimeServicesAttachment = provider.AttachBEngineRuntimeServices();
+        providerTiming.Dispose();
+        if (isAot) PlayerStartupEnvironment.Current?.Report(.85f, "activation");
         try
         {
-            await code.ActivateAsync(provider, cancellationToken);
+            using var activationTiming = PlayerStartupPerformanceDiagnostics.Begin("stage.activationSynchronousPrefix");
+            var activationOperation = code.ActivateAsync(provider, cancellationToken);
+            activationTiming.Dispose();
+            await activationOperation;
+            if (isAot) PlayerStartupEnvironment.Current?.Report(.93f, "scene");
             var sceneManager = provider.GetRequiredService<IRuntimeSceneManager>();
             sceneManager.LoadScene(scenePath, LoadSceneMode.Single);
+            if (isAot) PlayerStartupEnvironment.Current?.Report(.99f, "scene");
             return new PlayerApplicationStage(
                 provider,
                 provider.GetRequiredService<ISceneRuntimeFactory>(),

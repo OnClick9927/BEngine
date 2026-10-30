@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
@@ -19,7 +20,7 @@ internal static class WebPrecompiledScriptBuild
 
     internal static bool IsProtectedPublishProperty(string name) => ProtectedPublishProperties.Contains(name);
 
-    internal static string Write(PlayerBuildContext context, string artifactsDirectory)
+    internal static string Write(PlayerBuildContext context, string artifactsDirectory, bool preciseHostRootsReady = false)
     {
         var root = Path.Combine(artifactsDirectory, "precompiled-scripts");
         Directory.CreateDirectory(root);
@@ -29,6 +30,7 @@ internal static class WebPrecompiledScriptBuild
             .Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var images = new List<Image>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var initializerHints = new List<InitializerHint>();
         foreach (var source in context.WebPrecompiledManagedCodeReferencePaths.Concat(context.WebPrecompiledManagedCodeAssemblyPaths)
                      .Concat(context.WebPrecompiledSharedManagedCodeAssemblyPaths)
                      .Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal))
@@ -54,6 +56,7 @@ internal static class WebPrecompiledScriptBuild
                 throw new InvalidDataException($"Web script reference '{name}' has multiple runtime images.");
             var destination = Path.Combine(root, name + ".dll");
             File.WriteAllBytes(destination, bytes);
+            initializerHints.Add(ReadInitializerHint(metadata, name, mvid));
             images.Add(new(name, Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
                 mvid.ToString(), destination, nativePaths.Contains(source), sharedPaths.Contains(source)));
         }
@@ -82,6 +85,10 @@ internal static class WebPrecompiledScriptBuild
                 .Append(JsonSerializer.Serialize(image.Name)).Append(", ")
                 .Append(JsonSerializer.Serialize(image.Sha256)).Append(", ")
                 .Append(JsonSerializer.Serialize(image.Mvid)).Append(");\n");
+        bootstrap.Append("    }\n}\n\n" +
+            "internal static partial class BEngineStaticHostBootstrap\n{\n" +
+            "    static partial void ApplyPrecompiledInitializerHints()\n    {\n");
+        AppendLoadedInitializerHints(bootstrap, initializerHints);
         bootstrap.Append("    }\n}\n");
         File.WriteAllText(bootstrapPath, bootstrap.ToString(), new UTF8Encoding(false));
 
@@ -95,11 +102,16 @@ internal static class WebPrecompiledScriptBuild
             new XElement("AOTMode", "LLVMOnlyInterp"),
             new XElement("WasmDedup", "true"),
             // Strip eligible BCL/Host method bodies after native compilation.
-            // The target below restores the frozen script images before the
-            // SDK fingerprints/bundles them, preserving their AB identity.
+            // Verify the SDK's eligible-body stripping before it fingerprints
+            // the script images. Canonical metadata and native/AB identity
+            // remain unchanged; unsupported SDKs retain the full frozen image.
             new XElement("WasmStripILAfterAOT", "true"),
             new XElement("_ExtraTrimmerArgs", "$(_ExtraTrimmerArgs)" +
-                string.Concat(images.Select(static image => " --action copy " + image.Name))));
+                string.Concat(images.Select(static image => " --action copy " + image.Name)) +
+                // Append to the generated copy policy, never a global MSBuild
+                // _ExtraTrimmerArgs override: nested SDK publishes need both.
+                WebStaticHostContractFeature.SdkLinkerArguments(
+                    WebStaticHostContractFeature.IsHostPassEnabled(context, preciseHostRootsReady))));
         var items = new XElement("ItemGroup",
             images.Select(image => new XElement("Reference", new XAttribute("Include", image.Name),
                 new XElement("HintPath", image.AssemblyPath), new XElement("Private", "true"))),
@@ -120,33 +132,142 @@ internal static class WebPrecompiledScriptBuild
             new XElement("ItemGroup", images.Select(image => new XElement("WasmAssembliesToBundle",
                 new XAttribute("Condition", "'%(WasmAssembliesToBundle.FileName)' == '" + image.Name + "'"),
                 new XAttribute("AOT_InternalForceToInterpret", image.Native ? "false" : "true")))));
-        var restoreImages = new XElement("Target",
-            new XAttribute("Name", "_BEngineRestorePrecompiledScriptImages"),
+        var verifyImages = new XElement("Target",
+            new XAttribute("Name", "_BEngineVerifyPrecompiledScriptImages"),
             new XAttribute("AfterTargets", "_WasmAotCompileApp"),
             new XAttribute("Condition", "'$(RunAOTCompilation)' == 'true' and '$(WasmStripILAfterAOT)' == 'true'"),
             new XElement("ItemGroup", images.Select(image =>
                 new XElement("_BEngineFrozenScriptOutput",
                     new XAttribute("Include", "@(_WasmAssembliesInternal->WithMetadataValue('Filename', '" + image.Name + "'))"),
                     new XElement("BEngineFrozenSource", image.AssemblyPath),
-                    new XElement("BEngineFrozenSha256", image.Sha256)))),
+                    new XElement("BEngineFrozenSha256", image.Sha256),
+                    new XElement("BEngineFrozenMvid", image.Mvid)))),
             new XElement("Error",
                 new XAttribute("Condition", "'@(_BEngineFrozenScriptOutput->Count())' != '" + images.Count + "'"),
                 new XAttribute("Text", "The Web SDK did not return every frozen script image after AOT compilation.")),
-            new XElement("Copy",
-                new XAttribute("SourceFiles", "@(_BEngineFrozenScriptOutput->'%(BEngineFrozenSource)')"),
-                new XAttribute("DestinationFiles", "@(_BEngineFrozenScriptOutput)")),
-            new XElement("GetFileHash",
-                new XAttribute("Files", "@(_BEngineFrozenScriptOutput)"),
-                new XAttribute("Algorithm", "SHA256"),
-                new XElement("Output", new XAttribute("TaskParameter", "Items"),
-                    new XAttribute("ItemName", "_BEngineVerifiedFrozenScriptOutput"))),
-            new XElement("Error",
-                new XAttribute("Condition", "'%(_BEngineVerifiedFrozenScriptOutput.FileHash)' != '%(_BEngineVerifiedFrozenScriptOutput.BEngineFrozenSha256)'"),
-                new XAttribute("Text", "Web AOT stripping changed the frozen script image '%(_BEngineVerifiedFrozenScriptOutput.Identity)'.")));
+            new XElement("PropertyGroup", new XElement("_BEngineFrozenScriptVerificationList",
+                "$(_WasmIntermediateOutputPath)bengine-profile/frozen-sdk-outputs.txt")),
+            new XElement("WriteLinesToFile",
+                new XAttribute("File", "$(_BEngineFrozenScriptVerificationList)"),
+                new XAttribute("Lines", "@(_BEngineFrozenScriptOutput->'%(BEngineFrozenSource)|%(FullPath)|%(MethodTokenFile)|%(ILStripped)|%(BEngineFrozenSha256)|%(BEngineFrozenMvid)')"),
+                new XAttribute("Overwrite", "true")),
+            new XElement("Exec", new XAttribute("Command",
+                "\"$(_BEngineDotNetHost)\" \"$(_BEngineAotProfileArtifacts)bin/BEngine.WasmAotProfile/release/BEngine.WasmAotProfile.dll\" " +
+                "--verify-sdk-stripped-images \"$(_BEngineFrozenScriptVerificationList)\"")),
+            new XElement("ItemGroup", new XElement("FileWrites",
+                new XAttribute("Include", "$(_BEngineFrozenScriptVerificationList)"))));
         var propsPath = Path.Combine(root, "scripts.props");
-        new XDocument(new XElement("Project", properties, items, interpretedPolicy, restoreImages)).Save(propsPath);
+        new XDocument(new XElement("Project", properties, items, interpretedPolicy, verifyImages)).Save(propsPath);
         return propsPath;
     }
+
+    // Hints describe the same frozen images used by the identity manifest. They
+    // never replace the runtime's GetTypes inventory, code hash or claim checks.
+    private static InitializerHint ReadInitializerHint(MetadataReader metadata, string name, Guid mvid)
+    {
+        var definition = metadata.GetAssemblyDefinition();
+        var identity = new AssemblyName
+        {
+            Name = name,
+            Version = definition.Version,
+            CultureName = definition.Culture.IsNil ? string.Empty : metadata.GetString(definition.Culture)
+        };
+        if (!definition.PublicKey.IsNil) identity.SetPublicKey(metadata.GetBlobBytes(definition.PublicKey));
+        else identity.SetPublicKeyToken([]);
+        var owners = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var typeHandle in metadata.TypeDefinitions)
+        {
+            var type = metadata.GetTypeDefinition(typeHandle);
+            foreach (var methodHandle in type.GetMethods())
+            {
+                var method = metadata.GetMethodDefinition(methodHandle);
+                if ((method.Attributes & MethodAttributes.Static) == 0) continue;
+                foreach (var attributeHandle in method.GetCustomAttributes())
+                {
+                    var attribute = metadata.GetCustomAttribute(attributeHandle);
+                    if (GetAttributeTypeName(metadata, attribute.Constructor) !=
+                        "BEngine.RuntimeInitializeOnLoadMethodAttribute") continue;
+                    owners.Add(GetTypeName(metadata, typeHandle));
+                    break;
+                }
+            }
+        }
+        return new InitializerHint(name, identity.FullName!, mvid,
+            owners.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    private static string? GetAttributeTypeName(MetadataReader metadata, EntityHandle constructor)
+    {
+        if (constructor.Kind == HandleKind.MethodDefinition)
+            return GetTypeName(metadata,
+                metadata.GetMethodDefinition((MethodDefinitionHandle)constructor).GetDeclaringType());
+        if (constructor.Kind != HandleKind.MemberReference) return null;
+        var parent = metadata.GetMemberReference((MemberReferenceHandle)constructor).Parent;
+        return parent.Kind switch
+        {
+            HandleKind.TypeDefinition => GetTypeName(metadata, (TypeDefinitionHandle)parent),
+            HandleKind.TypeReference => GetTypeName(metadata, (TypeReferenceHandle)parent),
+            _ => null
+        };
+    }
+
+    private static string GetTypeName(MetadataReader metadata, TypeDefinitionHandle handle)
+    {
+        var type = metadata.GetTypeDefinition(handle);
+        var name = EscapeTypeIdentifier(metadata.GetString(type.Name));
+        var parent = type.GetDeclaringType();
+        if (!parent.IsNil) return GetTypeName(metadata, parent) + "+" + name;
+        var ns = EscapeTypeIdentifier(metadata.GetString(type.Namespace));
+        return ns.Length == 0 ? name : ns + "." + name;
+    }
+
+    private static string GetTypeName(MetadataReader metadata, TypeReferenceHandle handle)
+    {
+        var type = metadata.GetTypeReference(handle);
+        var name = EscapeTypeIdentifier(metadata.GetString(type.Name));
+        if (type.ResolutionScope.Kind == HandleKind.TypeReference)
+            return GetTypeName(metadata, (TypeReferenceHandle)type.ResolutionScope) + "+" + name;
+        var ns = EscapeTypeIdentifier(metadata.GetString(type.Namespace));
+        return ns.Length == 0 ? name : ns + "." + name;
+    }
+
+    private static string EscapeTypeIdentifier(string value)
+    {
+        if (value.IndexOfAny(['\\', '+', ',', '&', '*', '[', ']']) < 0) return value;
+        var escaped = new StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            if (character is '\\' or '+' or ',' or '&' or '*' or '[' or ']') escaped.Append('\\');
+            escaped.Append(character);
+        }
+        return escaped.ToString();
+    }
+
+    private static void AppendLoadedInitializerHints(StringBuilder source, IEnumerable<InitializerHint> hints)
+    {
+        // Do not load or initialize a package merely to speed up reflection.
+        // Unloaded, noncanonical and other-context assemblies keep the normal
+        // discovery path. The exact Assembly object is the existing weak key.
+        source.Append("        foreach (var assembly in global::System.Runtime.Loader.AssemblyLoadContext.Default.Assemblies)\n" +
+            "        {\n" +
+            "            if (assembly.IsDynamic) continue;\n" +
+            "            switch (assembly.GetName().Name)\n            {\n");
+        foreach (var hint in hints)
+        {
+            source.Append("                case ").Append(JsonSerializer.Serialize(hint.Name)).Append(":\n")
+                .Append("                    if (global::System.String.Equals(assembly.FullName, ")
+                .Append(JsonSerializer.Serialize(hint.Identity))
+                .Append(", global::System.StringComparison.OrdinalIgnoreCase) &&\n")
+                .Append("                        assembly.ManifestModule.ModuleVersionId == new global::System.Guid(")
+                .Append(JsonSerializer.Serialize(hint.Mvid.ToString())).Append("))\n")
+                .Append("                        global::BEngine.RuntimeTypeCache.RegisterRuntimeInitializerOwners(assembly, new string[] { ")
+                .AppendJoin(", ", hint.Owners.Select(static owner => JsonSerializer.Serialize(owner)))
+                .Append(" });\n                    break;\n");
+        }
+        source.Append("            }\n        }\n");
+    }
+
+    private sealed record InitializerHint(string Name, string Identity, Guid Mvid, string[] Owners);
 
     private sealed record Image(string Name, string Sha256, string Mvid, string AssemblyPath, bool Native, bool Shared);
 }

@@ -55,6 +55,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
     private readonly AndroidFrameMetrics _frameMetrics = new();
     private AotStartupPhase? _startupPhase;
     private AndroidTextInput? _textInput;
+    private AndroidPlayerStartupView? _startupView;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -101,9 +102,16 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         var content = new global::Android.Widget.FrameLayout(this);
         content.AddView(_surfaceView, new global::Android.Widget.FrameLayout.LayoutParams(-1, -1));
         _textInput = new AndroidTextInput(this, content, _surfaceView);
+        PlayerStartupEnvironment.Begin();
+        _startupView = new AndroidPlayerStartupView(this);
+        content.AddView(_startupView, new global::Android.Widget.FrameLayout.LayoutParams(-1, -1));
         SetContentView(content);
         _surfaceView.RequestFocus();
 
+    }
+
+    private void InitializeRuntime()
+    {
         var dataDirectories = (Assets!.List("BEnginePayload") ?? [])
             .Where(name => name.EndsWith("_data", StringComparison.OrdinalIgnoreCase)).ToArray();
         if (dataDirectories.Length != 1)
@@ -208,6 +216,8 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         _session = null;
         if (ReferenceEquals(PlatformAccessibility.adapter, _accessibility)) PlatformAccessibility.adapter = null;
         _accessibility = null;
+        _startupView?.Dispose();
+        _startupView = null;
         _surfaceView?.Dispose();
         _surfaceView = null;
         base.OnDestroy();
@@ -220,6 +230,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
             DetachGraphicsDevice();
             _graphics = new AndroidGlGraphicsDevice();
             if (_validateGraphics) AndroidGraphicsRegression.Run(_graphics);
+            if (_session is null) InitializeRuntime();
             _session?.AttachGraphicsDevice(_graphics, ownsDevice: false);
             _lastFrame = _clock.Elapsed;
             Log.Info(LogTag,
@@ -283,6 +294,12 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
                 if (rendered && !_renderLogged)
                 {
                     _renderLogged = true;
+                    RunOnUiThread(() =>
+                    {
+                        if (_startupView?.Parent is ViewGroup parent) parent.RemoveView(_startupView);
+                        _startupView?.Dispose();
+                        _startupView = null;
+                    });
                     Log.Info(LogTag,
                         $"BENGINE_ANDROID_RENDER_OK|backend={_graphics?.Backend}|size={_surfaceWidth}x{_surfaceHeight}");
                 }

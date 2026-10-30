@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using BEngine;
 using BEngine.Platform;
 using BEngine.Player;
+using BEngine.HotUpdate;
 using BEngine.Rendering;
 using BEngine.Rendering.Rhi;
 
@@ -37,30 +38,90 @@ public static partial class Program
     private static readonly Dictionary<int, Touch> Touches = [];
     private static readonly HashSet<int> ConnectedGamepads = [];
     private static readonly WebAccessibilityAdapter Accessibility = new();
+    private static readonly List<WebStartupPhase> StartupPhases = new(8);
 
     public static void Main()
     {
+        StartupPhases.Clear();
+        PlayerStartupPerformanceDiagnostics.Reset();
+        ManagedCodeStartupDiagnostics.Reset();
+        var mainStarted = Stopwatch.GetTimestamp();
+        var phaseStarted = mainStarted;
+        void Mark(string phase)
+        {
+            var completed = Stopwatch.GetTimestamp();
+            StartupPhases.Add(new(phase, Stopwatch.GetElapsedTime(phaseStarted, completed).TotalMilliseconds,
+                Stopwatch.GetElapsedTime(mainStarted, completed).TotalMilliseconds));
+            phaseStarted = completed;
+        }
         try
         {
+            using (var status = JSHost.GlobalThis.GetPropertyAsJSObject("BEngineStartupStatus"))
+                PlayerStartupEnvironment.Begin(TimeSpan.FromMilliseconds(
+                    status?.GetPropertyAsDouble("elapsedMilliseconds") ?? 0)).HoldPresentation();
             BEngine.Platform.WebPlatform.Initialize();
+            Mark("platform");
             PlatformVideoDecoding.OpenVideoAsync = WebVideoDecoder.Open;
             if (PlatformRuntime.GetService<IInputService>() is PlatformInputService input)
             { input.ReadClipboard = ReadClipboard; input.WriteClipboard = WriteClipboard; }
             PlatformAccessibility.adapter = Accessibility;
             Debug.MessageLogged += OnMessageLogged;
             AotInterpreterRuntimeHost.DeclareInterpreterEnabled();
+            Mark("hostServices");
+            var startupProfiling = IsStartupProfilingRequested();
+            PlayerStartupPerformanceDiagnostics.Enabled = startupProfiling;
+            ManagedCodeStartupDiagnostics.Enabled = startupProfiling;
             var projectPath = BEnginePlayer.ResolveDefaultProjectPath("/");
+            Mark("resolveProject");
             _session = BEnginePlayer.CreateRuntimeSession(
                 projectPath, declareAotInterpreter: true);
+            Mark("createSession");
             _graphics = new WebGlGraphicsDevice();
+            Mark("graphics");
             _session.AttachGraphicsDevice(_graphics);
             _session.Start();
+            Mark("startSession");
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"BEngine Web Player startup failed:{Environment.NewLine}{exception}");
             throw;
         }
+        finally
+        {
+            PlayerStartupPerformanceDiagnostics.Enabled = false;
+            ManagedCodeStartupDiagnostics.Enabled = false;
+        }
+    }
+
+    [JSExport]
+    public static bool PumpStartup()
+    {
+        if (_session is null) throw new InvalidOperationException("The Player runtime is not initialized.");
+        _session.Tick(TimeSpan.Zero);
+        return _session.IsStartupPrepared;
+    }
+
+    [JSExport]
+    public static double GetStartupProgress() => PlayerStartupEnvironment.Current?.Progress ?? 0;
+
+    [JSExport]
+    public static string GetStartupStage() => PlayerStartupEnvironment.Current?.Stage ?? "environment";
+
+    [JSExport]
+    public static void ConfirmStartupProgressPresented() => PlayerStartupEnvironment.Current?.ConfirmProgressPresented(1);
+
+    [JSExport]
+    public static void ContinueStartup() => PlayerStartupEnvironment.Current?.ReleasePresentation();
+
+    private static bool IsStartupProfilingRequested()
+    {
+        using var location = JSHost.GlobalThis.GetPropertyAsJSObject("location");
+        var search = location?.GetPropertyAsString("search");
+        if (string.IsNullOrEmpty(search)) return false;
+        foreach (var option in search.TrimStart('?').Split('&'))
+            if (option is "bengine-profile=1" or "bengine-profile=true") return true;
+        return false;
     }
 
     [JSExport]
@@ -221,6 +282,27 @@ public static partial class Program
     [JSExport]
     public static string GetDiagnostics() => CreateDiagnostics(includeColorReadback: false);
 
+    /// <summary>Completed, non-overlapping Main phases; reading never invokes startup work or GPU readback.</summary>
+    [JSExport]
+    public static string GetStartupDiagnostics() => JsonSerializer.Serialize(
+        StartupPhases.ToArray(), WebHostJsonContext.Default.WebStartupPhaseArray);
+
+    /// <summary>Optional synchronous Main details. Parent/child durations overlap and must not be added.</summary>
+    [JSExport]
+    public static string GetStartupDetailDiagnostics() => JsonSerializer.Serialize(
+        PlayerStartupPerformanceDiagnostics.Snapshot, WebHostJsonContext.Default.PlayerStartupPerformanceSampleArray);
+
+    /// <summary>Opt-in managed-code CPU counters. Nested durations overlap; reading does not load code.</summary>
+    [JSExport]
+    public static string GetManagedCodeStartupDiagnostics() => JsonSerializer.Serialize(
+        ManagedCodeStartupDiagnostics.Snapshot, WebHostJsonContext.Default.ManagedCodeStartupCounterArray);
+
+    /// <summary>Opt-in, cumulative AB measurements; nested durations are not additive.</summary>
+    [JSExport]
+    public static string GetAssetBundleDiagnostics() => JsonSerializer.Serialize(
+        BEngine.AssetBundles.AssetBundlePerformanceDiagnostics.Snapshot,
+        WebHostJsonContext.Default.AssetBundlePerformanceSnapshot);
+
     /// <summary>Captures diagnostic pixels explicitly because GPU readback can stall rendering.</summary>
     [JSExport]
     public static string CaptureDiagnostics() => CreateDiagnostics(includeColorReadback: true);
@@ -230,6 +312,7 @@ public static partial class Program
     public static void SetPerformanceProfiling(bool enabled)
     {
         SceneRuntimeDiagnostics.Enabled = enabled;
+        CooperativeLoadingDiagnostics.SetEnabled(enabled);
         _updateMilliseconds = _renderMilliseconds = 0;
         _updateMemory = _renderMemory = default;
     }
@@ -244,6 +327,10 @@ public static partial class Program
             RenderMilliseconds = _renderMilliseconds,
             UpdateMemory = _updateMemory,
             RenderMemory = _renderMemory,
+            CooperativeWork = CooperativeWorkScheduler.Main.Snapshot,
+            LoadingWork = SceneRuntimeDiagnostics.Enabled ? CooperativeLoadingDiagnostics.Snapshot : null,
+            PendingCallbacks = BTaskScheduler.Main.PendingCallbackCount,
+            Loading = FrameWorkBudget.isLoading,
             Runtime = SceneRuntimeDiagnostics.LastFrame,
             Rendering = _session?.LastRenderStatistics ?? default
         }, WebHostJsonContext.Default.WebPerformanceDiagnostics);
@@ -442,9 +529,15 @@ internal sealed class WebPerformanceDiagnostics
     public double RenderMilliseconds { get; set; }
     public WebPhaseMemoryStatistics UpdateMemory { get; set; }
     public WebPhaseMemoryStatistics RenderMemory { get; set; }
+    public CooperativeWorkSnapshot CooperativeWork { get; set; }
+    public LoadingWorkDiagnosticsSnapshot? LoadingWork { get; set; }
+    public int PendingCallbacks { get; set; }
+    public bool Loading { get; set; }
     public SceneRuntimeFrameStatistics Runtime { get; set; }
     public SceneRenderStatistics Rendering { get; set; }
 }
+
+internal sealed record WebStartupPhase(string Name, double Milliseconds, double TotalMilliseconds);
 
 internal readonly record struct WebPhaseMemoryStatistics(
     long AllocatedBytes, int Gen0Collections, int Gen1Collections, int Gen2Collections);
@@ -583,6 +676,10 @@ internal sealed class WebAccessibilityNode
 }
 
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
+[JsonSerializable(typeof(WebStartupPhase[]))]
+[JsonSerializable(typeof(PlayerStartupPerformanceSample[]))]
+[JsonSerializable(typeof(ManagedCodeStartupCounter[]))]
+[JsonSerializable(typeof(BEngine.AssetBundles.AssetBundlePerformanceSnapshot))]
 [JsonSerializable(typeof(GamepadStateSnapshot[]))]
 [JsonSerializable(typeof(WebPlayerDiagnostics))]
 [JsonSerializable(typeof(WebPerformanceDiagnostics))]

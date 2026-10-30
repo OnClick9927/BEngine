@@ -127,38 +127,55 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
         }
 
         var scale = (long)fractionalDigits - exponent;
-        var raw = BigInteger.Parse(significantDigits, NumberStyles.None, CultureInfo.InvariantCulture) * OneRaw;
-        if (scale > 0)
+        var integerDigits = significantDigits.Length - scale;
+        if (integerDigits > 10) throw CreateOverflowException(original);
+        if (integerDigits <= -10) return Zero;
+
+        ulong integer = 0;
+        for (var index = 0; index < integerDigits; index++)
+            integer = integer * 10 + (index < significantDigits.Length ? (uint)(significantDigits[index] - '0') : 0);
+        if (integer > 2147483648UL) throw CreateOverflowException(original);
+
+        // Every Q32.32 boundary has an exact decimal expansion of at most 32
+        // fractional digits. Digits after that cannot cross a boundary, so a
+        // bounded prefix gives the same truncation as arbitrary-precision math.
+        UInt128 numerator = 0;
+        UInt128 denominator = 1;
+        var fractionLength = (int)Math.Min(FractionalBits, Math.Max(0, scale));
+        for (var index = 0; index < fractionLength; index++)
         {
-            if (scale > significantDigits.Length + 10L)
+            var source = integerDigits + index;
+            numerator = numerator * 10 + (source >= 0 && source < significantDigits.Length
+                ? (uint)(significantDigits[(int)source] - '0') : 0);
+            denominator *= 10;
+        }
+
+        uint fractional = 0;
+        if (fractionLength <= 9 && numerator != 0)
+        {
+            // Common asset values fit in a single 64-bit division.
+            fractional = (uint)(((ulong)numerator << FractionalBits) / (ulong)denominator);
+        }
+        else if (numerator != 0)
+        {
+            // Keep the intermediate below 2 * 10^32, which fits in UInt128.
+            for (var bit = 0; bit < FractionalBits; bit++)
             {
-                return Zero;
+                numerator <<= 1;
+                fractional <<= 1;
+                if (numerator < denominator) continue;
+                numerator -= denominator;
+                fractional |= 1;
             }
-
-            raw /= BigInteger.Pow(10, checked((int)scale));
         }
-        else if (scale < 0)
-        {
-            if (-scale > 10)
-            {
-                throw new OverflowException($"'{original.ToString()}' is outside the Fix64 range.");
-            }
-
-            raw *= BigInteger.Pow(10, checked((int)-scale));
-        }
-
-        if (negative)
-        {
-            raw = -raw;
-        }
-
-        if (raw < long.MinValue || raw > long.MaxValue)
-        {
-            throw new OverflowException($"'{original.ToString()}' is outside the Fix64 range.");
-        }
-
-        return FromRaw((long)raw);
+        var raw = (integer << FractionalBits) | fractional;
+        if (raw > (negative ? 1UL << 63 : (ulong)long.MaxValue))
+            throw CreateOverflowException(original);
+        return FromRaw(unchecked((long)(negative ? 0UL - raw : raw)));
     }
+
+    private static OverflowException CreateOverflowException(ReadOnlySpan<char> value) =>
+        new($"'{value.ToString()}' is outside the Fix64 range.");
 
     public static bool TryParse(string? value, out Fix64 result)
         => TryParse(value, CultureInfo.InvariantCulture, out result);
@@ -454,21 +471,26 @@ public readonly struct Fix64 : IComparable<Fix64>, IEquatable<Fix64>, IFormattab
     public override int GetHashCode() => RawValue.GetHashCode();
     public override string ToString()
     {
-        var raw = new BigInteger(RawValue);
-        var negative = raw.Sign < 0;
-        var magnitude = BigInteger.Abs(raw);
+        var negative = RawValue < 0;
+        var magnitude = negative ? unchecked(0UL - (ulong)RawValue) : (ulong)RawValue;
         var integer = magnitude >> FractionalBits;
         var fractionalRaw = magnitude & (OneRaw - 1);
-        var sign = negative ? "-" : string.Empty;
-        if (fractionalRaw.IsZero)
+        Span<char> text = stackalloc char[44]; // sign + 10 integer + dot + 32 fractional
+        var length = 0;
+        if (negative) text[length++] = '-';
+        integer.TryFormat(text[length..], out var written, provider: CultureInfo.InvariantCulture);
+        length += written;
+        if (fractionalRaw != 0)
         {
-            return sign + integer.ToString(CultureInfo.InvariantCulture);
+            text[length++] = '.';
+            do
+            {
+                fractionalRaw *= 10;
+                text[length++] = (char)('0' + (fractionalRaw >> FractionalBits));
+                fractionalRaw &= OneRaw - 1;
+            } while (fractionalRaw != 0);
         }
-
-        var fractional = (fractionalRaw * BigInteger.Pow(5, FractionalBits))
-            .ToString("D32", CultureInfo.InvariantCulture)
-            .TrimEnd('0');
-        return $"{sign}{integer.ToString(CultureInfo.InvariantCulture)}.{fractional}";
+        return new string(text[..length]);
     }
 
     public string ToString(string? format, IFormatProvider? formatProvider) =>

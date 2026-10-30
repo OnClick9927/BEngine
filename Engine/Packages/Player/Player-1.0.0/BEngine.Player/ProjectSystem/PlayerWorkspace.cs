@@ -9,6 +9,7 @@ public static class PlayerWorkspace
 {
     private static readonly ConditionalWeakTable<ProjectWorkspace, RuntimeMetadataDocument> Metadata = new();
     private static readonly ConditionalWeakTable<ProjectWorkspace, ContentEncryptionKey> EncryptionKeys = new();
+    private static readonly ConditionalWeakTable<ProjectWorkspace, BuiltInResourceArchive> Archives = new();
 
     public static ContentEncryptionKey? GetContentEncryptionKey(this ProjectWorkspace workspace) =>
         EncryptionKeys.TryGetValue(workspace, out var key) ? key : null;
@@ -17,6 +18,20 @@ public static class PlayerWorkspace
     {
         ArgumentNullException.ThrowIfNull(workspace);
         return Metadata.TryGetValue(workspace, out var metadata) ? metadata : null;
+    }
+
+    internal static BuiltInResourceArchive? GetPlayerResourceArchive(this ProjectWorkspace workspace) =>
+        Archives.TryGetValue(workspace, out var archive) ? archive : null;
+
+    internal static ProjectWorkspace ReuseOrOpenRuntime(
+        ProjectWorkspace? workspace, string path, FileUtility files, PathUtility paths)
+    {
+        var fullPath = paths.GetFullPath(path);
+        if (workspace is not null && workspace.RootPath.Equals(fullPath, StringComparison.Ordinal) &&
+            workspace.GetPlayerResourceArchive() is { } archive &&
+            archive.IsCurrentSource(archive.SourcePath, files, paths))
+            return workspace;
+        return OpenRuntime(fullPath, files, paths);
     }
 
     public static ProjectWorkspace OpenRuntime(string path) =>
@@ -39,7 +54,7 @@ public static class PlayerWorkspace
                 var archive = BuiltInResourceArchive.Open(archivePath, files, paths);
                 var metadata = RuntimeMetadataSerializer.Deserialize(
                     archive.ReadBytes(PlayerPackagedResourceAddresses.RuntimeMetadata));
-                return Create(fullPath, metadata, files, paths, archive.EncryptionKey);
+                return Create(fullPath, metadata, files, paths, archive.EncryptionKey, archive);
             }
         }
         var metadataPath = isDirectory ? paths.Combine(fullPath, RuntimeMetadataSerializer.FileName) : fullPath;
@@ -55,11 +70,13 @@ public static class PlayerWorkspace
     }
 
     private static ProjectWorkspace Create(string root, RuntimeMetadataDocument metadata,
-        FileUtility files, PathUtility paths, ContentEncryptionKey? encryptionKey = null)
+        FileUtility files, PathUtility paths, ContentEncryptionKey? encryptionKey = null,
+        BuiltInResourceArchive? archive = null)
     {
         var workspace = ProjectWorkspace.CreateRuntime(root, metadata.Project, metadata.ProjectSettings, files, paths);
         Metadata.Add(workspace, metadata);
         if (encryptionKey is not null) EncryptionKeys.Add(workspace, encryptionKey);
+        if (archive is not null) Archives.Add(workspace, archive);
         return workspace;
     }
 }

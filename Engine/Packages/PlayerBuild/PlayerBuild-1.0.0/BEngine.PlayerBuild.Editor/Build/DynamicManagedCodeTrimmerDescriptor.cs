@@ -8,18 +8,27 @@ namespace BEngine.Editor;
 
 internal static class DynamicManagedCodeTrimmerDescriptor
 {
-    private static readonly HashSet<string> StaticallyRootedAssemblyNames = new(StringComparer.OrdinalIgnoreCase)
+    // The build's shared-assembly policy and the generated runtime registration
+    // use the same table. A linker may remove the Player's reference to a Host
+    // which is used only by a frozen module, so reference traversal is insufficient.
+    internal static readonly IReadOnlyDictionary<string, string> HostAssemblyAnchors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        "BEngine",
-        "BEngine.Player",
-        "BEngine.AssetBundles", "BEngine.Diagnostics", "BEngine.HotUpdate", "BEngine.Networking",
-        "BEngine.Platform.DotNet", "SkiaSharp", "SkiaSharp.HarfBuzz", "HarfBuzzSharp"
+        ["BEngine"] = "BEngine.Application",
+        ["BEngine.Player"] = "BEngine.Player.BEnginePlayer",
+        ["BEngine.AssetBundles"] = "BEngine.AssetBundles.AssetBundleRuntimeOptions",
+        ["BEngine.Diagnostics"] = "BEngine.Profiling.Profiler",
+        ["BEngine.HotUpdate"] = "BEngine.HotUpdate.ManagedCodeHostAssemblies",
+        ["BEngine.Networking"] = "BEngine.Networking.NetworkOperationStatus",
+        ["BEngine.Platform.DotNet"] = "BEngine.Platform.SystemPathService",
+        ["SkiaSharp"] = "SkiaSharp.SKFont",
+        ["SkiaSharp.HarfBuzz"] = "SkiaSharp.HarfBuzz.SKShaper",
+        ["HarfBuzzSharp"] = "HarfBuzzSharp.Blob"
     };
 
     internal static IReadOnlyList<string> CollectAssemblyRoots(IEnumerable<string> assemblyPaths)
         => CollectTypeRoots(assemblyPaths).Keys.ToArray();
 
-    internal static bool IsHostAssembly(string name) => StaticallyRootedAssemblyNames.Contains(name);
+    internal static bool IsHostAssembly(string name) => HostAssemblyAnchors.ContainsKey(name);
 
     private static IReadOnlyDictionary<string, IReadOnlyList<string>> CollectTypeRoots(
         IEnumerable<string> assemblyPaths, bool full = false)
@@ -42,7 +51,7 @@ internal static class DynamicManagedCodeTrimmerDescriptor
         var platformAssemblies = GetTrustedPlatformAssemblies();
         var roots = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var snapshot in snapshots.Where(snapshot =>
-                     !StaticallyRootedAssemblyNames.Contains(snapshot.Name)))
+                     !IsHostAssembly(snapshot.Name)))
         {
             foreach (var type in snapshot.TypeReferences)
             {
@@ -155,8 +164,8 @@ internal static class DynamicManagedCodeTrimmerDescriptor
     }
 
     private static bool ShouldPreserve(string name, IReadOnlySet<string> dynamicAssemblyNames, bool full) =>
-        full && StaticallyRootedAssemblyNames.Contains(name) ||
-        !dynamicAssemblyNames.Contains(name) && !StaticallyRootedAssemblyNames.Contains(name);
+        full && IsHostAssembly(name) ||
+        !dynamicAssemblyNames.Contains(name) && !IsHostAssembly(name);
 
     private static TypeReferenceSnapshot? ReadTypeReference(
         MetadataReader metadata,

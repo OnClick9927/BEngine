@@ -27,6 +27,7 @@ public sealed class AppDelegate : UIApplicationDelegate
     private TimeSpan _lastFrame;
     private bool _renderLogged;
     private IOSTextInput? _textInput;
+    private IOSPlayerStartupView? _startupView;
 
     public override UIWindow? Window { get; set; }
 
@@ -71,6 +72,27 @@ public sealed class AppDelegate : UIApplicationDelegate
         _accessibility = new IOSAccessibilityAdapter(_view);
         PlatformAccessibility.adapter = _accessibility;
 
+        PlayerStartupEnvironment.Begin();
+        _startupView = new IOSPlayerStartupView(_view.Bounds);
+        _view.AddSubview(_startupView);
+        _startupView.AnimateLogo();
+        // Commit the Core Animation fade before preparing the environment.
+        // The compositor keeps animating while the main-thread runtime initializes.
+        CoreAnimation.CATransaction.Flush();
+        BeginInvokeOnMainThread(() =>
+        {
+            try { InitializeRuntime(); }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine("BENGINE_IOS_STARTUP_FAILED|" + exception);
+                DisposeRuntime();
+            }
+        });
+    }
+
+    private void InitializeRuntime()
+    {
+        if (_view is null || Window is null) return;
         var payload = Path.Combine(NSBundle.MainBundle.ResourcePath!, "BEnginePayload");
         var projectPath = BEnginePlayer.ResolveDefaultProjectPath(payload);
         _session = BEnginePlayer.CreateRuntimeSession(
@@ -189,6 +211,9 @@ public sealed class AppDelegate : UIApplicationDelegate
             if (_session.Render(width, height) && !_renderLogged)
             {
                 _renderLogged = true;
+                _startupView?.RemoveFromSuperview();
+                _startupView?.Dispose();
+                _startupView = null;
                 Console.WriteLine($"BENGINE_IOS_RENDER_OK|backend={_graphics?.Backend}|size={width}x{height}");
             }
         }
@@ -249,6 +274,9 @@ public sealed class AppDelegate : UIApplicationDelegate
 
     private void DisposeRuntime()
     {
+        _startupView?.RemoveFromSuperview();
+        _startupView?.Dispose();
+        _startupView = null;
         _timer?.Invalidate();
         _timer?.Dispose();
         _timer = null;

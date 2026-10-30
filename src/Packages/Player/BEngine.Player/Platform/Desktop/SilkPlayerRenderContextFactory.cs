@@ -35,10 +35,23 @@ public sealed class SilkPlayerRenderContextFactory : IPlayerRenderContextFactory
     private sealed class RenderContext(SilkGraphicsSession session, ISceneRenderer renderer) : IPlayerRenderContext
     {
         private readonly List<Camera2D> _cameras = [];
+        private PlayerStartupRenderer? _startupRenderer;
+        public bool RenderStartup(int width, int height, PlayerStartupProgress progress)
+        {
+            var viewport = session.BeginFrame(width, height);
+            _startupRenderer ??= new PlayerStartupRenderer(session.Device);
+            var displayedProgress = progress.Progress;
+            _startupRenderer.Render(viewport.Width, viewport.Height, progress);
+            session.Present();
+            progress.ConfirmProgressPresented(displayedProgress);
+            return true;
+        }
         public GraphicsBackend Backend => session.Device.Backend;
         public void Render(IReadOnlyList<Scene> scenes, Scene activeScene, int width, int height, bool drawUi)
         {
             var cpuProbe = DesktopFrameProbe.CpuCurrent;
+            _startupRenderer?.Dispose();
+            _startupRenderer = null;
             cpuProbe?.BeginCpuRender();
             var viewport = session.BeginFrame(width, height);
             cpuProbe?.EndCpuBegin();
@@ -52,6 +65,7 @@ public sealed class SilkPlayerRenderContextFactory : IPlayerRenderContextFactory
         public void Dispose()
         {
             session.MakeCurrent();
+            _startupRenderer?.Dispose();
             renderer.Dispose();
         }
     }

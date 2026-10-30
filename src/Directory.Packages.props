@@ -36,6 +36,7 @@
     <PackageVersion Include="SkiaSharp.HarfBuzz" Version="4.153.1" />
     <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.1" />
     <PackageVersion Include="SkiaSharp.NativeAssets.WebAssembly" Version="4.153.1" />
+    <PackageVersion Include="HarfBuzzSharp" Version="14.2.1.301" />
     <PackageVersion Include="HarfBuzzSharp.NativeAssets.Linux" Version="14.2.1.301" />
     <PackageVersion Include="HarfBuzzSharp.NativeAssets.WebAssembly" Version="14.2.1.301" />
   </ItemGroup>

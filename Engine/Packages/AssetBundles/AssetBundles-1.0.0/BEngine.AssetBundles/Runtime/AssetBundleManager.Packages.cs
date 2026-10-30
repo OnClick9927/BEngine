@@ -106,12 +106,10 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
                 throw new InvalidOperationException("The active catalog changed after this package update was checked. Check the package again.");
             var version = plan.TargetVersion;
             VerifyPayload(plan.CatalogBytes.Span, version.CatalogSize, version.CatalogSha256, "package update catalog");
-            var catalog = plan.TargetCatalog;
-            ValidateCatalogPair(version, catalog);
-            ValidateCatalogLimits(catalog);
+            var catalog = DeserializeCatalogPair(version, plan.CatalogBytes.Span, out var indexSeeds);
             var selected = ResolvePackageBundles(catalog, plan.PackageNames);
             var current = _active;
-            var target = new RuntimeState(version, catalog, plan.CatalogBytes.ToArray());
+            var target = new RuntimeState(version, catalog, plan.CatalogBytes.ToArray(), indexSeeds);
             var result = await MaintainPackageObjectsAsync(target, selected, progress, cancellationToken,
                 reportCompleted: false);
             if (SameRelease(current, target))
@@ -246,10 +244,8 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
         var bytes = await FetchBytesWithRetryAsync(BuildRemoteUri(version.Version, version.CatalogFile),
             AssetBundleHttpResourceKind.Catalog, _options.MaximumCatalogSize, cancellationToken);
         VerifyPayload(bytes, version.CatalogSize, version.CatalogSha256, "remote package catalog");
-        var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(bytes);
-        ValidateCatalogPair(version, catalog);
-        ValidateCatalogLimits(catalog);
-        return new RuntimeState(version, catalog, bytes);
+        var catalog = DeserializeCatalogPair(version, bytes, out var indexSeeds);
+        return new RuntimeState(version, catalog, bytes, indexSeeds);
     }
 
     private RuntimeState MergePackageState(RuntimeState? current, RuntimeState source,

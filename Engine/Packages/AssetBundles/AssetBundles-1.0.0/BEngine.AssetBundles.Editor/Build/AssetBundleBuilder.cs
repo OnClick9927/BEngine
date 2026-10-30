@@ -372,7 +372,8 @@ public static partial class AssetBundleBuilder
                              Convert.ToHexString(releaseHash.GetHashAndReset()).ToLowerInvariant()[..24];
         assets.Add(CreateMemoryAsset(
             ManagedCodeReleaseManifest.DefaultAddress,
-            ManagedCodeReleaseManifestSerializer.Serialize(manifest),
+            // Generated Player metadata is immutable; avoid parsing editable YAML at startup.
+            ManagedCodeReleaseManifestSerializer.SerializeRuntime(manifest, cancellationToken),
             "ManagedCodeReleaseManifest"));
         return assets;
     }
@@ -477,6 +478,10 @@ public static partial class AssetBundleBuilder
                 record.AssetType, meta.Importer ?? string.Empty, settings, platform,
                 fileSystem, pathService, cancellationToken, out var encoded, out var effective))
         { content = encoded; settings = effective; }
+        if (!record.ParentGuid.HasValue && PlatformAssetBuildPipeline.TryCompileRuntimeArtifact(
+                record.SourcePath, record.AssetType, artifactPath, record.ArtifactHash, content, settings,
+                fileSystem, cancellationToken, out var compiled, out var compiledSettings))
+        { content = compiled; settings = compiledSettings; }
         var hash = content is null ? record.ArtifactHash.ToLowerInvariant() : Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
         var entry = AssetBundleValidation.CreateOpaquePayloadEntry(hash);
         return new AssetBundleBuildAsset
@@ -632,7 +637,7 @@ public static partial class AssetBundleBuilder
                 CatalogSha256 = catalogHash,
                 CatalogSize = catalogBytes.LongLength
             };
-            var versionBytes = AssetBundleCatalogSerializer.SerializeVersion(version);
+            var versionBytes = AssetBundleCatalogSerializer.SerializeRuntimeVersion(version);
             var latestPointerBytes = AssetBundleCatalogSerializer.SerializeLatestPointer(
                 new AssetBundleLatestPointer
                 {

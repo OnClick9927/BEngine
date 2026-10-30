@@ -2,13 +2,11 @@ using BEngine.ProjectSystem;
 using BEngine.SceneManagement;
 using BEngine.AssetBundles;
 using BEngine.Platform;
-using System.Text;
 
 namespace BEngine.Player;
 
 internal sealed class PlayerProjectSceneLoader : IAsyncSceneLoader
 {
-    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly ProjectWorkspace _workspace;
     private readonly IAssetBundleManager? _assetBundles;
     private readonly PlayerBuiltInResourceProvider? _builtInResources;
@@ -54,8 +52,8 @@ internal sealed class PlayerProjectSceneLoader : IAsyncSceneLoader
                 address = ResolveSceneAddress(sceneNameOrPath, _builtInResources.EnumerateAddresses("Assets"), "built-in AOT archive");
             if (address is not null)
                 bytes = await _builtInResources!.ReadBytesAsync(address, context.cancellationToken);
-            else if (_assetBundles is { IsInitialized: true, ActiveCatalog: not null } &&
-                     (address = ResolveSceneAddress(sceneNameOrPath, _assetBundles.EnumerateAddresses("Assets"), "active AssetBundle catalog")) is not null)
+            else if (HasActiveCatalog(_assetBundles) &&
+                     (address = ResolveSceneAddress(sceneNameOrPath, _assetBundles!.EnumerateAddresses("Assets"), "active AssetBundle catalog")) is not null)
             {
                 // A cold scene is allowed: loading its verified dependency closure must
                 // finish asynchronously before field binding touches bundled objects.
@@ -74,7 +72,7 @@ internal sealed class PlayerProjectSceneLoader : IAsyncSceneLoader
             SceneAssetData? document = null;
             await context.RunSteps(() =>
             {
-                document = YamlUtility.Deserialize<SceneAssetData>(StrictUtf8.GetString(bytes));
+                document = SceneRuntimeDataSerializer.Deserialize(bytes);
                 return CooperativeWorkStatus.Complete;
             });
             context.ReportProgress(.2f);
@@ -132,8 +130,8 @@ internal sealed class PlayerProjectSceneLoader : IAsyncSceneLoader
         var address = ResolveSceneAddress(
             sceneNameOrPath, _builtInResources.EnumerateAddresses("Assets"), "built-in AOT archive");
         if (address is null) return false;
-        var yaml = StrictUtf8.GetString(_builtInResources.ReadBytes(address));
-        scene = SceneAssetSerialization.Deserialize(yaml, services);
+        var document = SceneRuntimeDataSerializer.Deserialize(_builtInResources.ReadBytes(address));
+        scene = SceneAssetSerialization.Restore(document, services);
         scene.path = address;
         return true;
     }
@@ -144,14 +142,14 @@ internal sealed class PlayerProjectSceneLoader : IAsyncSceneLoader
         out Scene scene)
     {
         scene = null!;
-        if (_assetBundles is not { IsInitialized: true, ActiveCatalog: not null }) return false;
+        if (!HasActiveCatalog(_assetBundles)) return false;
         var address = ResolveSceneAddress(
-            sceneNameOrPath, _assetBundles.EnumerateAddresses("Assets"), "active AssetBundle catalog");
+            sceneNameOrPath, _assetBundles!.EnumerateAddresses("Assets"), "active AssetBundle catalog");
         if (address is null) return false;
         if (!_assetBundles.TryLoadBytes(address, out var bytes))
             throw new InvalidOperationException(
                 $"Scene '{address}' is not resident in the active AssetBundle release.");
-        var document = YamlUtility.Deserialize<SceneAssetData>(StrictUtf8.GetString(bytes));
+        var document = SceneRuntimeDataSerializer.Deserialize(bytes);
         scene = SceneAssetSerialization.Restore(document, services);
         try { RestoreBundledSprites(document, scene); }
         catch
@@ -161,6 +159,17 @@ internal sealed class PlayerProjectSceneLoader : IAsyncSceneLoader
         }
         scene.path = address;
         return true;
+    }
+
+    private static bool HasActiveCatalog(IAssetBundleManager? manager)
+    {
+        if (manager is not { IsInitialized: true }) return false;
+        // Both sealed built-in implementations publish version and catalog from
+        // the same owned state. Avoid cloning every catalog entry for presence.
+        // Custom implementations retain the original public-contract check.
+        return manager is AssetBundleManager or VirtualAssetBundleManager
+            ? manager.ActiveVersion is not null
+            : manager.ActiveCatalog is not null;
     }
 
     private string? ResolveSceneAddress(

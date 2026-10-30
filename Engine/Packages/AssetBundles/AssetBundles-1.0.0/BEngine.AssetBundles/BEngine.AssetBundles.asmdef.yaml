@@ -1,6 +1,7 @@
 format: BEngine.AssemblyDefinition
 version: 1
 name: BEngine.AssetBundles
+allowUnsafeCode: true
 rootNamespace: BEngine
 references: 
 - BEngine.Networking

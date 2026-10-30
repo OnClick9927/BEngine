@@ -77,6 +77,7 @@ internal sealed class LoadedAssetBundle : IDisposable
         IReadOnlyList<AssetBundleAsset> assets,
         AssetBundleRuntimeOptions options)
     {
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.BundleOpen, descriptor.Size);
         var stream = source;
         ZipArchive? archive = null;
         try
@@ -155,7 +156,10 @@ internal sealed class LoadedAssetBundle : IDisposable
     {
         ThrowIfDisposed();
         cancellationToken.ThrowIfCancellationRequested();
-        if (_assetCache.TryGetValue(asset.Entry, out var bytes)) return bytes;
+        if (_assetCache.TryGetValue(asset.Entry, out var bytes))
+        { AssetBundlePerformanceDiagnostics.Count(AssetBundlePerformanceDiagnostics.Phase.CacheHit, bytes.Length); return bytes; }
+        AssetBundlePerformanceDiagnostics.Count(AssetBundlePerformanceDiagnostics.Phase.CacheMiss, asset.Size);
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetReadWall, asset.Size);
         // Web remains cooperative; no ThreadPool worker exists there. Desktop
         // and mobile workers only touch this bundle's private stream and data.
         if (!BackgroundWorkScheduler.IsSupported)
@@ -198,7 +202,10 @@ internal sealed class LoadedAssetBundle : IDisposable
     internal byte[] ReadAsset(AssetBundleAsset asset, long maximumSize)
     {
         ThrowIfDisposed();
-        if (_assetCache.TryGetValue(asset.Entry, out var bytes)) return bytes;
+        if (_assetCache.TryGetValue(asset.Entry, out var bytes))
+        { AssetBundlePerformanceDiagnostics.Count(AssetBundlePerformanceDiagnostics.Phase.CacheHit, bytes.Length); return bytes; }
+        AssetBundlePerformanceDiagnostics.Count(AssetBundlePerformanceDiagnostics.Phase.CacheMiss, asset.Size);
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetReadWall, asset.Size);
         AcquireRead();
         try { lock (_archiveGate) bytes = ReadAssetCore(asset, maximumSize, CancellationToken.None); }
         finally { ReleaseRead(); }
@@ -219,26 +226,72 @@ internal sealed class LoadedAssetBundle : IDisposable
             if (!_entries.TryGetValue(asset.Entry, out var entry)) throw new FileNotFoundException(asset.Entry);
             if (asset.Size < 0 || asset.Size > maximumSize || asset.Size > int.MaxValue) throw new InvalidDataException("Asset size limit exceeded.");
             var bytes = new byte[(int)asset.Size];
-            using var source = entry.Open();
-            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            Stream opened;
+            using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetOpen)) opened = entry.Open();
+            using var source = opened;
+            var useNativeHash = asset.Size >= 256 * 1024 && BrowserAssetBundleHash.IsSupported(asset.Size);
+            // Browser IncrementalHash buffers the whole payload until finalization.
+            // Keep actual compression bounded by the same cooperative read block.
+            var useStreamingHash = !useNativeHash && OperatingSystem.IsBrowser();
+            using var streamingHash = useStreamingHash ? new AssetBundleStreamingSha256() : null;
+            using var hash = useNativeHash || useStreamingHash ? null : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             var offset = 0;
             var context = new AsyncLoadContext(token);
             await context.RunSteps(() =>
             {
+                using var execution = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetReadExecute);
                 ThrowIfDisposed(); token.ThrowIfCancellationRequested();
                 var count = Math.Min(64 * 1024, bytes.Length - offset);
                 if (count > 0)
                 {
-                    var read = source.Read(bytes, offset, count);
-                    if (read == 0) throw new InvalidDataException("Asset bundle entry ended early.");
-                    hash.AppendData(bytes, offset, read); offset += read;
+                    // Deflate streams may return only a few KiB per Read even
+                    // when more output is immediately available. Fill this
+                    // bounded block before yielding to the scheduler.
+                    var start = offset;
+                    var end = offset + count;
+                    while (offset < end)
+                    {
+                        ThrowIfDisposed(); token.ThrowIfCancellationRequested();
+                        int read;
+                        using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetInflate))
+                            read = source.Read(bytes, offset, end - offset);
+                        if (read == 0) throw new InvalidDataException("Asset bundle entry ended early.");
+                        AssetBundlePerformanceDiagnostics.Count(AssetBundlePerformanceDiagnostics.Phase.AssetChunks, read);
+                        if (hash is not null)
+                            using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha, read))
+                                hash.AppendData(bytes, offset, read);
+                        offset += read;
+                    }
+                    if (streamingHash is not null)
+                        using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha, offset - start))
+                            streamingHash.Append(bytes.AsSpan(start, offset - start));
                     progress?.Invoke(offset);
-                    return CooperativeWorkStatus.Continue;
+                    if (offset < bytes.Length) return CooperativeWorkStatus.Continue;
                 }
-                if (source.ReadByte() != -1 || !Convert.ToHexString(hash.GetHashAndReset()).Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase))
+                if (source.ReadByte() != -1)
                     throw new InvalidDataException($"Asset '{asset.Address}' failed its content verification.");
+                if (hash is not null || streamingHash is not null)
+                {
+                    string actualHash;
+                    using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha))
+                    {
+                        if (streamingHash is not null)
+                        {
+                            Span<byte> digest = stackalloc byte[32];
+                            streamingHash.FinalizeHash(digest);
+                            actualHash = Convert.ToHexString(digest);
+                        }
+                        else actualHash = Convert.ToHexString(hash!.GetHashAndReset());
+                    }
+                    if (!actualHash.Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException($"Asset '{asset.Address}' failed its content verification.");
+                }
                 return CooperativeWorkStatus.Complete;
             });
+            if (useNativeHash)
+                using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha, bytes.Length))
+                    await BrowserAssetBundleHash.VerifyAsync(bytes, asset.Sha256, token);
+            ThrowIfDisposed(); token.ThrowIfCancellationRequested();
             _assetCache[asset.Entry] = bytes; completion.TrySetResult(bytes); return bytes;
         }
         catch (BOperationCanceledException error) { completion.TrySetCanceled(error.CancellationToken); throw; }
@@ -270,11 +323,14 @@ internal sealed class LoadedAssetBundle : IDisposable
         CancellationToken cancellationToken,
         Action<long>? progress = null)
     {
+        using var execution = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetReadExecute, asset.Size);
         if (!_entries.TryGetValue(asset.Entry, out var entry))
             throw new FileNotFoundException($"Asset bundle entry '{asset.Entry}' is missing.");
         if (asset.Size > maximumSize)
             throw new InvalidDataException($"Asset '{asset.Address}' exceeds its runtime size limit.");
-        using var source = entry.Open();
+        Stream opened;
+        using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetOpen)) opened = entry.Open();
+        using var source = opened;
         if (asset.Size < 0 || asset.Size > int.MaxValue) throw new InvalidDataException("Asset size limit exceeded.");
         var output = new byte[(int)asset.Size];
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -282,15 +338,21 @@ internal sealed class LoadedAssetBundle : IDisposable
         while (total < output.Length)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var read = source.Read(output, total, Math.Min(64 * 1024, output.Length - total));
+            int read;
+            using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetInflate))
+                read = source.Read(output, total, Math.Min(64 * 1024, output.Length - total));
             if (read == 0) break;
-            hash.AppendData(output, total, read);
+            AssetBundlePerformanceDiagnostics.Count(AssetBundlePerformanceDiagnostics.Phase.AssetChunks, read);
+            using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha, read))
+                hash.AppendData(output, total, read);
             total = checked(total + read);
             progress?.Invoke(total);
             if (total > asset.Size || total > maximumSize)
                 throw new InvalidDataException($"Asset '{asset.Address}' exceeds its declared size.");
         }
-        var actualHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+        string actualHash;
+        using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha))
+            actualHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
         if (total != asset.Size || source.ReadByte() != -1 ||
             !actualHash.Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"Asset '{asset.Address}' failed its content verification.");

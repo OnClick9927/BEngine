@@ -8,50 +8,104 @@ namespace BEngine;
 
 public static class YamlUtility
 {
-    private static readonly List<IYamlTypeConverter> Converters = [];
-    private static ISerializer Serializer = CreateSerializer();
-    private static ISerializer CreateSerializer() => Configure(new SerializerBuilder()
+    private static CodecGeneration Codecs = new([], 0);
+
+    internal static bool TryGetDefaultConverterVersion(out int version)
+    {
+        var codecs = Volatile.Read(ref Codecs);
+        version = codecs.Version;
+        return codecs.Converters.Length == 0;
+    }
+
+    // A package may use a compiled DTO only while its exact converter remains
+    // the sole registered override. Never retain the caller or expose a mutable
+    // converter array; late registrations/removals publish another generation.
+    internal static bool TryGetExclusiveConverterVersion(IYamlTypeConverter expected, out int version)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        var codecs = Volatile.Read(ref Codecs);
+        version = codecs.Version;
+        return codecs.Converters.Length == 1 && ReferenceEquals(codecs.Converters[0], expected);
+    }
+
+    private static ISerializer CreateSerializer(IYamlTypeConverter[] converters) => Configure(new SerializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .DisableAliases()
         .WithQuotingNecessaryStrings()
         .WithMaximumRecursion(64)
-        .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
-        )
+        .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull), converters)
         .Build();
 
-    private static IDeserializer Deserializer = CreateDeserializer(false);
-    private static IDeserializer StrictDeserializer = CreateDeserializer(true);
-    private static IDeserializer CreateDeserializer(bool strict)
+    private static IDeserializer CreateDeserializer(bool strict, IYamlTypeConverter[] converters)
     {
         var builder = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
             .WithDuplicateKeyChecking()
             .WithMaximumRecursion(64);
-        return Configure(strict ? builder.WithEnforceNullability() : builder.IgnoreUnmatchedProperties()).Build();
+        return Configure(strict ? builder.WithEnforceNullability() : builder.IgnoreUnmatchedProperties(), converters).Build();
     }
 
-    private static SerializerBuilder Configure(SerializerBuilder builder)
+    private static SerializerBuilder Configure(SerializerBuilder builder, IYamlTypeConverter[] converters)
     {
         builder.WithTypeConverter(Fix64YamlConverter.Instance);
-        foreach (var converter in Converters) builder.WithTypeConverter(converter);
+        foreach (var converter in converters) builder.WithTypeConverter(converter);
         return builder;
     }
-    private static DeserializerBuilder Configure(DeserializerBuilder builder)
+    private static DeserializerBuilder Configure(DeserializerBuilder builder, IYamlTypeConverter[] converters)
     {
         builder.WithTypeConverter(Fix64YamlConverter.Instance);
-        foreach (var converter in Converters) builder.WithTypeConverter(converter);
+        foreach (var converter in converters) builder.WithTypeConverter(converter);
         return builder;
     }
     public static void RegisterConverter(IYamlTypeConverter converter)
     {
         ArgumentNullException.ThrowIfNull(converter);
-        lock (typeof(YamlUtility)) { Converters.RemoveAll(c => c.GetType() == converter.GetType()); Converters.Add(converter); Rebuild(); }
+        lock (typeof(YamlUtility))
+        {
+            var current = Codecs;
+            PublishConverters(current.Converters.Where(c => c.GetType() != converter.GetType()).Append(converter).ToArray(),
+                unchecked(current.Version + 1));
+        }
     }
     public static void UnregisterConverters(System.Reflection.Assembly assembly)
     {
-        lock (typeof(YamlUtility)) { if (Converters.RemoveAll(c => c.GetType().Assembly == assembly) > 0) Rebuild(); }
+        lock (typeof(YamlUtility))
+        {
+            var current = Codecs;
+            var remaining = current.Converters.Where(c => c.GetType().Assembly != assembly).ToArray();
+            if (remaining.Length != current.Converters.Length)
+                PublishConverters(remaining, unchecked(current.Version + 1));
+        }
     }
-    private static void Rebuild() { Serializer = CreateSerializer(); Deserializer = CreateDeserializer(false); StrictDeserializer = CreateDeserializer(true); }
+
+    private static void PublishConverters(IYamlTypeConverter[] converters, int version)
+    {
+        var next = new CodecGeneration(converters, version);
+        // Registration still validates all codecs synchronously. Only a complete
+        // generation is visible; failed rebuilds leave existing readers unchanged.
+        _ = next.Serializer.Value;
+        _ = next.Deserializer.Value;
+        _ = next.StrictDeserializer.Value;
+        Volatile.Write(ref Codecs, next);
+    }
+
+    private sealed class CodecGeneration
+    {
+        internal readonly IYamlTypeConverter[] Converters;
+        internal readonly int Version;
+        internal readonly Lazy<ISerializer> Serializer;
+        internal readonly Lazy<IDeserializer> Deserializer;
+        internal readonly Lazy<IDeserializer> StrictDeserializer;
+
+        internal CodecGeneration(IYamlTypeConverter[] converters, int version)
+        {
+            Converters = converters;
+            Version = version;
+            Serializer = new(() => CreateSerializer(converters), LazyThreadSafetyMode.ExecutionAndPublication);
+            Deserializer = new(() => CreateDeserializer(false, converters), LazyThreadSafetyMode.ExecutionAndPublication);
+            StrictDeserializer = new(() => CreateDeserializer(true, converters), LazyThreadSafetyMode.ExecutionAndPublication);
+        }
+    }
     private static readonly Encoding Utf8 = new UTF8Encoding(false, true);
 
     public static byte[] SerializeToUtf8Bytes(object value) => Utf8.GetBytes(Serialize(value));
@@ -70,7 +124,7 @@ public static class YamlUtility
     {
         ArgumentNullException.ThrowIfNull(value);
         BEngine.SerializationCallbackUtility.BeforeSerialize(value);
-        return Serializer.Serialize(value).ReplaceLineEndings("\n");
+        return Volatile.Read(ref Codecs).Serializer.Value.Serialize(value).ReplaceLineEndings("\n");
     }
 
     public static T Deserialize<T>(string yaml, bool strict = false) =>
@@ -82,7 +136,8 @@ public static class YamlUtility
         ArgumentNullException.ThrowIfNull(type);
         try
         {
-            var value = (strict ? StrictDeserializer : Deserializer).Deserialize(new StringReader(yaml), type) ??
+            var codecs = Volatile.Read(ref Codecs);
+            var value = (strict ? codecs.StrictDeserializer : codecs.Deserializer).Value.Deserialize(new StringReader(yaml), type) ??
                         throw new InvalidDataException($"The YAML document for {type.Name} is empty.");
             BEngine.SerializationCallbackUtility.AfterDeserialize(value);
             return value;

@@ -231,7 +231,7 @@ internal static partial class DotNetBuildHostLocator
             "BEngineWasmIntermediateRoot",
             "BEngineWebPrecompiledProps", "BEngineWebPrecompiledManifest",
             "BaseOutputPath", "BaseIntermediateOutputPath", "MSBuildProjectExtensionsPath",
-            "BEngineTrimmerRootDescriptor", "BEngineFullTrimming", "BEngineIncludeTextBindings", "TrimMode", "JsonSerializerIsReflectionEnabledByDefault", "ApplicationId", "SupportedOSPlatformVersion",
+            "BEngineTrimmerRootDescriptor", "BEngineHostAssemblyBootstrap", "BEngineFullTrimming", "BEngineIncludeTextBindings", "BEngineWebFontBackend", "TrimMode", "JsonSerializerIsReflectionEnabledByDefault", "ApplicationId", "SupportedOSPlatformVersion",
             "AndroidPackageFormat", "BEnginePlayerPlatform", "CodesignKey", "CodesignProvision",
             "BEngineWindowsGarbageCollection", "BEngineWindowsGcHeapCount"
         };
@@ -340,6 +340,13 @@ internal static class DotNetPublishRunner
         process.Arguments.Add($"-p:BEngineIncludeTextBindings={includeTextBindings.ToString().ToLowerInvariant()}");
         context.IncludeTextBindings = includeTextBindings;
         if (context.StrippingReport is { } featureReport) featureReport.TextBindingsIncluded = includeTextBindings;
+        var hostBootstrap = PlayerHostAssemblyBootstrap.Write(
+            context.RuntimeManagedCodeAssemblyPaths.Concat(PlayerSerializationRoots.HostAssemblyPaths),
+            pathService.Combine(buildArtifactsDirectory, "BEngineStaticHostBootstrap.cs"), includeTextBindings,
+            includeSkiaBindings: context.Target.Platform != BuildTargetPlatform.Web ||
+                                 context.Request.WebFontBackend != WebFontBackend.FreeType,
+            startupLogoPng: context.StartupLogoPng.ToArray(), splashBackground: context.Request.SplashBackgroundColor);
+        process.Arguments.Add($"-p:BEngineHostAssemblyBootstrap={hostBootstrap}");
         process.Arguments.Add($"-p:PublishTrimmed={trimManagedCode.ToString().ToLowerInvariant()}");
         if (trimManagedCode)
         {
@@ -361,6 +368,7 @@ internal static class DotNetPublishRunner
         // stripping option is disabled. Always describe the dynamic release boundary so a
         // platform-specific PublishTrimmed=true cannot remove framework contracts used only
         // by interpreted package and game assemblies.
+        var preciseHostRootsReady = false;
         if (context.Request.SelfContained && context.RuntimeManagedCodeAssemblyPaths.Count > 0)
         {
             var descriptorPath = DynamicManagedCodeTrimmerDescriptor.Write(
@@ -395,6 +403,7 @@ internal static class DotNetPublishRunner
                     }
                 }
                 descriptor.Save(descriptorPath);
+                preciseHostRootsReady = true;
                 if (context.StrippingReportPath is { } rootReportPath)
                     fileSystem.WriteAllText(Path.ChangeExtension(rootReportPath, ".host-roots.xml"),
                         fileSystem.ReadAllText(descriptorPath));
@@ -409,7 +418,7 @@ internal static class DotNetPublishRunner
         if (context.Target.Platform == BuildTargetPlatform.Web &&
             context.Request.WebScriptCompilation == WebScriptCompilationMode.AheadOfTime &&
             context.WebPrecompiledManagedCodeAssemblyPaths.Count > 0)
-            process.Arguments.Add($"-p:BEngineWebPrecompiledProps={WebPrecompiledScriptBuild.Write(context, buildArtifactsDirectory)}");
+            process.Arguments.Add($"-p:BEngineWebPrecompiledProps={WebPrecompiledScriptBuild.Write(context, buildArtifactsDirectory, preciseHostRootsReady)}");
         configure?.Invoke(process);
         DotNetBuildHostLocator.AddAdditionalProperties(process, context.Request);
         BEngine.Tooling.ToolEnvironment.ApplyToDotNetBuild(process.EnvironmentVariables);

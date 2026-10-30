@@ -42,7 +42,13 @@ internal static class PlayerHotUpdateReleaseLoader
             context.cancellationToken.ThrowIfCancellationRequested();
             return BValueTask<ManagedCodeResource>.FromResult(new(resources.ReadBytes(address)));
         }, resourceExists: resources.ContainsAddress, cancellationToken: cancellationToken);
+        while (!operation.isDone)
+        {
+            PlayerStartupEnvironment.Current?.Report(.35f + .3f * operation.progress, "managedCode");
+            await BTask.Yield();
+        }
         await operation;
+        PlayerStartupEnvironment.Current?.Report(.65f, "managedCode");
         return operation.release!;
     }
 

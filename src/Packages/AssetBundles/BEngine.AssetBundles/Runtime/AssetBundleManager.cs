@@ -67,8 +67,10 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     {
         get
         {
-            var catalog = _active?.Catalog;
-            return catalog is null ? null : CloneCatalog(catalog);
+            var active = _active;
+            return active is null ? null : active.CanonicalCatalog
+                ? AssetBundleCatalogSerializer.CloneOwnedCanonicalCatalog(active.Catalog)
+                : CloneCatalog(active.Catalog);
         }
     }
 
@@ -185,9 +187,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             catalogUri, AssetBundleHttpResourceKind.Catalog,
             _options.MaximumCatalogSize, cancellationToken);
         VerifyPayload(catalogBytes, version.CatalogSize, version.CatalogSha256, "remote catalog");
-        var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes);
-        ValidateCatalogPair(version, catalog);
-        ValidateCatalogLimits(catalog);
+        var catalog = DeserializeCatalogPair(version, catalogBytes);
 
         var downloads = new List<AssetBundleDescriptor>();
         var selectedBundles = GetRequiredBundles(catalog, includeInstalled: true);
@@ -323,9 +323,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             var targetVersion = plan.CreateTargetVersionSnapshot();
             VerifyPayload(plan.CatalogBytes.Span, targetVersion.CatalogSize,
                 targetVersion.CatalogSha256, "update catalog");
-            var targetCatalog = plan.CreateTargetCatalogSnapshot();
-            ValidateCatalogPair(targetVersion, targetCatalog);
-            ValidateCatalogLimits(targetCatalog);
+            var targetCatalog = DeserializeCatalogPair(targetVersion, plan.CatalogBytes.Span, out var indexSeeds);
 
             var downloads = new List<AssetBundleDescriptor>();
             var selectedBundles = ResolveBundleSelection(targetCatalog,
@@ -417,7 +415,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             var activated = new RuntimeState(
                 targetVersion,
                 targetCatalog,
-                plan.CatalogBytes.ToArray());
+                plan.CatalogBytes.ToArray(), indexSeeds);
             _active = activated;
             BAssetReferenceLoader.Clear();
             _hasPendingActivation = true;
@@ -534,7 +532,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             var owner = leases[^1];
             var bytes = await ReadAssetWithProgressAsync(owner.Bundle, asset, cancellationToken, progress);
             return new AssetBundleHandle<byte[]>(
-                asset.Address, (byte[])bytes.Clone(), () => ReleaseBundles(leases));
+                asset.Address, AssetBundlePerformanceDiagnostics.CloneAssetBytes(bytes), () => ReleaseBundles(leases));
         }
         catch
         {
@@ -597,7 +595,8 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
                     return false;
                 leases.Add(new BundleLease(indexedBundle.Descriptor, bundle));
             }
-            bytes = (byte[])leases[^1].Bundle.ReadAsset(asset, _options.MaximumAssetSize).Clone();
+            bytes = AssetBundlePerformanceDiagnostics.CloneAssetBytes(
+                leases[^1].Bundle.ReadAsset(asset, _options.MaximumAssetSize));
             return true;
         }
         catch (Exception exception) when (
@@ -779,13 +778,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             LoadedAssetBundle bundle;
             try
             {
-                while (!task.IsCompleted)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    ThrowIfDisposed();
-                    await BValueTask.Yield();
-                }
-                bundle = await task;
+                bundle = await WaitForSharedBundleAsync(task, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
             }
             catch
@@ -796,6 +789,27 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             if (bundle.TryAcquire()) return bundle;
             RemoveLoadedBundle(hash, task);
         }
+    }
+
+    private async BValueTask<LoadedAssetBundle> WaitForSharedBundleAsync(
+        BTask<LoadedAssetBundle> task, BCancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (task.IsCompleted) return await task;
+        // One caller cancelling must not cancel the shared transfer. Resume its
+        // waiter on completion, rather than adding a frame of polling latency
+        // to every dependency in a bundle closure.
+        var completion = new BTaskCompletionSource<LoadedAssetBundle>();
+        using var cancelled = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+        using var disposed = _httpLoadsCancellation.Token.Register(() =>
+            completion.TrySetException(new ObjectDisposedException(nameof(AssetBundleManager))));
+        task.GetAwaiter().OnCompleted(() =>
+        {
+            try { completion.TrySetResult(task.GetAwaiter().GetResult()); }
+            catch (BOperationCanceledException error) { completion.TrySetCanceled(error.CancellationToken); }
+            catch (Exception error) { completion.TrySetException(error); }
+        });
+        return await completion.Task;
     }
 
     private bool TryAcquireBundleSynchronously(
@@ -1224,9 +1238,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         progress?.Report(new(AssetBundleLoadKind.Catalog, AssetBundleLoadPhase.Opening, version.CatalogFile, catalogBytes.Length, version.CatalogSize));
         await BTask.Yield();
         cancellationToken.ThrowIfCancellationRequested();
-        var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes);
-        ValidateCatalogPair(version, catalog);
-        ValidateCatalogLimits(catalog);
+        var catalog = DeserializeCatalogPair(version, catalogBytes, out var indexSeeds);
         progress?.Report(new(AssetBundleLoadKind.Catalog, AssetBundleLoadPhase.Completed, version.CatalogFile, catalogBytes.Length, version.CatalogSize));
 
         var requiredNames = GetRequiredBundles(catalog, includeInstalled: false)
@@ -1247,7 +1259,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             // access, rather than reading the entire packaged game at startup.
             _builtInBundlePaths[descriptor.Sha256] = path;
         }
-        return new RuntimeState(version, catalog, catalogBytes);
+        return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
     }
 
     private async BValueTask<RuntimeState?> LoadCachedStateAsync(
@@ -1276,26 +1288,34 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             throw new FileNotFoundException("The cached asset bundle catalog is missing.", catalogPath);
         }
         VerifyPayload(catalogBytes, version.CatalogSize, version.CatalogSha256, "cached catalog");
-        var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes);
-        ValidateCatalogPair(version, catalog);
-        ValidateCatalogLimits(catalog);
+        var catalog = DeserializeCatalogPair(version, catalogBytes, out var indexSeeds);
         foreach (var descriptor in GetRequiredBundles(catalog, includeInstalled: false))
             if (!await HasValidBundleAsync(descriptor, cancellationToken))
                 throw new FileNotFoundException(
                     $"Cached bundle '{descriptor.Name}' is missing or invalid.", descriptor.FileName);
-        return new RuntimeState(version, catalog, catalogBytes);
+        return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
     }
 
-    private void ValidateCatalogPair(AssetBundleVersion version, AssetBundleCatalog catalog)
+    // Owns a newly decoded catalog until all pair checks and runtime limits pass.
+    // DeserializeCatalog already validates its complete mutable model; do not validate it a second time.
+    private AssetBundleCatalog DeserializeCatalogPair(AssetBundleVersion version, ReadOnlySpan<byte> catalogBytes)
+        => ValidateCatalogPair(version, AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes));
+
+    private AssetBundleCatalog DeserializeCatalogPair(AssetBundleVersion version, ReadOnlySpan<byte> catalogBytes,
+        out AssetBundleCatalogIndex.ValidatedSeeds seeds)
+        => ValidateCatalogPair(version, AssetBundleCatalogSerializer.DeserializeOwnedCatalog(catalogBytes, out seeds));
+
+    private AssetBundleCatalog ValidateCatalogPair(AssetBundleVersion version, AssetBundleCatalog catalog)
     {
         version.Validate();
-        catalog.Validate();
         ValidatePackage(version.PackageName);
         if (!catalog.PackageName.Equals(version.PackageName, StringComparison.Ordinal))
             throw new InvalidDataException("Asset bundle version and catalog package names do not match.");
         if (!catalog.Version.Equals(version.Version, StringComparison.Ordinal))
             throw new InvalidDataException("Asset bundle version and catalog versions do not match.");
         _ = NormalizeVersionSegment(version.Version);
+        ValidateCatalogLimits(catalog);
+        return catalog;
     }
 
     private void ValidateCatalogLimits(AssetBundleCatalog catalog)
@@ -1749,14 +1769,18 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         internal RuntimeState(
             AssetBundleVersion version,
             AssetBundleCatalog catalog,
-            byte[] catalogBytes)
+            byte[] catalogBytes,
+            AssetBundleCatalogIndex.ValidatedSeeds? indexSeeds = null)
         {
             Version = version;
             Catalog = catalog;
             CatalogBytes = catalogBytes;
-            Index = new AssetBundleCatalogIndex(catalog, cloneCatalog: false, catalogValidated: true);
+            Index = new AssetBundleCatalogIndex(catalog, cloneCatalog: false, catalogValidated: true,
+                validatedSeeds: indexSeeds);
+            CanonicalCatalog = indexSeeds?.Canonical == true;
         }
 
+        internal bool CanonicalCatalog { get; }
         internal AssetBundleVersion Version { get; }
         internal AssetBundleCatalog Catalog { get; }
         internal byte[] CatalogBytes { get; }

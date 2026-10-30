@@ -600,6 +600,38 @@ foreach ($legacyLauncherShortcut in $legacyLauncherShortcuts) {
     }
 }
 
+# Replacing an EXE through a staging rename can leave Explorer displaying its
+# previous icon. Notify the Shell about these exact items after publication.
+# https://learn.microsoft.com/windows/win32/api/shlobj_core/nf-shlobj_core-shchangenotify
+if ($runningOnWindows) {
+    try {
+        if (-not ('BEngine.Export.ShellNotification' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace BEngine.Export {
+    public static class ShellNotification {
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        private static extern void SHChangeNotify(int eventId, uint flags, string item1, IntPtr item2);
+        public static void ItemUpdated(string path) {
+            const int updateItem = 0x00002000;
+            const uint pathW = 0x0005;
+            const uint flushNoWait = 0x2000;
+            SHChangeNotify(updateItem, pathW | flushNoWait, path, IntPtr.Zero);
+        }
+    }
+}
+'@
+        }
+        [BEngine.Export.ShellNotification]::ItemUpdated($hubOutput)
+        [BEngine.Export.ShellNotification]::ItemUpdated((Join-Path $engineOutput 'BEngine.Editor.exe'))
+        Write-Output 'BENGINE_EXPORT_SHELL_ICONS_NOTIFIED'
+    }
+    catch {
+        Write-Warning "The engine was exported, but the Shell icon refresh notification failed: $_"
+    }
+}
+
 Write-Output "BENGINE_EXPORT_OK|$Configuration|$engineOutput|$hubOutput"
 }
 finally {

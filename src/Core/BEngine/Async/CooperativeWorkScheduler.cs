@@ -22,6 +22,10 @@ public sealed class CooperativeWorkScheduler
     private int _maximumStepsPerFrame = 16384;
     private double _maximumStepMilliseconds = .5;
     private long _overBudgetFrames;
+    private long _pumpFrame = -1;
+    private int _frameSteps;
+    private double _frameMilliseconds, _frameLongest;
+    private bool _frameStopped, _frameOverBudgetCounted;
     public static CooperativeWorkScheduler Main { get; } = new();
     static CooperativeWorkScheduler()
     {
@@ -114,54 +118,128 @@ public sealed class CooperativeWorkScheduler
         else if (_ownerThread != current) throw new InvalidOperationException("Cooperative work must run on its owning engine thread.");
     }
 
-    private void Advance(BFrameTick _)
+    private void Advance(BFrameTick tick)
     {
         CheckOwner();
         if (_advancing) throw new InvalidOperationException("Cooperative work cannot be re-entered.");
+        BeginPumpFrame(tick.Frame);
+        Pump(allowFirstStep: true);
+    }
+
+    // Only the main BTask callback phase may use this additional loading pass.
+    // The original frame event and delay phase are never raised again.
+    internal bool PumpLoadingWork()
+    {
+        CheckOwner();
+        if (_advancing) throw new InvalidOperationException("Cooperative work cannot be re-entered.");
+        if (!FrameWorkBudget.IsActive || !FrameWorkBudget.isLoading ||
+            FrameWorkBudget.remainingMilliseconds <= 0 || PendingCount == 0) return false;
+        BeginPumpFrame(BTaskScheduler.Main.FrameCount);
+        if (_frameStopped || _frameSteps >= _maximumStepsPerFrame || _blocked.Count >= PendingCount) return false;
+        return Pump(allowFirstStep: false);
+    }
+
+    // After the owner attaches cancellation/cleanup, use the existing weighted
+    // FIFO policy until the target receives its first step. The admission never
+    // gives a target priority over older work, drains callbacks or renews a frame.
+    internal bool TryRunLoadingFirstStep(IDisposable handle)
+    {
+        CheckOwner();
+        if (handle is not Registration registration || !ReferenceEquals(registration.Owner, this))
+            throw new ArgumentException("The work handle belongs to a different scheduler.", nameof(handle));
+        if (!ReferenceEquals(this, Main) || registration.Disposed || registration.Node is null ||
+            _advancing || _canceling || !FrameWorkBudget.IsActive || !FrameWorkBudget.isLoading ||
+            FrameWorkBudget.remainingMilliseconds <= 0)
+        {
+            if (CooperativeLoadingDiagnostics.Enabled)
+                CooperativeLoadingDiagnostics.Admission(handle,
+                    !ReferenceEquals(this, Main) ? "not-main" : registration.Disposed || registration.Node is null ? "not-live" :
+                    _advancing ? "advancing" : _canceling ? "canceling" : !FrameWorkBudget.IsActive ? "no-frame" :
+                    !FrameWorkBudget.isLoading ? "not-loading" : "budget",
+                    BTaskScheduler.Main.FrameCount, PendingCount, FrameWorkBudget.remainingMilliseconds);
+            return false;
+        }
+        BeginPumpFrame(BTaskScheduler.Main.FrameCount);
+        if (_frameStopped || _frameSteps >= _maximumStepsPerFrame || _blocked.Count >= PendingCount)
+        {
+            if (CooperativeLoadingDiagnostics.Enabled)
+                CooperativeLoadingDiagnostics.Admission(handle, _frameStopped ? "soft-stop" : _frameSteps >= _maximumStepsPerFrame ? "step-limit" : "blocked",
+                    BTaskScheduler.Main.FrameCount, PendingCount, FrameWorkBudget.remainingMilliseconds);
+            return false;
+        }
+        if (CooperativeLoadingDiagnostics.Enabled)
+            CooperativeLoadingDiagnostics.Admission(handle, "admitted", BTaskScheduler.Main.FrameCount, PendingCount, FrameWorkBudget.remainingMilliseconds);
+        return Pump(allowFirstStep: false, firstStepTarget: registration);
+    }
+
+    private void BeginPumpFrame(long frame)
+    {
+        if (_pumpFrame == frame) return;
+        _pumpFrame = frame; _frameSteps = 0; _frameMilliseconds = _frameLongest = 0;
+        _frameStopped = _frameOverBudgetCounted = false; _blocked.Clear();
+    }
+
+    private bool Pump(bool allowFirstStep, Registration? firstStepTarget = null)
+    {
         _advancing = true;
-        var start = Stopwatch.GetTimestamp(); var steps = 0; double longest = 0; _blocked.Clear();
+        var start = Stopwatch.GetTimestamp(); var madeProgress = false;
+        var firstStepStart = _frameSteps;
         var effectiveBudget = FrameWorkBudget.CooperativeBudget(_budgetMilliseconds);
         try
         {
-            while (PendingCount > 0 && steps < _maximumStepsPerFrame &&
-                   Stopwatch.GetElapsedTime(start).TotalMilliseconds < effectiveBudget &&
-                   (steps == 0 || FrameWorkBudget.remainingMilliseconds > 0))
+            while (!_frameStopped && (allowFirstStep || FrameWorkBudget.isLoading) &&
+                   (firstStepTarget is null || (!firstStepTarget.Disposed && _frameSteps - firstStepStart < 32)) &&
+                   PendingCount > 0 && _frameSteps < _maximumStepsPerFrame &&
+                   _frameMilliseconds + Stopwatch.GetElapsedTime(start).TotalMilliseconds < effectiveBudget &&
+                   ((allowFirstStep && _frameSteps == 0) || FrameWorkBudget.remainingMilliseconds > 0))
             {
                 var registration = TakeNext()!;
                 _current = registration;
                 var stepStart = Stopwatch.GetTimestamp(); var status = CooperativeWorkStatus.Complete;
                 var stopAfterStep = false;
-                try { status = registration.Step!(); }
+                try
+                {
+                    if (CooperativeLoadingDiagnostics.Enabled) CooperativeLoadingDiagnostics.FirstStep(registration, BTaskScheduler.Main.FrameCount);
+                    status = registration.Step!();
+                    if (CooperativeLoadingDiagnostics.Enabled)
+                        CooperativeLoadingDiagnostics.StepReturned(registration, BTaskScheduler.Main.FrameCount, status);
+                }
                 catch (Exception error)
                 {
+                    if (CooperativeLoadingDiagnostics.Enabled) CooperativeLoadingDiagnostics.End(registration, BTaskScheduler.Main.FrameCount, success: false);
                     try { registration.Failure?.Invoke(error); }
                     catch (Exception reportingError) { Debug.LogException(reportingError); }
                 }
                 finally
                 {
                     var stepMilliseconds = Stopwatch.GetElapsedTime(stepStart).TotalMilliseconds;
-                    longest = Math.Max(longest, stepMilliseconds); steps++;
+                    _frameLongest = Math.Max(_frameLongest, stepMilliseconds); _frameSteps++;
                     // An indivisible operation can still run past the soft
                     // budget. Do not immediately start another one in that frame.
                     stopAfterStep = stepMilliseconds >= FrameWorkBudget.CooperativeMaximumStep(_maximumStepMilliseconds) ||
                         (FrameWorkBudget.IsActive && FrameWorkBudget.remainingMilliseconds <= 0);
                 }
+                if (stopAfterStep) _frameStopped = true;
+                madeProgress |= status != CooperativeWorkStatus.Blocked || registration.Disposed;
                 if (!registration.Disposed && status != CooperativeWorkStatus.Complete)
                     registration.Node = _queues[registration.Priority].AddLast(registration);
                 else registration.Clear();
                 if (status == CooperativeWorkStatus.Blocked)
                 { if (!registration.Disposed) _blocked.Add(registration); if (_blocked.Count >= PendingCount) break; }
                 else _blocked.Clear();
-                if (stopAfterStep) break;
+                if (stopAfterStep || ReferenceEquals(registration, firstStepTarget)) break;
             }
         }
         finally
         {
             var elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-            if (elapsed > effectiveBudget) _overBudgetFrames++;
-            Snapshot = new(PendingCount, steps, elapsed, longest, _overBudgetFrames);
-            _current = null; _blocked.Clear(); _advancing = false; UnsubscribeIfEmpty();
+            _frameMilliseconds += elapsed;
+            if (!_frameOverBudgetCounted && _frameMilliseconds > effectiveBudget)
+            { _overBudgetFrames++; _frameOverBudgetCounted = true; }
+            Snapshot = new(PendingCount, _frameSteps, _frameMilliseconds, _frameLongest, _overBudgetFrames);
+            _current = null; _advancing = false; UnsubscribeIfEmpty();
         }
+        return madeProgress;
     }
 
     private void UnsubscribeIfEmpty()
@@ -179,11 +257,12 @@ public sealed class CooperativeWorkScheduler
         internal bool Disposed;
         internal int Priority;
         internal CooperativeWorkScheduler Owner => owner;
-        internal void Clear() { Disposed = true; Step = null; Failure = null; }
+        internal void Clear() { Disposed = true; Step = null; Failure = null; owner._blocked.Remove(this); }
         public void Dispose()
         {
             owner.CheckOwner();
             if (Disposed) return;
+            if (CooperativeLoadingDiagnostics.Enabled) CooperativeLoadingDiagnostics.Disposed(this, BTaskScheduler.Main.FrameCount);
             if (Node is { } node) { owner._queues[Priority].Remove(node); Node = null; }
             Clear(); owner.UnsubscribeIfEmpty();
         }

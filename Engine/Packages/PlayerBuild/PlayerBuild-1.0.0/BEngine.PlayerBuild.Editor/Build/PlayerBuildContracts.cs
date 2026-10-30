@@ -20,6 +20,7 @@ public sealed class PlayerBuildRequest
     public int WindowsGcHeapCount { get; init; }
     public WebScriptCompilationMode WebScriptCompilation { get; init; } =
         WebScriptCompilationMode.Interpreter;
+    public WebFontBackend WebFontBackend { get; init; } = WebFontBackend.Skia;
     public bool IncludeDebugSymbols { get; init; }
     public bool EncryptContent { get; init; }
     /// <summary>Build-time secret; do not log or persist in project settings.</summary>
@@ -37,7 +38,7 @@ public sealed class PlayerBuildRequest
     public bool SplashScreenEnabled { get; init; } = true;
     public string SplashImage { get; init; } = string.Empty;
     public string SplashBackgroundColor { get; init; } = "#10161A";
-    public float SplashMinimumDurationSeconds { get; init; } = 1.5f;
+    public float SplashMinimumDurationSeconds { get; init; } = 0.5f;
     public string CacheDirectory { get; init; } = PlayerBootstrapManifest.DefaultCacheDirectory;
     public string AndroidApplicationIdentifier { get; init; } = "com.bengine.game";
     public int AndroidMinimumApiLevel { get; init; } = 26;
@@ -116,6 +117,8 @@ public sealed class PlayerBuildContext
     public string StagingDirectory { get; }
     public IProgress<PlayerBuildProgress>? Progress { get; }
     public string ContentVersion { get; internal set; } = string.Empty;
+    public ReadOnlyMemory<byte> StartupLogoPng { get; internal set; }
+    public ReadOnlyMemory<byte> ApplicationIconPng { get; internal set; }
     public IReadOnlyList<GraphicsBackend> GraphicsBackends { get; internal set; } = [];
     public string? HostContractPath { get; internal set; }
     internal IReadOnlyList<string> RuntimeManagedCodeAssemblyPaths { get; set; } = [];

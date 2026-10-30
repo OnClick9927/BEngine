@@ -87,6 +87,9 @@ internal sealed partial class ProjectLauncherForm : Form
         MinimumSize = new Size(920, 600);
         ClientSize = new Size(1120, 700);
         Icon = LoadWindowIcon();
+        BEngine.Tools.WindowsBrandingIcons? windowIcons = null;
+        HandleCreated += (_, _) => windowIcons = new(Handle, "BEngine.Launcher");
+        HandleDestroyed += (_, _) => { windowIcons?.Dispose(); windowIcons = null; };
         BackColor = WindowBackground;
         ForeColor = PrimaryText;
         Font = new DrawingFont("Segoe UI", 10f);

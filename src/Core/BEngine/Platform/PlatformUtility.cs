@@ -14,6 +14,8 @@ public sealed class PlatformUtility
 
     public static PlatformUtility Current => RuntimeServiceAccess.GetRequiredService<PlatformUtility>();
 
+    internal object RuntimeDataIdentity => _implementation;
+
     public bool IsWindows => _implementation.IsWindows;
 
     public bool IsLinux => _implementation.IsLinux;

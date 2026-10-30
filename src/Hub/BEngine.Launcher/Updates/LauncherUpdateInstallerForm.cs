@@ -26,6 +26,9 @@ internal sealed class LauncherUpdateInstallerForm : Form
         _chinese = language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ||
                    language.Equals("system", StringComparison.OrdinalIgnoreCase) && System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
         Text = T("BEngine 更新", "BEngine Update");
+        BEngine.Tools.WindowsBrandingIcons? windowIcons = null;
+        HandleCreated += (_, _) => windowIcons = new(Handle, "BEngine.Launcher");
+        HandleDestroyed += (_, _) => { windowIcons?.Dispose(); windowIcons = null; };
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(640, 360);

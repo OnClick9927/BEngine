@@ -28,6 +28,14 @@ internal sealed class PlayerBuiltInResourceProvider : IAsyncResourceProvider, IR
         _manager = new ArchiveAssetBundleManager(_archive);
     }
 
+    internal PlayerBuiltInResourceProvider(BuiltInResourceArchive archive, PathUtility paths)
+    {
+        _archive = archive ?? throw new ArgumentNullException(nameof(archive));
+        _paths = paths ?? throw new ArgumentNullException(nameof(paths));
+        ArchivePath = archive.SourcePath;
+        _manager = new ArchiveAssetBundleManager(archive);
+    }
+
     private PlayerBuiltInResourceProvider(PlayerBuiltInResourceProvider source)
     {
         ArchivePath = source.ArchivePath;

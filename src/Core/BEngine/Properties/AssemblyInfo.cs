@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("BEngine.Platform.Desktop")]
 [assembly: InternalsVisibleTo("BEngine.Platform.Veldrid")]
 [assembly: InternalsVisibleTo("BEngine.Web")]
+[assembly: InternalsVisibleTo("BEngine.Player.WebHost")]
 [assembly: InternalsVisibleTo("BEngine.Player.AndroidHost")]
 [assembly: InternalsVisibleTo("BEngine.Tests")]
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.GpuImGui")]

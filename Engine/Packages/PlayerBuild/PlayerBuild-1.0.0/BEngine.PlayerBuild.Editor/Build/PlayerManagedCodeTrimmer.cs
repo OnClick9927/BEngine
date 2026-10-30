@@ -28,7 +28,9 @@ internal static class PlayerManagedCodeTrimmer
         PlayerStrippingSettings settings,
         PlayerStrippingReport report,
         IReadOnlySet<string> moduleAssemblies,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveModuleInitializers = false,
+        bool webCanonicalPlatform = false)
     {
         var files = EditorHostServices.FileSystem;
         var paths = EditorHostServices.Paths;
@@ -41,7 +43,7 @@ internal static class PlayerManagedCodeTrimmer
         var root = BuildRoots(inputs.Assemblies.Select(static a => a.AssemblyPath)
             .Concat(PlayerSerializationRoots.HostAssemblyPaths).Append(typeof(Transform).Assembly.Location)
             .Distinct(StringComparer.OrdinalIgnoreCase), assetFiles, settings, moduleAssemblies,
-            context.RuntimeManagedCodeAssemblyPaths);
+            context.RuntimeManagedCodeAssemblyPaths, preserveModuleInitializers);
         var descriptors = PlayerStrippingSettings.GetLinkDescriptors(workspace);
         var availableAssemblies = inputs.Assemblies.Select(static a => a.AssemblyPath)
             .Concat(AppDomain.CurrentDomain.GetAssemblies().Where(static a => !a.IsDynamic).Select(static a => a.Location))
@@ -74,6 +76,20 @@ internal static class PlayerManagedCodeTrimmer
         // The final closed-world host link retains its normal optimization policy.
         request.Arguments.Add("--disable-opt");
         request.Arguments.Add("unusedtypechecks");
+        WebStaticHostContractFeature.AddLinkerArguments(request.Arguments,
+            WebStaticHostContractFeature.IsCanonicalPassEnabled(context, webCanonicalPlatform));
+        if (webCanonicalPlatform && WebCanonicalScriptBuild.IsEnabled(context))
+        {
+            // Only the Web canonical graph is frozen for one known OS. Explicit
+            // substitutions let ILLink discard desktop branches without inferring
+            // unrelated host/framework constants from the editor's runtime.
+            // CoreLib remains skipped and is never rewritten by this partial pass.
+            // Parameterized/version predicates retain their normal runtime calls.
+            var platformDescriptor = paths.Combine(directory, "web-platform.substitutions.xml");
+            WebCanonicalPlatformSubstitutions.Create().Save(platformDescriptor);
+            request.Arguments.Add("--substitutions");
+            request.Arguments.Add(platformDescriptor);
+        }
         if (context.Request.IncludeDebugSymbols) request.Arguments.Add("-b");
         var references = inputs.Assemblies.Select(static a => a.AssemblyPath)
             .Concat(AppDomain.CurrentDomain.GetAssemblies().Where(static a => !a.IsDynamic)
@@ -133,7 +149,8 @@ internal static class PlayerManagedCodeTrimmer
 
     internal static XElement BuildRoots(IEnumerable<string> assemblyPaths, IEnumerable<string> assetFiles,
         PlayerStrippingSettings settings, IReadOnlySet<string>? moduleAssemblies = null,
-        IEnumerable<string>? typeDiscoveryAssemblyPaths = null)
+        IEnumerable<string>? typeDiscoveryAssemblyPaths = null,
+        bool preserveModuleInitializers = false)
     {
         var assemblyFiles = assemblyPaths.ToArray();
         var messageNames = GetStringConstants(assemblyFiles);
@@ -143,6 +160,8 @@ internal static class PlayerManagedCodeTrimmer
             if (!IsTextAsset(path)) continue;
             CollectAssetTypeNames(path, strings);
         }
+        if (preserveModuleInitializers)
+            CollectCodeActivatedTypes(assemblyFiles.Concat(typeDiscoveryAssemblyPaths ?? []), strings);
         // A Resources DTO may live in the game domain and expose package types in
         // its fields/base class. Discover that graph without rooting/loading the
         // game assembly in the startup domain.
@@ -167,8 +186,10 @@ internal static class PlayerManagedCodeTrimmer
                 var module = entryAssembly && type.Interfaces.Any(static i =>
                     i.InterfaceType.FullName is "BEngine.HotUpdate.IHotUpdateModule" or "BEngine.ISceneRuntimeSystem" or
                         "BEngine.DependencyInjection.IEngineServiceModule");
-                var initializers = entryAssembly ? type.Methods.Where(static m => m.CustomAttributes.Any(static a =>
-                    a.AttributeType.FullName == "BEngine.RuntimeInitializeOnLoadMethodAttribute")).ToArray() : [];
+                var initializers = entryAssembly ? type.Methods.Where(m =>
+                    preserveModuleInitializers && type.Name == "<Module>" && m.IsConstructor ||
+                    m.CustomAttributes.Any(static a =>
+                        a.AttributeType.FullName == "BEngine.RuntimeInitializeOnLoadMethodAttribute")).ToArray() : [];
                 var reflected = strings.Contains(name) || strings.Contains(type.Name);
                 if (!explicitRoot && !module && !reflected && initializers.Length == 0) continue;
                 var element = new XElement("type", new XAttribute("fullname", type.FullName),
@@ -201,6 +222,69 @@ internal static class PlayerManagedCodeTrimmer
         // removes them, the later host descriptor cannot restore the metadata.
         PlayerSerializationRoots.Add(root, assemblyFiles);
         return root;
+    }
+
+    private static void CollectCodeActivatedTypes(IEnumerable<string> paths, HashSet<string> names)
+    {
+        var assemblies = paths.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(AssemblyDefinition.ReadAssembly).ToArray();
+        try
+        {
+            var types = assemblies.SelectMany(static image => EnumerateTypes(image.MainModule.Types))
+                .GroupBy(static type => type.FullName, StringComparer.Ordinal)
+                .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.Ordinal);
+            var pending = new Queue<TypeDefinition>();
+            var activated = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var type in types.Values.Where(type =>
+                         names.Contains(type.FullName.Replace('/', '+')) || names.Contains(type.Name)))
+                Activate(type);
+            // These factories execute in a skipped Host assembly. Its reflection
+            // over constructors, callbacks and serialized fields is invisible to
+            // this partial linker, even when a concrete typeof(T) survives in IL.
+            foreach (var method in types.Values.SelectMany(static type => type.Methods).Where(static method => method.HasBody))
+            foreach (var instruction in method.Body.Instructions)
+            {
+                if (instruction.OpCode.Code == Code.Ldtoken && instruction.Operand is TypeReference token)
+                    Activate(token);
+                if (instruction.Operand is not GenericInstanceMethod generic ||
+                    !(generic.DeclaringType.FullName == "BEngine.GameObject" && generic.Name == "AddComponent" ||
+                      generic.DeclaringType.FullName == "BEngine.ScriptableObject" && generic.Name == "CreateInstance")) continue;
+                foreach (var argument in generic.GenericArguments) Activate(argument);
+            }
+            while (pending.TryDequeue(out var type))
+            {
+                if (type.BaseType is { } parent) Activate(parent);
+                foreach (var attribute in type.CustomAttributes.Where(static attribute =>
+                             attribute.AttributeType.FullName == "BEngine.RequireComponentAttribute"))
+                foreach (var argument in attribute.ConstructorArguments) ActivateArgument(argument.Value);
+            }
+
+            void ActivateArgument(object? value)
+            {
+                if (value is TypeReference reference) Activate(reference);
+                else if (value is CustomAttributeArgument[] arguments)
+                    foreach (var argument in arguments) ActivateArgument(argument.Value);
+            }
+            void Activate(TypeReference reference)
+            {
+                if (!types.TryGetValue(reference.GetElementType().FullName, out var type) ||
+                    !IsCreatable(type) || !activated.Add(type.FullName)) return;
+                names.Add(type.FullName.Replace('/', '+'));
+                pending.Enqueue(type);
+            }
+            bool IsCreatable(TypeDefinition type)
+            {
+                var visited = new HashSet<string>(StringComparer.Ordinal);
+                while (visited.Add(type.FullName))
+                {
+                    if (type.FullName is "BEngine.Component" or "BEngine.ScriptableObject") return true;
+                    if (type.BaseType is not { } parent ||
+                        !types.TryGetValue(parent.GetElementType().FullName, out type!)) return false;
+                }
+                return false;
+            }
+        }
+        finally { foreach (var assembly in assemblies) assembly.Dispose(); }
     }
 
     internal static string MethodSignature(MethodDefinition method) =>

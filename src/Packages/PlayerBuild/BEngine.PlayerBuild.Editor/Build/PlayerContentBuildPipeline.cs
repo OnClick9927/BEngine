@@ -143,6 +143,9 @@ internal static class PlayerContentBuildPipeline
             fileSystem,
             pathService);
         allReleaseInputs = PlayerProjectScriptCompiler.Compile(context, workspace, allReleaseInputs, fileSystem, cancellationToken);
+        allReleaseInputs = WebFontBackendSettings.FilterRuntimeInputs(allReleaseInputs,
+            context.Target.Platform == BuildTargetPlatform.Web, context.Request.WebFontBackend,
+            deferReferenceValidation: WebCanonicalScriptBuild.IsEnabled(context));
         context.RuntimeManagedCodeAssemblyPaths = allReleaseInputs.Assemblies
             .Select(static assembly => assembly.AssemblyPath)
             .ToArray();
@@ -220,7 +223,12 @@ internal static class PlayerContentBuildPipeline
                 includedPathSet, report);
             context.RuntimeManagedCodeAssemblyPaths = allReleaseInputs.Assemblies
                 .Where(static a => !a.Name.Equals(AotAssemblyName, StringComparison.OrdinalIgnoreCase))
-                .Concat(releaseInputs.Assemblies).Select(static a => a.AssemblyPath).ToArray();
+                // This pass only links the startup module's reachable contracts.
+                // The static Host must keep its original image until the final
+                // application link, which also sees the platform entry point.
+                .Concat(releaseInputs.Assemblies.Where(static a =>
+                    !DynamicManagedCodeTrimmerDescriptor.IsHostAssembly(a.Name)))
+                .Select(static a => a.AssemblyPath).ToArray();
             var reportDirectory = pathService.Combine(workspace.RootPath, "Temp", "BuildReports");
             fileSystem.CreateDirectory(reportDirectory);
             context.StrippingReportPath = pathService.Combine(reportDirectory,
@@ -261,13 +269,36 @@ internal static class PlayerContentBuildPipeline
             fileSystem.WriteAllText(context.StrippingReportPath!, YamlUtility.Serialize(strippingReport));
         }
         releaseInputs = PlayerShaderBuildPipeline.AddArtifacts(context, releaseInputs, includedAssets, cancellationToken);
+        // Validate the final admitted assets for every explicit FreeType Web build,
+        // including interpreter/non-Full builds and standalone content updates.
+        WebCanonicalScriptBuild.ValidateFontBackend(context,
+            assetPaths.Select(path => workspace.ResolveInside(path))
+                .Concat(releaseInputs.PackageResources.Select(static resource => resource.FilePath)),
+            fileSystem, pathService, cancellationToken);
+        var canonicalWebScripts = WebCanonicalScriptBuild.IsEnabled(context);
+        if (canonicalWebScripts)
+        {
+            allReleaseInputs = await WebCanonicalScriptBuild.CreateAsync(context, workspace, allReleaseInputs,
+                projectPartition.BuiltInAssets.Concat(projectPartition.HotUpdateAssets)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal)
+                    .Select(path => workspace.ResolveInside(path)), cancellationToken).ConfigureAwait(false);
+            if (partition == PlayerContentPartition.HotUpdate)
+            {
+                // AB and native code must consume the same final images. Keep the
+                // partition's already filtered resources and generated shaders.
+                var canonicalHotUpdate = SelectHotUpdateReleaseInputs(allReleaseInputs);
+                releaseInputs = new RuntimeManagedCodeReleaseInputSet(canonicalHotUpdate.Assemblies,
+                    releaseInputs.PackageResources, releaseInputs.PackageResourceRoots);
+            }
+            context.RuntimeManagedCodeAssemblyPaths = allReleaseInputs.Assemblies
+                .Select(static input => input.AssemblyPath).ToArray();
+        }
         if (partition == PlayerContentPartition.BuiltInAot && context.Target.Platform == BuildTargetPlatform.Web &&
             context.Request.WebScriptCompilation == WebScriptCompilationMode.AheadOfTime)
         {
-            // Native scripts bind package metadata from the SDK/default context.
-            // The bootstrap must use those same original package images. Resolve
-            // only code dependencies here, after the asset closure is finalized.
-            releaseInputs = WebCanonicalScriptInputs.Select(releaseInputs, allReleaseInputs);
+            // Both runtime stages bind the same final package metadata. Full builds
+            // use their joint linked images; other modes retain original images.
+            releaseInputs = WebCanonicalScriptInputs.Select(releaseInputs, allReleaseInputs, canonicalWebScripts);
             context.RuntimeManagedCodeAssemblyPaths = allReleaseInputs.Assemblies
                 .Where(static input => !input.Name.Equals(AotAssemblyName, StringComparison.OrdinalIgnoreCase))
                 .Concat(releaseInputs.Assemblies)
@@ -288,7 +319,9 @@ internal static class PlayerContentBuildPipeline
                     entry.Included = true;
                     entry.PublishedBytes = input.AssemblySize;
                     entry.StoredBytes = null;
-                    entry.Reason = "Canonical original image shared with precompiled Web scripts";
+                    entry.Reason = canonicalWebScripts
+                        ? "Canonical linked image shared with precompiled Web scripts"
+                        : "Canonical original image shared with precompiled Web scripts";
                 }
                 if (!string.IsNullOrWhiteSpace(context.StrippingReportPath))
                     fileSystem.WriteAllText(context.StrippingReportPath, YamlUtility.Serialize(canonicalReport));
@@ -512,12 +545,22 @@ internal static class PlayerContentBuildPipeline
         var address = localIdentifier > 0
             ? AssetBundleValidation.CreateSubAssetAddress(ownerGuid, localIdentifier)
             : NormalizeAssetPath(asset.AssetPath);
-        if (!asset.ParentGuid.HasValue &&
-            PlatformAssetBuildPipeline.TryBuildArtifact(asset.SourcePath, asset.SourceHash, artifactPath,
-                asset.AssetType, metadata.Importer ?? string.Empty, metadata.Settings ?? [],
-                targetPlatform, fileSystem, pathService, cancellationToken, out var encoded, out var effective))
-            return BuiltInResourceArchiveWriteEntry.FromMemory(address, encoded, asset.AssetType,
-                asset.Guid, ownerGuid, localIdentifier, metadata.Importer ?? string.Empty, effective);
+        if (!asset.ParentGuid.HasValue)
+        {
+            byte[]? content = null;
+            IReadOnlyDictionary<string, string> settings = metadata.Settings ?? [];
+            if (PlatformAssetBuildPipeline.TryBuildArtifact(asset.SourcePath, asset.SourceHash, artifactPath,
+                    asset.AssetType, metadata.Importer ?? string.Empty, settings,
+                    targetPlatform, fileSystem, pathService, cancellationToken, out var encoded, out var effective))
+            { content = encoded; settings = effective; }
+            if (asset.AssetType == "Scene" && PlatformAssetBuildPipeline.TryCompileRuntimeArtifact(asset.SourcePath, asset.AssetType,
+                    artifactPath, asset.ArtifactHash, content, settings, fileSystem, cancellationToken,
+                    out var compiled, out var compiledSettings))
+            { content = compiled; settings = compiledSettings; }
+            if (content is not null)
+                return BuiltInResourceArchiveWriteEntry.FromMemory(address, content, asset.AssetType,
+                    asset.Guid, ownerGuid, localIdentifier, metadata.Importer ?? string.Empty, settings);
+        }
         return CaptureFileEntry(
             address,
             artifactPath,
@@ -622,7 +665,7 @@ internal static class PlayerContentBuildPipeline
                              Convert.ToHexString(releaseHash.GetHashAndReset()).ToLowerInvariant()[..24];
         entries.Add(BuiltInResourceArchiveWriteEntry.FromMemory(
             ManagedCodeReleaseManifest.DefaultAddress,
-            ManagedCodeReleaseManifestSerializer.Serialize(manifest),
+            ManagedCodeReleaseManifestSerializer.SerializeRuntime(manifest, cancellationToken),
             "ManagedCodeReleaseManifest",
             importer: "BEngineHotUpdate"));
     }

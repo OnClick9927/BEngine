@@ -39,6 +39,9 @@ internal sealed class BuiltInResourceArchive
     private readonly long _payloadStart;
     private readonly Dictionary<string, BuiltInResourceArchiveEntry> _entries;
     private readonly IReadOnlyList<BuiltInResourceArchiveEntry> _orderedEntries;
+    private readonly long _sourceLength;
+    private readonly DateTime _sourceLastWriteTime;
+    private readonly byte[] _header;
 
     private BuiltInResourceArchive(
         string path,
@@ -46,12 +49,18 @@ internal sealed class BuiltInResourceArchive
         int version,
         long payloadStart,
         IEnumerable<BuiltInResourceArchiveEntry> entries,
-        ContentEncryptionKey? encryptionKey)
+        ContentEncryptionKey? encryptionKey,
+        long sourceLength,
+        DateTime sourceLastWriteTime,
+        byte[] header)
     {
         _path = path;
         _fileSystem = fileSystem;
         _version = version;
         EncryptionKey = encryptionKey;
+        _sourceLength = sourceLength;
+        _sourceLastWriteTime = sourceLastWriteTime;
+        _header = header;
         _payloadStart = payloadStart;
         _orderedEntries = Array.AsReadOnly(entries.OrderBy(
             static entry => entry.Address, StringComparer.Ordinal).ToArray());
@@ -60,6 +69,37 @@ internal sealed class BuiltInResourceArchive
     }
 
     internal IReadOnlyList<BuiltInResourceArchiveEntry> Entries => _orderedEntries;
+    internal string SourcePath => _path;
+
+    // Only reuse an archive explicitly owned by the current startup/workspace.
+    // The header also detects normal atomic replacements that preserve timestamps.
+    // Payload reads retain their existing individual integrity checks.
+    internal bool IsCurrentSource(string path, FileUtility fileSystem, PathUtility paths)
+    {
+        if (!ReferenceEquals(fileSystem, _fileSystem) ||
+            !paths.GetFullPath(path).Equals(_path, StringComparison.Ordinal) ||
+            !fileSystem.FileExists(_path) ||
+            fileSystem.GetFileLength(_path) != _sourceLength ||
+            fileSystem.GetLastWriteTimeUtc(_path) != _sourceLastWriteTime)
+            return false;
+        try
+        {
+            using var stream = ContentEncryption.OpenRead(fileSystem.OpenFile(
+                _path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                4096, FileOptions.RandomAccess), EncryptionKey, EncryptionKey is not null);
+            if (stream.Length < _header.Length) return false;
+            Span<byte> header = stackalloc byte[HeaderSize];
+            var current = header[.._header.Length];
+            stream.ReadExactly(current);
+            return current.SequenceEqual(_header);
+        }
+        catch (InvalidDataException)
+        {
+            // A replacement may embed a new key. This is only an identity probe:
+            // the caller must reopen and fully validate the current archive.
+            return false;
+        }
+    }
 
     internal static void Write(
         string path,
@@ -187,6 +227,8 @@ internal sealed class BuiltInResourceArchive
         fileSystem ??= RuntimeServiceAccess.FileSystem;
         pathService ??= RuntimeServiceAccess.PathService;
         var archivePath = pathService.GetFullPath(path);
+        var sourceLength = fileSystem.GetFileLength(archivePath);
+        var sourceLastWriteTime = fileSystem.GetLastWriteTimeUtc(archivePath);
         using var stream = ContentEncryption.OpenRead(fileSystem.OpenFile(
             archivePath, FileMode.Open, FileAccess.Read, FileShare.Read,
             64 * 1024, FileOptions.SequentialScan), encryptionKey, encryptionKey is not null);
@@ -233,9 +275,12 @@ internal sealed class BuiltInResourceArchive
                     "Built-in resource archive index failed its SHA-256 integrity check.");
         }
         var parsed = ReadIndex(indexBytes, entryCount, payloadLength, version);
+        stream.Position = 0;
+        var header = new byte[expectedHeaderSize];
+        stream.ReadExactly(header);
         return new BuiltInResourceArchive(
             archivePath, fileSystem, version, expectedHeaderSize + indexLength, parsed,
-            ContentEncryption.GetKey(stream));
+            ContentEncryption.GetKey(stream), sourceLength, sourceLastWriteTime, header);
     }
 
     internal bool TryGetEntry(string address, out BuiltInResourceArchiveEntry entry)
@@ -290,14 +335,22 @@ internal sealed class BuiltInResourceArchive
         var bytes = new byte[checked((int)entry.Size)];
         using var stream = OpenPayload(entry);
         var offset = 0;
-        while (offset < bytes.Length)
+        var context = new AsyncLoadContext(cancellationToken);
+        // Share the current cooperative budget rather than forcing one frame
+        // per block. A short physical read must still fill this bounded block.
+        if (bytes.Length > 0) await context.RunSteps(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var read = stream.Read(bytes, offset, Math.Min(64 * 1024, bytes.Length - offset));
-            if (read == 0) throw new EndOfStreamException("Built-in resource payload is truncated.");
-            offset += read;
-            if (offset < bytes.Length) await BValueTask.Yield();
-        }
+            var end = offset + Math.Min(64 * 1024, bytes.Length - offset);
+            while (offset < end)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var read = stream.Read(bytes, offset, end - offset);
+                if (read == 0) throw new EndOfStreamException("Built-in resource payload is truncated.");
+                offset += read;
+            }
+            return offset == bytes.Length ? CooperativeWorkStatus.Complete : CooperativeWorkStatus.Continue;
+        });
         cancellationToken.ThrowIfCancellationRequested();
         ValidateDecodedLength(stream, entry);
         VerifyPayload(entry, bytes);
@@ -633,6 +686,14 @@ internal sealed class BuiltInResourceArchive
     {
         if (streamOffset < 0) throw new ArgumentOutOfRangeException(nameof(streamOffset));
 
+        // Browser SHA providers allocate a full managed state per short hash.
+        // Reuse the constant first SHA block for the archive's two-block counter
+        // inputs. Other platforms retain their accelerated native provider.
+        var prefixLength = domain.Length + seed.Length;
+        var browserCounter = OperatingSystem.IsBrowser() && bytes.Length != 0 &&
+            prefixLength is >= 64 and < 112
+            ? new BuiltInResourceCounterSha256(domain, seed) : null;
+
         // This deterministic transform prevents loose plaintext disclosure. It is intentionally
         // obfuscation, not encryption: the algorithm and all seed material ship with the Player.
         Span<byte> counterInput = stackalloc byte[domain.Length + seed.Length + sizeof(ulong)];
@@ -645,8 +706,12 @@ internal sealed class BuiltInResourceArchive
         var position = 0;
         while (position < bytes.Length)
         {
-            BinaryPrimitives.WriteUInt64LittleEndian(counterInput[counterPosition..], block);
-            SHA256.HashData(counterInput, keyStream);
+            if (browserCounter is not null) browserCounter.Hash(block, keyStream);
+            else
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(counterInput[counterPosition..], block);
+                SHA256.HashData(counterInput, keyStream);
+            }
             var count = Math.Min(HashSize - blockOffset, bytes.Length - position);
             for (var index = 0; index < count; index++)
                 bytes[position + index] ^= keyStream[blockOffset + index];

@@ -43,6 +43,11 @@ internal static class PlayerProjectScriptCompiler
         };
         var settings = ProjectScriptCompiler.CreateBuildConfiguration(workspace, false, configuration, platform, architecture)
             with { IsPlayerBuild = true };
+        settings = settings with
+        {
+            DefineSymbols = WebFontBackendSettings.PlayerDefines(settings.DefineSymbols,
+                context.Target.Platform == BuildTargetPlatform.Web, context.Request.WebFontBackend)
+        };
         inputs = CompilePackages(context, workspace, inputs, settings, files, cancellationToken);
         var references = inputs.Assemblies.Where(static input => !input.Origin.StartsWith("project:", StringComparison.Ordinal))
             .ToDictionary(static input => input.Name, static input => input.AssemblyPath, StringComparer.OrdinalIgnoreCase);

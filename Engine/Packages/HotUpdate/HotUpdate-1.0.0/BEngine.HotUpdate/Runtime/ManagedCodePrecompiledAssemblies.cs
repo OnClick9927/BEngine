@@ -75,11 +75,15 @@ public static class ManagedCodePrecompiledAssemblies
     {
         ArgumentNullException.ThrowIfNull(release);
         cancellationToken.ThrowIfCancellationRequested();
+        using var validationTiming = ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.PrecompiledValidateAndClaim);
         Dictionary<string, Registration> registrations;
-        lock (Gate)
+        using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.PrecompiledRegistrationSnapshot))
         {
-            if (Registrations.Count == 0) return null;
-            registrations = new Dictionary<string, Registration>(Registrations, StringComparer.OrdinalIgnoreCase);
+            lock (Gate)
+            {
+                if (Registrations.Count == 0) return null;
+                registrations = new Dictionary<string, Registration>(Registrations, StringComparer.OrdinalIgnoreCase);
+            }
         }
         var validated = new Dictionary<string, ValidatedAssembly>(StringComparer.OrdinalIgnoreCase);
         // Complete every hash/metadata/default-context check before claiming a
@@ -88,21 +92,30 @@ public static class ManagedCodePrecompiledAssemblies
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!registrations.TryGetValue(module.Name, out var registration)) continue;
-            var image = module.GetAssemblyImage();
-            if (!Convert.ToHexString(SHA256.HashData(image)).Equals(registration.Sha256, StringComparison.Ordinal))
-                throw RebuildRequired(module.Name, "its release code hash differs from the Player");
-            var identity = ReadIdentity(image, module.GetSymbols(), registration);
-            if (ManagedCodeHostAssemblies.Find(module.Name) is not null)
-                throw RebuildRequired(module.Name, "it was incorrectly registered as a shared host assembly");
-            foreach (var loaded in AssemblyLoadContext.Default.Assemblies)
+            byte[] image;
+            using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.PrecompiledImageCopy))
+                image = module.GetAssemblyImage();
+            using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.PrecompiledSha256, image.Length))
+                if (!Convert.ToHexString(SHA256.HashData(image)).Equals(registration.Sha256, StringComparison.Ordinal))
+                    throw RebuildRequired(module.Name, "its release code hash differs from the Player");
+            ValidatedAssembly identity;
+            using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.PrecompiledMetadataAndSymbols))
+                identity = ReadIdentity(image, module.GetSymbols(), registration);
+            using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.PrecompiledValidateLoadedAssemblies))
             {
-                if (!module.Name.Equals(loaded.GetName().Name, StringComparison.OrdinalIgnoreCase)) continue;
-                VerifyLoaded(loaded, identity);
+                if (ManagedCodeHostAssemblies.Find(module.Name) is not null)
+                    throw RebuildRequired(module.Name, "it was incorrectly registered as a shared host assembly");
+                foreach (var loaded in AssemblyLoadContext.Default.Assemblies)
+                {
+                    if (!module.Name.Equals(loaded.GetName().Name, StringComparison.OrdinalIgnoreCase)) continue;
+                    VerifyLoaded(loaded, identity);
+                }
             }
             validated.Add(module.Name, identity);
         }
         cancellationToken.ThrowIfCancellationRequested();
         if (validated.Count == 0) return null;
+        using var claimTiming = ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.PrecompiledClaim);
         lock (Gate)
         {
             cancellationToken.ThrowIfCancellationRequested();

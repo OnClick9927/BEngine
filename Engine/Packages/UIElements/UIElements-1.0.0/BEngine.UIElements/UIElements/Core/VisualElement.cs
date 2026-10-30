@@ -133,6 +133,7 @@ public class VisualElement : IBindable
     public VisualElement? parent { get; private set; }
     public IReadOnlyList<VisualElement> Children => _children;
     public IReadOnlyCollection<string> classList => _classList;
+    internal void CopyClassesTo(string[] destination) => _classList.CopyTo(destination);
 
     internal event Action<VisualElement>? changed;
     internal event Action<VisualElement>? hierarchyChanged;

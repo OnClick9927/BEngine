@@ -67,11 +67,12 @@
           AfterTargets="_GetDefaultWasmAssembliesToBundle"
           Condition="'$(RunAOTCompilation)' == 'true'">
     <ItemGroup>
-      <!-- Cold external decoder generics can exhaust the AOT compiler's memory.
-           Reloadable packages remain interpreted; Core and the platform/Host
-           use the generated static-method profile with interpreter fallback. -->
+      <!-- Static Host services share the Host's native-method profile. They are
+           registered as shared assemblies, rather than reloadable packages.
+           Canonical script inputs can override the remaining package policy.
+           Cold external decoder generics retain their interpreter fallback. -->
       <WasmAssembliesToBundle
-          Condition="'%(WasmAssembliesToBundle.FileName)' == 'AssetRipper.TextureDecoder' or ($([System.String]::Copy('%(WasmAssembliesToBundle.FileName)').StartsWith('BEngine.')) and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Player.WebHost' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Player' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Web' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Platform.DotNet')"
+          Condition="'%(WasmAssembliesToBundle.FileName)' == 'AssetRipper.TextureDecoder' or ($([System.String]::Copy('%(WasmAssembliesToBundle.FileName)').StartsWith('BEngine.')) and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Player.WebHost' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Player' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Web' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Platform.DotNet' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.AssetBundles' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.HotUpdate' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Networking' and '%(WasmAssembliesToBundle.FileName)' != 'BEngine.Diagnostics')"
           AOT_InternalForceToInterpret="true" />
     </ItemGroup>
   </Target>

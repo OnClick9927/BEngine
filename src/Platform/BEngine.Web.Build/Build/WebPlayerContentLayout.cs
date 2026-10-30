@@ -10,7 +10,8 @@ internal static class WebPlayerContentLayout
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "index.html", "player.bin", "framework.bin", "main.js", "framework.js", "text.js", "video.js",
-        "bengine-content.json", "bengine-content", "_framework", "brotli-decoder.wasm", "BrotliDecoder.LICENSE.txt"
+        "bengine-content.json", "bengine-content", "_framework", "brotli-decoder.wasm", "BrotliDecoder.LICENSE.txt",
+        "FreeType.LICENSE.txt"
     };
 
     internal static void Apply(string stagingRoot, string webRoot, FileUtility files, PathUtility paths,

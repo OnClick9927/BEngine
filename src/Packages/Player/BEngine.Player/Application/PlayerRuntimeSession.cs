@@ -267,10 +267,18 @@ public static class BEnginePlayer
         string? playerDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.AddBEnginePlatformServices();
-        services.AddBEnginePlayerPlatformServices();
-        services.AddBEnginePlayerManagedCodeServices();
-        using var provider = services.BuildServiceProvider();
+        using var resolveTiming = PlayerStartupPerformanceDiagnostics.Begin("resolve.total");
+        using (PlayerStartupPerformanceDiagnostics.Begin("resolve.registration"))
+        {
+            services.AddBEnginePlatformServices();
+            services.AddBEnginePlayerPlatformServices();
+            services.AddBEnginePlayerManagedCodeServices();
+        }
+        ServiceProvider provider;
+        using (PlayerStartupPerformanceDiagnostics.Begin("resolve.provider"))
+            provider = services.BuildServiceProvider();
+        using var providerLifetime = provider;
+        using var resolverTiming = PlayerStartupPerformanceDiagnostics.Begin("resolve.resolverAndMetadata");
         return provider.GetRequiredService<IPlayerStartupResolver>()
             .ResolveDefaultProjectPath(playerDirectory);
     }
@@ -289,25 +297,37 @@ public static class BEnginePlayer
         string? persistentDataPath = null)
     {
         ArgumentNullException.ThrowIfNull(services);
+        using var createTiming = PlayerStartupPerformanceDiagnostics.Begin("create.total");
         if (declareAotInterpreter) AotInterpreterRuntimeHost.DeclareInterpreterEnabled();
-        services.AddBEnginePlatformServices();
-        services.AddBEnginePlayerPlatformServices();
-        services.AddBEnginePlayerManagedCodeServices();
-        var platformServices = services.BuildServiceProvider();
+        using (PlayerStartupPerformanceDiagnostics.Begin("create.registration"))
+        {
+            services.AddBEnginePlatformServices();
+            services.AddBEnginePlayerPlatformServices();
+            services.AddBEnginePlayerManagedCodeServices();
+        }
+        ServiceProvider platformServices;
+        using (PlayerStartupPerformanceDiagnostics.Begin("create.provider"))
+            platformServices = services.BuildServiceProvider();
         ServiceProvider? originalPlatformServices = null;
         try
         {
-            persistentDataPath = PlayerPersistentApplicationPaths.Configure(
-                services, persistentDataPath, platformServices);
-            if (persistentDataPath is not null)
+            using (PlayerStartupPerformanceDiagnostics.Begin("create.persistentPaths"))
             {
-                originalPlatformServices = platformServices;
-                platformServices = services.BuildServiceProvider();
+                persistentDataPath = PlayerPersistentApplicationPaths.Configure(
+                    services, persistentDataPath, platformServices);
+                if (persistentDataPath is not null)
+                {
+                    originalPlatformServices = platformServices;
+                    platformServices = services.BuildServiceProvider();
+                }
             }
             // AOT and game stages must observe the same input, focus and display state
             // configured by the embedding host before asynchronous startup completes.
-            services.ShareBEnginePlatformState(platformServices);
-            RuntimeTypeCache.Warmup();
+            using (PlayerStartupPerformanceDiagnostics.Begin("create.sharePlatformState"))
+                services.ShareBEnginePlatformState(platformServices);
+            using (PlayerStartupPerformanceDiagnostics.Begin("create.runtimeTypeCache"))
+                RuntimeTypeCache.Warmup();
+            using var constructionTiming = PlayerStartupPerformanceDiagnostics.Begin("create.sessionAndArguments");
             return new PlayerRuntimeSession(
                 projectPath,
                 persistentDataPath,
@@ -392,6 +412,7 @@ public sealed class PlayerRuntimeSession : IDisposable
         ServiceProvider startupServices,
         IDisposable? originalStartupServices = null)
     {
+        using var sessionTiming = PlayerStartupPerformanceDiagnostics.Begin("session.constructor");
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
         ArgumentNullException.ThrowIfNull(assetBundleManagerFactory);
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -400,11 +421,13 @@ public sealed class PlayerRuntimeSession : IDisposable
         _startupServices = startupServices ?? throw new ArgumentNullException(nameof(startupServices));
         _originalStartupServices = originalStartupServices;
         ArgumentNullException.ThrowIfNull(runtimeServices);
-        ReplaceRuntimeServices(startupServices);
+        using (PlayerStartupPerformanceDiagnostics.Begin("session.attachServices"))
+            ReplaceRuntimeServices(startupServices);
         string fullProjectPath;
         ProjectWorkspace runtimeWorkspace;
         try
         {
+            using var workspaceTiming = PlayerStartupPerformanceDiagnostics.Begin("session.openRuntimeWorkspace");
             fullProjectPath = _pathService.GetFullPath(projectPath);
             runtimeWorkspace = PlayerWorkspace.OpenRuntime(
                 fullProjectPath, _fileSystem, _pathService);
@@ -419,14 +442,18 @@ public sealed class PlayerRuntimeSession : IDisposable
         {
             try
             {
-                var stagedSettings = ProjectRuntimeSettings.LoadAndApply(
-                    runtimeWorkspace, _fileSystem, _pathService);
-                Application.companyName = stagedSettings.CompanyName;
-                Application.productName = stagedSettings.ProductName;
-                Application.isEditor = false;
-                Application.isPlaying = false;
-                Time.fixedDeltaTime = Fix64.Parse(Workspace.Project.FixedDeltaTime);
-                _isAotStage = true;
+                using (PlayerStartupPerformanceDiagnostics.Begin("session.settings"))
+                {
+                    var stagedSettings = ProjectRuntimeSettings.LoadAndApply(
+                        runtimeWorkspace, _fileSystem, _pathService);
+                    Application.companyName = stagedSettings.CompanyName;
+                    Application.productName = stagedSettings.ProductName;
+                    Application.isEditor = false;
+                    Application.isPlaying = false;
+                    Time.fixedDeltaTime = Fix64.Parse(Workspace.Project.FixedDeltaTime);
+                    _isAotStage = true;
+                }
+                using var coordinatorTiming = PlayerStartupPerformanceDiagnostics.Begin("session.coordinatorSynchronousPrefix");
                 _bootstrapOperation = PlayerStagedRuntimeCoordinator.CreateAsync(
                     fullProjectPath,
                     persistentDataPath,
@@ -437,7 +464,8 @@ public sealed class PlayerRuntimeSession : IDisposable
                     platformService,
                     startupServices.GetRequiredService<ApplicationPathUtility>(),
                     startupServices.GetRequiredService<IManagedCodeRuntimeFactory>(),
-                    _lifetime.Token).AsBTask();
+                    _lifetime.Token,
+                    runtimeWorkspace).AsBTask();
             }
             catch
             {
@@ -448,6 +476,7 @@ public sealed class PlayerRuntimeSession : IDisposable
         }
         try
         {
+            using var legacyProviderTiming = PlayerStartupPerformanceDiagnostics.Begin("session.legacyProvider");
             _services = runtimeServices
                 .AddBEnginePlayer(fullProjectPath, persistentDataPath)
                 .BuildServiceProvider(new ServiceProviderOptions
@@ -464,6 +493,7 @@ public sealed class PlayerRuntimeSession : IDisposable
         ReplaceRuntimeServices(_services);
         try
         {
+            using var legacyInitializationTiming = PlayerStartupPerformanceDiagnostics.Begin("session.legacyInitialization");
             Workspace = _services.GetRequiredService<ProjectWorkspace>();
             var projectSettings = _services.GetRequiredService<ProjectSettingsData>();
             Application.companyName = projectSettings.CompanyName;
@@ -509,6 +539,7 @@ public sealed class PlayerRuntimeSession : IDisposable
     public bool IsStarted => _started;
     public bool CanRender => _runtimeStageStarted && ActiveScene is not null;
     public IAotStartupFlow? StartupFlow => _stagedRuntime?.Flow;
+    public bool IsStartupPrepared => _stagedRuntime is not null || _bootstrapOperation is null;
     internal bool IsDisposalPending => _disposeOperation is { IsCompleted: false };
 
     /// <summary>Attaches the presentation device owned by an embedded mobile or browser host.</summary>
@@ -791,6 +822,7 @@ public sealed class PlayerRuntimeSession : IDisposable
         }
 
         _stagedRuntime = staged;
+        PlayerStartupEnvironment.Current?.Complete();
         _assetBundles = staged.UpdateBootstrap;
         _services = staged.AotStage.Services;
         ReplaceRuntimeServices(_services);
@@ -804,6 +836,7 @@ public sealed class PlayerRuntimeSession : IDisposable
     private void TryStartRuntimeStage()
     {
         if (!_started || _runtimeStageStarted || _sceneManager is null) return;
+        if (PlayerStartupEnvironment.Current is { CanContinue: false }) return;
         var started = 0;
         try
         {

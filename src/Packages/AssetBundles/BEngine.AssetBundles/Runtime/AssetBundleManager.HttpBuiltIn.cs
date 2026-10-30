@@ -83,16 +83,14 @@ public sealed partial class AssetBundleManager
         progress?.Report(new(AssetBundleLoadKind.Catalog, AssetBundleLoadPhase.Opening, version.CatalogFile, catalogBytes.Length, version.CatalogSize));
         await BTask.Yield();
         cancellationToken.ThrowIfCancellationRequested();
-        var catalog = AssetBundleCatalogSerializer.DeserializeCatalog(catalogBytes);
-        ValidateCatalogPair(version, catalog);
-        ValidateCatalogLimits(catalog);
+        var catalog = DeserializeCatalogPair(version, catalogBytes, out var indexSeeds);
         ThrowIfDisposed();
         _builtInBundleUris.Clear();
         foreach (var descriptor in catalog.Bundles)
             _builtInBundleUris[descriptor.Sha256] = HttpContentUri(releaseRoot, "bundles/" + descriptor.FileName);
         progress?.Report(new(AssetBundleLoadKind.Catalog, AssetBundleLoadPhase.Completed, version.CatalogFile, catalogBytes.Length, version.CatalogSize));
         // Only the catalog is read at initialization. Bundle existence and integrity are checked on first use.
-        return new RuntimeState(version, catalog, catalogBytes);
+        return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
     }
 
     private static Uri HttpContentUri(Uri root, string relativePath)
@@ -113,7 +111,7 @@ public sealed partial class AssetBundleManager
                 using var handler = new MemoryBundleDownloadHandler(descriptor, _options.MaximumBundleSize);
                 await SendHttpStreamingAsync(uri, AssetBundleHttpResourceKind.Bundle,
                     attempt + 1, handler, cancellationToken, descriptor.Name, descriptor.Size, progress);
-                return handler.TakeVerifiedStream();
+                return await handler.TakeVerifiedStreamAsync(cancellationToken);
             }
             catch (Exception exception) when (!_disposed && IsRetryable(exception, cancellationToken) && attempt < _options.MaxRetries)
             {
@@ -123,38 +121,78 @@ public sealed partial class AssetBundleManager
         }
     }
 
-    private sealed class MemoryBundleDownloadHandler(AssetBundleDescriptor descriptor, long maximumSize)
-        : IHttpDownloadHandler, IDisposable
+    private sealed class MemoryBundleDownloadHandler : IHttpDownloadHandler, IDisposable
     {
-        private readonly IncrementalHash _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        private readonly AssetBundleDescriptor _descriptor;
+        private readonly long _maximumSize;
+        private readonly bool _useNativeHash;
+        private readonly IncrementalHash? _hash;
+        private readonly IBrowserAssetBundleHashBridge? _nativeBridge;
         private byte[]? _bytes;
         private int _received;
+        private bool _nativeVerified;
+
+        internal MemoryBundleDownloadHandler(AssetBundleDescriptor descriptor, long maximumSize)
+            : this(descriptor, maximumSize, null) { }
+
+        internal MemoryBundleDownloadHandler(AssetBundleDescriptor descriptor, long maximumSize, IBrowserAssetBundleHashBridge? nativeBridge)
+        {
+            _descriptor = descriptor; _maximumSize = maximumSize;
+            _nativeBridge = nativeBridge;
+            _useNativeHash = nativeBridge is null ? BrowserAssetBundleHash.IsSupported(descriptor.Size)
+                : BrowserAssetBundleHash.IsSupported(descriptor.Size, nativeBridge);
+            _hash = _useNativeHash ? null : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        }
 
         public void ReceiveResponse(HttpTransportResponse response)
         {
             if (!IsSuccess(response.StatusCode)) return;
-            if (descriptor.Size > maximumSize || descriptor.Size > Array.MaxLength || descriptor.Size < 0)
-                throw new InvalidDataException($"HTTP bundle '{descriptor.Name}' exceeds its memory size limit.");
-            if (TryGetContentLength(response, out var length) && length != descriptor.Size)
-                throw new InvalidDataException($"HTTP bundle '{descriptor.Name}' has an unexpected Content-Length.");
-            _bytes = new byte[(int)descriptor.Size];
+            if (_descriptor.Size > _maximumSize || _descriptor.Size > Array.MaxLength || _descriptor.Size < 0)
+                throw new InvalidDataException($"HTTP bundle '{_descriptor.Name}' exceeds its memory size limit.");
+            if (TryGetContentLength(response, out var length) && length != _descriptor.Size)
+                throw new InvalidDataException($"HTTP bundle '{_descriptor.Name}' has an unexpected Content-Length.");
+            _bytes = new byte[(int)_descriptor.Size];
         }
 
         public void ReceiveData(ReadOnlyMemory<byte> data)
         {
             if (_bytes is null) return;
             if (data.Length > _bytes.Length - _received)
-                throw new InvalidDataException($"HTTP bundle '{descriptor.Name}' exceeds its declared size.");
-            data.Span.CopyTo(_bytes.AsSpan(_received));
-            _hash.AppendData(data.Span);
+                throw new InvalidDataException($"HTTP bundle '{_descriptor.Name}' exceeds its declared size.");
+            using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.HttpCopy, data.Length))
+                data.Span.CopyTo(_bytes.AsSpan(_received));
+            if (_hash is not null)
+                using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.HttpSha, data.Length))
+                    _hash.AppendData(data.Span);
             _received += data.Length;
+        }
+
+        internal async BValueTask<Stream> TakeVerifiedStreamAsync(BCancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_useNativeHash)
+            {
+                if (_bytes is null || _received != _descriptor.Size)
+                    throw new InvalidDataException($"HTTP bundle '{_descriptor.Name}' failed size verification.");
+                using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.HttpSha, _bytes.Length))
+                {
+                    if (_nativeBridge is null)
+                        await BrowserAssetBundleHash.VerifyAsync(_bytes, _descriptor.Sha256, cancellationToken);
+                    else await BrowserAssetBundleHash.VerifyAsync(_bytes, _descriptor.Sha256, cancellationToken, _nativeBridge);
+                }
+                _nativeVerified = true;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return TakeVerifiedStream();
         }
 
         internal Stream TakeVerifiedStream()
         {
-            if (_bytes is null || _received != descriptor.Size ||
-                !Convert.ToHexString(_hash.GetHashAndReset()).Equals(descriptor.Sha256, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException($"HTTP bundle '{descriptor.Name}' failed size/SHA-256 verification.");
+            using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.HttpSha);
+            if (_bytes is null || _received != _descriptor.Size ||
+                (_useNativeHash ? !_nativeVerified :
+                    !Convert.ToHexString(_hash!.GetHashAndReset()).Equals(_descriptor.Sha256, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException($"HTTP bundle '{_descriptor.Name}' failed size/SHA-256 verification.");
             var stream = new MemoryStream(_bytes, writable: false);
             _bytes = null;
             return stream;
@@ -163,7 +201,7 @@ public sealed partial class AssetBundleManager
         public void Dispose()
         {
             _bytes = null;
-            _hash.Dispose();
+            _hash?.Dispose();
         }
     }
 }

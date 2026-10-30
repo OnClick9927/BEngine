@@ -130,13 +130,15 @@ public sealed class PlayerSplashScreen : IDisposable
     public void WaitForMinimumDuration(BCancellationToken cancellationToken = default) =>
         PlayerMainThread.Complete(WaitForMinimumDurationAsync(cancellationToken));
 
-    public BValueTask WaitForMinimumDurationAsync(BCancellationToken cancellationToken = default)
+    public async BValueTask WaitForMinimumDurationAsync(BCancellationToken cancellationToken = default)
     {
-        if (_minimumDuration <= TimeSpan.Zero) return BValueTask.CompletedTask;
-        var remaining = _minimumDuration - _platformService.GetElapsedTime(_shownTimestamp);
-        return remaining <= TimeSpan.Zero
-            ? BValueTask.CompletedTask
-            : new BValueTask(BTask.Delay(remaining, cancellationToken));
+        if (_minimumDuration <= TimeSpan.Zero) return;
+        var remaining = PlayerStartupEnvironment.Current is { } progress
+            ? TimeSpan.FromSeconds(Math.Max(0, PlayerStartupProgress.LogoFadeSeconds - progress.ElapsedSeconds))
+            : _minimumDuration - _platformService.GetElapsedTime(_shownTimestamp);
+        if (remaining > TimeSpan.Zero) await BTask.Delay(remaining, cancellationToken);
+        while (PlayerStartupEnvironment.Current is { CanContinue: false })
+            await BTask.Delay(8, cancellationToken);
     }
 
     public void Close()

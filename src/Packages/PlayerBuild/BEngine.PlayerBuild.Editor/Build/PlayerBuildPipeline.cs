@@ -127,6 +127,8 @@ public static class PlayerBuildPipeline
         var target = BEngine.Platform.BuildTargetUtility.Current.Get(request.TargetId);
         if (target.Platform == BuildTargetPlatform.Web && !Enum.IsDefined(request.WebScriptCompilation))
             throw new ArgumentOutOfRangeException(nameof(request.WebScriptCompilation));
+        if (target.Platform == BuildTargetPlatform.Web && !Enum.IsDefined(request.WebFontBackend))
+            throw new ArgumentOutOfRangeException(nameof(request.WebFontBackend));
         if (request.EncryptContent && target.Platform == BuildTargetPlatform.Web)
             throw new NotSupportedException("Content encryption currently requires a native Player; browser AES-GCM content loading is not supported.");
         var provider = ResolveProvider(target, providers);
@@ -145,6 +147,7 @@ public static class PlayerBuildPipeline
             WindowsGarbageCollection = request.WindowsGarbageCollection,
             WindowsGcHeapCount = request.WindowsGcHeapCount,
             WebScriptCompilation = request.WebScriptCompilation,
+            WebFontBackend = request.WebFontBackend,
             IncludeDebugSymbols = request.IncludeDebugSymbols,
             EncryptContent = request.EncryptContent,
             EncryptionKey = request.EncryptionKey,
@@ -157,10 +160,10 @@ public static class PlayerBuildPipeline
             CompressAssetBundles = request.CompressAssetBundles,
             ManagedStripping = request.ManagedStripping,
             WritePlayerLog = request.WritePlayerLog,
-            SplashScreenEnabled = request.SplashScreenEnabled,
+            SplashScreenEnabled = true,
             SplashImage = request.SplashImage,
             SplashBackgroundColor = request.SplashBackgroundColor,
-            SplashMinimumDurationSeconds = request.SplashMinimumDurationSeconds,
+            SplashMinimumDurationSeconds = 0.5f,
             CacheDirectory = PlayerBootstrapManifest.NormalizeCacheDirectory(request.CacheDirectory),
             AndroidApplicationIdentifier = PlayerBuildSettingsStore.NormalizeApplicationIdentifier(
                 request.AndroidApplicationIdentifier),
@@ -216,7 +219,8 @@ public static class PlayerBuildPipeline
             var runtimeMetadata = ProjectSystem.RuntimeMetadataSerializer.Load(
                 runtimeMetadataPath, fileSystem, pathService);
             var splashImageResource = PrepareSplashImage(
-                workspace, layout, normalized, fileSystem, pathService, platformService);
+                workspace, layout, normalized, fileSystem, pathService, platformService, context);
+            context.StartupLogoPng = fileSystem.ReadAllBytes(layout.SplashImageStagingPath);
             runtimeMetadata.PlayerBootstrap = new PlayerBootstrapManifest
             {
                 ProductName = workspace.Project.Name,
@@ -295,7 +299,8 @@ public static class PlayerBuildPipeline
         PlayerBuildRequest request,
         FileUtility fileSystem,
         PathUtility pathService,
-        PlatformUtility platformService)
+        PlatformUtility platformService,
+        PlayerBuildContext context)
     {
         if (!request.SplashScreenEnabled) return string.Empty;
         var source = string.IsNullOrWhiteSpace(request.SplashImage)
@@ -310,6 +315,15 @@ public static class PlayerBuildPipeline
             width > 8192 || height > 8192)
             throw new InvalidDataException(
                 $"The Player splash image is not a supported PNG or exceeds 8192x8192: '{source}'.");
+        context.ApplicationIconPng = bytes;
+        if (!string.IsNullOrWhiteSpace(request.SplashImage))
+        {
+            var engineIconPath = ResolveDefaultSplashImage(fileSystem, pathService, platformService);
+            var engineIcon = fileSystem.ReadAllBytes(engineIconPath);
+            var badgePath = pathService.Combine(pathService.GetDirectoryName(engineIconPath)!, "BEngine.Badge.png");
+            var badge = fileSystem.FileExists(badgePath) ? fileSystem.ReadAllBytes(badgePath) : engineIcon;
+            bytes = PlayerSplashImageComposer.AddEngineBadge(bytes, engineIcon, badge);
+        }
         fileSystem.WriteAllBytes(layout.SplashImageStagingPath, bytes);
         return PlayerPackagedResourceAddresses.SplashImage;
     }

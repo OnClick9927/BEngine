@@ -105,19 +105,28 @@ export function createStartupDownloads({ getConfig = () => ({}),
 export function createWebHttpTransport({ fetchResource = (...args) => globalThis.fetch(...args),
   getAbortController = () => globalThis.AbortController,
   isSupported = () => typeof globalThis.fetch === 'function' && typeof globalThis.ReadableStream === 'function' } = {}) {
-  const maximumRequests = 32, maximumOwnedBytes = 2 * 1024 * 1024;
+  const maximumRequests = 32, normalOwnedBytes = 2 * 1024 * 1024, maximumOwnedBytes = 4 * 1024 * 1024;
+  // Preserve every normal request's old receive allowance. Loading rings may
+  // borrow only the remaining eight MiB; admission never waits or falls back.
+  const maximumExtraRingBytes = 8 * 1024 * 1024, maximumSharedOwnedBytes = 128 * 1024 * 1024;
+  let extraRingBytes = 0;
   const maximumReadBytes = 256 * 1024, maximumDefaultReadBytes = 2 * 1024 * 1024, maximumCopyBytes = 1024 * 1024;
-  const jobs = new Map();
+  const jobs = new Map(), retiringReaders = new Set();
   const statistics = { Started: 0, Completed: 0, Failed: 0, Canceled: 0, ReceivedBytes: 0,
     ReadCalls: 0, CopiedBytes: 0, BYOB: 0, DefaultReader: 0, DefaultLargeChunks: 0,
-    PeakQueuedBytes: 0, PeakRequestQueuedBytes: 0, PeakRequestOwnedBufferBytes: 0 };
+    PeakQueuedBytes: 0, PeakRequestQueuedBytes: 0, PeakRequestOwnedBufferBytes: 0, PeakExtraRingBytes: 0 };
   let nextHandle = 1;
   function available() { return isSupported() && typeof getAbortController() === 'function'; }
   function wake(job) { const resume = job.resume; job.resume = null; resume?.(); }
   function cancelReader(reader) {
     try { Promise.resolve(reader?.cancel()).catch(() => {}); } catch { /* The stream may already be closed. */ }
   }
-  function discard(job) { job.queue = null; job.queued = job.head = 0; wake(job); }
+  function reclaimExtraRing(job) {
+    if (!job.receiving && !job.queue && job.extraRingBytes) {
+      extraRingBytes -= job.extraRingBytes; job.extraRingBytes = 0;
+    }
+  }
+  function discard(job) { job.queue = null; job.queued = job.head = 0; wake(job); reclaimExtraRing(job); }
   function abortIo(job) {
     try { job.controller.abort(); } catch { /* Aborting is idempotent. */ }
     cancelReader(job.reader);
@@ -169,6 +178,7 @@ export function createWebHttpTransport({ fetchResource = (...args) => globalThis
       try { reader = response.body.getReader({ mode: 'byob' }); statistics.BYOB++; }
       catch { byob = false; reader = response.body.getReader(); statistics.DefaultReader++; }
       job.reader = reader;
+      job.receiving = true;
       let emptyReads = 0;
       while (await waitForSpace(job, 1)) {
         const capacity = Math.min(job.readCapacity, job.queueCapacity - job.queued);
@@ -184,8 +194,9 @@ export function createWebHttpTransport({ fetchResource = (...args) => globalThis
           if (!(bytes instanceof Uint8Array)) throw new Error('The HTTP stream returned non-byte data.');
           // A non-BYOB stream controls its allocation size. Allow one bounded
           // input chunk and stop reading while its bytes drain into the ring.
-          // With the default budget that fallback owns at most 3.75 MiB;
-          // BYOB keeps the ring and in-flight allocation within 2 MiB.
+          // The normal two-MiB budget bounds this fallback at 3.75 MiB;
+          // loading may borrow a larger ring from the shared eight-MiB pool.
+          // BYOB keeps the ring plus its in-flight allocation within ownedBytes.
           const inputLimit = byob ? capacity : maximumDefaultReadBytes;
           if (bytes.byteLength > inputLimit || bytes.buffer.byteLength > inputLimit)
             throw new Error('The browser HTTP stream exceeded its bounded receive buffer.');
@@ -208,17 +219,20 @@ export function createWebHttpTransport({ fetchResource = (...args) => globalThis
       job.reserved = 0;
       try { reader?.releaseLock(); } catch { /* A canceled reader may still be settling. */ }
       job.reader = null;
+      job.receiving = false;
+      retiringReaders.delete(job);
+      reclaimExtraRing(job);
     }
   }
   return {
     available,
     begin(requestJson, uploadView) {
-      if (!available() || jobs.size >= maximumRequests) return 0;
+      if (!available() || jobs.size + retiringReaders.size >= maximumRequests) return 0;
       const request = JSON.parse(requestJson);
       request.method = String(request.method || 'GET').toUpperCase();
-      const ownedBytes = request.maximumQueueBytes ?? maximumOwnedBytes;
-      if (!Number.isInteger(ownedBytes) || ownedBytes < 65536 || ownedBytes > maximumOwnedBytes)
-        throw new RangeError('The browser HTTP receive budget must be between 64 KiB and 2 MiB.');
+      const requestedBytes = request.maximumQueueBytes ?? normalOwnedBytes;
+      if (!Number.isInteger(requestedBytes) || requestedBytes < 65536 || requestedBytes > maximumOwnedBytes)
+        throw new RangeError('The browser HTTP receive budget must be between 64 KiB and 4 MiB.');
       const headers = new Headers(request.headers || []);
       const options = { method: request.method, headers };
       if (request.bypassCache) options.cache = 'no-store';
@@ -228,10 +242,14 @@ export function createWebHttpTransport({ fetchResource = (...args) => globalThis
       }
       const controller = new (getAbortController())(); options.signal = controller.signal;
       const handle = nextHandle++;
+      const extraBytes = Math.min(Math.max(0, requestedBytes - normalOwnedBytes), maximumExtraRingBytes - extraRingBytes);
+      const ownedBytes = Math.min(requestedBytes, normalOwnedBytes) + extraBytes;
+      extraRingBytes += extraBytes;
+      statistics.PeakExtraRingBytes = Math.max(statistics.PeakExtraRingBytes, extraRingBytes);
       const readCapacity = Math.min(maximumReadBytes, Math.floor(ownedBytes / 2));
       const job = { controller, reader: null, response: null, error: null, done: false, released: false,
         queue: null, head: 0, queued: 0, reserved: 0, queueCapacity: ownedBytes - readCapacity, readCapacity,
-        downloaded: 0, resume: null };
+        downloaded: 0, resume: null, receiving: false, extraRingBytes: extraBytes };
       jobs.set(handle, job); statistics.Started++;
       // All fetch/body failures are observed here and exposed through read(). A
       // failed POST retains its handle and is never resubmitted via fallback.
@@ -253,7 +271,7 @@ export function createWebHttpTransport({ fetchResource = (...args) => globalThis
       if (first < count) destination.set(job.queue.subarray(0, count - first), first);
       job.head = (job.head + count) % job.queueCapacity; job.queued -= count;
       statistics.CopiedBytes += count;
-      if (!job.queued && job.done) job.queue = null;
+      if (!job.queued && job.done) { job.queue = null; reclaimExtraRing(job); }
       wake(job);
       return count;
     },
@@ -267,6 +285,7 @@ export function createWebHttpTransport({ fetchResource = (...args) => globalThis
       const job = jobs.get(handle);
       if (!job) return;
       if (!job.done && !job.error) statistics.Canceled++;
+      if (job.receiving) retiringReaders.add(job);
       job.released = true; jobs.delete(handle);
       discard(job); abortIo(job);
     },
@@ -276,16 +295,111 @@ export function createWebHttpTransport({ fetchResource = (...args) => globalThis
         queued += job.queued; reserved += job.reserved;
         owned += (job.queue?.byteLength || 0) + job.reserved;
       }
+      for (const job of retiringReaders) {
+        reserved += job.reserved;
+        owned += (job.queue?.byteLength || 0) + job.reserved;
+      }
       return JSON.stringify({ ...statistics, ActiveRequests: jobs.size, QueuedBytes: queued, ReservedReadBytes: reserved,
-        OwnedBufferBytes: owned, MaximumRequests: maximumRequests,
+        OwnedBufferBytes: owned, MaximumRequests: maximumRequests, RetiringReaders: retiringReaders.size,
+        ExtraRingBytes: extraRingBytes, MaximumExtraRingBytes: maximumExtraRingBytes, MaximumSharedOwnedBytes: maximumSharedOwnedBytes,
         MaximumByobOwnedBytesPerRequest: maximumOwnedBytes,
         MaximumDefaultOwnedBytesPerRequest: maximumOwnedBytes - maximumReadBytes + maximumDefaultReadBytes,
         MaximumReadBytes: maximumReadBytes, MaximumDefaultReadBytes: maximumDefaultReadBytes, MaximumCopyBytes: maximumCopyBytes });
     }
   };
 }
-globalThis.BEngineWebHttp = createWebHttpTransport();
+globalThis.BEngineWebHttp = createWebHttpTransport({
+  fetchResource: (url, options) => frameworkRuntime?.takeContent(url, options) ?? globalThis.fetch(url, options)
+});
 // End runtime HTTP bridge.
+
+// Whole-bundle verification uses the browser's native SHA implementation. Copy
+// transient managed memory before returning; keep admission charged until the
+// unabortable native digest settles, including after the owner releases it.
+export function createWebAssetBundleHash({ digest = bytes => globalThis.crypto.subtle.digest('SHA-256', bytes),
+  supported = () => typeof globalThis.crypto?.subtle?.digest === 'function',
+  now = () => globalThis.performance.now() } = {}) {
+  const maximumBytes = 64 * 1024 * 1024, maximumJobs = 32;
+  const jobs = new Map();
+  const statistics = { Started: 0, Completed: 0, Failed: 0, Canceled: 0,
+    CopyMilliseconds: 0, CopiedBytes: 0, DigestMilliseconds: 0, PeakReservedBytes: 0 };
+  let nextHandle = 1, slots = 0, pending = 0, reservedBytes = 0;
+  function available() { try { return !!supported(); } catch { return false; } }
+  function freeInput(job) {
+    if (job.reserved) { reservedBytes -= job.size; job.reserved = false; }
+    job.input = null;
+  }
+  function finish(job, value, failure) {
+    try {
+      if (job.released) return;
+      if (failure) throw failure;
+      if (!(value instanceof ArrayBuffer) || value.byteLength !== 32)
+        throw new Error('The browser SHA-256 result must contain exactly 32 bytes.');
+      job.result = Array.from(new Uint8Array(value), byte => byte.toString(16).padStart(2, '0')).join('');
+      job.state = 1; statistics.Completed++;
+    } catch (error) {
+      if (!job.released) {
+        job.error = String(error?.message || error || 'Browser SHA-256 failed.');
+        job.state = -1; statistics.Failed++;
+      }
+    } finally {
+      if (job.pending) {
+        pending--; job.pending = false;
+        statistics.DigestMilliseconds += Math.max(0, now() - job.started);
+      }
+      freeInput(job);
+      if (job.released) slots--;
+    }
+  }
+  return {
+    available,
+    begin(view) {
+      if (!available()) return 0;
+      let size;
+      try {
+        size = view?.byteLength;
+        if (!Number.isSafeInteger(size) || size < 0 || size > maximumBytes || typeof view?.slice !== 'function') return -1;
+      } catch { return -1; }
+      if (slots >= maximumJobs || reservedBytes + size > maximumBytes) return 0;
+      // Allocate the handle before copying: accepted failures cannot trigger a
+      // managed fallback that would repeat the same expensive input work.
+      const job = { handle: nextHandle++, size, state: 0, input: null, result: null,
+        error: null, released: false, reserved: true, pending: false, started: 0 };
+      jobs.set(job.handle, job); slots++; reservedBytes += size; statistics.Started++;
+      statistics.PeakReservedBytes = Math.max(statistics.PeakReservedBytes, reservedBytes);
+      const copyStarted = now();
+      try {
+        job.input = view.slice();
+        if (!(job.input instanceof Uint8Array) || job.input.byteLength !== size)
+          throw new Error('The managed SHA-256 input copy has an invalid length or type.');
+        statistics.CopiedBytes += size;
+      } catch (error) {
+        finish(job, null, error);
+        return job.handle;
+      } finally { statistics.CopyMilliseconds += Math.max(0, now() - copyStarted); }
+      job.started = now(); job.pending = true; pending++;
+      try {
+        Promise.resolve(digest(job.input)).then(value => finish(job, value, null), error =>
+          finish(job, null, error || new Error('Browser SHA-256 rejected its input.')));
+      } catch (error) { finish(job, null, error); }
+      return job.handle;
+    },
+    status(handle) { return jobs.get(handle)?.state ?? -1; },
+    result(handle) { const job = jobs.get(handle); return job?.state === 1 ? job.result : null; },
+    error(handle) { return jobs.get(handle)?.error ?? null; },
+    release(handle) {
+      const job = jobs.get(handle); if (!job) return;
+      jobs.delete(handle); job.released = true; job.result = null; job.error = null;
+      if (job.state === 0) statistics.Canceled++;
+      if (!job.pending) { freeInput(job); slots--; }
+    },
+    getDiagnostics() { return JSON.stringify({ ...statistics, Active: jobs.size, Pending: pending,
+      ReservedBytes: reservedBytes, MaximumReservedBytes: maximumBytes, MaximumInputBytes: maximumBytes,
+      MaximumJobs: maximumJobs }); }
+  };
+}
+globalThis.BEngineWebAssetBundleHash = createWebAssetBundleHash();
+// End native whole-bundle SHA bridge.
 
 // Encoded PNG preparation stays in the browser. The device's budgeted commit
 // uploads the ImageBitmap directly, without a CPU canvas/pixel round trip.
@@ -1393,8 +1507,10 @@ async function configurePlayerContent() {
   const manifest = contentManifest;
   const runtime = await prepareFrameworkRuntime({
       readBytes: startupDownloads.readBytes,
-      onProgress: (loaded, total) => globalThis.BEngineStartupStatus?.download?.(loaded, total)
+      onProgress: (loaded, total) => globalThis.BEngineStartupStatus?.download?.(loaded, total),
+      onPreparationProgress: (loaded, total) => globalThis.BEngineStartupStatus?.verified?.(loaded, total)
     });
+  globalThis.BEngineStartupStatus?.frameworkReady?.();
   frameworkRuntime = runtime;
   dotnet = runtime.dotnet;
   if (!manifest || typeof manifest.dataDirectory !== 'string' || !Array.isArray(manifest.files) ||
@@ -1440,6 +1556,7 @@ async function initializePlayer() {
     }
   });
   const { getAssemblyExports, getConfig, runMain } = await dotnet.create();
+  globalThis.BEngineStartupStatus?.runtimeReady?.();
   frameworkRuntime.release();
   startupDownloads.clear();
   const config = getConfig();
@@ -1449,12 +1566,21 @@ async function initializePlayer() {
 }
 
 const { player, testOptions } = await initializePlayer().catch(error => {
+  frameworkRuntime?.release(true);
+  startupDownloads.clear();
   globalThis.BEngineStartupStatus?.fail?.(error);
   throw error;
 });
 globalThis.BEnginePlayer = player;
+// Keep pumping the cooperative scheduler while the environment is prepared.
+// Game startup and scene Awake/Start remain behind the common presentation gate.
+while (!player.PumpStartup()) {
+  globalThis.BEngineStartupStatus?.preparing?.(player.GetStartupProgress(), player.GetStartupStage());
+  await new Promise(requestAnimationFrame);
+}
+await globalThis.BEngineStartupStatus?.complete();
+player.ContinueStartup();
 canvas.dataset.bengineReady = 'true';
-globalThis.BEngineStartupStatus?.complete();
 const keyState = new Map();
 const textInput = document.createElement('textarea');
 textInput.setAttribute('aria-hidden', 'true'); textInput.tabIndex = -1;
@@ -1663,6 +1789,7 @@ function update(timestampMilliseconds) {
     canvas.dataset.bengineDiagnostics = player.GetDiagnostics();
     canvas.dataset.bengineAudioDiagnostics = globalThis.BEngineWebAudio.getDiagnostics();
     canvas.dataset.bengineHttpDiagnostics = globalThis.BEngineWebHttp.getDiagnostics();
+    canvas.dataset.bengineAssetBundleHashDiagnostics = globalThis.BEngineWebAssetBundleHash.getDiagnostics();
     canvas.dataset.bengineImageDiagnostics = globalThis.BEngineWebImages.getDiagnostics();
     lastDiagnosticsTimestamp = timestampMilliseconds;
   }

@@ -15,7 +15,14 @@ public class AsyncOperation
     protected AsyncLoadContext LoadContext => _loadContext ??= new(_cancellation.Token, SetProgress) { priority = _priority };
 
     public bool isDone => IsTerminal(_status);
-    public float progress => _progress;
+    public float progress
+    {
+        get
+        {
+            if (_status == AsyncOperationStatus.Running) SetProgress(GetProgressValue());
+            return _progress;
+        }
+    }
     public AsyncOperationStatus status => _status;
     public Exception? exception => _exception;
 
@@ -86,6 +93,10 @@ public class AsyncOperation
         if (value <= _progress) return;
         _progress = value;
     }
+
+    /// <summary>Returns current progress when polled on the owning thread.
+    /// Terminal operations keep their saved value and never call this hook.</summary>
+    protected virtual float GetProgressValue() => _progress;
 
     protected BValueTask WaitForActivationAsync(BCancellationToken cancellationToken)
     {

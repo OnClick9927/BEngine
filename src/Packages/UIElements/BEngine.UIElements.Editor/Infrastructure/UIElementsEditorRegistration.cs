@@ -7,6 +7,12 @@ internal static class UIElementsEditorRegistration
     {
         AssetTypeRegistry.Register<SdfFontAsset>(".sdfont", "SDF Font", context =>
             SdfFontAsset.FromBytes(RuntimeServiceAccess.FileSystem.ReadAllBytes(context.SourcePath), context.SourcePath), EditorBuiltinIcons.Assets.Font);
+        PlatformAssetBuildPipeline.RegisterRuntimeCompiler(".sdfont", "SDF Font", "sdf-binary-v1",
+            192 * 1024 * 1024, static (bytes, cancellation) =>
+            {
+                cancellation.ThrowIfCancellationRequested();
+                return SdfFontAsset.CompileRuntimeBytes(bytes.Span);
+            });
         AssetTypeRegistry.Register<VisualTreeAsset>(".bxml", "UI Document", context => VisualTreeAsset.Load(context.SourcePath), EditorBuiltinIcons.Assets.Markup);
         AssetTypeRegistry.Register<StyleSheet>(".bss", "UI Style Sheet", context => StyleSheet.Load(context.SourcePath), EditorBuiltinIcons.Assets.Style);
         AssetTypeRegistry.Register<StyleSheet>(".bcss", "UI Style Sheet", context => StyleSheet.Load(context.SourcePath), EditorBuiltinIcons.Assets.Style);

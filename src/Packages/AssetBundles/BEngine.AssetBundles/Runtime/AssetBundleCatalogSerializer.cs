@@ -25,6 +25,10 @@ public static partial class AssetBundleCatalogSerializer
         return YamlUtility.SerializeToUtf8Bytes(Canonicalize(version));
     }
 
+    /// <summary>Compiles release metadata for runtime use; authoring serialization remains YAML.</summary>
+    public static byte[] SerializeRuntimeVersion(AssetBundleVersion version) =>
+        BinaryDataSerializer.CompileYaml(SerializeVersion(version));
+
     public static byte[] SerializeLatestPointer(AssetBundleLatestPointer pointer)
     {
         ArgumentNullException.ThrowIfNull(pointer);
@@ -37,10 +41,29 @@ public static partial class AssetBundleCatalogSerializer
 
     public static AssetBundleCatalog DeserializeCatalog(ReadOnlySpan<byte> yaml)
     {
-        var catalog = IsRuntimeCatalog(yaml)
-            ? DeserializeRuntimeCatalog(yaml)
-            : YamlUtility.Deserialize<AssetBundleCatalog>(yaml, strict: true);
+        var catalog = DecodeCatalog(yaml);
         catalog.Validate();
+        return catalog;
+    }
+
+    internal static AssetBundleCatalog DeserializeOwnedCatalog(ReadOnlySpan<byte> bytes,
+        out AssetBundleCatalogIndex.ValidatedSeeds seeds)
+    {
+        AssetBundleCatalog catalog;
+        OwnedCatalogDecodeFacts? facts = null;
+        using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.CatalogDecode, bytes.Length))
+            catalog = IsRuntimeCatalog(bytes) ? DeserializeRuntimeCatalog(bytes, true, out facts) :
+                YamlUtility.Deserialize<AssetBundleCatalog>(bytes, strict: true);
+        seeds = AssetBundleValidation.ValidateOwnedCatalog(catalog, facts);
+        return catalog;
+    }
+
+    private static AssetBundleCatalog DecodeCatalog(ReadOnlySpan<byte> yaml)
+    {
+        AssetBundleCatalog catalog;
+        using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.CatalogDecode, yaml.Length))
+            catalog = IsRuntimeCatalog(yaml) ? DeserializeRuntimeCatalog(yaml) :
+                YamlUtility.Deserialize<AssetBundleCatalog>(yaml, strict: true);
         return catalog;
     }
 
@@ -48,6 +71,7 @@ public static partial class AssetBundleCatalogSerializer
     public static AssetBundleCatalog CloneCatalog(AssetBundleCatalog catalog)
     {
         ArgumentNullException.ThrowIfNull(catalog);
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.CatalogClone);
         return Canonicalize(catalog);
     }
 
@@ -63,7 +87,10 @@ public static partial class AssetBundleCatalogSerializer
 
     public static AssetBundleVersion DeserializeVersion(ReadOnlySpan<byte> yaml)
     {
-        var version = YamlUtility.Deserialize<AssetBundleVersion>(yaml, strict: true);
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.VersionDecode, yaml.Length);
+        var version = BinaryDataSerializer.IsBinaryData(yaml)
+            ? BinaryDataSerializer.Deserialize<AssetBundleVersion>(yaml, strict: true)
+            : YamlUtility.Deserialize<AssetBundleVersion>(yaml, strict: true);
         version.Validate();
         return version;
     }
@@ -74,17 +101,23 @@ public static partial class AssetBundleCatalogSerializer
 
     public static AssetBundleLatestPointer DeserializeLatestPointer(ReadOnlySpan<byte> yaml)
     {
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.PointerDecode, yaml.Length);
         var pointer = YamlUtility.Deserialize<AssetBundleLatestPointer>(yaml, strict: true);
         pointer.Validate();
         return pointer;
     }
 
-    public static string ComputeSha256(ReadOnlySpan<byte> data) =>
-        Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
+    public static string ComputeSha256(ReadOnlySpan<byte> data)
+    {
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.ShaBuffer, data.Length);
+        return Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
+    }
 
     public static string ComputeSha256(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.ShaStream,
+            AssetBundlePerformanceDiagnostics.RemainingBytes(stream));
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
@@ -98,6 +131,8 @@ public static partial class AssetBundleCatalogSerializer
         Stream stream, BCancellationToken cancellationToken, int bytesPerFrame, Action<long>? progress)
     {
         ArgumentNullException.ThrowIfNull(stream);
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.ShaAsyncWall,
+            AssetBundlePerformanceDiagnostics.RemainingBytes(stream));
         if (bytesPerFrame <= 0) throw new ArgumentOutOfRangeException(nameof(bytesPerFrame));
         if (BackgroundWorkScheduler.IsSupported)
         {
@@ -158,24 +193,34 @@ public static partial class AssetBundleCatalogSerializer
         return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
     }
 
-    private static AssetBundleCatalog Canonicalize(AssetBundleCatalog source) => new()
+    // Only the private RuntimeState may select this path, after its validated
+    // binary catalog has remained exclusively owned. Every mutable object is new.
+    internal static AssetBundleCatalog CloneOwnedCanonicalCatalog(AssetBundleCatalog source)
+    {
+        using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.CatalogClone);
+        return CopyCatalog(source, true);
+    }
+
+    private static AssetBundleCatalog Canonicalize(AssetBundleCatalog source) => CopyCatalog(source, false);
+
+    private static AssetBundleCatalog CopyCatalog(AssetBundleCatalog source, bool canonical) => new()
     {
         Format = source.Format,
         SchemaVersion = source.SchemaVersion,
         PackageName = source.PackageName,
         Version = source.Version,
         IsPackageComposite = source.IsPackageComposite,
-        Bundles = source.Bundles.OrderBy(item => item.Name, StringComparer.Ordinal).Select(item =>
+        Bundles = (canonical ? (IEnumerable<AssetBundleDescriptor>)source.Bundles : source.Bundles.OrderBy(item => item.Name, StringComparer.Ordinal)).Select(item =>
             new AssetBundleDescriptor
             {
                 Name = item.Name,
-                FileName = item.Sha256.ToLowerInvariant() + ".bassetbundle",
-                Sha256 = item.Sha256.ToLowerInvariant(),
+                FileName = canonical ? item.FileName : item.Sha256.ToLowerInvariant() + ".bassetbundle",
+                Sha256 = canonical ? item.Sha256 : item.Sha256.ToLowerInvariant(),
                 Size = item.Size,
                 SourceVersion = item.SourceVersion,
-                Dependencies = item.Dependencies.OrderBy(value => value, StringComparer.Ordinal).ToList()
+                Dependencies = (canonical ? (IEnumerable<string>)item.Dependencies : item.Dependencies.OrderBy(value => value, StringComparer.Ordinal)).ToList()
             }).ToList(),
-        Assets = source.Assets.OrderBy(item => item.Address, StringComparer.Ordinal).Select(item =>
+        Assets = (canonical ? (IEnumerable<AssetBundleAsset>)source.Assets : source.Assets.OrderBy(item => item.Address, StringComparer.Ordinal)).Select(item =>
             new AssetBundleAsset
             {
                 Address = item.Address,
@@ -187,19 +232,19 @@ public static partial class AssetBundleCatalogSerializer
                 Bundle = item.Bundle,
                 Entry = item.Entry,
                 AssetType = item.AssetType,
-                Sha256 = item.Sha256.ToLowerInvariant(),
+                Sha256 = canonical ? item.Sha256 : item.Sha256.ToLowerInvariant(),
                 Size = item.Size,
                 Importer = item.Importer,
-                ImporterSettings = item.ImporterSettings
-                    .OrderBy(setting => setting.Key, StringComparer.Ordinal)
+                ImporterSettings = (canonical ? (IEnumerable<KeyValuePair<string, string>>)item.ImporterSettings :
+                    item.ImporterSettings.OrderBy(setting => setting.Key, StringComparer.Ordinal))
                     .ToDictionary(setting => setting.Key, setting => setting.Value, StringComparer.Ordinal)
             }).ToList(),
-        Packages = source.Packages.OrderBy(item => item.Name, StringComparer.Ordinal).Select(item =>
+        Packages = (canonical ? (IEnumerable<AssetBundlePackageDescriptor>)source.Packages : source.Packages.OrderBy(item => item.Name, StringComparer.Ordinal)).Select(item =>
             new AssetBundlePackageDescriptor
             {
                 Name = item.Name,
                 Version = item.Version,
-                Bundles = item.Bundles.OrderBy(value => value, StringComparer.Ordinal).ToList()
+                Bundles = (canonical ? (IEnumerable<string>)item.Bundles : item.Bundles.OrderBy(value => value, StringComparer.Ordinal)).ToList()
             }).ToList()
     };
 

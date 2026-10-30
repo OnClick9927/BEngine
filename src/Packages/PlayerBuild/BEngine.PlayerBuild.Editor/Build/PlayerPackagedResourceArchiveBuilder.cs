@@ -2,6 +2,7 @@ using BEngine.Content;
 using BEngine.Platform;
 using BEngine.Rendering.Rhi;
 using BEngine.ProjectSystem;
+using BEngine.Build;
 using System.Security.Cryptography;
 
 namespace BEngine.Editor;
@@ -37,12 +38,11 @@ internal static class PlayerPackagedResourceArchiveBuilder
                 "PlayerRuntimeMetadata",
                 fileSystem,
                 pathService),
-            CaptureFile(
-                PlayerPackagedResourceAddresses.BuildTargetManifest,
+            CaptureBuildTargetManifest(
                 layout.BuildTargetManifestStagingPath,
-                "PlayerBuildTargetManifest",
                 fileSystem,
-                pathService)
+                pathService,
+                cancellationToken)
         };
         if (fileSystem.FileExists(layout.SplashImageStagingPath))
             entries.Add(CaptureFile(
@@ -99,6 +99,26 @@ internal static class PlayerPackagedResourceArchiveBuilder
             address,
             fileSystem.ReadAllBytes(fullPath),
             assetType,
+            importer: "BEnginePlayerResource");
+    }
+
+    private static BuiltInResourceArchiveWriteEntry CaptureBuildTargetManifest(
+        string path,
+        FileUtility fileSystem,
+        PathUtility pathService,
+        CancellationToken cancellationToken)
+    {
+        var fullPath = pathService.GetFullPath(path);
+        if (!fileSystem.FileExists(fullPath))
+            throw new FileNotFoundException("The packaged Player build-target manifest was not staged.", fullPath);
+        var yaml = fileSystem.ReadAllBytes(fullPath);
+        _ = BuildTargetManifestSerializer.Deserialize(yaml);
+        // The editable/staged manifest stays YAML. Only this immutable runtime archive
+        // entry uses compact data, so startup does not initialize the YAML codecs.
+        return BuiltInResourceArchiveWriteEntry.FromMemory(
+            PlayerPackagedResourceAddresses.BuildTargetManifest,
+            BinaryDataSerializer.CompileYaml(yaml, cancellationToken),
+            "PlayerBuildTargetManifest",
             importer: "BEnginePlayerResource");
     }
 

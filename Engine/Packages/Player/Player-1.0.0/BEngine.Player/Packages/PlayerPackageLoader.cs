@@ -28,6 +28,7 @@ internal static class PlayerPackageLoader
         applicationPaths ??= RuntimeServiceAccess.ApplicationPaths;
         var phasePrefix = stage == PlayerManagedCodeStage.Aot ? "03_AOT_ASSEMBLY" : "05_HOTUPDATE";
         PlayerStartupDiagnostics.Phase($"{phasePrefix}_PREPARE_STARTED");
+        using var definitionsTiming = PlayerStartupPerformanceDiagnostics.Begin("packages.definitions");
         var packages = workspace.GetRuntimeMetadata() is { } metadata
             ? metadata.EnabledPackages.Select(package => new PlayerPackageReference
             {
@@ -48,9 +49,15 @@ internal static class PlayerPackageLoader
         foreach (var definition in definitions.Values)
             Resources.RegisterResourceRoot(pathService.GetDirectoryName(
                 pathService.GetFullPath(definition.Path))!);
+        definitionsTiming.Dispose();
 
-        var release = await PlayerHotUpdateReleaseLoader.LoadAsync(
+        using var releaseTiming = PlayerStartupPerformanceDiagnostics.Begin("packages.releaseLoadSynchronousPrefix");
+        var releaseOperation = PlayerHotUpdateReleaseLoader.LoadAsync(
             workspace, assetBundles, stage, builtInResources, cancellationToken, fileSystem);
+        releaseTiming.Dispose();
+        var release = await releaseOperation;
+        if (stage == PlayerManagedCodeStage.Aot)
+            PlayerStartupEnvironment.Current?.Report(.65f, "managedCode");
         if (release is null)
         {
             PlayerStartupDiagnostics.Phase($"{phasePrefix}_PREPARE_SKIPPED", "reason=no-release");
@@ -67,10 +74,15 @@ internal static class PlayerPackageLoader
         var target = BuildTargetManifestSerializer.LoadCurrent(
             baseDirectory: null, fileSystem, pathService, platformService);
         var gate = new HotUpdateActivationGate(runtimeFactory, CreateHostCapabilities(target));
-        var prepared = await gate.PrepareAsync(
+        using var prepareTiming = PlayerStartupPerformanceDiagnostics.Begin("packages.runtimePrepareSynchronousPrefix");
+        var prepareOperation = gate.PrepareAsync(
             release,
             new ManagedCodeRuntimeRequest(target.ManagedCodeRuntime),
             cancellationToken);
+        prepareTiming.Dispose();
+        var prepared = await prepareOperation;
+        if (stage == PlayerManagedCodeStage.Aot)
+            PlayerStartupEnvironment.Current?.Report(.75f, "managedCode");
         PlayerStartupDiagnostics.Phase($"{phasePrefix}_PREPARED",
             $"release={release.ReleaseId};runtime={prepared.RuntimeKind};" +
             $"assemblies={string.Join(',', prepared.Assemblies.Select(AssemblyName))};" +

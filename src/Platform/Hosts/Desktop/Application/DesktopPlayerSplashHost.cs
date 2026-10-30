@@ -7,10 +7,12 @@ namespace BEngine.Player.Hosts.Desktop;
 
 public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
 {
+    private IPlayerSplashWindow? _window;
+
     public IPlayerSplashWindow? Show(PlayerSplashPresentation presentation)
     {
         ArgumentNullException.ThrowIfNull(presentation);
-        return OperatingSystem.IsWindows() ? WindowsSplashWindow.Start(presentation) : null;
+        return _window ??= OperatingSystem.IsWindows() ? WindowsSplashWindow.Start(presentation) : null;
     }
 
     [SupportedOSPlatform("windows")]
@@ -45,7 +47,10 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
         private GCHandle _ownerHandle;
         private nint _windowHandle;
         private ushort _windowClass;
-        private bool _disposed;
+        private volatile bool _disposed;
+        private System.Threading.Thread? _thread;
+        private readonly byte[] _animatedPixels;
+        private readonly PlayerStartupProgress _progress;
 
         private WindowsSplashWindow(PlayerSplashPresentation presentation)
         {
@@ -53,6 +58,8 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
             _imageWidth = presentation.ImageWidth;
             _imageHeight = presentation.ImageHeight;
             _pixels = presentation.BgraPixels;
+            _animatedPixels = new byte[_pixels.Length];
+            _progress = PlayerStartupEnvironment.Current ?? PlayerStartupEnvironment.Begin();
             _background = presentation.BackgroundColor;
         }
 
@@ -61,16 +68,28 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
         internal static WindowsSplashWindow Start(PlayerSplashPresentation presentation)
         {
             var window = new WindowsSplashWindow(presentation);
-            try
+            using var ready = new System.Threading.ManualResetEventSlim();
+            Exception? failure = null;
+            window._thread = new System.Threading.Thread(() =>
             {
-                window.Initialize();
-                return window;
-            }
-            catch
-            {
-                window.Dispose();
-                throw;
-            }
+                try
+                {
+                    window.Initialize();
+                    ready.Set();
+                    while (!window._disposed && window._windowHandle != 0)
+                    {
+                        _ = InvalidateRect(window._windowHandle, 0, false);
+                        window.Pump();
+                        System.Threading.Thread.Sleep(16);
+                    }
+                }
+                catch (Exception exception) { failure = exception; ready.Set(); }
+                finally { window.DisposeNative(); }
+            }) { IsBackground = true, Name = "BEngine Startup Presentation" };
+            window._thread.Start();
+            ready.Wait();
+            if (failure is not null) throw new InvalidOperationException("Could not show the Player logo.", failure);
+            return window;
         }
 
         private void Initialize()
@@ -103,6 +122,7 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
                 x, y, width, height,
                 0, 0, module, GCHandle.ToIntPtr(_ownerHandle));
             if (_windowHandle == 0) throw LastWin32Error("create the splash window");
+            _progress.RestartPresentation();
             _ = ShowWindow(_windowHandle, SwShow);
             _ = UpdateWindow(_windowHandle);
             _ = SetForegroundWindow(_windowHandle);
@@ -110,7 +130,7 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
 
         public void Pump()
         {
-            if (_disposed) return;
+            if (_disposed || System.Threading.Thread.CurrentThread != _thread) return;
             var handle = _windowHandle;
             if (handle == 0) return;
             while (PeekMessage(out var message, handle, 0, 0, PmRemove))
@@ -122,6 +142,7 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
 
         private void Paint(nint windowHandle)
         {
+            var displayedProgress = _progress.Progress;
             var device = BeginPaint(windowHandle, out var paint);
             if (device == 0) return;
             try
@@ -136,7 +157,7 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
 
                 var clientWidth = Math.Max(1, client.Right - client.Left);
                 var clientHeight = Math.Max(1, client.Bottom - client.Top);
-                var scale = Math.Min(clientWidth * 0.64 / _imageWidth, clientHeight * 0.72 / _imageHeight);
+                var scale = Math.Min(Math.Min(240, clientWidth * 0.48) / _imageWidth, Math.Min(180, clientHeight * 0.32) / _imageHeight);
                 var drawWidth = Math.Max(1, (int)Math.Round(_imageWidth * scale));
                 var drawHeight = Math.Max(1, (int)Math.Round(_imageHeight * scale));
                 var drawX = (clientWidth - drawWidth) / 2;
@@ -154,7 +175,15 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
                         SizeImage = (uint)_pixels.Length
                     }
                 };
-                var pinned = GCHandle.Alloc(_pixels, GCHandleType.Pinned);
+                var opacity = _progress.LogoOpacity;
+                for (var i = 0; i < _pixels.Length; i += 4)
+                {
+                    _animatedPixels[i] = (byte)(((_background >> 16) & 255) * (1 - opacity) + _pixels[i] * opacity);
+                    _animatedPixels[i + 1] = (byte)(((_background >> 8) & 255) * (1 - opacity) + _pixels[i + 1] * opacity);
+                    _animatedPixels[i + 2] = (byte)((_background & 255) * (1 - opacity) + _pixels[i + 2] * opacity);
+                    _animatedPixels[i + 3] = 255;
+                }
+                var pinned = GCHandle.Alloc(_animatedPixels, GCHandleType.Pinned);
                 try
                 {
                     _ = StretchDibits(device, drawX, drawY, drawWidth, drawHeight,
@@ -165,10 +194,27 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
                 {
                     pinned.Free();
                 }
+                if (_progress.ShowProgressBar)
+                {
+                    var barWidth = Math.Min(240, clientWidth / 2);
+                    var bar = new Rectangle { Left = (clientWidth - barWidth) / 2,
+                        Top = drawY + drawHeight + 28, Right = (clientWidth + barWidth) / 2,
+                        Bottom = drawY + drawHeight + 33 };
+                    var trackBrush = CreateSolidBrush(0x00494139);
+                    var fillBrush = CreateSolidBrush(0x00dfd3c7);
+                    try
+                    {
+                        _ = FillRect(device, ref bar, trackBrush);
+                        bar.Right = bar.Left + (int)(barWidth * displayedProgress);
+                        _ = FillRect(device, ref bar, fillBrush);
+                    }
+                    finally { _ = DeleteObject(trackBrush); _ = DeleteObject(fillBrush); }
+                }
             }
             finally
             {
                 _ = EndPaint(windowHandle, ref paint);
+                _progress.ConfirmProgressPresented(displayedProgress);
             }
         }
 
@@ -210,8 +256,12 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
 
         public void Dispose()
         {
-            if (_disposed) return;
             _disposed = true;
+            if (_thread is not null && System.Threading.Thread.CurrentThread != _thread) _thread.Join();
+        }
+
+        private void DisposeNative()
+        {
             var handle = _windowHandle;
             if (handle != 0) _ = DestroyWindow(handle);
             _windowHandle = 0;
@@ -225,6 +275,10 @@ public sealed class DesktopPlayerSplashHost : IPlayerSplashHost
 
         private static InvalidOperationException LastWin32Error(string operation) =>
             new($"Could not {operation} (Win32 error {Marshal.GetLastWin32Error()}).");
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool InvalidateRect(nint windowHandle, nint rectangle, bool erase);
 
         private delegate nint WindowProc(nint windowHandle, uint message, nint wParam, nint lParam);
 

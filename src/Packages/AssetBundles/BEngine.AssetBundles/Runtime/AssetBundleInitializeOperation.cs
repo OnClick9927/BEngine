@@ -6,15 +6,16 @@ public sealed class AssetBundleInitializeOperation : AssetBundleLoadOperation, I
     {
         Start(async token =>
         {
-            var loading = manager is AssetBundleManager runtime
-                ? runtime.InitializeTrackedAsync(token, Tracker) : manager.InitializeAsync(token);
-            while (!loading.IsCompleted)
+            try
+            {
+                await (manager is AssetBundleManager runtime
+                    ? runtime.InitializeTrackedAsync(token, Tracker) : manager.InitializeAsync(token));
+                Tracker.Report(new(AssetBundleLoadKind.Initialization, AssetBundleLoadPhase.Completed, "catalog", 1, 1));
+            }
+            finally
             {
                 SetProgress(Tracker.Progress);
-                await BTask.Yield();
             }
-            await loading;
-            Tracker.Report(new(AssetBundleLoadKind.Initialization, AssetBundleLoadPhase.Completed, "catalog", 1, 1));
         });
     }
     public void Dispose() => Cancel();

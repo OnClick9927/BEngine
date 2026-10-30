@@ -14,8 +14,8 @@ public static class FrameWorkBudget
     private static readonly object LoadingGate = new();
     private static readonly HashSet<LoadingScope> LoadingScopes = [];
     private static int _loadingScopeCount;
-    private static double _loadingFrameFraction = .5;
-    private static double _loadingMaximumBudget = 8;
+    private static double _loadingFrameFraction = .75;
+    private static double _loadingMaximumBudget = 12;
     private static double _loadingMaximumStep = 2;
     public static bool enabled { get; set; } = true;
     public static double frameFraction
@@ -46,10 +46,10 @@ public static class FrameWorkBudget
     /// the last loading scope ends. The scheduler's step-count limit always applies.
     /// </remarks>
     public static IDisposable EnterLoading(BCancellationToken cancellationToken = default,
-        double frameFraction = .5, double maximumBudgetMilliseconds = 8,
+        double frameFraction = .75, double maximumBudgetMilliseconds = 12,
         double maximumStepMilliseconds = 2)
     {
-        if (!double.IsFinite(frameFraction) || frameFraction is <= 0 or > .5)
+        if (!double.IsFinite(frameFraction) || frameFraction is <= 0 or > .75)
             throw new ArgumentOutOfRangeException(nameof(frameFraction));
         if (!double.IsFinite(maximumBudgetMilliseconds) || maximumBudgetMilliseconds is <= 0 or > 16)
             throw new ArgumentOutOfRangeException(nameof(maximumBudgetMilliseconds));
@@ -91,7 +91,7 @@ public static class FrameWorkBudget
 
     private static void RefreshLoadingLimits()
     {
-        var fraction = .5; var budget = 16d; var step = 4d;
+        var fraction = .75; var budget = 16d; var step = 4d;
         foreach (var scope in LoadingScopes)
         {
             fraction = Math.Min(fraction, scope.Fraction);

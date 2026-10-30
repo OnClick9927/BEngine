@@ -14,5 +14,10 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="FrozenScriptStripVerifier.cs" />
+    <Compile Include="WebAotHotProfile.cs" />
+    <Compile Include="WebAotColdMethods.cs" />
+    <PackageReference Include="Mono.Cecil" PrivateAssets="all" Condition="'$(ManagePackageVersionsCentrally)' == 'true'" />
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" PrivateAssets="all" Condition="'$(ManagePackageVersionsCentrally)' != 'true'" />
   </ItemGroup>
 </Project>

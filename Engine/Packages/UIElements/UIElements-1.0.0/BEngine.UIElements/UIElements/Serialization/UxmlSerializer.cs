@@ -579,9 +579,12 @@ internal static class UxmlSerializer
             (Fix64)((byte)packed / 255f));
     }
 
-    private static string? Attribute(XElement element, string name) =>
-        element.Attributes().FirstOrDefault(attribute =>
-            attribute.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))?.Value;
+    private static string? Attribute(XElement element, string name)
+    {
+        for (var attribute = element.FirstAttribute; attribute is not null; attribute = attribute.NextAttribute)
+            if (attribute.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase)) return attribute.Value;
+        return null;
+    }
     private static float ParseFloat(string value) => float.TryParse(value, NumberStyles.Float,
         CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
     private static int ParseInt(string value) => int.TryParse(value, NumberStyles.Integer,

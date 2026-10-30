@@ -44,6 +44,13 @@ public sealed class DotNetWebAssemblyBuildTargetProvider : DotNetPlatformBuildTa
         // Make the platform a global restore property so the BEngine.Player project graph and
         // its platform-suffixed artifacts directory agree during publish.
         process.Arguments.Add("-p:BEnginePlayerPlatform=Web");
+        process.Arguments.Add($"-p:BEngineWebFontBackend={context.Request.WebFontBackend}");
+        var hotProfilePath = PathService.Combine(context.Request.ProjectPath, "ProjectSettings", "WebAotProfile.json");
+        if (FileSystem.FileExists(hotProfilePath))
+            process.Arguments.Add($"-p:BEngineWasmAotHotProfile={PathService.GetFullPath(hotProfilePath)}");
+        var coldMethodsPath = PathService.Combine(context.Request.ProjectPath, "ProjectSettings", "WebAotColdMethods.json");
+        if (FileSystem.FileExists(coldMethodsPath))
+            process.Arguments.Add($"-p:BEngineWasmAotColdMethods={PathService.GetFullPath(coldMethodsPath)}");
         process.Arguments.Add("-p:PublishTrimmed=true");
         process.Arguments.Add(context.Request.ManagedStripping == PlayerManagedStrippingLevel.Full
             ? "-p:TrimMode=full" : "-p:TrimMode=partial");
@@ -55,11 +62,13 @@ public sealed class DotNetWebAssemblyBuildTargetProvider : DotNetPlatformBuildTa
         process.Arguments.Add("-p:WasmNativeDebugSymbols=false");
         if (string.Equals(context.Request.Configuration, "Release", StringComparison.OrdinalIgnoreCase))
         {
-            // Optimize the AOT bitcode, native runtime and final WebAssembly for speed.
-            // Keep the SDK's arithmetic, exception and target-feature settings.
-            process.Arguments.Add("-p:WasmBitcodeCompileOptimizationFlag=-O3");
-            process.Arguments.Add("-p:EmccCompileOptimizationFlag=-O3");
-            process.Arguments.Add("-p:EmccLinkOptimizationFlag=-O3");
+            // Minimize both the managed AOT bitcode and the native runtime before
+            // bundling. Final compression cannot undo duplicated/inlined -O3
+            // code. Preserve SIMD, arithmetic and exception semantics; scripts
+            // selected for AOT still execute natively.
+            process.Arguments.Add("-p:WasmBitcodeCompileOptimizationFlag=-Oz");
+            process.Arguments.Add("-p:EmccCompileOptimizationFlag=-Oz");
+            process.Arguments.Add("-p:EmccLinkOptimizationFlag=-Oz");
         }
     }
 
@@ -77,7 +86,19 @@ public sealed class DotNetWebAssemblyBuildTargetProvider : DotNetPlatformBuildTa
             throw new InvalidDataException(
                 "The WebAssembly Player Host did not produce a deployable wwwroot with " +
                 "index.html, main.js, framework.js, bengine-content.json, and _framework/dotnet.js.");
-        WebPlayerRuntimeBundle.Apply(webRoot, FileSystem, PathService);
+        WebPlayerRuntimeBundle.Apply(webRoot, FileSystem, PathService,
+            UsesHttpStreamingAssets(context) ? GetWebPackagedAssemblySourcePaths(context) : []);
+        var entryPath = PathService.Combine(webRoot, "index.html");
+        var entry = FileSystem.ReadAllText(entryPath);
+        var startup = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            logo = "data:image/png;base64," + Convert.ToBase64String(context.StartupLogoPng.Span),
+            icon = context.ApplicationIconPng.Span.SequenceEqual(context.StartupLogoPng.Span) ? null
+                : "data:image/png;base64," + Convert.ToBase64String(context.ApplicationIconPng.Span),
+            background = context.Request.SplashBackgroundColor
+        });
+        FileSystem.WriteAllText(entryPath, entry.Replace("/* BENGINE_STARTUP_PRESENTATION */ null", startup,
+            StringComparison.Ordinal));
         WebPlayerDistribution.Apply(webRoot, FileSystem, PathService);
         WebPlayerCacheVersioning.Apply(webRoot, FileSystem, PathService);
     }

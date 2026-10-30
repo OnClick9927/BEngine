@@ -52,7 +52,10 @@ public sealed class AsyncLoadContext
             else completion.TrySetException(error);
         }, WorkPriority);
         _work.Add(handle);
+        if (CooperativeLoadingDiagnostics.Enabled)
+            CooperativeLoadingDiagnostics.Scheduled(handle, step, BTaskScheduler.Main.FrameCount, CooperativeWorkScheduler.Main.PendingCount);
         cancellation = cancellationToken.Register(() => { Cleanup(); completion.TrySetCanceled(cancellationToken); });
+        CooperativeWorkScheduler.Main.TryRunLoadingFirstStep(handle);
         return completion.Task;
     }
     /// <summary>Reads on a bounded worker (cooperative 64 KiB steps on Web); the caller retains the stream until completion.</summary>

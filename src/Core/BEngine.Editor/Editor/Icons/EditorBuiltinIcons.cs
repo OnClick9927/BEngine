@@ -3,6 +3,9 @@ namespace BEngine.Editor;
 /// <summary>Stable resource paths for the built-in Unity-style editor icon set.</summary>
 public static class EditorBuiltinIcons
 {
+    /// <summary>Untinted engine mark matching the active editor surface.</summary>
+    public static string engineLogo => EditorGUIUtility.isProSkin ? "Icons/BEngine.png" : "Icons/BEngine.Dark.png";
+
     private static readonly Dictionary<string, string> UnityNames = new(StringComparer.OrdinalIgnoreCase)
     {
         ["GameObject Icon"] = Components.GameObject,

@@ -6,4 +6,8 @@
     <PackageReference Include="Silk.NET.Windowing" /><PackageReference Include="Silk.NET.Input" /><PackageReference Include="Silk.NET.OpenGL" /><PackageReference Include="Silk.NET.Shaderc" /><PackageReference Include="Veldrid" /><PackageReference Include="Veldrid.SPIRV" />
   </ItemGroup>
   <ItemGroup><EmbeddedResource Include="../../Core/Editor/Icons/BEngine.ico" LogicalName="BEngine.Editor.BEngine.ico" /></ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../Core/Editor/Icons/BEngine.Dark.ico" LogicalName="BEngine.Editor.BEngine.Dark.ico" />
+    <Compile Include="../../Shared/WindowsBrandingIcons.cs" Link="Shared/WindowsBrandingIcons.cs" />
+  </ItemGroup>
 </Project>

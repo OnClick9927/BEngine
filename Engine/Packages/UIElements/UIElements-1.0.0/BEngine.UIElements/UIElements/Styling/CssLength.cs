@@ -3,6 +3,13 @@ namespace BEngine.UIElements;
 /// <summary>Resolves CSS lengths deterministically, relative to their containing block.</summary>
 internal static class CssLength
 {
+    private const int MaximumCachedExpressions = 1024;
+    private const int MaximumCachedCharacters = 32 * 1024;
+    private static readonly Lock ConstantGate = new();
+    private static readonly Dictionary<string, Fix64> Constants = new(StringComparer.Ordinal);
+    private static readonly Queue<string> ConstantOrder = new();
+    private static int _cachedCharacters;
+
     internal static bool DependsOnContainerOrFont(string expression)
     {
         for (var i = 0; i < expression.Length; i++)
@@ -23,17 +30,70 @@ internal static class CssLength
     internal static bool TryResolve(string expression, Fix64 basis, Fix64 viewportWidth,
         Fix64 viewportHeight, Fix64 fontSize, out Fix64 value)
     {
+        var cacheable = expression.Length <= 128 && IsContextIndependent(expression);
+        if (cacheable)
+        {
+            lock (ConstantGate)
+                if (Constants.TryGetValue(expression, out value)) return true;
+        }
         try
         {
             var parser = new Parser(expression, basis, viewportWidth, viewportHeight, fontSize);
             value = parser.Expression();
             parser.Space();
-            return parser.End;
+            if (!parser.End) return false;
+            if (cacheable) RememberConstant(expression, value);
+            return true;
         }
         catch (Exception exception) when (exception is FormatException or OverflowException or DivideByZeroException)
         {
             value = Fix64.Zero;
             return false;
+        }
+    }
+
+    // Cache only expressions whose result is independent of a node, viewport,
+    // font and containing block. The original parser remains authoritative.
+    private static bool IsContextIndependent(string expression)
+    {
+        for (var index = 0; index < expression.Length; index++)
+        {
+            if (expression[index] == '%') return false;
+            if (!char.IsLetter(expression[index])) continue;
+            var start = index;
+            while (index + 1 < expression.Length && char.IsLetter(expression[index + 1])) index++;
+            var token = expression.AsSpan(start, index - start + 1);
+            if (!token.Equals("px", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("pt", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("pc", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("in", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("cm", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("mm", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("rem", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("calc", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("min", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("max", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("clamp", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("e", StringComparison.OrdinalIgnoreCase)) return false;
+        }
+        return true;
+    }
+
+    private static void RememberConstant(string expression, Fix64 value)
+    {
+        lock (ConstantGate)
+        {
+            if (Constants.ContainsKey(expression)) return;
+            while (Constants.Count >= MaximumCachedExpressions ||
+                   _cachedCharacters + expression.Length > MaximumCachedCharacters)
+            {
+                var oldest = ConstantOrder.Dequeue();
+                Constants.Remove(oldest);
+                _cachedCharacters -= oldest.Length;
+            }
+            Constants.Add(expression, value);
+            ConstantOrder.Enqueue(expression);
+            _cachedCharacters += expression.Length;
         }
     }
 

@@ -66,7 +66,7 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(release);
         if (IsLoaded) throw new InvalidOperationException("The AOT interpreter HotUpdate domain is already loaded.");
-        release.Validate();
+        using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.ReleaseValidate)) release.Validate();
         cancellationToken.ThrowIfCancellationRequested();
 
         // Mono and WebAssembly interpreters execute the IL loaded into the default context. Those runtimes do not
@@ -80,9 +80,13 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
         try
         {
             var assemblies = new List<Assembly>(release.Modules.Count);
-            foreach (var module in OrderModules(release.Modules))
+            ManagedCodeModule[] orderedModules;
+            using (ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.RuntimeModuleOrder))
+                orderedModules = OrderModules(release.Modules);
+            foreach (var module in orderedModules)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                using var loadTiming = ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.RuntimeLoadModule);
                 var assembly = context.LoadModule(module.Name);
                 assemblies.Add(assembly);
                 _loadedAssemblies = assemblies.Where(assembly => !ManagedCodeHostAssemblies.Contains(assembly)).ToArray();
@@ -102,12 +106,15 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
             foreach (var assembly in _loadedAssemblies)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                using var initializerTiming = ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.RuntimeModuleInitializers);
                 RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
             }
             cancellationToken.ThrowIfCancellationRequested();
+            using var discoveryTiming = ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.RuntimeModuleDiscovery);
             var modules = _loadedAssemblies.SelectMany(assembly =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    using var typesTiming = ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.RuntimeGetTypes);
                     return GetTypesStrict(assembly);
                 })
                 .Where(type => type is { IsClass: true, IsAbstract: false } &&
@@ -117,11 +124,13 @@ internal sealed class AotInterpreterManagedCodeRuntime : IManagedCodeRuntime
                 .Select(type =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    using var constructorTiming = ManagedCodeStartupDiagnostics.Measure(ManagedCodeStartupDiagnostics.Phase.RuntimeModuleConstructors);
                     return Activator.CreateInstance(type) as IHotUpdateModule ??
                            throw new InvalidOperationException(
                                $"HotUpdate module '{type.FullName}' requires a public parameterless constructor.");
                 })
                 .ToArray();
+            discoveryTiming.Dispose();
             cancellationToken.ThrowIfCancellationRequested();
             _context = context;
             IsLoaded = true;

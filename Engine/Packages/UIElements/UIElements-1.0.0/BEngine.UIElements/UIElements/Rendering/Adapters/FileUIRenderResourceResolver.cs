@@ -42,20 +42,7 @@ public sealed class FileUIRenderResourceResolver : IUIRenderResourceResolver, IU
                 ? _fileSystem.ReadAllBytes(path)
                 : Resources.Load<byte[]>(source);
             if (bytes is null) return false;
-            if (TextureImageData.IsContainer(bytes))
-            {
-                var imported = TextureImageData.Deserialize(bytes);
-                texture = new RasterizedImage(imported.Width, imported.Height,
-                    GraphicsTextureFormat.Rgba8Unorm, imported.DecodeRgba());
-                return true;
-            }
-            var extension = _paths.GetExtension(exists ? path : source).ToLowerInvariant();
-            return extension switch
-            {
-                ".png" => PortablePngDecoder.TryDecode(bytes, out texture),
-                ".rgba" => TryDecodeRawRgba(bytes, out texture),
-                _ => false
-            };
+            return TryDecodeTexture(bytes, exists ? path : source, out texture);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
                                           InvalidDataException or InvalidOperationException or
@@ -82,6 +69,66 @@ public sealed class FileUIRenderResourceResolver : IUIRenderResourceResolver, IU
         {
             return false;
         }
+    }
+
+    // The renderer normally probes the imported path before the rasterized
+    // path. A PNG is not an imported container, so those two probes previously
+    // read and cloned the same resource twice. Keep both public contracts and
+    // custom resolvers unchanged; the sealed default resolver can share bytes.
+    internal bool TryResolveTextureData(string source, out TextureImageData? imported,
+        out RasterizedImage texture)
+    {
+        imported = null;
+        texture = default;
+        if (string.IsNullOrWhiteSpace(source)) return false;
+        byte[] bytes;
+        string effectivePath;
+        try
+        {
+            var path = ResolvePath(source);
+            var exists = _fileSystem.FileExists(path);
+            var read = exists ? _fileSystem.ReadAllBytes(path) : Resources.Load<byte[]>(source);
+            // Preserve the old second probe after an unsuccessful first read.
+            if (read is null) return TryResolveTexture(source, out texture);
+            bytes = read;
+            if (TextureImageData.IsContainer(bytes))
+            {
+                imported = TextureImageData.Deserialize(bytes);
+                return true;
+            }
+            effectivePath = exists ? path : source;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or
+                                     ArgumentException or NotSupportedException or InvalidOperationException or OverflowException)
+        {
+            return TryResolveTexture(source, out texture);
+        }
+        try { return TryDecodeTexture(bytes, effectivePath, out texture); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or
+                                     InvalidDataException or InvalidOperationException or
+                                     ArgumentException or NotSupportedException or OverflowException)
+        {
+            return false;
+        }
+    }
+
+    private bool TryDecodeTexture(byte[] bytes, string source, out RasterizedImage texture)
+    {
+        texture = default;
+        if (TextureImageData.IsContainer(bytes))
+        {
+            var imported = TextureImageData.Deserialize(bytes);
+            texture = new RasterizedImage(imported.Width, imported.Height,
+                GraphicsTextureFormat.Rgba8Unorm, imported.DecodeRgba());
+            return true;
+        }
+        var extension = _paths.GetExtension(source).ToLowerInvariant();
+        return extension switch
+        {
+            ".png" => PortablePngDecoder.TryDecode(bytes, out texture),
+            ".rgba" => TryDecodeRawRgba(bytes, out texture),
+            _ => false
+        };
     }
 
     private string ResolvePath(string source)
@@ -190,10 +237,19 @@ public sealed class FileUIRenderResourceResolver : IUIRenderResourceResolver, IU
                 inflater.ReadExactly(filtered);
             }
 
-            var raw = new byte[checked(rowLength * height)];
-            Unfilter(filtered, raw, rowLength, sourceBytesPerPixel, height);
-            var rgba = new byte[checked(width * height * 4)];
-            ConvertToRgba(raw, rgba, colorType, palette, transparency);
+            // Compact scanlines towards the start of the same array. Each
+            // output byte precedes its encoded input, so forward reconstruction
+            // preserves unread bytes as well as the previous decoded row.
+            Unfilter(filtered, filtered, rowLength, sourceBytesPerPixel, height);
+            // RGBA rows already have the required channel order and straight
+            // alpha. Reuse them instead of allocating and copying every pixel.
+            ReadOnlyMemory<byte> rgba = filtered.AsMemory(0, checked(rowLength * height));
+            if (colorType != 6)
+            {
+                var converted = new byte[checked(width * height * 4)];
+                ConvertToRgba(filtered, converted, colorType, palette, transparency);
+                rgba = converted;
+            }
             texture = new RasterizedImage(width, height, GraphicsTextureFormat.Rgba8Unorm, rgba);
             return true;
         }
@@ -206,24 +262,63 @@ public sealed class FileUIRenderResourceResolver : IUIRenderResourceResolver, IU
             {
                 var filter = filtered[source++];
                 var row = y * rowLength;
-                var previous = row - rowLength;
-                for (var x = 0; x < rowLength; x++)
+                var input = filtered.AsSpan(source, rowLength);
+                var output = raw.AsSpan(row, rowLength);
+                var previous = y > 0 ? raw.AsSpan(row - rowLength, rowLength) : default;
+                source += rowLength;
+                // Select once per scanline. Filter 0 is common in generated UI
+                // assets and can copy a complete row without per-byte branches.
+                switch (filter)
                 {
-                    var value = filtered[source++];
-                    var left = x >= bytesPerPixel ? raw[row + x - bytesPerPixel] : 0;
-                    var up = y > 0 ? raw[previous + x] : 0;
-                    var upperLeft = y > 0 && x >= bytesPerPixel ? raw[previous + x - bytesPerPixel] : 0;
-                    raw[row + x] = filter switch
-                    {
-                        0 => value,
-                        1 => unchecked((byte)(value + left)),
-                        2 => unchecked((byte)(value + up)),
-                        3 => unchecked((byte)(value + ((left + up) >> 1))),
-                        4 => unchecked((byte)(value + Paeth(left, up, upperLeft))),
-                        _ => throw new InvalidDataException($"Unsupported PNG row filter {filter}.")
-                    };
+                    case 0:
+                        input.CopyTo(output);
+                        break;
+                    case 1:
+                        UnfilterSub(input, output, bytesPerPixel);
+                        break;
+                    case 2:
+                        if (y == 0) input.CopyTo(output);
+                        else
+                            for (var x = 0; x < rowLength; x++)
+                                output[x] = unchecked((byte)(input[x] + previous[x]));
+                        break;
+                    case 3:
+                        if (y == 0)
+                        {
+                            input[..bytesPerPixel].CopyTo(output);
+                            for (var x = bytesPerPixel; x < rowLength; x++)
+                                output[x] = unchecked((byte)(input[x] + (output[x - bytesPerPixel] >> 1)));
+                        }
+                        else
+                        {
+                            for (var x = 0; x < bytesPerPixel; x++)
+                                output[x] = unchecked((byte)(input[x] + (previous[x] >> 1)));
+                            for (var x = bytesPerPixel; x < rowLength; x++)
+                                output[x] = unchecked((byte)(input[x] + ((output[x - bytesPerPixel] + previous[x]) >> 1)));
+                        }
+                        break;
+                    case 4:
+                        if (y == 0) UnfilterSub(input, output, bytesPerPixel);
+                        else
+                        {
+                            for (var x = 0; x < bytesPerPixel; x++)
+                                output[x] = unchecked((byte)(input[x] + previous[x]));
+                            for (var x = bytesPerPixel; x < rowLength; x++)
+                                output[x] = unchecked((byte)(input[x] +
+                                    Paeth(output[x - bytesPerPixel], previous[x], previous[x - bytesPerPixel])));
+                        }
+                        break;
+                    default:
+                        throw new InvalidDataException($"Unsupported PNG row filter {filter}.");
                 }
             }
+        }
+
+        private static void UnfilterSub(ReadOnlySpan<byte> input, Span<byte> output, int bytesPerPixel)
+        {
+            input[..bytesPerPixel].CopyTo(output);
+            for (var x = bytesPerPixel; x < input.Length; x++)
+                output[x] = unchecked((byte)(input[x] + output[x - bytesPerPixel]));
         }
 
         private static int Paeth(int left, int up, int upperLeft)
@@ -245,6 +340,19 @@ public sealed class FileUIRenderResourceResolver : IUIRenderResourceResolver, IU
             byte[] transparency)
         {
             using var pixelBudget = LoopExecutionGuard.AllowIterations(output.Length / 4);
+            if (colorType == 2)
+            {
+                // RGB is the common opaque backdrop path. Select its format
+                // once rather than dispatching the same case for every pixel.
+                for (int sourceIndex = 0, outputIndex = 0; outputIndex < output.Length; sourceIndex += 3, outputIndex += 4)
+                {
+                    output[outputIndex] = source[sourceIndex];
+                    output[outputIndex + 1] = source[sourceIndex + 1];
+                    output[outputIndex + 2] = source[sourceIndex + 2];
+                    output[outputIndex + 3] = 255;
+                }
+                return;
+            }
             var sourceOffset = 0;
             for (var outputOffset = 0; outputOffset < output.Length; outputOffset += 4)
             {
