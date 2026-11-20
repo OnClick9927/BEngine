@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Graphics</AssemblyName>
+    <RootNamespace>BEngine</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    <PackageReference Include="StbImageSharp" />
+    <PackageReference Include="BCnEncoder.Net" />
+    <PackageReference Include="AssetRipper.TextureDecoder" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+</Project>

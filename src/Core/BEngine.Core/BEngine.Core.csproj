@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Core</AssemblyName>
+    <RootNamespace>BEngine</RootNamespace>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <BEngineCoreInternalAccess>true</BEngineCoreInternalAccess>
+    <BEnginePackageExportOwner>false</BEnginePackageExportOwner>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../Platform/Abstractions/BEngine.Platform.Abstractions/**/*.cs"
+             Exclude="../../Platform/Abstractions/BEngine.Platform.Abstractions/obj/**/*.cs;../../Platform/Abstractions/BEngine.Platform.Abstractions/bin/**/*.cs" />
+  </ItemGroup>
+</Project>

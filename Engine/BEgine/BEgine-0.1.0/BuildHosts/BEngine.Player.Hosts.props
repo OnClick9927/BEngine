@@ -15,8 +15,8 @@
     <Deterministic>true</Deterministic>
     <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
     <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
-    <BEnginePlayerSourceProject Condition="'$(BEnginePlayerPlatform)' == 'Desktop'">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\Packages\Player\BEngine.Player\BEngine.Player.csproj'))</BEnginePlayerSourceProject>
-    <BEnginePlayerSourceProject Condition="'$(BEnginePlayerPlatform)' != 'Desktop'">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\Packages\Player\BEngine.Player\BEngine.Player.Portable.csproj'))</BEnginePlayerSourceProject>
+    <BEnginePlayerSourceProject Condition="'$(BEnginePlayerPlatform)' == 'Desktop'">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\RuntimeDistribution\BEngine.RuntimeDistribution.csproj'))</BEnginePlayerSourceProject>
+    <BEnginePlayerSourceProject Condition="'$(BEnginePlayerPlatform)' != 'Desktop'">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\RuntimeDistribution\BEngine.RuntimeDistribution.csproj'))</BEnginePlayerSourceProject>
     <BEngineEngineRoot Condition="'$(BEngineEngineRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\BuildRuntime\$(BEnginePlayerPlatform)\BEngine.Player.dll')">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\BuildRuntime\$(BEnginePlayerPlatform)'))</BEngineEngineRoot>
     <BEngineEngineRoot Condition="'$(BEngineEngineRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\BuildRuntime\BEngine.Player.dll')">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\BuildRuntime'))</BEngineEngineRoot>
     <BEngineEngineRoot Condition="'$(BEngineEngineRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</BEngineEngineRoot>
@@ -37,8 +37,15 @@
     <BEngineIncludeTextBindings Condition="'$(BEngineIncludeTextBindings)' == ''">true</BEngineIncludeTextBindings>
     <BEngineWebFontBackend Condition="'$(BEngineWebFontBackend)' == ''">Skia</BEngineWebFontBackend>
     <_BEngineUseFreeType Condition="'$(BEnginePlayerPlatform)' == 'Web' and '$(BEngineWebFontBackend)' == 'FreeType'">true</_BEngineUseFreeType>
+    <BEngineWebNativeRoot Condition="Exists('$(MSBuildThisFileDirectory)../../Native/Web/Font/libBEngineWebFont.a')">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../Native/Web'))</BEngineWebNativeRoot>
+    <BEngineWebNativeRoot Condition="'$(BEngineWebNativeRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../BuildPlatform/Native/Web'))</BEngineWebNativeRoot>
     <DefineConstants Condition="'$(_BEngineUseFreeType)' == 'true'">$(DefineConstants);BENGINE_WEB_FONTS</DefineConstants>
   </PropertyGroup>
+  <PropertyGroup>
+    <BEngineGlfwSafetyTargets Condition="Exists('$(MSBuildThisFileDirectory)../../Native/Glfw/BEngine.GlfwSafety.targets')">$(MSBuildThisFileDirectory)../../Native/Glfw/BEngine.GlfwSafety.targets</BEngineGlfwSafetyTargets>
+    <BEngineGlfwSafetyTargets Condition="'$(BEngineGlfwSafetyTargets)' == ''">$(MSBuildThisFileDirectory)../BuildPlatform/Native/Glfw/BEngine.GlfwSafety.targets</BEngineGlfwSafetyTargets>
+  </PropertyGroup>
+  <Import Project="$(BEngineGlfwSafetyTargets)" Condition="'$(BEngineGlfwSafetyImported)' != 'true' and Exists('$(BEngineGlfwSafetyTargets)') and '$(BEnginePlayerPlatform)' == 'Desktop'" />
   <Target Name="ValidateExportedGraphicsVariant" BeforeTargets="ResolveReferences"
           Condition="!Exists('$(BEnginePlayerSourceProject)') and '$(BEnginePlayerPlatform)' == 'Desktop' and '$(_BEngineDesktopVariant)' != 'Both'">
     <Error Condition="!Exists('$(BEngineResolvedRuntimeRoot)\graphics-variant.txt')" Text="Exported Player runtime variant $(_BEngineDesktopVariant) is missing. Re-export the engine." />
@@ -63,6 +70,15 @@
     <ProjectReference Include="$(BEnginePlayerSourceProject)"
                       AdditionalProperties="OutputType=Library;BEnginePlayerPlatform=$(BEnginePlayerPlatform)"
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeNativeLibrariesForSelfExtract;EnableCompressionInSingleFile;UseAppHost;PublishAot;PublishTrimmed" />
+    <!-- A source host owns platform composition. The framework runtime has no
+         dependency on concrete platform implementations. -->
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../../Windows/BEngine.Windows/BEngine.Windows.csproj;$(MSBuildThisFileDirectory)../../Linux/BEngine.Linux/BEngine.Linux.csproj;$(MSBuildThisFileDirectory)../../macOS/BEngine.macOS/BEngine.macOS.csproj"
+                      Condition="'$(BEnginePlayerPlatform)' == 'Desktop'"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeNativeLibrariesForSelfExtract;EnableCompressionInSingleFile;UseAppHost;PublishAot;PublishTrimmed" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)../../$(BEnginePlayerPlatform)/BEngine.$(BEnginePlayerPlatform)/BEngine.$(BEnginePlayerPlatform).csproj"
+                      Condition="'$(BEnginePlayerPlatform)' == 'Android' or '$(BEnginePlayerPlatform)' == 'iOS'"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeNativeLibrariesForSelfExtract;EnableCompressionInSingleFile;UseAppHost;PublishAot;PublishTrimmed" />
+    <!-- The Web host already declares its explicit BEngine.Web reference. -->
   </ItemGroup>
   <!-- Reloadable UI packages need the target-specific managed/native text closure in the static host. -->
   <ItemGroup Condition="'$(BEngineIncludeTextBindings)' == 'true' and '$(_BEngineUseFreeType)' != 'true'">
@@ -88,8 +104,8 @@
     <PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly">
       <Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">14.2.1.301</Version>
     </PackageReference>
-    <NativeFileReference Include="$(MSBuildThisFileDirectory)Web/Native/libBEngineWebFont.a" />
-    <Content Include="$(MSBuildThisFileDirectory)Web/Native/FreeType.LICENSE.txt" Link="wwwroot/FreeType.LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+    <NativeFileReference Include="$(BEngineWebNativeRoot)/Font/libBEngineWebFont.a" />
+    <Content Include="$(BEngineWebNativeRoot)/Font/FreeType.LICENSE.txt" Link="wwwroot/FreeType.LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup Condition="'$(BEnginePlayerPlatform)' == 'Desktop' and '$(BEngineIncludeTextBindings)' == 'true' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux'))">
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies">
@@ -126,14 +142,19 @@
   <ItemGroup Condition="'$(BEngineHostAssemblyBootstrap)' != ''">
     <Compile Include="$(BEngineHostAssemblyBootstrap)" Link="Application\BEngineStaticHostBootstrap.cs" />
   </ItemGroup>
+  <!-- Packaged hosts have a generated static module bootstrap. The SDK's
+       discovery manifests are only needed by hosts without that bootstrap. -->
+  <ItemGroup Condition="!Exists('$(BEnginePlayerSourceProject)') and '$(BEngineHostAssemblyBootstrap)' == ''">
+    <Content Include="$(BEngineResolvedRuntimeRoot)/player.modules.json;$(BEngineResolvedRuntimeRoot)/player.native.json">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+  </ItemGroup>
   <ItemGroup Condition="'$(BEngineFullTrimming)' != 'true'">
     <TrimmerRootAssembly Include="BEngine" RootMode="All" />
-    <TrimmerRootAssembly Include="BEngine.Player" RootMode="All" />
     <TrimmerRootAssembly Include="BEngine.Platform.DotNet" RootMode="All" />
-    <TrimmerRootAssembly Include="BEngine.AssetBundles" RootMode="All" />
-    <TrimmerRootAssembly Include="BEngine.Diagnostics" RootMode="All" />
-    <TrimmerRootAssembly Include="BEngine.HotUpdate" RootMode="All" />
-    <TrimmerRootAssembly Include="BEngine.Networking" RootMode="All" />
     <!-- Hot-update service modules compile directly against this public plugin contract. -->
     <TrimmerRootAssembly Include="Microsoft.Extensions.DependencyInjection.Abstractions" RootMode="All" />
     <TrimmerRootAssembly Include="Microsoft.Extensions.DependencyInjection" RootMode="All" />
@@ -148,4 +169,5 @@
   <ItemGroup Condition="'$(BEngineTrimmerRootDescriptor)' != ''">
     <TrimmerRootDescriptor Include="$(BEngineTrimmerRootDescriptor)" />
   </ItemGroup>
+  <Import Project="$(BEngineNativePrecompiledProps)" Condition="'$(BEngineNativePrecompiledProps)' != ''" />
 </Project>

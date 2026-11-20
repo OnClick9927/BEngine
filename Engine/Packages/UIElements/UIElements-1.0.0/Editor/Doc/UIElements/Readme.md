@@ -89,7 +89,7 @@ Project 右键与顶部 Assets 菜单共用 MenuItem 注册，因此外部包增
 
 ## 编辑器图与轨道画布
 
-Core 编辑器程序集提供 `BEngine.Editor.UIElements.NodeCanvas` 和 `BEngine.Editor.TrackEditorCanvas`。
+`com.bengine.node-editor` 的 `BEngine.NodeEditor.Editor` 提供 `BEngine.Editor.UIElements.NodeCanvas`，`com.bengine.track-editor` 的 `BEngine.TrackEditor.Editor` 提供 `BEngine.Editor.TrackEditorCanvas`。两个包都只用于编辑器，并依赖 UIElements.Editor；公开命名空间保持不变。
 NodeCanvas 接收节点与连接的数据快照，处理选中、框选、拖动、平移、缩放和上下文操作，具体资产修改与 Undo 由宿主窗口执行；内置 Animator 窗口使用它编辑 Controller。
 TrackEditorCanvas 接收轨道、片段、关键帧和标记，提供时间尺、曲线、播放指针、片段移动与修剪；Animation 和 Timeline 窗口共用这个画布。
 两个画布都可通过 `EditorWindow.uiElementContainer.SetRootVisualElement(...)` 放入编辑器窗口，宿主应在窗口失焦时结束拖动，并在资源切换后刷新画布内容。

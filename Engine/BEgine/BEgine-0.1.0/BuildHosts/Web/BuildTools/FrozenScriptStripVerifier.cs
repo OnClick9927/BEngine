@@ -3,6 +3,8 @@ using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 
+namespace BEngine.Player.BuildTools;
+
 /// <summary>
 /// Accepts only the SDK's documented eligible-body IL stripping while retaining
 /// the exact canonical metadata consumed by native AOT and the AB loader.

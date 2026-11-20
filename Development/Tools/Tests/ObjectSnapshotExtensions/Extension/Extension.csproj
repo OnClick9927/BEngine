@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>ExternalSnapshotExtension</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core.Editor.dll" />
+
+    </ItemGroup>
+</Project>

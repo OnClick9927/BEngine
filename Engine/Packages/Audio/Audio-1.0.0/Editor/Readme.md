@@ -12,7 +12,9 @@ Assets/Create/Audio/Mixer Snapshot 创建快照，groups 指定 Mixer Group、Vo
 
 Audio 是面向 BEngine 2D 项目的音频包，提供 WAV/MP3/Ogg Vorbis 导入、`AudioClip`、`AudioSource`、
 `AudioListener`、DSP 混音和可替换输出后端。Windows 优先使用 waveOut，失败时尝试 OpenAL；系统没有可用后端时退化为
-静音输出，场景和游戏逻辑仍可运行。该包没有任何 3D 声场、空间距离衰减或环绕声依赖。
+静音输出，场景和游戏逻辑仍可运行。设备选择和原生实现由 Platform 提供，Audio 通过
+公开的音频能力适配，不引用 Desktop/Web/Android/iOS 具体程序集。
+该包没有任何 3D 声场、空间距离衰减或环绕声依赖。
 
 ## 快速开始
 

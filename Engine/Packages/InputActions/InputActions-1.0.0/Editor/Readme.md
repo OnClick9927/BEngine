@@ -38,6 +38,8 @@ input.LoadBindingOverrides(yaml);
 
 位置原点为游戏画面左下角。触摸位移、捏合和旋转不归一化，scale 直接乘原始单位；位置不应用死区。TouchGestureSettings 设置时间和像素阈值。长按仅触发一次，多指操作松开不会产生单指轻点；替换触点会重新建立双指基线。失踪/Canceled 触点不会触发完成手势。每个 session 独立追踪，也可直接使用 TouchGestureTracker.Update(touches, unscaledDeltaTime) 做确定性回放。
 
+运行时依赖 `com.bengine.pooling`。每个 TouchGestureTracker 独立持有触摸校验工作区池，最多缓存 2 个工作区；输入枚举结束并完整校验后才更新上帧状态，异常输入不会取消已有手势。嵌套调用使用独立工作区，公开 touches/gestures 视图继续由 tracker 持有，不会归还到池中。触点上限仍为 128，双指手势直接选择最小的两个 fingerId，不再逐帧排序临时 ID 数组。
+
 Windows Player 通过窗口 WM_TOUCH 接收多点触控，维护设备/触点身份，转换到 framebuffer 像素，过滤触摸产生的重复鼠标消息；焦点丢失和窗口销毁取消触点。消息缓冲保留下/上边沿及快速滑动起点，活动触点最多 128 个，报告队列溢出时取消而不留下按住状态。WM_TOUCH 没有压力数据，pressure/maximumPossiblePressure 使用 0/1 的接触状态。平台输入由 ITouchInputService/ITouchInputSource 提供；其他宿主可接入同一协议。Windows 原生消息以系统 InjectTouchInput 验证，物理触摸屏、移动/Web 设备仍需各平台验收。
 
 started/performed/canceled 与 wasPressedThisFrame/wasReleasedThisFrame 可用于事件和轮询。DisableMap、SwitchMap、改键和 Dispose 会取消正在进行的动作。切换地图先校验名称，非法配置不会破坏旧映射。配置加载先完整校验版本、控制类型及 ID，失败不会改写当前覆盖。

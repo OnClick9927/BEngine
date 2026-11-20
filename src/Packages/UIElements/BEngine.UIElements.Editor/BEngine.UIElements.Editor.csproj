@@ -1,4 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><AssemblyName>BEngine.UIElements.Editor</AssemblyName><RootNamespace>BEngine.Editor</RootNamespace><BEnginePackageExportOwner>true</BEnginePackageExportOwner><NoWarn>$(NoWarn);CA2255</NoWarn></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../BEngine.UIElements/BEngine.UIElements.csproj" /><ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" /><ProjectReference Include="../BEngine.UIElements/BEngine.UIElements.csproj" /></ItemGroup>
+  <ItemGroup><PackageReference Include="AngleSharp" /><PackageReference Include="AngleSharp.Css" /></ItemGroup>
+  <ItemGroup></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../Graphics/BEngine.Graphics/BEngine.Graphics.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../IMGUI/BEngine.IMGUI.Editor/BEngine.IMGUI.Editor.csproj" /></ItemGroup>
+  <ItemGroup>
+    
+  </ItemGroup>
+  <ItemGroup>
+    
+    <ProjectReference Include="../../Graphics/BEngine.Graphics.Editor/BEngine.Graphics.Editor.csproj" />
+  </ItemGroup>
 </Project>

@@ -1,0 +1,13 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.IDEIntegration.Editor
+rootNamespace: BEngine.IDE.Editor
+references:
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
+- BEngine.Core.Editor
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

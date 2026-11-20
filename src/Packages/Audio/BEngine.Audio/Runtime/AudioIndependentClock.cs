@@ -27,7 +27,6 @@ internal static class AudioIndependentClock
     internal static bool Synchronize(List<AudioSource> sources)
     {
         if (!AudioRuntimeSettings.useIndependentClock) return Fallback(null);
-        if (OperatingSystem.IsBrowser()) return Fallback("This platform does not support an independent audio thread.");
         var output = AudioOutput.current;
         if (output is not IIndependentAudioOutput buffered)
             return Fallback("The output has not opted into thread-safe buffered mixing.");
@@ -480,7 +479,7 @@ internal sealed class AudioClockSource
 
 internal sealed class AudioClockVoice : IDisposable
 {
-    private static readonly Fix64 MinimumPitch = Fix64.Parse("0.01");
+    private static readonly Fix64 MinimumPitch = Fix64.FromRaw(42949672L) /* Parse("0.01") */;
     internal AudioPlaybackData? Data;
     internal AudioVoiceReader? Reader;
     internal Fix64 Cursor, Volume = Fix64.One;

@@ -16,9 +16,24 @@ runtime:
   packageReferences:
   - id: YamlDotNet
     version: 18.1.0
+  dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  - packageId: com.bengine.graphics
+    target: runtime
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
 editor:
   assembly: BEngine.LineRendering2D.Editor
   rootNamespace: BEngine.Editor
   dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  - packageId: com.bengine.imgui
+    target: editor
   - packageId: com.bengine.line-rendering2d
     target: runtime
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

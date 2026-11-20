@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IDE Integration · BEngine</title><style>body{color-scheme:light dark;font:16px/1.75 system-ui,sans-serif;max-width:900px;margin:48px auto;padding:0 24px}h1,h2{line-height:1.3}code{font-size:.9em;padding:2px 5px;border:1px solid #8885;border-radius:4px}a{color:#5795df}</style></head><body>
+<h1>IDE Integration</h1><p>Visual Studio / VS Code 工程同步、C# 代码提示和本机编辑器一键附加。此包只在 Editor 中运行。</p>
+<h2>开始使用</h2><ol><li>在 Package Manager 启用 <strong>IDE Integration</strong>。</li><li>安装 Hub 同级 <code>Plugin</code> 文件夹中的对应 VSIX。VS Code 还需要官方 C# 扩展。</li><li>打开 BEngine 工程文件夹或根目录的 <code>BEngine.Project.sln</code>，运行 IDE 的 <strong>Attach to BEngine</strong> 命令。</li></ol>
+<p>编辑器的 <strong>Tools / IDE / Sync Solution</strong> 同步方案，<strong>Open Solution</strong> 打开方案。双击 C# 文件和 Console 源码位置会按 External Script Editor 偏好打开完整工程。</p>
+<h2>工程与调试</h2><p>方案从引擎实际 asmdef 图生成，保留 Runtime / Editor 边界、项目依赖、启用包引用和编译宏。生成项目与构建缓存位于 <code>Library/IDE</code>，不会替代引擎的编译与加载流程。</p><p>Editor 发布本项目真实进程的 PID 和启动时间，插件使用本机 .NET 调试器附加。没有额外调试服务器或用户目录全局缓存。原始源码的路径、行号及校验和与 portable PDB 对齐，保留 LoopGuard 和正常的断点源码一致性检查。</p>
+<h2>更多说明</h2><p><a href="Overview.md">工程生成、生命周期和本地同步协议</a> · <a href="../Readme.md">包说明</a></p>
+</body></html>

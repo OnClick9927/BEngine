@@ -12,13 +12,13 @@ public sealed class FileUIRenderResourceResolver : IUIRenderResourceResolver, IU
     private readonly PlatformUtility _platform;
 
     public static FileUIRenderResourceResolver Shared { get; } = new(
-        RuntimeServiceAccess.FileSystem,
-        RuntimeServiceAccess.PathService,
-        RuntimeServiceAccess.PlatformService);
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>(),
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>(),
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.PlatformUtility>());
 
     public FileUIRenderResourceResolver()
-        : this(RuntimeServiceAccess.FileSystem, RuntimeServiceAccess.PathService,
-            RuntimeServiceAccess.PlatformService) { }
+        : this(RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>(), RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>(),
+            RuntimeServices.GetRequiredService<global::BEngine.Platform.PlatformUtility>()) { }
 
     public FileUIRenderResourceResolver(
         FileUtility fileSystem,

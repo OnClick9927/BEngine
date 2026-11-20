@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><AssemblyName>ObjectSnapshotWorkflowProbe</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+    <DefineConstants Condition="'$(Legacy)' == 'true'">$(DefineConstants);LEGACY</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/*.dll" Exclude="$(EngineBinaries)/lib*.dll;$(EngineBinaries)/glfw3.dll;$(EngineBinaries)/SDL2.dll;$(EngineBinaries)/shaderc_shared.dll;$(EngineBinaries)/vk.dll" />
+    <Compile Include="../../EditorStateContracts/Workflow/Host.cs" Link="Host.cs" />
+    <Compile Include="../../RenderTargetOwnership/TargetDevice.cs" Link="TargetDevice.cs" />
+    <Compile Include="../../GraphicsSceneBoundary/RecordingDevice.cs" Link="RecordingDevice.cs" />
+  </ItemGroup>
+</Project>

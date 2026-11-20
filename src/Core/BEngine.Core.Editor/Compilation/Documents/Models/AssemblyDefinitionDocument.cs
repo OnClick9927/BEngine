@@ -1,0 +1,21 @@
+using BEngine.Serialization;
+
+namespace BEngine.Editor.Documents;
+
+public sealed class AssemblyDefinitionDocument
+{
+    /// <summary>Validates this engine document without applying it or writing files.</summary>
+    public void Validate() => EditorDataValidation.ValidateAssemblyDefinition(this);
+
+    public string Format { get; set; } = "BEngine.AssemblyDefinition";
+    public int Version { get; set; } = 1;
+    public string Name { get; set; } = "Game";
+    public string RootNamespace { get; set; } = "Game";
+    public List<string> References { get; set; } = [];
+    public List<string> IncludePlatforms { get; set; } = [];
+    public List<string> ExcludePlatforms { get; set; } = [];
+    public List<string> DefineConstraints { get; set; } = [];
+    public bool AutoReferenced { get; set; } = true;
+    public bool EditorOnly { get; set; }
+    public bool AllowUnsafeCode { get; set; }
+}

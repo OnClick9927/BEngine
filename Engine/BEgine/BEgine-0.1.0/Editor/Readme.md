@@ -1,6 +1,6 @@
 # BEngine Core
 
-BEngine Core 是引擎与编辑器的内置基础层，提供 2D Scene、GameObject、Component、Transform、Camera2D、Sprite、资源系统、序列化、输入、生命周期和 Unity 风格编辑器扩展 API。Core 始终可用，不需要在 `Packages.yaml` 中启用，也不依赖 Animation、Physics2D、Navigation2D 或 TiledMap。
+BEngine Core 是引擎执行与编辑器机制的内置基础层，提供 Scene、GameObject、Component、Transform、通用资源和二进制序列化、输入、生命周期、调度，以及中立的渲染和编辑器扩展接口。具体绘制、控件、默认工作台和诊断记录由扩展实现。Core 始终可用，不需要在工程包清单中启用，不反向依赖任何具体扩展包。
 
 逻辑数值使用 Q32.32 `Fix64`；资源坐标和 UI 布局也采用定点计算。数值写法、样式 API 与确定性运行条件见 [定点数与运行一致性](Doc/FixedPoint.md)。
 
@@ -19,16 +19,21 @@ Package Manager 支持按最低引擎版本筛选包、选择并固定安装版�
 
 | 项目 | 用途 | 运行时可用 |
 | --- | --- | --- |
-| `BEngine` | Scene、GameObject、组件、资源、渲染、输入和数学 API | 是 |
-| `BEngine.Editor` | 编辑器基础库：Inspector、菜单、窗口、Package Manager 和资源导入 | 否 |
-| `Resources` | 默认 Shader 等运行时资源 | 是 |
-| `Editor` | 图标、离线文档、示例和 AI Skill | 否 |
+| `BEngine.Core` | 对象、场景、资源、调度、数学、协程与平台/绘制契约 | 是 |
+| `BEngine.Core.Editor` | 工程、资产、编译、包解析、序列化编辑与扩展注册机制 | 否 |
+| `BEngine.Player` | Player 启动与内容会话 | 是 |
+| `Resources` | Core 自身需要的基础资源；具体绘图资源随扩展发布 | 是 |
+| `Editor` | 离线文档、示例和 AI Skill | 否 |
 
-Core 使用 `Microsoft.Extensions.DependencyInjection` 管理宿主与 Scene scope，并使用 YAML 文档保存工程、场景、Prefab 和资源元数据。运行时是单线程模型；编辑器可以在后台执行扫描、编译、哈希和文件 IO，但不能从后台线程修改场景对象。
+Core 使用 `Microsoft.Extensions.DependencyInjection` 管理宿主与 Scene scope。工程、场景、Prefab 和元数据保持原 YAML 格式，文本编解码通过宿主注册的 `ITextDataCodec` 完成；二进制数据读取不依赖文本解析器。运行时是单线程模型；编辑器可以在后台执行扫描、编译、哈希和文件 IO，但不能从后台线程修改场景对象。
+
+`RuntimeWorkspace` 只提供运行配置和资源路径，不创建 Library 等创作目录。`ProjectWorkspace` 和 `ScriptAssemblyStore` 属于编辑器程序集。`SerializationIgnore` / `SerializationMember` 是格式中立的数据标记，默认文本支持同时兼容已有 YAML 标记。
+
+初始化会话、代码域清理、异步资源准备及编辑器工作台扩展接口见 [执行与编辑器扩展机制](Doc/ExecutionMechanisms.md)。
 
 普通 `YamlAsset` 数据可在 `.meta` 的 `settings` 中设置 `runtimeDataFormat: binary`。构建时会生成紧凑二进制，保留原资源地址、YAML 编辑源和编辑器 Artifact；使用 `YamlUtility.Deserialize<T>(Resources.Load<byte[]>(address)!)` 可同时读取构建后的二进制与原 YAML。支持公开可写的数据成员、标量、数组、`List<T>`、字符串键 `Dictionary` 和 `Fix64`，不会按文件中的类型名称创建对象。文档最多 64 MiB、深度最多 64 层；Anchor、Alias、显式 Tag、Merge Key 和非标量 Map Key 会明确导致构建失败，此类文档应保留 YAML。该选项适用于 `DefaultImporter` 的普通配置，不用于 Scene、Prefab 或 BAsset 文档。
 
-Animation、Animator 状态机由 `com.bengine.animation` 包提供，Timeline 由独立的 `com.bengine.timeline` 包提供。Core 保留通用节点／轨道数据模型和窗口内容接口；保留模式控件及 NodeCanvas、TrackEditorCanvas 在 com.bengine.ui-elements 包内；启用包后双击 `.anim`、`.controller` 或 `.timeline.yaml` 可打开对应编辑窗口。具体操作见包文档。
+Core 保留通用节点、轨道数据模型和窗口扩展接口；具体制作工具由启用的扩展提供，其使用说明由各扩展自行维护。
 
 ## 可导入示例
 
@@ -63,12 +68,8 @@ Animation、Animator 状态机由 `com.bengine.animation` 包提供，Timeline �
 | `Renderer2D` | `sortingLayer`, `orderInLayer`, `opacity` | 所有 2D Renderer 共用的排序与透明度字段 |
 | `SpriteRenderer` | `sprite`, `size`, `pivot`, `useSpritePivot` | Sprite 资源、尺寸与轴心 |
 | `SpriteRenderer` | `color`, `flipX`, `flipY`, `material` | 着色、翻转与材质；Atlas 由 Sprite 引用自动反查 |
-| `ParticleSystem2D` | `duration`, `loop`, `playOnAwake`, `emissionRate` | 发射周期与自动播放 |
-| `ParticleSystem2D` | `startLifetime`, `startSpeed`, `startDirection`, `startSize` | 新生粒子的寿命、速度、方向和尺寸 |
-| `ParticleSystem2D` | `startColor`, `startRotation`, `startAngularVelocity` | 新生粒子的颜色和旋转 |
-| `ParticleSystem2D` | `maxParticles`, `sprite`, `atlas`, `material` | 容量、视觉资源与合批键 |
 
-Sorting Layer 的值是连续自然编号 `1..63`，不是位值。工程默认提供五个具有稳定内建身份的 Layer；它们可以重命名和调整顺序，但不能删除。自定义 Layer 可以增加、删除、重命名和排序，排序变化后编号仍保持连续。Camera 与 Physics 使用的 Layer Mask 是另一种位掩码表示：不要直接按位组合 Layer 编号，应使用 `SortingLayer.ToMask(layer)`、`LayerMask.MaskForLayer(layer)` 或按名称调用 `LayerMask.GetMask(...)`。内建 UI Layer 通过稳定身份定位，其当前编号可随排序变化。最终渲染顺序由 Layer、Order in Layer、Hierarchy、透明度和提交顺序共同决定，Material、Shader、Atlas 决定相邻提交能否合批。
+Sorting Layer 的值是连续自然编号 `1..63`，不是位值。工程默认提供五个具有稳定内建身份的 Layer；它们可以重命名和调整顺序，但不能删除。自定义 Layer 可以增加、删除、重命名和排序，排序变化后编号仍保持连续。相机与外部系统使用的 Layer Mask 是另一种位掩码表示：不要直接按位组合 Layer 编号，应使用 `SortingLayer.ToMask(layer)`、`LayerMask.MaskForLayer(layer)` 或按名称调用 `LayerMask.GetMask(...)`。内建 UI Layer 通过稳定身份定位，其当前编号可随排序变化。最终渲染顺序由 Layer、Order in Layer、Hierarchy、透明度和提交顺序共同决定，Material、Shader、Atlas 决定相邻提交能否合批。
 
 ## 资源字段表与导入参数
 
@@ -77,7 +78,6 @@ Sorting Layer 的值是连续自然编号 `1..63`，不是位值。工程默认�
 | `Scene` | `*.scene.yaml` | 保存 GameObject、Transform 和 Component 数据 |
 | `PrefabAsset` | `*.prefab.yaml` | 可实例化并 Apply/Revert 的对象层级 |
 | `Sprite` | 图片 + `.meta`: `textureType`, `spritePivotX/Y` | 将图片的 Texture Type 设为 Sprite；同一图片可赋给 SpriteRenderer 或加入 Atlas |
-| `TextureAtlas` | `*.atlas.yaml`: `MaxSize`, `Padding`, `Extrude`, `Sources` | `Sources` 是 Sprite 数组，以 `ownerGuid + localIdentifier` 保存稳定引用；在 `Window > 2D > Texture Atlas` 构建 |
 | `Material` | `*.material.yaml`: `shader`, `color`, `renderQueue` | 可保存 Color、Fix64、Vector4 和 Int 属性 |
 | `GUISkin` | `*.guiskin.yaml`: 全部 `EditorStyles` 样式槽, `customStyles` | 编辑器主题资产；继承 `BAsset`，仅存在于 `BEngine.Editor` 程序集 |
 | `Texture` | `.png/.jpg/.jpeg/.bmp/.tga/.gif` | Inspector Import Settings 写入相邻 `.meta`；GIF 导入首帧，JPEG 应用 EXIF Orientation |
@@ -89,11 +89,11 @@ Inspector 中修改 Texture 导入参数后必须点击 `Apply`；`Revert` 会�
 
 ### 统一 BAsset 与导入链路
 
-工程资源不再区分两套资产基类：Scene、Texture、Font、Shader、Material、TextureAtlas、ScriptableObject 资产等都直接或间接继承统一的 `BAsset`。Sprite 是 TextureImporter 从 Texture 创建的 `BObject` SubAsset，以主 Texture 的 GUID 和非零 `localIdentifier` 标识，不是第二种资产基类。
+工程资源不再区分两套资产基类：Scene、Texture、Font、Shader、Material、ScriptableObject 资产等都直接或间接继承统一的 `BAsset`。Sprite 是 TextureImporter 从 Texture 创建的 `BObject` SubAsset，以主 Texture 的 GUID 和非零 `localIdentifier` 标识，不是第二种资产基类。
 
 编辑器读取链路是 `Source -> AssetDatabase -> AssetImporter -> Artifact -> BAsset`。Source 是用户磁盘中的原始文件；AssetDatabase 管理工程路径、GUID、Source/Artifact 地址、哈希与 SubAsset 身份；AssetImporter 把源数据转换到 Artifact；AssetDatabase 再从 Artifact 创建并缓存 BAsset。Assets 面板展示 AssetDatabase 的资源记录，而不是直接枚举磁盘文件。重新导入、刷新、移动或删除资源时必须使相关缓存失效。
 
-需要把可序列化资源写回源文件时，编辑器内部通过泛型 `Document<TAsset>` 在 BAsset 与磁盘文档之间转换；该桥梁不公开，也不形成新的资产类型层级。运行时只允许从 AssetBundle 读取 BAsset，并由渲染后端按需创建 GPU 对象；运行时及 Play 镜像都不能把资源保存回工程文件。
+需要把可序列化资源写回源文件时，编辑器内部通过泛型 `Document<TAsset>` 在 BAsset 与磁盘文档之间转换；该桥梁不公开，也不形成新的资产类型层级。运行时通过已注册的资源提供者读取 BAsset，并由渲染后端按需创建 GPU 对象；运行时及 Play 镜像都不能把资源保存回工程文件。
 
 ### CG Shader 编译链、pragma 与阶段
 
@@ -129,7 +129,6 @@ float4 FragmentMain() : SV_Target
 | `scene.QueryComponents<T>()` | 查询 Scene 中所有匹配组件 |
 | `transform.Translate/Rotate/SetParent` | 2D 空间变换与层级操作 |
 | `SceneManager.LoadScene` | Single 或 Additive 加载场景 |
-| 定时与协程 | 启用 `com.bengine.coroutines` 后使用 `this.StartCoroutine`、`this.Invoke` 等扩展方法 |
 | `BAsset.Load<T>(path)` | 按 Assets/Packages 稳定路径加载资源 |
 | `BAsset.LoadSubAsset<T>(path, localIdentifier)` | 用主资源路径和局部 ID 加载 SubAsset |
 | `Object.Instantiate`, `Object.Destroy` | 复制与销毁运行时对象 |
@@ -237,7 +236,7 @@ GUILayout.Button("Build", accent);
 1. 从 `File > New Scene` 创建场景，并立刻保存到 `Assets/Scenes`。
 2. 使用 `GameObject > Camera 2D` 创建相机；在 Inspector 设置 size、priority、clearMode、cullingMask 和 viewportRect。
 3. 在 Project 选中 PNG，在 Inspector 将 `Texture Type` 设为 `Sprite`，按需调整 Pivot/PPU，然后点击 `Apply`；使用 `GameObject > 2D Object > Sprite` 创建对象并把这张图片赋给 SpriteRenderer。
-4. 需要 Atlas 时，从 `Assets > Create > 2D > Texture Atlas` 创建 Atlas，在 Atlas Inspector 或 `Window > 2D > Texture Atlas` 通过 Sprite ObjectField 添加图片并 Build。清单保存 Sprite 的 ownerGuid 与 localIdentifier；生成的 PNG 以 Atlas GUID 和保留 localIdentifier 注册为 SubAsset，在 Project 展开 Atlas 节点后显示，而不成为独立顶层资源。同一图片仍直接用于 SpriteRenderer，无需创建第二份资源。
+4. 扩展可提供资源制作工具；从 Package Manager 打开当前扩展的版本文档，按其工作流制作额外资源。
 5. 在 `Edit > Project Settings > Tags and Layers` 管理 Tag 与全部 Sorting Layer。Layer 使用连续自然编号 `1..63`；五个内建层可重命名和排序但不可删除，自定义层可增删、重命名和排序。
 6. 用 W/E/R 切换移动、旋转、缩放 Handle；Scene 点击对象会同步 Hierarchy 选择。
 7. 进入 Play 验证运行时行为。Play 期间不要尝试保存 Scene 或组件变更；停止后原数据会恢复。
@@ -328,7 +327,7 @@ public sealed class CombatModule : IEngineServiceModule
 
 扩展功能的说明与导入示例由各 Package 提供，示例工程 Main 主菜单提供对应入口。
 
-地图、动画、音视频预览和包 Inspector 的入口见 [编辑器资源制作](Doc/EditorAuthoring.md)。
+通用资源引用、克隆和工具扩展约定见 [编辑器资源制作](Doc/EditorAuthoring.md)。
 
 
 异步操作进度统一采用轮询：外部在 Update 中读取 `AsyncOperation.progress`、`isDone`、`status`、`exception`。

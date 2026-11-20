@@ -83,7 +83,7 @@ public sealed class VisualElementScheduler
             Resume();
         }
 
-        private void OnFrame(BFrameTick tick)
+        private void OnFrame(ApplicationTick tick)
         {
             if (!_subscribed || _disposed) return;
             if (_repeating && _interval.HasValue ? tick.Elapsed < _nextTime : tick.Frame < _nextFrame) return;

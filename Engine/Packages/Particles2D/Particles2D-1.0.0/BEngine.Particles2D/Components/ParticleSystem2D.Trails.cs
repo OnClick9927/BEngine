@@ -9,11 +9,12 @@ public sealed partial class ParticleSystem2D
     private readonly Dictionary<ulong, TrailBuffer> _trails = [];
     private readonly HashSet<ulong> _aliveTrailParticles = [];
     private readonly List<ulong> _expiredTrails = [];
+    private ObjectPool<TrailBuffer>? _trailPool;
     private Fix64 _trailClock;
     public bool trailsEnabled { get; set; }
-    public Fix64 trailLifetime { get; set; } = (Fix64).5;
-    public Fix64 trailWidth { get; set; } = (Fix64).1;
-    public Fix64 trailMinDistance { get; set; } = (Fix64).01;
+    public Fix64 trailLifetime { get; set; } = Fix64.FromRaw(2147483648L) /* (Fix64).5 */;
+    public Fix64 trailWidth { get; set; } = Fix64.FromRaw(429496729L) /* (Fix64).1 */;
+    public Fix64 trailMinDistance { get; set; } = Fix64.FromRaw(42949672L) /* (Fix64).01 */;
     public int trailMaxPoints { get; set; } = 64;
     public bool trailDieWithParticles { get; set; }
     public AnimationCurve trailWidthCurve { get; set; } = AnimationCurve.Linear(0, 0, 1, 1);
@@ -35,14 +36,21 @@ public sealed partial class ParticleSystem2D
     private void RecordTrail(Particle2D particle)
     {
         if (!trailsEnabled || trailLifetime <= 0) return;
-        if (!_trails.TryGetValue(particle.Id, out var points)) _trails[particle.Id] = points = new();
-        if (points.Count > 0 && Vector2.Distance(points[^1].Position, particle.Position) < Fix64.Max((Fix64).00001, trailMinDistance)) return;
+        if (!_trails.TryGetValue(particle.Id, out var points))
+        {
+            _trailPool ??= new ObjectPool<TrailBuffer>(static () => new(),
+                onRelease: static buffer => buffer.Reset(), maxSize: 64);
+            points = _trailPool.Get();
+            try { _trails.Add(particle.Id, points); }
+            catch { _trailPool.Release(points); throw; }
+        }
+        if (points.Count > 0 && Vector2.Distance(points[^1].Position, particle.Position) < Fix64.Max(Fix64.FromRaw(42949L) /* (Fix64).00001 */, trailMinDistance)) return;
         points.Add(new(particle.Position, _trailClock, particle.Color), Math.Clamp(trailMaxPoints, 2, 1024));
     }
 
     private void ExpireTrails()
     {
-        if (!trailsEnabled || trailLifetime <= 0) { _trails.Clear(); return; }
+        if (!trailsEnabled || trailLifetime <= 0) { ClearTrails(); return; }
         _aliveTrailParticles.Clear(); _expiredTrails.Clear();
         if (trailDieWithParticles)
             foreach (var particle in _particles) _aliveTrailParticles.Add(particle.Id);
@@ -51,8 +59,24 @@ public sealed partial class ParticleSystem2D
             points.Expire(_trailClock, trailLifetime);
             if (points.Count == 0 || trailDieWithParticles && !_aliveTrailParticles.Contains(id)) _expiredTrails.Add(id);
         }
-        foreach (var id in _expiredTrails) _trails.Remove(id);
+        foreach (var id in _expiredTrails)
+            if (_trails.Remove(id, out var buffer)) _trailPool!.Release(buffer);
         _expiredTrails.Clear(); _aliveTrailParticles.Clear();
+    }
+
+    private void ClearTrails()
+    {
+        foreach (var buffer in _trails.Values) _trailPool!.Release(buffer);
+        _trails.Clear();
+        _expiredTrails.Clear();
+        _aliveTrailParticles.Clear();
+    }
+
+    public override void OnDestroy()
+    {
+        _moduleValidationPool?.Dispose();
+        _trailPool?.Dispose();
+        ClearTrails();
     }
 
     private void CollectTrails(ISceneGeometrySink2D sink)
@@ -73,7 +97,7 @@ public sealed partial class ParticleSystem2D
             var rotation = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
             if (!sink.Camera.IsVisible(center, rotation, size, sink.Width, sink.Height)) continue;
             sink.Submit(this, SceneQuad2D.Create(center, rotation, size, WithOpacity(segment.Color, opacity),
-                string.Empty, new Rect(0, 0, 1, 1), false, false, false), new RenderBatchKey2D(material, string.Empty));
+                string.Empty, new Rect(0, 0, 1, 1), false, false, false), new RenderBatchKey(material, string.Empty));
         }
     }
 
@@ -84,6 +108,13 @@ public sealed partial class ParticleSystem2D
         private TrailPoint[] _points = [];
         private int _head;
         internal int Count { get; private set; }
+        internal void Reset()
+        {
+            _head = 0;
+            Count = 0;
+            // Keep common trails warm without retaining a burst of 1024-point histories.
+            if (_points.Length > 128) _points = [];
+        }
         internal TrailPoint this[int index] => _points[(_head + (index < 0 ? Count + index : index)) % _points.Length];
         internal void Add(TrailPoint point, int limit)
         {

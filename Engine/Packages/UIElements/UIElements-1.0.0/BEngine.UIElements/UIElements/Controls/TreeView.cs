@@ -5,6 +5,18 @@ namespace BEngine.UIElements;
 
 public class TreeView : VisualElement
 {
+    private static readonly ObjectPool<HashSet<int>> ValidIdSets = new(
+        static () => new(), onRelease: static ids =>
+        {
+            ids.Clear();
+            if (ids.EnsureCapacity(0) > 2048) ids.TrimExcess();
+        }, maxSize: 2);
+    private static readonly ObjectPool<Dictionary<int, TreeViewItem>> SelectionMaps = new(
+        static () => new(), onRelease: static items =>
+        {
+            items.Clear();
+            if (items.EnsureCapacity(0) > 2048) items.TrimExcess();
+        }, maxSize: 4);
     private IReadOnlyList<TreeViewItem> _items = [];
     private readonly HashSet<int> _expandedIds = [];
     private readonly HashSet<int> _selectedIds = [];
@@ -33,25 +45,43 @@ public class TreeView : VisualElement
         {
             _items = value ?? [];
             _visibleRowsDirty = true;
-            var validIds = Flatten(_items).Select(item => item.Id).ToHashSet();
-            _expandedIds.RemoveWhere(id => !validIds.Contains(id));
-            _selectedIds.RemoveWhere(id => !validIds.Contains(id));
-            if (_selectedId is { } selected && !validIds.Contains(selected)) _selectedId = null;
-            if (_selectionAnchorId is { } anchor && !validIds.Contains(anchor)) _selectionAnchorId = null;
-            if (_hoveredId is { } hovered && !validIds.Contains(hovered)) _hoveredId = null;
-            if (_pressedId is { } pressed && !validIds.Contains(pressed)) _pressedId = null;
-            if (_renamingId is { } renaming && !validIds.Contains(renaming)) CancelRename();
-            if (_draggedId is { } dragged && !validIds.Contains(dragged)) CancelDrag();
-            if (_dropTargetId is { } dropTarget && !validIds.Contains(dropTarget)) ClearDropTarget();
-            if (!_itemsInitialized)
+            var validIds = ValidIdSets.Get();
+            try
             {
-                foreach (var item in _items.Where(item => item.Children is { Count: > 0 }))
-                    _expandedIds.Add(item.Id);
-                _itemsInitialized = true;
+                CollectIds(_items, validIds);
+                _expandedIds.IntersectWith(validIds);
+                _selectedIds.IntersectWith(validIds);
+                if (_selectedId is { } selected && !validIds.Contains(selected)) _selectedId = null;
+                if (_selectionAnchorId is { } anchor && !validIds.Contains(anchor)) _selectionAnchorId = null;
+                if (_hoveredId is { } hovered && !validIds.Contains(hovered)) _hoveredId = null;
+                if (_pressedId is { } pressed && !validIds.Contains(pressed)) _pressedId = null;
+                if (_renamingId is { } renaming && !validIds.Contains(renaming)) CancelRename();
+                if (_draggedId is { } dragged && !validIds.Contains(dragged)) CancelDrag();
+                if (_dropTargetId is { } dropTarget && !validIds.Contains(dropTarget)) ClearDropTarget();
+                if (!_itemsInitialized)
+                {
+                    foreach (var item in new ItemEnumerator(_items))
+                        if (item.Children is { Count: > 0 }) _expandedIds.Add(item.Id);
+                    _itemsInitialized = true;
+                }
+                MarkDirty();
             }
-            MarkDirty();
+            finally
+            {
+                ValidIdSets.Release(validIds);
+            }
         }
     }
+
+    private static void CollectIds(IReadOnlyList<TreeViewItem> items, HashSet<int> ids)
+    {
+        foreach (var item in new ItemEnumerator(items))
+        {
+            ids.Add(item.Id);
+            if (item.Children is { } children) CollectIds(children, ids);
+        }
+    }
+
     public IReadOnlyList<TreeViewItem> rootItems { get => items; set => items = value; }
     public int? selectedId
     {
@@ -66,9 +96,40 @@ public class TreeView : VisualElement
             MarkDirty();
         }
     }
-    public IReadOnlyList<int> selectedIds => _selectedIds.OrderBy(id => id).ToArray();
-    public IReadOnlyList<TreeViewItem> selectedItems => Flatten(_items)
-        .Where(item => _selectedIds.Contains(item.Id)).ToArray();
+    public IReadOnlyList<int> selectedIds
+    {
+        get
+        {
+            var ids = new int[_selectedIds.Count];
+            _selectedIds.CopyTo(ids);
+            Array.Sort(ids);
+            return ids;
+        }
+    }
+    public IReadOnlyList<TreeViewItem> selectedItems
+    {
+        get
+        {
+            var selected = _selectedIds.Count == 0 ? [] : new TreeViewItem[_selectedIds.Count];
+            var count = 0;
+            CollectSelectedItems(_items, ref selected, ref count);
+            if (count != selected.Length) Array.Resize(ref selected, count);
+            return selected;
+        }
+    }
+
+    private void CollectSelectedItems(IReadOnlyList<TreeViewItem> items, ref TreeViewItem[] selected, ref int count)
+    {
+        foreach (var item in new ItemEnumerator(items))
+        {
+            if (_selectedIds.Contains(item.Id))
+            {
+                if (count == selected.Length) Array.Resize(ref selected, Math.Max(4, count * 2));
+                selected[count++] = item;
+            }
+            if (item.Children is { } children) CollectSelectedItems(children, ref selected, ref count);
+        }
+    }
     internal int? hoveredId => _hoveredId;
     internal int? pressedId => _pressedId;
     public SelectionType selectionType
@@ -130,12 +191,22 @@ public class TreeView : VisualElement
 
     public void ExpandAll()
     {
-        var changed = false;
-        foreach (var item in Flatten(_items).Where(item => item.Children is { Count: > 0 }))
-            changed |= _expandedIds.Add(item.Id);
+        var changed = ExpandBranches(_items);
         if (!changed) return;
         _visibleRowsDirty = true;
         MarkDirty();
+    }
+
+    private bool ExpandBranches(IReadOnlyList<TreeViewItem> items)
+    {
+        var changed = false;
+        foreach (var item in new ItemEnumerator(items))
+            if (item.Children is { Count: > 0 } children)
+            {
+                changed |= _expandedIds.Add(item.Id);
+                changed |= ExpandBranches(children);
+            }
+        return changed;
     }
 
     public void CollapseAll()
@@ -146,7 +217,38 @@ public class TreeView : VisualElement
         MarkDirty();
     }
 
-    public TreeViewItem? GetItemForId(int id) => Flatten(_items).FirstOrDefault(item => item.Id == id);
+    public TreeViewItem? GetItemForId(int id) => FindItem(_items, id);
+
+    private static TreeViewItem? FindItem(IReadOnlyList<TreeViewItem> items, int id)
+    {
+        foreach (var item in new ItemEnumerator(items))
+        {
+            if (item.Id == id) return item;
+            if (item.Children is { } children && FindItem(children, id) is { } match) return match;
+        }
+        return null;
+    }
+
+    // Arrays are the normal authored tree representation. Keep custom-list
+    // enumeration semantics while avoiding an enumerator object for every array.
+    private struct ItemEnumerator : IDisposable
+    {
+        private readonly TreeViewItem[]? _array;
+        private readonly IEnumerator<TreeViewItem>? _fallback;
+        private int _index;
+
+        internal ItemEnumerator(IReadOnlyList<TreeViewItem> items)
+        {
+            _array = items as TreeViewItem[];
+            _fallback = _array is null ? items.GetEnumerator() : null;
+            _index = -1;
+        }
+
+        public ItemEnumerator GetEnumerator() => this;
+        public TreeViewItem Current => _array is { } array ? array[_index] : _fallback!.Current;
+        public bool MoveNext() => _array is { } array ? ++_index < array.Length : _fallback!.MoveNext();
+        public void Dispose() => _fallback?.Dispose();
+    }
 
     public T? GetItemDataForId<T>(int id) => GetItemForId(id)?.Data is T data ? data : default;
 
@@ -376,7 +478,7 @@ public class TreeView : VisualElement
     }
 
     private static bool IsDescendant(TreeViewItem item, int candidateId) =>
-        Flatten(item.Children ?? []).Any(candidate => candidate.Id == candidateId);
+        item.Children is { } children && FindItem(children, candidateId) is not null;
 
     private static IReadOnlyList<TreeViewItem> RenameItem(
         IEnumerable<TreeViewItem> source,
@@ -436,8 +538,23 @@ public class TreeView : VisualElement
 
     private void SetSelectionInternal(IEnumerable<int> ids, bool notify, TreeViewItem? activeItem = null)
     {
-        var valid = Flatten(_items).ToDictionary(item => item.Id);
-        var next = ids.Where(valid.ContainsKey).Distinct().ToList();
+        var valid = SelectionMaps.Get();
+        try
+        {
+            CollectItems(_items, valid);
+            ApplySelection(ids, notify, activeItem, valid);
+        }
+        finally { SelectionMaps.Release(valid); }
+    }
+
+    private void ApplySelection(IEnumerable<int> ids, bool notify, TreeViewItem? activeItem,
+        Dictionary<int, TreeViewItem> valid)
+    {
+        ArgumentNullException.ThrowIfNull(ids, "source");
+        var next = new List<int>();
+        var seen = new HashSet<int>();
+        foreach (var candidate in ids)
+            if (valid.ContainsKey(candidate) && seen.Add(candidate)) next.Add(candidate);
         if (_selectionType == SelectionType.None) next.Clear();
         if (_selectionType == SelectionType.Single && next.Count > 1) next = [next[^1]];
         if (_selectedIds.SetEquals(next) && (activeItem is null || _selectedId == activeItem.Id)) return;
@@ -450,6 +567,30 @@ public class TreeView : VisualElement
         if (!notify) return;
         var primary = activeItem ?? (_selectedId is { } id && valid.TryGetValue(id, out var item) ? item : null);
         selectionChanged?.Invoke(primary);
-        selectedItemsChanged?.Invoke(next.Select(id => valid[id]).ToArray());
+        selectedItemsChanged?.Invoke(ProjectItems21383());
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.UIElements.TreeViewItem[] ProjectItems21383()
+        {
+            var projectionSource21383 = next;
+            ArgumentNullException.ThrowIfNull(projectionSource21383, "source");
+            global::System.ReadOnlySpan<int> projectionValues21383 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(projectionSource21383);
+            var projectionOutput21383 = projectionValues21383.Length == 0 ? global::System.Array.Empty<global::BEngine.UIElements.TreeViewItem>() : new global::BEngine.UIElements.TreeViewItem[projectionValues21383.Length];
+            var projectionIndex21383 = 0;
+            foreach (var id in projectionValues21383)
+            {
+                projectionOutput21383[projectionIndex21383++] = valid[id];
+            }
+        
+            return projectionOutput21383;
+        }
+    }
+
+    private static void CollectItems(IReadOnlyList<TreeViewItem> items, Dictionary<int, TreeViewItem> result)
+    {
+        foreach (var item in new ItemEnumerator(items))
+        {
+            result.Add(item.Id, item);
+            if (item.Children is { } children) CollectItems(children, result);
+        }
     }
 }

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using BEngine.Editor;
 
 namespace BEngine.UIElements.Editor;
@@ -7,6 +8,7 @@ public sealed class UIElementsEventDebuggerWindowController :
     EditorWindowController<UIElementsEventDebuggerWindow, UIElementsEventDebuggerWindowModel>
 {
     private readonly Dictionary<long, PendingEvent> _pending = [];
+    private readonly ConditionalWeakTable<Type, PropertyInfo[]> _eventProperties = new();
     private bool _recording;
 
     public UIElementsEventDebuggerWindowController(
@@ -26,6 +28,7 @@ public sealed class UIElementsEventDebuggerWindowController :
         _recording = false;
         UIEventDiagnostics.traceEmitted -= OnTrace;
         _pending.Clear();
+        _eventProperties.Clear();
     }
 
     public void ToggleSuspended()
@@ -115,7 +118,7 @@ public sealed class UIElementsEventDebuggerWindowController :
         Repaint();
     }
 
-    private static IReadOnlyList<string> EventInformation(UIEventBase evt)
+    private IReadOnlyList<string> EventInformation(UIEventBase evt)
     {
         var values = new List<string>
         {
@@ -124,12 +127,15 @@ public sealed class UIElementsEventDebuggerWindowController :
             $"Propagation stopped: {evt.propagationStopped}",
             $"Immediate propagation stopped: {evt.immediatePropagationStopped}"
         };
-        foreach (var property in evt.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                     .Where(property => property.GetIndexParameters().Length == 0 &&
+        var type = evt.GetType();
+        if (!_eventProperties.TryGetValue(type, out var properties))
+            _eventProperties.Add(type, properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(property => property.GetIndexParameters().Length == 0 &&
                                         property.Name is not nameof(UIEventBase.target) and
                                         not nameof(UIEventBase.currentTarget) and
                                         not nameof(UIEventBase.propagationStopped) and
-                                        not nameof(UIEventBase.immediatePropagationStopped)))
+                                        not nameof(UIEventBase.immediatePropagationStopped)).ToArray());
+        foreach (var property in properties)
         {
             object? value;
             try { value = property.GetValue(evt); }

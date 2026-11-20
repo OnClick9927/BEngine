@@ -2,8 +2,12 @@ format: BEngine.AssemblyDefinition
 version: 1
 name: BEngine.LineRendering2D.Editor
 rootNamespace: BEngine.Editor
-references: 
+references:
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
+- BEngine.Core.Editor
 - BEngine.LineRendering2D
+- BEngine.Rendering2D
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

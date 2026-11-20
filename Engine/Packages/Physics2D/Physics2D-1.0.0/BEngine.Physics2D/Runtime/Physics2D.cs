@@ -3,7 +3,7 @@ namespace BEngine.Physics2D;
 public static class Physics2D
 {
     private static readonly PhysicsWorld2DState DefaultState = new();
-    private static readonly Fix64 DefaultQueryDistance = Fix64.Parse("100000");
+    private static readonly Fix64 DefaultQueryDistance = Fix64.FromRaw(429496729600000L) /* Parse("100000") */;
 
     public static Vector2 gravity
     {

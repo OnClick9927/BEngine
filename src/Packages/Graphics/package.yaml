@@ -1,0 +1,41 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.graphics
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Graphics
+description: Textures, fonts, materials, shaders, image codecs and shared GPU drawing resources.
+enabledByDefault: true
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Graphics
+  rootNamespace: BEngine
+  packageReferences:
+  - id: StbImageSharp
+    version: 2.30.16
+  - id: BCnEncoder.Net
+    version: 2.3.0
+  - id: AssetRipper.TextureDecoder
+    version: 2.6.3
+  - id: YamlDotNet
+    version: 18.1.0
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
+editor:
+  assembly: BEngine.Graphics.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.graphics
+    target: runtime
+  packageReferences:
+  - id: BCnEncoder.Net
+    version: 2.3.0
+
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

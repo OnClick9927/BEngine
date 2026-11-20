@@ -1,0 +1,347 @@
+using System.Diagnostics;
+using System.Reflection;
+
+namespace BEngine;
+
+public enum CooperativeWorkStatus { Continue, Blocked, Complete }
+public enum CooperativeWorkPriority { Background, Normal, Realtime }
+
+public readonly record struct CooperativeWorkSnapshot(int Pending, int Steps, double Milliseconds,
+    double LongestStepMilliseconds, long OverBudgetFrames);
+
+/// <summary>Shares a soft time budget between resumable work on the main frame thread.</summary>
+public sealed class CooperativeWorkScheduler
+{
+    private static readonly List<WeakReference<CooperativeWorkScheduler>> Instances = [];
+    private readonly LinkedList<Registration>[] _queues = [new(), new(), new()];
+    private static readonly int[] PriorityCycle = [2, 1, 2, 0, 2, 1, 2];
+    private int _cycle;
+    private readonly HashSet<Registration> _blocked = [];
+    private readonly Action<ApplicationTick> _advance;
+    private Registration? _current;
+    private int _ownerThread;
+    private bool _subscribed, _advancing, _canceling;
+    private double _budgetMilliseconds = 2;
+    private int _maximumStepsPerFrame = 16384;
+    private double _maximumStepMilliseconds = .5;
+    private long _overBudgetFrames;
+    private long _pumpFrame = -1;
+    private int _frameSteps;
+    private double _frameMilliseconds, _frameLongest;
+    private bool _frameStopped, _frameOverBudgetCounted;
+    public static CooperativeWorkScheduler Main { get; } = new();
+    public CooperativeWorkScheduler()
+    {
+        _advance = Advance;
+        lock (Instances)
+        {
+            Instances.RemoveAll(reference => !reference.TryGetTarget(out _));
+            Instances.Add(new(this));
+        }
+    }
+    static CooperativeWorkScheduler()
+    {
+        AsyncHostBridge.SubscribeQuitting(Main.CancelPending);
+    }
+    public CooperativeWorkSnapshot Snapshot { get; private set; }
+    public int PendingCount => _queues[0].Count + _queues[1].Count + _queues[2].Count;
+    public double BudgetMilliseconds
+    {
+        get => _budgetMilliseconds;
+        set { if (!double.IsFinite(value) || value <= 0 || value > 1000) throw new ArgumentOutOfRangeException(nameof(value)); _budgetMilliseconds = value; }
+    }
+    public int MaximumStepsPerFrame
+    {
+        get => _maximumStepsPerFrame;
+        set { if (value is < 1 or > 100000) throw new ArgumentOutOfRangeException(nameof(value)); _maximumStepsPerFrame = value; }
+    }
+    /// <summary>
+    /// Soft guard for one indivisible step. A step is never interrupted, but a
+    /// step that crosses the guard stops this scheduler for the current frame.
+    /// </summary>
+    public double MaximumStepMilliseconds
+    {
+        get => _maximumStepMilliseconds;
+        set { if (!double.IsFinite(value) || value <= 0 || value > 1000) throw new ArgumentOutOfRangeException(nameof(value)); _maximumStepMilliseconds = value; }
+    }
+
+    public IDisposable Schedule(Func<CooperativeWorkStatus> step, Action<Exception> failure,
+        CooperativeWorkPriority priority = CooperativeWorkPriority.Normal) =>
+        ScheduleCore(step, failure, priority, owner: null);
+
+    /// <summary>Schedules work with an explicit lifetime owner for selective cancellation.</summary>
+    public IDisposable Schedule(Func<CooperativeWorkStatus> step, Action<Exception> failure,
+        object owner, CooperativeWorkPriority priority = CooperativeWorkPriority.Normal)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        return ScheduleCore(step, failure, priority, owner);
+    }
+
+    private IDisposable ScheduleCore(Func<CooperativeWorkStatus> step, Action<Exception> failure,
+        CooperativeWorkPriority priority, object? owner)
+    {
+        ArgumentNullException.ThrowIfNull(step); ArgumentNullException.ThrowIfNull(failure);
+        CheckOwner();
+        if (_canceling) throw new InvalidOperationException("Cooperative work is shutting down.");
+        if (!Enum.IsDefined(priority)) throw new ArgumentOutOfRangeException(nameof(priority));
+        if (PendingCount >= 8192) throw new InvalidOperationException("The cooperative work queue is full (8192 requests).");
+        var registration = new Registration(this, step, failure, owner) { Priority = (int)priority };
+        registration.Enqueue(_queues[registration.Priority]);
+        if (!_subscribed) { _subscribed = true; BTaskScheduler.Main.FrameAdvanced += _advance; }
+        return registration;
+    }
+    public void CancelPending()
+        => CancelMatching(static _ => true);
+
+    /// <summary>Cancels only work scheduled with this exact owner, preserving other code domains' work.</summary>
+    public int CancelPending(object owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        return CancelMatching(registration => ReferenceEquals(registration.WorkOwner, owner));
+    }
+
+    /// <summary>
+    /// Cancels queued and current work whose owner, step or failure closure references these assemblies.
+    /// Invoke on the scheduler's owning engine thread before releasing the code domain.
+    /// </summary>
+    public int RemoveWorkReferencing(IEnumerable<Assembly> assemblies)
+    {
+        ArgumentNullException.ThrowIfNull(assemblies);
+        var selected = assemblies.ToHashSet();
+        if (selected.Count == 0) return 0;
+        return CancelMatching(registration =>
+            BTaskScheduler.ObjectReferencesAnyAssembly(registration.WorkOwner, selected) ||
+            (registration.Step is { } step && BTaskScheduler.CallbackReferencesAnyAssembly(step, selected)) ||
+            (registration.Failure is { } failure && BTaskScheduler.CallbackReferencesAnyAssembly(failure, selected)));
+    }
+
+    internal static void RemoveAllWorkReferencing(IReadOnlyCollection<Assembly> assemblies)
+    {
+        CooperativeWorkScheduler[] schedulers;
+        lock (Instances)
+        {
+            Instances.RemoveAll(reference => !reference.TryGetTarget(out _));
+            schedulers = Instances.Select(reference => reference.TryGetTarget(out var scheduler) ? scheduler : null)
+                .OfType<CooperativeWorkScheduler>().ToArray();
+        }
+        List<Exception>? failures = null;
+        foreach (var scheduler in schedulers)
+        {
+            if (scheduler.PendingCount == 0 && scheduler._current is null) continue;
+            try { scheduler.RemoveWorkReferencing(assemblies); }
+            catch (Exception exception) { (failures ??= []).Add(exception); }
+        }
+        if (failures is { Count: > 0 }) throw new AggregateException("Cooperative work cleanup failed.", failures);
+    }
+
+    private int CancelMatching(Predicate<Registration> matches)
+    {
+        CheckOwner();
+        var wasCanceling = _canceling;
+        _canceling = true;
+        var count = 0;
+        try
+        {
+            var pending = _queues.SelectMany(queue => queue).ToList(); if (_current is { } current) pending.Add(current);
+            foreach (var registration in pending)
+            {
+                if (registration.Disposed || !matches(registration)) continue;
+                count++;
+                var failure = registration.Failure; registration.Dispose();
+                try { failure?.Invoke(new BOperationCanceledException(default)); }
+                catch (Exception error) { AsyncHostBridge.LogException(error); }
+            }
+        }
+        finally { _canceling = wasCanceling; }
+        return count;
+    }
+    public void SetPriority(IDisposable handle, CooperativeWorkPriority priority)
+    {
+        CheckOwner();
+        if (!Enum.IsDefined(priority)) throw new ArgumentOutOfRangeException(nameof(priority));
+        if (handle is not Registration registration || !ReferenceEquals(registration.Owner, this))
+            throw new ArgumentException("The work handle belongs to a different scheduler.", nameof(handle));
+        if (registration.Disposed || registration.Priority == (int)priority) return;
+        var node = registration.Node;
+        if (node is not null) _queues[registration.Priority].Remove(node);
+        registration.Priority = (int)priority;
+        if (node is not null) _queues[registration.Priority].AddLast(node);
+    }
+    private Registration? TakeNext()
+    {
+        for (var attempt = 0; attempt < PriorityCycle.Length; attempt++)
+        {
+            var queue = _queues[PriorityCycle[_cycle]]; _cycle = (_cycle + 1) % PriorityCycle.Length;
+            if (queue.First is not { } node) continue;
+            queue.RemoveFirst(); node.Value.Node = null; return node.Value;
+        }
+        return null;
+    }
+
+    private void CheckOwner()
+    {
+        var current = Environment.CurrentManagedThreadId;
+        if (_ownerThread == 0) _ownerThread = current;
+        else if (_ownerThread != current) throw new InvalidOperationException("Cooperative work must run on its owning engine thread.");
+    }
+
+    private void Advance(ApplicationTick tick)
+    {
+        CheckOwner();
+        if (_advancing) throw new InvalidOperationException("Cooperative work cannot be re-entered.");
+        BeginPumpFrame(tick.Frame);
+        Pump(allowFirstStep: true);
+    }
+
+    // Only the main BTask callback phase may use this additional loading pass.
+    // The original frame event and delay phase are never raised again.
+    internal bool PumpLoadingWork()
+    {
+        CheckOwner();
+        if (_advancing) throw new InvalidOperationException("Cooperative work cannot be re-entered.");
+        if (!FrameWorkBudget.IsActive || !FrameWorkBudget.isLoading ||
+            FrameWorkBudget.remainingMilliseconds <= 0 || PendingCount == 0) return false;
+        BeginPumpFrame(BTaskScheduler.Main.FrameCount);
+        if (_frameStopped || _frameSteps >= _maximumStepsPerFrame || _blocked.Count >= PendingCount) return false;
+        return Pump(allowFirstStep: false);
+    }
+
+    // After the owner attaches cancellation/cleanup, use the existing weighted
+    // FIFO policy until the target receives its first step. The admission never
+    // gives a target priority over older work, drains callbacks or renews a frame.
+    internal bool TryRunLoadingFirstStep(IDisposable handle)
+    {
+        CheckOwner();
+        if (handle is not Registration registration || !ReferenceEquals(registration.Owner, this))
+            throw new ArgumentException("The work handle belongs to a different scheduler.", nameof(handle));
+        if (!ReferenceEquals(this, Main) || registration.Disposed || registration.Node is null ||
+            _advancing || _canceling || !FrameWorkBudget.IsActive || !FrameWorkBudget.isLoading ||
+            FrameWorkBudget.remainingMilliseconds <= 0)
+        {
+            if (CooperativeLoadingDiagnostics.Enabled)
+                CooperativeLoadingDiagnostics.Admission(handle,
+                    !ReferenceEquals(this, Main) ? "not-main" : registration.Disposed || registration.Node is null ? "not-live" :
+                    _advancing ? "advancing" : _canceling ? "canceling" : !FrameWorkBudget.IsActive ? "no-frame" :
+                    !FrameWorkBudget.isLoading ? "not-loading" : "budget",
+                    BTaskScheduler.Main.FrameCount, PendingCount, FrameWorkBudget.remainingMilliseconds);
+            return false;
+        }
+        BeginPumpFrame(BTaskScheduler.Main.FrameCount);
+        if (_frameStopped || _frameSteps >= _maximumStepsPerFrame || _blocked.Count >= PendingCount)
+        {
+            if (CooperativeLoadingDiagnostics.Enabled)
+                CooperativeLoadingDiagnostics.Admission(handle, _frameStopped ? "soft-stop" : _frameSteps >= _maximumStepsPerFrame ? "step-limit" : "blocked",
+                    BTaskScheduler.Main.FrameCount, PendingCount, FrameWorkBudget.remainingMilliseconds);
+            return false;
+        }
+        if (CooperativeLoadingDiagnostics.Enabled)
+            CooperativeLoadingDiagnostics.Admission(handle, "admitted", BTaskScheduler.Main.FrameCount, PendingCount, FrameWorkBudget.remainingMilliseconds);
+        return Pump(allowFirstStep: false, firstStepTarget: registration);
+    }
+
+    private void BeginPumpFrame(long frame)
+    {
+        if (_pumpFrame == frame) return;
+        _pumpFrame = frame; _frameSteps = 0; _frameMilliseconds = _frameLongest = 0;
+        _frameStopped = _frameOverBudgetCounted = false; _blocked.Clear();
+    }
+
+    private bool Pump(bool allowFirstStep, Registration? firstStepTarget = null)
+    {
+        _advancing = true;
+        var start = Stopwatch.GetTimestamp(); var madeProgress = false;
+        var firstStepStart = _frameSteps;
+        var effectiveBudget = FrameWorkBudget.CooperativeBudget(_budgetMilliseconds);
+        try
+        {
+            while (!_frameStopped && (allowFirstStep || FrameWorkBudget.isLoading) &&
+                   (firstStepTarget is null || (!firstStepTarget.Disposed && _frameSteps - firstStepStart < 32)) &&
+                   PendingCount > 0 && _frameSteps < _maximumStepsPerFrame &&
+                   _frameMilliseconds + Stopwatch.GetElapsedTime(start).TotalMilliseconds < effectiveBudget &&
+                   ((allowFirstStep && _frameSteps == 0) || FrameWorkBudget.remainingMilliseconds > 0))
+            {
+                var registration = TakeNext()!;
+                _current = registration;
+                var stepStart = Stopwatch.GetTimestamp(); var status = CooperativeWorkStatus.Complete;
+                var stopAfterStep = false;
+                try
+                {
+                    if (CooperativeLoadingDiagnostics.Enabled) CooperativeLoadingDiagnostics.FirstStep(registration, BTaskScheduler.Main.FrameCount);
+                    status = registration.Step!();
+                    if (CooperativeLoadingDiagnostics.Enabled)
+                        CooperativeLoadingDiagnostics.StepReturned(registration, BTaskScheduler.Main.FrameCount, status);
+                }
+                catch (Exception error)
+                {
+                    if (CooperativeLoadingDiagnostics.Enabled) CooperativeLoadingDiagnostics.End(registration, BTaskScheduler.Main.FrameCount, success: false);
+                    try { registration.Failure?.Invoke(error); }
+                    catch (Exception reportingError) { AsyncHostBridge.LogException(reportingError); }
+                }
+                finally
+                {
+                    var stepMilliseconds = Stopwatch.GetElapsedTime(stepStart).TotalMilliseconds;
+                    _frameLongest = Math.Max(_frameLongest, stepMilliseconds); _frameSteps++;
+                    // An indivisible operation can still run past the soft
+                    // budget. Do not immediately start another one in that frame.
+                    stopAfterStep = stepMilliseconds >= FrameWorkBudget.CooperativeMaximumStep(_maximumStepMilliseconds) ||
+                        (FrameWorkBudget.IsActive && FrameWorkBudget.remainingMilliseconds <= 0);
+                }
+                if (stopAfterStep) _frameStopped = true;
+                madeProgress |= status != CooperativeWorkStatus.Blocked || registration.Disposed;
+                if (!registration.Disposed && status != CooperativeWorkStatus.Complete)
+                    registration.Enqueue(_queues[registration.Priority]);
+                else registration.Clear();
+                if (status == CooperativeWorkStatus.Blocked)
+                { if (!registration.Disposed) _blocked.Add(registration); if (_blocked.Count >= PendingCount) break; }
+                else _blocked.Clear();
+                if (stopAfterStep || ReferenceEquals(registration, firstStepTarget)) break;
+            }
+        }
+        finally
+        {
+            var elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            _frameMilliseconds += elapsed;
+            if (!_frameOverBudgetCounted && _frameMilliseconds > effectiveBudget)
+            { _overBudgetFrames++; _frameOverBudgetCounted = true; }
+            Snapshot = new(PendingCount, _frameSteps, _frameMilliseconds, _frameLongest, _overBudgetFrames);
+            _current = null; _advancing = false; UnsubscribeIfEmpty();
+        }
+        return madeProgress;
+    }
+
+    private void UnsubscribeIfEmpty()
+    {
+        if (PendingCount != 0 || !_subscribed) return;
+        _subscribed = false; BTaskScheduler.Main.FrameAdvanced -= _advance;
+    }
+
+    private sealed class Registration(CooperativeWorkScheduler owner, Func<CooperativeWorkStatus> step,
+        Action<Exception> failure, object? workOwner) : IDisposable
+    {
+        internal LinkedListNode<Registration>? Node;
+        private LinkedListNode<Registration>? _queueNode;
+        internal Func<CooperativeWorkStatus>? Step = step;
+        internal Action<Exception>? Failure = failure;
+        internal object? WorkOwner = workOwner;
+        internal bool Disposed;
+        internal int Priority;
+        internal CooperativeWorkScheduler Owner => owner;
+        internal void Enqueue(LinkedList<Registration> queue)
+        {
+            // A resumable step keeps its own detached node between turns.
+            // Requeueing or changing priority must not allocate per step.
+            _queueNode ??= new(this);
+            queue.AddLast(_queueNode);
+            Node = _queueNode;
+        }
+        internal void Clear() { Disposed = true; Step = null; Failure = null; WorkOwner = null; owner._blocked.Remove(this); }
+        public void Dispose()
+        {
+            owner.CheckOwner();
+            if (Disposed) return;
+            if (CooperativeLoadingDiagnostics.Enabled) CooperativeLoadingDiagnostics.Disposed(this, BTaskScheduler.Main.FrameCount);
+            if (Node is { } node) { owner._queues[Priority].Remove(node); Node = null; }
+            Clear(); owner.UnsubscribeIfEmpty();
+        }
+    }
+}

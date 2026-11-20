@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+  <ItemGroup><Compile Include="../Program.cs" /><Compile Include="../AdapterTests.cs" /><Reference Include="$(EngineBinaries)/*.dll" Exclude="$(EngineBinaries)/glfw3.dll;$(EngineBinaries)/libHarfBuzzSharp.dll;$(EngineBinaries)/libSkiaSharp.dll;$(EngineBinaries)/libveldrid-spirv.dll;$(EngineBinaries)/SDL2.dll;$(EngineBinaries)/shaderc_shared.dll" /></ItemGroup>
+</Project>

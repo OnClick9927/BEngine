@@ -3,8 +3,11 @@ using BEngine.Platform;
 
 namespace BEngine.Video;
 
-internal sealed class PlatformVideoAudioReader(IPlatformAudioSampleReader native) : AudioSampleReader
+public class PlatformVideoAudioReader : AudioSampleReader
 {
+    private readonly IPlatformAudioSampleReader native;
+    public PlatformVideoAudioReader(IPlatformAudioSampleReader native)
+    { ArgumentNullException.ThrowIfNull(native); this.native = native; }
     public override int channels => native.Channels;
     public override int frequency => native.Frequency;
     public override int samples => native.Samples;

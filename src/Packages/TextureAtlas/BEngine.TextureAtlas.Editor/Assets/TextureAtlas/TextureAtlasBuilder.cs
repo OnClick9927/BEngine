@@ -1,3 +1,4 @@
+using EditorCapabilities = BEngine.Editor.EditorServices;
 using BEngine.Rendering;
 using BEngine.ProjectSystem.Editor;
 using BEngine.Platform;
@@ -6,8 +7,8 @@ namespace BEngine.Editor;
 
 public static class TextureAtlasBuilder
 {
-    private static FileUtility FileSystem => EditorServiceAccess.GetRequiredService<FileUtility>();
-    private static PathUtility Paths => EditorServiceAccess.GetRequiredService<PathUtility>();
+    private static FileUtility FileSystem => EditorCapabilities.GetRequiredService<FileUtility>();
+    private static PathUtility Paths => EditorCapabilities.GetRequiredService<PathUtility>();
 
     public static TextureAtlasBuildResult Build(string atlasAssetPath)
     {
@@ -74,8 +75,8 @@ public static class TextureAtlasBuilder
         TextureAtlasResolver.Clear();
 
         var atlasPath = ToPortableAssetPath(manifestPath, manifestPath);
-        if (refreshAssets && EditorBridge.Host is not null)
-            EditorBridge.Host.RefreshAssets();
+        if (refreshAssets && !string.IsNullOrEmpty(EditorApplication.projectPath))
+            AssetDatabase.Refresh();
         return new TextureAtlasBuildResult(atlasPath, generated.Reference,
             packed.Width, packed.Height, atlas.Sprites.Count);
     }
@@ -117,8 +118,8 @@ public static class TextureAtlasBuilder
         }
         TextureAtlasResolver.Clear();
         var atlasPath = ToPortableAssetPath(manifestPath, manifestPath);
-        if (refreshAssets && EditorBridge.Host is not null)
-            EditorBridge.Host.RefreshAssets();
+        if (refreshAssets && !string.IsNullOrEmpty(EditorApplication.projectPath))
+            AssetDatabase.Refresh();
         return new TextureAtlasBuildResult(atlasPath, string.Empty, 0, 0, 0);
     }
 
@@ -194,62 +195,103 @@ public static class TextureAtlasBuilder
         string label,
         IEqualityComparer<string>? comparer = null)
     {
-        var duplicate = images.GroupBy(selector, comparer ?? StringComparer.Ordinal)
-            .FirstOrDefault(group => group.Count() > 1);
+        var duplicate = Gather9787(images.GroupBy(selector, comparer ?? StringComparer.Ordinal));
+        [global::BEngine.SkipLoopGuard]
+        global::System.Linq.IGrouping<string, global::BEngine.Editor.TextureAtlasBuilder.SourceImage>? Gather9787(global::System.Collections.Generic.IEnumerable<global::System.Linq.IGrouping<string, global::BEngine.Editor.TextureAtlasBuilder.SourceImage>> items9787)
+        {
+            ArgumentNullException.ThrowIfNull(items9787, "source");
+            bool Evaluate9787(global::System.Linq.IGrouping<string, global::BEngine.Editor.TextureAtlasBuilder.SourceImage> group) => group.Count() > 1;
+            global::System.ReadOnlySpan<global::System.Linq.IGrouping<string, global::BEngine.Editor.TextureAtlasBuilder.SourceImage>> values;
+            if (items9787.GetType() == typeof(global::System.Linq.IGrouping<string, global::BEngine.Editor.TextureAtlasBuilder.SourceImage>[]))
+                values = (global::System.Linq.IGrouping<string, global::BEngine.Editor.TextureAtlasBuilder.SourceImage>[])items9787;
+            else if (items9787.GetType() == typeof(global::System.Collections.Generic.List<global::System.Linq.IGrouping<string, global::BEngine.Editor.TextureAtlasBuilder.SourceImage>>))
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::System.Linq.IGrouping<string, global::BEngine.Editor.TextureAtlasBuilder.SourceImage>>)items9787);
+            else
+                return global::System.Linq.Enumerable.FirstOrDefault(items9787, Evaluate9787);
+            foreach (var group in values)
+                if (Evaluate9787(group))
+                    return group;
+            return default!;
+        }
         if (duplicate is not null)
             throw new InvalidDataException($"Texture atlas {label} '{duplicate.Key}' is duplicated.");
     }
 
     private static PackedAtlas Pack(IReadOnlyList<SourceImage> images, int padding, int maxSize)
     {
-        var requiredArea = images.Sum(image => checked((long)(image.Width + padding * 2) *
-                                                             (image.Height + padding * 2)));
+        // A build owns its pool. Parallel import workers never share mutable packing
+        // state, and failed size attempts reuse the same cleared buffers.
+        using var pool = new ObjectPool<PackingWorkspace>(static () => new PackingWorkspace(),
+            onRelease: static item => item.Clear(), maxSize: 1);
+        var workspace = pool.Get();
+        try { return Pack(images, padding, maxSize, workspace); }
+        finally { pool.Release(workspace); }
+    }
+
+    private static PackedAtlas Pack(IReadOnlyList<SourceImage> images, int padding, int maxSize,
+        PackingWorkspace workspace)
+    {
+        var requiredArea = Scan10814(images);
+        [global::BEngine.SkipLoopGuard]
+        long Scan10814(global::System.Collections.Generic.IEnumerable<global::BEngine.Editor.TextureAtlasBuilder.SourceImage> scanSource10814)
+        {
+            ArgumentNullException.ThrowIfNull(scanSource10814, "source");
+            long total = 0;
+            foreach (var scanItem10814 in scanSource10814)
+                total = checked(total + Match10814(scanItem10814));
+            return total;
+            long Match10814(global::BEngine.Editor.TextureAtlasBuilder.SourceImage image) => checked((long)(image.Width + padding * 2) * (image.Height + padding * 2));
+        }
         var minimumWidth = images.Max(image => checked(image.Width + padding * 2));
         var minimumHeight = images.Max(image => checked(image.Height + padding * 2));
-        var candidates = PowersOfTwo(32, maxSize)
-            .SelectMany(width => PowersOfTwo(32, maxSize).Select(height => (Width: width, Height: height)))
-            .Where(size => size.Width >= minimumWidth && size.Height >= minimumHeight &&
-                           (long)size.Width * size.Height >= requiredArea)
-            .OrderBy(size => (long)size.Width * size.Height)
-            .ThenBy(size => Math.Max(size.Width, size.Height))
-            .ThenBy(size => size.Width)
-            .ToArray();
+        var candidates = workspace.Candidates;
+        foreach (var width in PowersOfTwo(32, maxSize))
+        foreach (var height in PowersOfTwo(32, maxSize))
+            if (width >= minimumWidth && height >= minimumHeight && (long)width * height >= requiredArea)
+                candidates.Add((width, height));
+        candidates.Sort(static (left, right) =>
+        {
+            var order = ((long)left.Width * left.Height).CompareTo((long)right.Width * right.Height);
+            if (order == 0) order = Math.Max(left.Width, left.Height).CompareTo(Math.Max(right.Width, right.Height));
+            return order != 0 ? order : left.Width.CompareTo(right.Width);
+        });
         foreach (var size in candidates)
-            if (TryPack(images, padding, size.Width, size.Height, out var placements))
-                return new PackedAtlas(size.Width, size.Height, placements);
+            if (TryPack(images, padding, size.Width, size.Height, workspace))
+                // Published placements outlive this lease and own their storage.
+                return new PackedAtlas(size.Width, size.Height, new(workspace.Placements));
         throw new InvalidDataException($"Texture atlas sources do not fit within {maxSize}x{maxSize}.");
     }
 
     private static bool TryPack(IReadOnlyList<SourceImage> images, int padding,
-        int width, int height, out List<Placement> placements)
+        int width, int height, PackingWorkspace workspace)
     {
-        var free = new List<IntRect> { new(0, 0, width, height) };
-        placements = [];
+        var free = workspace.Free; free.Clear(); free.Add(new(0, 0, width, height));
+        var placements = workspace.Placements; placements.Clear();
         foreach (var image in images)
         {
             var outerWidth = checked(image.Width + padding * 2);
             var outerHeight = checked(image.Height + padding * 2);
-            var choice = free.Where(rect => outerWidth <= rect.Width && outerHeight <= rect.Height)
-                .Select(rect => new
-                {
-                    Rect = rect,
-                    Short = Math.Min(rect.Width - outerWidth, rect.Height - outerHeight),
-                    Long = Math.Max(rect.Width - outerWidth, rect.Height - outerHeight)
-                })
-                .OrderBy(item => item.Short).ThenBy(item => item.Long)
-                .ThenBy(item => item.Rect.Y).ThenBy(item => item.Rect.X)
-                .FirstOrDefault();
-            if (choice is null) return false;
-            var used = new IntRect(choice.Rect.X, choice.Rect.Y, outerWidth, outerHeight);
-            SplitFreeRectangles(free, used);
+            var found = false;
+            var choice = default(IntRect); var best = (Short: 0, Long: 0, Y: 0, X: 0);
+            foreach (var rect in free)
+            {
+                if (outerWidth > rect.Width || outerHeight > rect.Height) continue;
+                var score = (Short: Math.Min(rect.Width - outerWidth, rect.Height - outerHeight),
+                    Long: Math.Max(rect.Width - outerWidth, rect.Height - outerHeight), rect.Y, rect.X);
+                if (found && score.CompareTo(best) >= 0) continue;
+                found = true; choice = rect; best = score;
+            }
+            if (!found) return false;
+            var used = new IntRect(choice.X, choice.Y, outerWidth, outerHeight);
+            SplitFreeRectangles(free, used, workspace.Additions);
             placements.Add(new Placement(image, used.X + padding, used.Y + padding));
         }
         return true;
     }
 
-    private static void SplitFreeRectangles(List<IntRect> free, IntRect used)
+    private static void SplitFreeRectangles(List<IntRect> free, IntRect used, List<IntRect> additions)
     {
-        var additions = new List<IntRect>();
+        additions.Clear();
         for (var index = free.Count - 1; index >= 0; index--)
         {
             var item = free[index];
@@ -262,7 +304,8 @@ public static class TextureAtlasBuilder
             if (used.Bottom < item.Bottom)
                 additions.Add(new IntRect(item.X, used.Bottom, item.Width, item.Bottom - used.Bottom));
         }
-        free.AddRange(additions.Where(rect => rect.Width > 0 && rect.Height > 0));
+        foreach (var rect in additions)
+            if (rect.Width > 0 && rect.Height > 0) free.Add(rect);
         for (var left = free.Count - 1; left >= 0; left--)
         for (var right = free.Count - 1; right >= 0; right--)
         {
@@ -308,7 +351,7 @@ public static class TextureAtlasBuilder
 
     private static string ResolveManifestPath(string path) => Paths.IsPathRooted(path)
         ? Paths.GetFullPath(path)
-        : AssetDatabase.ResolveAssetPath(path);
+        : AssetDatabase.GetAssetSourcePath(path);
 
     private static string ResolveSourcePath(string path, string manifestPath)
     {
@@ -335,7 +378,8 @@ public static class TextureAtlasBuilder
                 name.Equals("Packages", StringComparison.OrdinalIgnoreCase))
                 return Paths.GetDirectoryName(directory) ?? directory;
         }
-        return EditorBridge.Host?.ProjectRootPath ?? Paths.GetDirectoryName(path)!;
+        var projectRoot = EditorApplication.projectPath;
+        return string.IsNullOrEmpty(projectRoot) ? Paths.GetDirectoryName(path)! : projectRoot;
     }
 
     private static string ToPortableAssetPath(string path, string manifestPath)
@@ -352,6 +396,16 @@ public static class TextureAtlasBuilder
         AtlasSource Source, string FullPath, int Width, int Height, byte[] Pixels);
     private sealed record Placement(SourceImage Image, int X, int Y);
     private sealed record PackedAtlas(int Width, int Height, List<Placement> Placements);
+    private sealed class PackingWorkspace
+    {
+        internal readonly List<(int Width, int Height)> Candidates = [];
+        internal readonly List<IntRect> Free = [], Additions = [];
+        internal readonly List<Placement> Placements = [];
+        internal void Clear()
+        {
+            Candidates.Clear(); Free.Clear(); Additions.Clear(); Placements.Clear();
+        }
+    }
     private readonly record struct IntRect(int X, int Y, int Width, int Height)
     {
         internal int Right => X + Width;

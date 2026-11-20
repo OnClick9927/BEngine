@@ -70,15 +70,15 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
         }
         quad = quad with { EffectData = lighting };
     }
-    public long Collect(Scene scene, RenderCamera camera, int width, int height, ICollection<RenderSubmission2D> submissions, long submissionOrder) => submissionOrder;
-    public bool CanRender(RenderBatch2D batch)
+    public long Collect(Scene scene, RenderCamera camera, int width, int height, ICollection<RenderSubmission> submissions, long submissionOrder) => submissionOrder;
+    public bool CanRender(RenderBatch batch)
     {
         using var submissionBudget = LoopExecutionGuard.AllowIterations(batch.SubmissionSpan.Length);
         foreach (ref readonly var submission in batch.SubmissionSpan)
             if (submission.Payload is QuadPayload { EffectData: LightingData }) return true;
         return false;
     }
-    public void Render(RenderBatch2D batch, RenderCamera camera, int width, int height, GraphicsRect viewport) => DrawLightingBatch(batch, camera, width, height);
+    public void Render(RenderBatch batch, RenderCamera camera, int width, int height, GraphicsRect viewport) => DrawLightingBatch(batch, camera, width, height);
     public void EndFrame()
     {
         _viewContext = null; _sceneLighting.Clear(); ResetOrdinaryLighting(); _shadowOwners.Clear(); RecyclePaths();
@@ -219,7 +219,7 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
                 if (!context.Camera.IsVisible(position, 0, new(diameter, diameter), context.Width, context.Height)) continue;
             }
             lightCount++;
-            var direction = Transform.RotateVector(Vector2.right, light.transform.rotation);
+            var direction = Vector2.Rotate(Vector2.right, light.transform.rotation);
             values.Add(new NVector4((float)position.x, (float)position.y, (float)light.radius,
                 (float)Fix64.Min(light.innerRadius, light.radius)));
             values.Add(new NVector4(Rgb(light.color), (float)light.intensity));
@@ -269,7 +269,7 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
         return result;
     }
 
-    private void DrawLightingBatch(RenderBatch2D batch, RenderCamera camera, int width, int height)
+    private void DrawLightingBatch(RenderBatch batch, RenderCamera camera, int width, int height)
     {
         // Preserve transparency order when a material batch mixes lit, unlit, and self-shadow-excluded objects.
         _texturedVertices.Clear();
@@ -338,8 +338,8 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
     private static void SetLightingView(LightingData data, RenderCamera camera, int width, int height)
     {
         var unitsPerPixel = (Fix64)(1f / camera.PixelsPerUnit(height));
-        var axisX = Numerics.ToNumerics(Transform.RotateVector(new Vector2(unitsPerPixel, 0), camera.Rotation));
-        var axisY = Numerics.ToNumerics(Transform.RotateVector(new Vector2(0, -unitsPerPixel), camera.Rotation));
+        var axisX = Numerics.ToNumerics(Vector2.Rotate(new Vector2(unitsPerPixel, 0), camera.Rotation));
+        var axisY = Numerics.ToNumerics(Vector2.Rotate(new Vector2(0, -unitsPerPixel), camera.Rotation));
         var centerX = camera.AlignViewportCenter ? Math.Max(1, width) / 2 : Math.Max(1, width) * 0.5f;
         var centerY = camera.AlignViewportCenter ? Math.Max(1, height) / 2 : Math.Max(1, height) * 0.5f;
         var origin = Numerics.ToNumerics(camera.Position) - axisX * centerX - axisY * centerY;
@@ -443,24 +443,24 @@ internal sealed partial class LightingRenderContributor2D : ISceneRenderContribu
         if (device.Backend == GraphicsBackend.Vulkan)
             return (
                 new GraphicsShaderSource(GraphicsShaderStage.Vertex, GraphicsShaderLanguage.Glsl,
-                    DefaultShaderResources.Load("Shaders/PortableScene/Textured.vulkan.vert.glsl")),
+                    DefaultShaderResources.Load("Shaders/Common/Textured.vulkan.vert.glsl")),
                 new GraphicsShaderSource(GraphicsShaderStage.Fragment, GraphicsShaderLanguage.Glsl,
-                    DefaultShaderResources.Load("Shaders/PortableScene/Textured.vulkan.frag.glsl")));
+                    DefaultShaderResources.Load("Shaders/Common/Textured.vulkan.frag.glsl")));
         if (device.Capabilities.Supports(GraphicsShaderLanguage.Glsl))
             return (
                 new GraphicsShaderSource(GraphicsShaderStage.Vertex, GraphicsShaderLanguage.Glsl,
-                    DefaultShaderResources.Load("Shaders/PortableScene/Textured.opengl.vert.glsl")),
+                    DefaultShaderResources.Load("Shaders/Common/Textured.opengl.vert.glsl")),
                 new GraphicsShaderSource(GraphicsShaderStage.Fragment, GraphicsShaderLanguage.Glsl,
-                    DefaultShaderResources.Load("Shaders/PortableScene/Textured.opengl.frag.glsl")));
+                    DefaultShaderResources.Load("Shaders/Common/Textured.opengl.frag.glsl")));
         if (device.Capabilities.Supports(GraphicsShaderLanguage.Hlsl))
             return (
                 new GraphicsShaderSource(GraphicsShaderStage.Vertex, GraphicsShaderLanguage.Hlsl,
-                    DefaultShaderResources.Load("Shaders/PortableScene/Textured.direct3d.vert.hlsl")),
+                    DefaultShaderResources.Load("Shaders/Common/Textured.direct3d.vert.hlsl")),
                 new GraphicsShaderSource(GraphicsShaderStage.Fragment, GraphicsShaderLanguage.Hlsl,
-                    DefaultShaderResources.Load("Shaders/PortableScene/Textured.direct3d.frag.hlsl")));
+                    DefaultShaderResources.Load("Shaders/Common/Textured.direct3d.frag.hlsl")));
         if (device.Capabilities.Supports(GraphicsShaderLanguage.Wgsl))
         {
-            var shader = DefaultShaderResources.Load("Shaders/PortableScene/Textured.webgpu.wgsl");
+            var shader = DefaultShaderResources.Load("Shaders/Common/Textured.webgpu.wgsl");
             return (
                 new GraphicsShaderSource(GraphicsShaderStage.Vertex, GraphicsShaderLanguage.Wgsl, shader, "vs_main"),
                 new GraphicsShaderSource(GraphicsShaderStage.Fragment, GraphicsShaderLanguage.Wgsl, shader, "fs_main"));

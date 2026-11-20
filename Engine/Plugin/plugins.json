@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "enginePackage": "com.bengine.ide-integration",
+  "protocolVersion": 1,
+  "plugins": [
+    {
+      "host": "VSCode",
+      "file": "VSCode/BEngine.VSCode-0.1.0.vsix",
+      "version": "0.1.0",
+      "size": 17580,
+      "sha256": "f4f217c989f6d5d2f029346a8286d87bd92aaad8e9c7555329625aacf5a213e2"
+    },
+    {
+      "host": "VisualStudio",
+      "file": "VisualStudio/BEngine.VisualStudio.vsix",
+      "version": "1.0.0",
+      "size": 19486,
+      "sha256": "7514ead96507e2708324df959909d6fc360bb18e8faa6ce39d6ea931dfc7622a"
+    }
+  ]
+}

@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using HarfBuzzSharp;
 using HBFont = HarfBuzzSharp.Font;
+using BEngine.Platform;
 
 namespace BEngine.UIElements;
 
@@ -11,12 +12,13 @@ namespace BEngine.UIElements;
 /// directly for coverage, metrics and positioned glyphs. It does not reshape
 /// text with browser fonts or depend on asynchronous FontFace registration.
 /// </summary>
+[PreserveNativeCode]
 internal sealed class WebAdvancedFontBackend : IAdvancedFontBackend
 {
     // Match SKShaper's OpenType scale exactly; using upem directly changes the
     // integer rounding of advances and can change existing line breaks.
     private const int ShapingScale = 512;
-    private readonly IntPtr[] _faces;
+    private readonly IPlatformFontFace[] _faces;
     private readonly HBFont[] _fonts;
     private readonly GCHandle[] _fontData;
     private bool _disposed;
@@ -24,7 +26,8 @@ internal sealed class WebAdvancedFontBackend : IAdvancedFontBackend
     internal WebAdvancedFontBackend(IReadOnlyList<DynamicFontSource> sources)
     {
         if (sources.Count is < 1 or > 32) throw new InvalidDataException("Invalid embedded font chain.");
-        _faces = new IntPtr[sources.Count];
+        var rasterizer = RuntimeServices.GetRequiredService<IPlatformFontRasterizer>();
+        _faces = new IPlatformFontFace[sources.Count];
         _fonts = new HBFont[sources.Count];
         _fontData = new GCHandle[sources.Count];
         try
@@ -36,9 +39,7 @@ internal sealed class WebAdvancedFontBackend : IAdvancedFontBackend
                     throw new InvalidDataException("Invalid embedded font source.");
                 _fontData[index] = GCHandle.Alloc(data, GCHandleType.Pinned);
                 var pointer = _fontData[index].AddrOfPinnedObject();
-                _faces[index] = WebFontNative.Create(pointer, data.Length);
-                if (_faces[index] == IntPtr.Zero)
-                    throw new InvalidDataException($"Embedded font '{sources[index].Name}' is not a supported OpenType font.");
+                _faces[index] = rasterizer.OpenFace(data);
                 // The pinned asset owns these bytes until the HarfBuzz font is
                 // destroyed. No release callback or second HB copy is needed.
                 using var blob = new Blob(pointer, data.Length, MemoryMode.ReadOnly);
@@ -59,11 +60,8 @@ internal sealed class WebAdvancedFontBackend : IAdvancedFontBackend
     public AdvancedFontMetrics GetMetrics(int index, float size)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var metrics = new float[3];
-        if (WebFontNative.Metrics(_faces[index], size, metrics) != 0 ||
-            !float.IsFinite(metrics[0]) || !float.IsFinite(metrics[1]) || !float.IsFinite(metrics[2]))
-            throw new InvalidDataException("The embedded font has invalid metrics.");
-        return new(metrics[0], metrics[1], metrics[2]);
+        var metrics = _faces[index].GetMetrics(size);
+        return new(metrics.Ascent, metrics.Descent, metrics.Leading);
     }
 
     public bool ContainsGlyphs(int index, string text)
@@ -74,7 +72,7 @@ internal sealed class WebAdvancedFontBackend : IAdvancedFontBackend
         // Keep this separate from HB, which replaces malformed code units.
         if (!TryCountRunes(text, out _)) return true;
         foreach (var rune in text.EnumerateRunes())
-            if (WebFontNative.Glyph(_faces[index], (uint)rune.Value) == 0) return false;
+            if (_faces[index].GetGlyph((uint)rune.Value) == 0) return false;
         return true;
     }
 
@@ -84,7 +82,7 @@ internal sealed class WebAdvancedFontBackend : IAdvancedFontBackend
         if (!TryCountRunes(text, out var count)) return [];
         var result = new uint[count];
         var offset = 0;
-        foreach (var rune in text.EnumerateRunes()) result[offset++] = WebFontNative.Glyph(_faces[index], (uint)rune.Value);
+        foreach (var rune in text.EnumerateRunes()) result[offset++] = _faces[index].GetGlyph((uint)rune.Value);
         return result;
     }
 
@@ -132,10 +130,8 @@ internal sealed class WebAdvancedFontBackend : IAdvancedFontBackend
         foreach (var run in runs)
         {
             if (run.Result.Codepoints.Length == 0) continue;
-            var result = WebFontNative.DrawRun(_faces[run.FontIndex], size, run.Result.Codepoints,
-                run.Result.Points, run.Result.Codepoints.Length, run.X, run.Baseline, color, pixels, width, height);
-            if (result < 0)
-                throw new InvalidDataException($"Unable to rasterize an embedded font run (error {result}).");
+            _faces[run.FontIndex].DrawRun(size, run.Result.Codepoints,
+                MemoryMarshal.Cast<AdvancedGlyphPoint, float>(run.Result.Points.AsSpan()), run.X, run.Baseline, color, pixels, width, height);
         }
         var colored = false;
         for (var offset = 0; offset < pixels.Length; offset += 4)
@@ -150,29 +146,10 @@ internal sealed class WebAdvancedFontBackend : IAdvancedFontBackend
         // HarfBuzz can retain font-table views, so destroy it before unpinning
         // the source bytes; FreeType owns its independent, bounded font copy.
         foreach (var font in _fonts) font?.Dispose();
-        foreach (var face in _faces) if (face != IntPtr.Zero) WebFontNative.Destroy(face);
+        foreach (var face in _faces) face?.Dispose();
         foreach (var data in _fontData) if (data.IsAllocated) data.Free();
         _disposed = true;
     }
 }
 
-internal static class WebFontNative
-{
-    [DllImport("libBEngineWebFont", EntryPoint = "bengine_font_create", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr Create(IntPtr data, int length);
-
-    [DllImport("libBEngineWebFont", EntryPoint = "bengine_font_destroy", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void Destroy(IntPtr font);
-
-    [DllImport("libBEngineWebFont", EntryPoint = "bengine_font_metrics", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int Metrics(IntPtr font, float size, [Out] float[] metrics);
-
-    [DllImport("libBEngineWebFont", EntryPoint = "bengine_font_glyph", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern uint Glyph(IntPtr font, uint codepoint);
-
-    [DllImport("libBEngineWebFont", EntryPoint = "bengine_font_draw_run", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int DrawRun(IntPtr font, float size, [In] uint[] glyphs,
-        [In] AdvancedGlyphPoint[] points, int count, float x, float baseline, uint rgba,
-        [In, Out] byte[] pixels, int width, int height);
-}
 #endif

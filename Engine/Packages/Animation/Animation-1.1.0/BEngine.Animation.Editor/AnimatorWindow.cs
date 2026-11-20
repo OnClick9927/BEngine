@@ -3,6 +3,7 @@ namespace BEngine.Editor;
 [EditorWindowIcon("Icons/AssetAnimation.png")]
 public sealed partial class AnimatorWindow : UIElementsEditorWindow<AnimatorWindowModel, AnimatorWindowController>
 {
+    private static readonly AnimatorControllerParameterType[] CachedAnimatorControllerParameterTypeValues = Enum.GetValues<AnimatorControllerParameterType>();
     public AnimatorWindow() { titleContent = new GUIContent("Animator"); minSize = new Vector2(840, 460); }
     protected override AnimatorWindowModel CreateWindowModel(EditorWindowMvcContext context) => new(context.WindowId);
     protected override AnimatorWindowController CreateWindowController(EditorWindowMvcContext context, AnimatorWindowModel model) => new(context, model);
@@ -80,7 +81,7 @@ public sealed partial class AnimatorWindow : UIElementsEditorWindow<AnimatorWind
     }
     private void DrawSidebar(AnimatorController asset, Rect rect)
     {
-        GUI.DrawRect(rect, new Color((Fix64).15, (Fix64).15, (Fix64).16));
+        GUI.DrawRect(rect, new Color(Fix64.FromRaw(644245094L) /* (Fix64).15 */, Fix64.FromRaw(644245094L) /* (Fix64).15 */, Fix64.FromRaw(687194767L) /* (Fix64).16 */));
         GUILayout.BeginArea(new Rect(rect.x + 6, rect.y + 4, rect.width - 12, 28));
         GUILayout.BeginHorizontal();
         var tabWidth = Fix64.Max(55, (rect.width - 68) / 2);
@@ -132,7 +133,7 @@ public sealed partial class AnimatorWindow : UIElementsEditorWindow<AnimatorWind
     private void ParameterMenu()
     {
         var menu = new GenericMenu();
-        foreach (var type in Enum.GetValues<AnimatorControllerParameterType>())
+        foreach (var type in CachedAnimatorControllerParameterTypeValues)
         { var value = type; menu.AddItem(new GUIContent(type.ToString()), false, () => controller.AddParameter(value)); }
         menu.ShowAsContext();
     }
@@ -219,7 +220,7 @@ public sealed partial class AnimatorWindow : UIElementsEditorWindow<AnimatorWind
     private void DrawDetails(AnimatorController asset, Rect rect)
     {
         using var readOnly = new EditorGUI.DisabledScope(!EditorAssetWritePolicy.CanWrite);
-        GUI.DrawRect(rect, new Color((Fix64).17, (Fix64).17, (Fix64).18));
+        GUI.DrawRect(rect, new Color(Fix64.FromRaw(730144440L) /* (Fix64).17 */, Fix64.FromRaw(730144440L) /* (Fix64).17 */, Fix64.FromRaw(773094113L) /* (Fix64).18 */));
         var selectedState = asset.GetStates(model.LayerIndex, model.MachinePath).ElementAtOrDefault(model.StateIndex);
         var contentHeight = Fix64.Max(rect.height, SelectedTransition(asset) is { } selectedTransition
             ? 600 + selectedTransition.conditions.Count * 160
@@ -390,7 +391,29 @@ public sealed partial class AnimatorWindow : UIElementsEditorWindow<AnimatorWind
         GUILayout.Label("Conditions", EditorStyles.boldLabel);
         foreach (var condition in transition.conditions.ToArray())
         {
-            var parameters = asset.parameters.Select(p => p.name).ToArray();
+            var parameters = Gather27747(asset.parameters);
+            [global::BEngine.SkipLoopGuard]
+            string[] Gather27747(global::System.Collections.Generic.IEnumerable<global::BEngine.AnimatorControllerParameter> items27747)
+            {
+                ArgumentNullException.ThrowIfNull(items27747, "source");
+                string Evaluate27747(global::BEngine.AnimatorControllerParameter p) => p.name;
+                global::System.ReadOnlySpan<global::BEngine.AnimatorControllerParameter> values;
+                if (items27747.GetType() == typeof(global::BEngine.AnimatorControllerParameter[]))
+                    values = (global::BEngine.AnimatorControllerParameter[])items27747;
+                else if (items27747.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AnimatorControllerParameter>))
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AnimatorControllerParameter>)items27747);
+                else
+                {
+                    return global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(items27747, Evaluate27747));
+                }
+
+                if (values.IsEmpty)
+                    return global::System.Array.Empty<string>();
+                var result = new string[values.Length];
+                for (var index = 0; index < values.Length; index++)
+                    result[index] = Evaluate27747(values[index]);
+                return result;
+            }
             if (parameters.Length == 0) { GUILayout.Label("Create a parameter to add a condition."); break; }
             var parameterIndex = EditorGUILayout.Popup("Parameter", Math.Max(0, Array.IndexOf(parameters, condition.parameter)), parameters);
             var parameter = asset.parameters[parameterIndex];
@@ -398,7 +421,29 @@ public sealed partial class AnimatorWindow : UIElementsEditorWindow<AnimatorWind
                 ? new[] { AnimatorConditionMode.If, AnimatorConditionMode.IfNot }
                 : parameter.type == AnimatorControllerParameterType.Float ? [AnimatorConditionMode.Greater, AnimatorConditionMode.Less]
                 : new[] { AnimatorConditionMode.Greater, AnimatorConditionMode.Less, AnimatorConditionMode.Equals, AnimatorConditionMode.NotEqual };
-            var modeIndex = EditorGUILayout.Popup("Condition", Math.Max(0, Array.IndexOf(modes, condition.mode)), modes.Select(mode => mode.ToString()).ToArray());
+            var modeIndex = EditorGUILayout.Popup("Condition", Math.Max(0, Array.IndexOf(modes, condition.mode)), Gather28720(modes));
+            [global::BEngine.SkipLoopGuard]
+            string[] Gather28720(global::System.Collections.Generic.IEnumerable<global::BEngine.AnimatorConditionMode> items28720)
+            {
+                ArgumentNullException.ThrowIfNull(items28720, "source");
+                string Evaluate28720(global::BEngine.AnimatorConditionMode mode) => mode.ToString();
+                global::System.ReadOnlySpan<global::BEngine.AnimatorConditionMode> values;
+                if (items28720.GetType() == typeof(global::BEngine.AnimatorConditionMode[]))
+                    values = (global::BEngine.AnimatorConditionMode[])items28720;
+                else if (items28720.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AnimatorConditionMode>))
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AnimatorConditionMode>)items28720);
+                else
+                {
+                    return global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(items28720, Evaluate28720));
+                }
+
+                if (values.IsEmpty)
+                    return global::System.Array.Empty<string>();
+                var result = new string[values.Length];
+                for (var index = 0; index < values.Length; index++)
+                    result[index] = Evaluate28720(values[index]);
+                return result;
+            }
             var threshold = condition.threshold;
             if (parameter.type is AnimatorControllerParameterType.Float or AnimatorControllerParameterType.Int)
             {

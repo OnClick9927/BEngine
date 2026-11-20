@@ -1,0 +1,47 @@
+{
+  "name": "bengine-tools",
+  "displayName": "BEngine Tools",
+  "description": "%extension.description%",
+  "publisher": "bengine",
+  "icon": "media/icon.png",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.95.0" },
+  "categories": ["Debuggers", "Programming Languages", "Other"],
+  "keywords": ["BEngine", "C#", "debugger", "game"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/OnClick9927/BEngine.git", "directory": "Plugin/VSCode" },
+  "main": "./src/extension.js",
+  "activationEvents": ["workspaceContains:Project.yaml"],
+  "extensionKind": ["workspace"],
+  "extensionDependencies": ["ms-dotnettools.csharp"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false, "description": "%trust.description%" },
+    "virtualWorkspaces": { "supported": false }
+  },
+  "contributes": {
+    "commands": [
+      { "command": "bengine.attach", "title": "%command.attach%", "category": "BEngine", "icon": "$(debug-disconnect)" },
+      { "command": "bengine.syncProject", "title": "%command.sync%", "category": "BEngine" },
+      { "command": "bengine.openSolution", "title": "%command.solution%", "category": "BEngine" },
+      { "command": "bengine.showLog", "title": "%command.log%", "category": "BEngine" }
+    ],
+    "menus": {
+      "editor/title": [{ "command": "bengine.attach", "when": "bengine.project && editorLangId == csharp && isWorkspaceTrusted", "group": "navigation" }],
+      "commandPalette": [
+        { "command": "bengine.attach", "when": "isWorkspaceTrusted" },
+        { "command": "bengine.syncProject", "when": "isWorkspaceTrusted" },
+        { "command": "bengine.openSolution", "when": "isWorkspaceTrusted" }
+      ]
+    },
+    "configuration": {
+      "title": "BEngine",
+      "properties": {
+        "bengine.syncTimeoutSeconds": { "type": "number", "default": 45, "minimum": 5, "maximum": 300, "description": "%setting.timeout%" },
+        "bengine.justMyCode": { "type": "boolean", "default": false, "description": "%setting.justMyCode%" }
+      }
+    },
+    "snippets": [{ "language": "csharp", "path": "./snippets/csharp.json" }]
+  },
+  "scripts": { "check": "node --check src/extension.js && node --check src/protocol.js && node --check src/processes.js" },
+  "files": ["src/**", "snippets/**", "media/**", "package.nls*.json", "README.md", "CHANGELOG.md", "LICENSE"]
+}

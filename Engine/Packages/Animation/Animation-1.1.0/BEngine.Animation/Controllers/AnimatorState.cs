@@ -21,11 +21,11 @@ public sealed class AnimatorState
         {
             if (_clip is { isDestroyed: false }) return _clip;
             if (string.IsNullOrWhiteSpace(_clipPath)) return null;
-            if (_clipGeneration != BAsset.CacheGeneration || _clip?.isDestroyed == true)
-            { _clip = BAsset.Load<AnimationClip>(_clipPath); _clipGeneration = BAsset.CacheGeneration; }
+            if (_clipGeneration != BAsset.cacheGeneration || _clip?.isDestroyed == true)
+            { _clip = BAsset.Load<AnimationClip>(_clipPath); _clipGeneration = BAsset.cacheGeneration; }
             return _clip is { isDestroyed: false } ? _clip : null;
         }
-        set { _clip = value; _clipPath = value?.assetPath ?? string.Empty; _clipGeneration = BAsset.CacheGeneration; }
+        set { _clip = value; _clipPath = value?.assetPath ?? string.Empty; _clipGeneration = BAsset.cacheGeneration; }
     }
     public AnimatorBlendTree? blendTree { get; set; }
     public Fix64 speed { get; set; } = Fix64.One;

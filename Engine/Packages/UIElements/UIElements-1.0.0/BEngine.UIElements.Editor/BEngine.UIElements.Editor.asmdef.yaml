@@ -3,7 +3,12 @@ version: 1
 name: BEngine.UIElements.Editor
 rootNamespace: BEngine.Editor
 references:
-  - BEngine.UIElements
+- BEngine.Graphics
+- BEngine.Core.Editor
+- BEngine.UIElements
+- BEngine.Graphics.Editor
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

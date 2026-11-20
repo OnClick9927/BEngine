@@ -1,0 +1,54 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)BEngine.TestAccess.props" />
+  <UsingTask TaskName="GenerateBEngineInternalAccess" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <HostProjects ParameterType="Microsoft.Build.Framework.ITaskItem[]" />
+      <TestAssemblies ParameterType="Microsoft.Build.Framework.ITaskItem[]" />
+      <CurrentAssembly ParameterType="System.String" Required="true" />
+      <OutputFile ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" /><Using Namespace="System.IO" /><Using Namespace="System.Linq" />
+      <Using Namespace="System.Collections.Generic" /><Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        try {
+            var names = new SortedSet<string>(StringComparer.Ordinal);
+            Action<string> add = name => {
+                if (!Regex.IsMatch(name, @"^[A-Za-z_][A-Za-z0-9_.-]*$"))
+                    throw new InvalidDataException("Invalid internal-access assembly identity: " + name);
+                if (name != CurrentAssembly) names.Add(name);
+            };
+            foreach (var item in HostProjects ?? Array.Empty<Microsoft.Build.Framework.ITaskItem>()) {
+                var project = item.ItemSpec;
+                var source = File.ReadAllText(project);
+                if (project.Replace('\\', '/').Contains("/Packages/") &&
+                    !Regex.IsMatch(source, @"<BEngineBootstrapAssembly>\s*true\s*</BEngineBootstrapAssembly>")) continue;
+                var declared = Regex.Matches(source, @"<AssemblyName>\s*([^<]+?)\s*</AssemblyName>");
+                if (declared.Count > 1) throw new InvalidDataException("Ambiguous host assembly identity: " + project);
+                add(declared.Count == 1 ? declared[0].Groups[1].Value : Path.GetFileNameWithoutExtension(project));
+            }
+            foreach (var item in TestAssemblies ?? Array.Empty<Microsoft.Build.Framework.ITaskItem>()) add(item.ItemSpec);
+            var contents = "// Generated from engine implementation projects and explicit test contracts; packages use public contracts.\n" +
+                string.Join("\n", names.Select(name => "[assembly: global::System.Runtime.CompilerServices.InternalsVisibleTo(\"" + name + "\")]")) + "\n";
+            Directory.CreateDirectory(Path.GetDirectoryName(OutputFile));
+            if (!File.Exists(OutputFile) || File.ReadAllText(OutputFile) != contents) File.WriteAllText(OutputFile, contents);
+        }
+        catch (Exception exception) { Log.LogError("Cannot generate internal-access contracts: {0}", exception.Message); return false; }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="GenerateBEngineCoreInternalAccess" BeforeTargets="CoreCompile"
+          Condition="'$(BEngineCoreInternalAccess)' == 'true'">
+    <ItemGroup>
+      <_BEngineInternalAccessHostProject Include="$(BEngineSourceRoot)/Platform/**/*.csproj;$(BEngineSourceRoot)/Core/**/*.csproj"
+                                           Exclude="$(BEngineSourceRoot)/Platform/**/BuildTools/**/*.csproj" />
+      <_BEngineInternalAccessHostProject Include="$(BEngineSourceRoot)/Packages/**/*.csproj" />
+    </ItemGroup>
+    <GenerateBEngineInternalAccess HostProjects="@(_BEngineInternalAccessHostProject)"
+                                  TestAssemblies="@(BEngineInternalAccessTestAssembly)"
+                                  CurrentAssembly="$(AssemblyName)"
+                                  OutputFile="$(IntermediateOutputPath)BEngine.InternalAccess.g.cs" />
+    <ItemGroup><Compile Include="$(IntermediateOutputPath)BEngine.InternalAccess.g.cs" Visible="false" /></ItemGroup>
+  </Target>
+</Project>

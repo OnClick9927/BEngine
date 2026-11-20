@@ -8,6 +8,11 @@ Physics2D 为 BEngine 提供单线程、Fix64、场景隔离的 2D 物理。包�
 Capsule/Polygon Collider、PhysicsMaterial2D、碰撞与 Trigger 消息、Raycast/Overlap/Cast 查询。
 它不包含任何 3D API，也不会启动运行时工作线程。
 
+Effector 去重、连续碰撞 Sweep 和多命中查询的内部暂存由每个物理世界独立的 Pooling
+工作区复用。查询返回的数组和碰撞消息仍是调用方可保留的独立快照；停止世界会释放
+闲置工作区，超大集合归还时释放背板，避免大场景永久抬高驻留内存。Package Manager
+启用 Physics2D 时会自动启用其运行时依赖 Pooling。
+
 ## 快速开始
 
 1. 打开 Window > General > Package Manager，启用 2D Physics。
@@ -108,6 +113,6 @@ Collider2D Inspector 提供 Fit to Sprite，根据 Sprite 尺寸与 Pivot 适配
 - `EdgeCollider2D` 使用连续线段和正数 edgeRadius，端点以延伸的矩形条近似，不是圆形端帽。
 - `DistanceJoint2D`、`SpringJoint2D`、`HingeJoint2D`、`FixedJoint2D`、`SliderJoint2D` 支持 connectedBody、局部锚点、世界锚点（无连接刚体）、碰撞开关和 breakForce。断开时向同对象行为发送 `OnJointBreak2D(Joint2D)`。铰链支持角度限制和电机，滑动关节支持位移限制。
 - `PlatformEffector2D` 按表面朝向筛选单向接触；`AreaEffector2D` 施加区域力；`BuoyancyEffector2D` 按浸没包围盒面积近似浮力和阻力。碰撞体需勾选 `usedByEffector`，区域力/浮力通常与 isTrigger 配合。
-- `com.bengine.tilemap-physics2d` 独立桥接包提供 `TilemapCollider2D`，将 TiledMap 的 HasCollider 标记转为物理路径。只启用 TiledMap 不会强制依赖 Physics2D。
+- TiledMap 包内置 `TilemapCollider2D`，将地图的 HasCollider 标记转为物理路径；启用 TiledMap 会自动启用 Physics2D。Particles2D 也已内置 `ParticlePhysics2DCollision`，提供粒子扫掠碰撞。
 
 当前求解仍是轻量定点实现：每个碰撞体对使用一个接触流形，关节角度采用现有刚体质量近似转动惯量，不等同于 Box2D 的完整多点约束求解。连续碰撞仍为原有扫掠实现，不保证高速物体与所有新增约束组合的稳定性。复合几何、边缘与关节支持选中时的 Scene Gizmo。

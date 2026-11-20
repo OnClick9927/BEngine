@@ -3,7 +3,12 @@ version: 1
 name: BEngine.Particles2D
 rootNamespace: BEngine
 references:
+- BEngine.Graphics
 - BEngine.Animation
+- BEngine.Physics2D
+- BEngine.Core
+- BEngine.Rendering2D
+- BEngine.Platform.Contracts
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

@@ -1,13 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
     <AssemblyName>BEngine.Diagnostics.Editor</AssemblyName>
     <RootNamespace>BEngine.Editor</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <BEngineEditorAssembly>true</BEngineEditorAssembly>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Diagnostics.Runtime" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
     <ProjectReference Include="../BEngine.Diagnostics/BEngine.Diagnostics.csproj" />
-    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Graphics/BEngine.Graphics/BEngine.Graphics.csproj" />
+    <ProjectReference Include="../../IMGUI/BEngine.IMGUI.Editor/BEngine.IMGUI.Editor.csproj" />
+    <ProjectReference Include="../../Rendering2D/BEngine.Rendering2D/BEngine.Rendering2D.csproj" />
   </ItemGroup>
 </Project>

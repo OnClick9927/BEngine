@@ -3,7 +3,10 @@ version: 1
 name: BEngine.InputActions.Editor
 rootNamespace: BEngine.InputActions.Editor
 references:
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
 - BEngine.InputActions
+- BEngine.Core.Editor
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

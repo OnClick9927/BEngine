@@ -1,3 +1,4 @@
+using BEngine.Instrumentation;
 using System.Globalization;
 using BEngine.Serialization;
 using System.Runtime.CompilerServices;
@@ -10,9 +11,9 @@ public static partial class UIElementLayoutEngine
     public static long cacheHits { get; private set; }
     public static int lastRebuiltNodeCount { get; private set; }
     public static int lastReusedNodeCount { get; private set; }
-    static UIElementLayoutEngine() => Diagnostics.RuntimeDiagnosticRegistry.Register("budget.ui", "UI layout",
-        new("rebuilt", "Last rebuilt nodes", Diagnostics.RuntimeDiagnosticUnit.Number, () => lastRebuiltNodeCount),
-        new("cacheHits", "Layout cache hits", Diagnostics.RuntimeDiagnosticUnit.Number, () => cacheHits));
+    static UIElementLayoutEngine() => Instrumentation.RuntimeDiagnosticRegistry.Register("budget.ui", "UI layout",
+        new("rebuilt", "Last rebuilt nodes", Instrumentation.RuntimeDiagnosticUnit.Number, () => lastRebuiltNodeCount),
+        new("cacheHits", "Layout cache hits", Instrumentation.RuntimeDiagnosticUnit.Number, () => cacheHits));
     public static IReadOnlyList<UIElementLayout> Calculate(
         VisualElement root,
         int viewportWidth,

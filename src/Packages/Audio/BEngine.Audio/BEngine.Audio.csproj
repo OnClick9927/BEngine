@@ -7,7 +7,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
     <PackageReference Include="NVorbis" />
     <PackageReference Include="NLayer" />
   </ItemGroup>

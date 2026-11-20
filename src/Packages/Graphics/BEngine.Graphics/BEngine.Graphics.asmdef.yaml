@@ -1,0 +1,12 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Graphics
+rootNamespace: BEngine
+references:
+- BEngine.Core
+- BEngine.Platform.Contracts
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false

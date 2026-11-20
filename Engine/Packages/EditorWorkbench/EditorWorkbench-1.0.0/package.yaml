@@ -1,0 +1,31 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.editor-workbench
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: EditorWorkbench
+description: Required default editor workspace, windows, docking, menus and editor host.
+enabledByDefault: true
+required: true
+content:
+  editor: Editor
+editor:
+  assembly: BEngine.EditorWorkbench.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.imgui
+    target: editor
+  - packageId: com.bengine.rendering2d
+    target: editor
+  - packageId: com.bengine.graphics
+    target: editor
+  - packageId: com.bengine.graphics
+    target: runtime
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Core.Editor
+  - BEngine.Player
+  - BEngine.Platform.Contracts

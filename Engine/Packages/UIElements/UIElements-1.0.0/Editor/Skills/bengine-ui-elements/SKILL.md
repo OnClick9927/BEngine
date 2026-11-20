@@ -7,7 +7,7 @@ description: "Develop and use BEngine's UIElements package retained-mode UI, inc
 
 ## Open the built-in tools and import examples
 
-- Enable `com.bengine.ui-elements`; runtime types live in `BEngine.UIElements` and retained editor integration in `BEngine.UIElements.Editor`. `com.bengine.ui-builder` and `com.bengine.html-ui-converter` depend on this package.
+- Enable `com.bengine.ui-elements`; runtime types live in `BEngine.UIElements`, and UI Builder, HTML conversion, SDF font authoring and retained editor integration all live in `BEngine.UIElements.Editor`.
 - Import `Controls Gallery`. It installs to `Assets/Examples/ControlsGallery`; open `res/ControlsGallery.scene.yaml`, enter Play, and use Apply Preset/Reset to inspect UXML, USS, `Q<T>`, two-way `UIBinding`, BObservable value streams, and common controls. Use `Tools/Examples/UIElements/Open Controls Gallery in UI Builder` to edit the imported UXML.
 - Import `Runtime HUD` separately. It installs to `Assets/Examples/RuntimeHud`; open `res/UIElements.scene.yaml`, enter Play, and click Advance Progress to update ProgressBar, TreeView, virtualized ListView, bubbled ClickEvent state, and a main-thread frame-scheduled heartbeat.
 - Reimport preserves modified example files and repairs/updates the rest. Import/Reimport is blocked until the package is enabled and while Play mode disallows project writes.
@@ -15,7 +15,7 @@ description: "Develop and use BEngine's UIElements package retained-mode UI, inc
 ## Create UI source files
 
 - Use `Assets/Create/UI Toolkit/UI Document` in the top Assets menu or Project context menu to create a minimal `.bxml` text file. Use `Assets/Create/UI Toolkit/Style Sheet` to create `.bss`.
-- `.bxml`, `.bss`, and `.bcss` are registered Project asset types backed by `VisualTreeAsset` and `StyleSheet`. The UI Builder package supplies an `[OnOpenAsset]` callback, so Project double-click opens `.bxml` in UI Builder.
+- `.bxml`, `.bss`, and `.bcss` are registered Project asset types backed by `VisualTreeAsset` and `StyleSheet`. This package supplies an `[OnOpenAsset]` callback, so Project double-click opens `.bxml` in UI Builder.
 - Open `Window/UIElement/UI Builder` to create or open a document. The Library exposes containers, controls, fields, collections, and toolbar elements with search; Hierarchy selects the retained tree; the central Viewport uses the window's `uiElementContainer`; Inspector edits identity, binding, classes, control values, layout, color, background, and border.
 - The toolbar supports New/Open/Save, Undo/Redo, Duplicate, sibling reorder, Delete, and HTML Converter. The UIElement Viewport follows the active Game resolution and aspect ratio. New documents save by default to a generated `Assets/UI/New UI.bxml` path.
 - Each UI Builder instance has an independent WindowId, Model, Controller, document history, selection, and panel scroll state. Use `EditorWindowRegistry` or the public `UIBuilderWindow.Open(path)` entry point for external integration.
@@ -49,7 +49,7 @@ description: "Develop and use BEngine's UIElements package retained-mode UI, inc
 
 ## Extend UIElements
 
-- Keep retained-mode runtime types in the `BEngine.UIElements` namespace under `Packages/UIElements/BEngine.UIElements`, editor integration under `Packages/UIElements/BEngine.UIElements.Editor`, and UI Builder/HTML conversion in their respective packages. EditorWindow chrome remains GPU IMGUI while `UIElementsEditorWindow` and `EditorWindowUIElementContainer` host retained content in a configured rectangle.
+- Keep retained-mode runtime types in the `BEngine.UIElements` namespace under `Packages/UIElements/BEngine.UIElements`. Editor integration, UI Builder and HTML conversion belong under `Packages/UIElements/BEngine.UIElements.Editor`. EditorWindow chrome remains GPU IMGUI while `UIElementsEditorWindow` and `EditorWindowUIElementContainer` host retained content in a configured rectangle.
 - Register the runtime UI renderer through the actual `SceneRenderContributor2DRegistry` API, as `UIElementsRenderRegistration` does. There is no `SceneOverlayRendererRegistry`; do not use or document that nonexistent name.
 - A code-only control derives `VisualElement` or an existing field/control. Register external UXML controls with `UxmlFactoryRegistry.Register<T>(xmlName, factory, serializeAttributes, serializeChildren)`, preferably using an XML namespace. Dispose the registration at the owner's end of life; collectible assembly unload removes it automatically. UXML, UI YAML, in-memory assets and clones preserve custom state. Registered controls appear in UI Builder's Project Library tab. Use the UxmlFactoryOptions overload to supply display name, category, default attributes or opt out with ShowInLibrary=false; disposal/unload refreshes the list.
 - Extend UI Builder only in the editor assembly, keep tools grouped under `Window/UIElement/...`, apply Undo/dirty/write policy for project files, and keep runtime preview claims accurate.

@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <Import Project="..\BEngine.Player.Hosts.props" />
+  <Import Project="../BEngine.Player.Hosts.props" />
   <PropertyGroup>
+    <BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <BEngineSolutionRole>Template</BEngineSolutionRole>
     <TargetFramework>net10.0-android</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>BEngine.Player.AndroidHost</AssemblyName>
@@ -13,15 +15,19 @@
     <SuppressTrimAnalysisWarnings Condition="'$(RunAOTCompilation)' == 'true'">true</SuppressTrimAnalysisWarnings>
     <ILLinkTreatWarningsAsErrors Condition="'$(RunAOTCompilation)' == 'true'">false</ILLinkTreatWarningsAsErrors>
     <AndroidEnableMarshalMethods>false</AndroidEnableMarshalMethods>
-    <!-- Bundles already contain their own compression; permit seekable APK asset fd reads. -->
-    <AndroidStoreUncompressedFileExtensions>$(AndroidStoreUncompressedFileExtensions);.bassetbundle</AndroidStoreUncompressedFileExtensions>
+    <!-- Content providers declare formats requiring seekable APK asset fd reads. -->
+    <AndroidStoreUncompressedFileExtensions Condition="'$(BEngineUncompressedResourceExtensions)' != ''">$(AndroidStoreUncompressedFileExtensions);$(BEngineUncompressedResourceExtensions)</AndroidStoreUncompressedFileExtensions>
     <AndroidPackageFormat>aab</AndroidPackageFormat>
-    <AndroidManifest Condition="'$(BEngineTestPlayer)' == 'true'">..\AndroidResources\TestAndroidManifest.xml</AndroidManifest>
+    <AndroidManifest Condition="'$(BEngineDevelopmentHost)' == 'true'">..\AndroidResources\DevelopmentAndroidManifest.xml</AndroidManifest>
   </PropertyGroup>
   <ItemGroup>
     <TrimmerRootAssembly Include="BEngine.Android" RootMode="All" />
-    <ProjectReference Include="..\..\BEngine.Android\BEngine.Android.csproj"
-                      Condition="Exists('..\..\BEngine.Android\BEngine.Android.csproj')" />
+    <ProjectReference Include="../../../Android/Editor/Native/BEngine.Android.Native/BEngine.Android.Native.csproj"
+                      Condition="Exists('../../../Android/Editor/Native/BEngine.Android.Native/BEngine.Android.Native.csproj')"
+                      AdditionalProperties="BEnginePlatformRuntimeRoot=$(BEngineResolvedRuntimeRoot)" />
+    <ProjectReference Include="../../BuildPlatform/BEngine.Android.Native/BEngine.Android.Native.csproj"
+                      Condition="!Exists('../../../Android/Editor/Native/BEngine.Android.Native/BEngine.Android.Native.csproj') and Exists('../../BuildPlatform/BEngine.Android.Native/BEngine.Android.Native.csproj')"
+                      AdditionalProperties="BEnginePlatformRuntimeRoot=$(BEngineResolvedRuntimeRoot)" />
   </ItemGroup>
   <ItemGroup Condition="'$(BEngineContentRoot)' != '' and '$(BEngineDataDirectoryName)' != ''">
     <AndroidAsset Include="$(BEngineContentRoot)\$(BEngineDataDirectoryName)\**\*">

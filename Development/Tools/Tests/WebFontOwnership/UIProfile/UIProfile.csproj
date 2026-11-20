@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.UIElements</AssemblyName>
+    <RootNamespace>BEngine</RootNamespace>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);BENGINE_WEB_FONTS</DefineConstants>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Compile Include="../../../../../src/Packages/UIElements/BEngine.UIElements/**/*.cs" Exclude="../../../../../src/Packages/UIElements/BEngine.UIElements/obj/**;../../../../../src/Packages/UIElements/BEngine.UIElements/bin/**" />
+    <EmbeddedResource Include="../../../../../src/Packages/UIElements/Resources/UIElements/Default.bcss" LogicalName="BEngine.UIElements.Default.bcss" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll;$(EngineBinaries)/BEngine.Platform.Contracts.dll;$(EngineBinaries)/BEngine.Graphics.dll;$(EngineBinaries)/BEngine.TextEditing.dll;$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+    
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.HarfBuzz" />
+  </ItemGroup>
+</Project>

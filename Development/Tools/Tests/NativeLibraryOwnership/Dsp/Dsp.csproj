@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>NativeDspOwnershipProbe</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets><AllowUnsafeBlocks>true</AllowUnsafeBlocks><DefineConstants Condition="'$(Legacy)' == 'true'">$(DefineConstants);LEGACY</DefineConstants></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Compile Include="../ProtocolProbe.cs" Link="ProtocolProbe.cs" />
+    <Compile Include="../FactoryProbe.cs" Link="FactoryProbe.cs" Condition="'$(Legacy)' != 'true'" />
+
+    <Reference Include="$(EngineBinaries)/BEngine.Audio.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" /><Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+  </ItemGroup>
+</Project>

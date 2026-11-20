@@ -36,6 +36,11 @@ public sealed class Light2DEditor : Editor
 
     public void SetVertex(int index, Vector2 point)
     {
+        if (Light.shapePath[index] == point)
+        {
+            EditorAssetWritePolicy.EnsureCanWrite("Move light vertex");
+            return;
+        }
         var points = Light.shapePath.ToList(); points[index] = point; SetShape(points, "Move light vertex");
     }
     public void InsertAfter(int index)

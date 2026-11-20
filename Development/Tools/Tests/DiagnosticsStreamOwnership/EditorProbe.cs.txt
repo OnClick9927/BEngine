@@ -1,0 +1,21 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using BEngine;
+using BEngine.Editor;
+using BEngine.Platform;
+public static class DiagnosticStreamOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");if(string.IsNullOrEmpty(folder))return;
+        var factory=RuntimeServices.GetRequiredService<IPlatformTcpStreamFactory>();
+        if(factory.GetType().Assembly.GetName().Name!="BEngine.Platform.DotNet")throw new Exception("Native TCP stream has wrong owner");
+        var scopeField=typeof(LoopExecutionGuard).GetField("_current",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic)!;
+        var scope=scopeField.GetValue(null);
+        var minimum=BObject.FindObjectsByType<BObject>().Length>1000?1001:0;
+        var checks=DiagnosticsProtocolProbe.Run(minimum);
+        if(!ReferenceEquals(scope,scopeField.GetValue(null)))throw new Exception("Diagnostic snapshot did not restore caller loop budget");
+        File.AppendAllText(Path.Combine(folder,"DiagnosticsOwnershipEvents.jsonl"),JsonSerializer.Serialize(new{Passed=true,Checks=checks.Count+2,NativeOwner=factory.GetType().Assembly.GetName().Name,MinimumHeapObjects=minimum,CallerLoopBudgetRestored=true,Protocol=checks})+Environment.NewLine);
+    }
+}

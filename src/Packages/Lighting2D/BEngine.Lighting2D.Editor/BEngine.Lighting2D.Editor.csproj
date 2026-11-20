@@ -6,8 +6,17 @@
     <RootNamespace>BEngine.Editor</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../PlayerBuild/BEngine.PlayerBuild.Editor/BEngine.PlayerBuild.Editor.csproj" />
-    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
     <ProjectReference Include="../BEngine.Lighting2D/BEngine.Lighting2D.csproj" />
+  </ItemGroup>
+  <ItemGroup></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../IMGUI/BEngine.IMGUI.Editor/BEngine.IMGUI.Editor.csproj" /></ItemGroup>
+  <ItemGroup>
+    
+    <ProjectReference Include="../../Graphics/BEngine.Graphics.Editor/BEngine.Graphics.Editor.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Rendering2D/BEngine.Rendering2D.Editor/BEngine.Rendering2D.Editor.csproj" />
   </ItemGroup>
 </Project>

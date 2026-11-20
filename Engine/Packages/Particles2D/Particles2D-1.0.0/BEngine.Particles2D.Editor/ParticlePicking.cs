@@ -22,12 +22,12 @@ internal static class ParticlePicking
                     var offset = new Vector2(
                         (Fix64.Half - visual.Pivot.x) * particle.Size.x,
                         (Fix64.Half - visual.Pivot.y) * particle.Size.y);
-                    worldPosition += Transform.RotateVector(
+                    worldPosition += Vector2.Rotate(
                         Vector2.Scale(offset, sizeScale), rotation);
                     var renderedSize = Abs(Vector2.Scale(particle.Size, sizeScale));
                     if (!camera.IsVisible(worldPosition, rotation, renderedSize,
                             viewportWidth, viewportHeight)) continue;
-                    var key = new RenderSortKey2D(system.sortingLayer, system.orderInLayer,
+                    var key = new RenderOrderKey(system.sortingLayer, system.orderInLayer,
                         hierarchyOrder, system.TransparencyUnchecked(color), submissionOrder++);
                     if (color.a <= Fix64.Zero ||
                         !ScenePickingUtility.ContainsQuad(viewportPoint, worldPosition, rotation, renderedSize,

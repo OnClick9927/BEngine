@@ -1,0 +1,7 @@
+{
+  "BEngine component": {
+    "prefix": "bcomponent",
+    "body": ["using BEngine;", "", "public sealed class ${TM_FILENAME_BASE} : Component", "{", "    $0", "}"],
+    "description": "BEngine Component"
+  }
+}

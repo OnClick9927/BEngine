@@ -2,7 +2,9 @@ format: BEngine.AssemblyDefinition
 version: 1
 name: BEngine.Networking
 rootNamespace: BEngine
-references: []
+references:
+- BEngine.Platform.Contracts
+- BEngine.Core
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

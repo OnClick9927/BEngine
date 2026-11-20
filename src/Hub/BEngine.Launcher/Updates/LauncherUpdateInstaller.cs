@@ -219,7 +219,36 @@ internal static class LauncherUpdateInstaller
         WriteJson(plan.PlanPath, plan);
         await VerifyOriginalFilesAsync(plan, cancellationToken);
         progress.Report(new("verifying", "Verifying downloaded files and unchanged installed files", Percent: 0));
-        var changes = plan.Changes.ToDictionary(change => change.Path, StringComparer.OrdinalIgnoreCase);
+        var changes = BuildIndex13134(plan.Changes, StringComparer.OrdinalIgnoreCase);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<string, global::BEngine.Launcher.LauncherUpdateChange> BuildIndex13134(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherUpdateChange> indexSource13134, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer13134)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource13134, "source");
+            var knownCount = indexSource13134.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<string, global::BEngine.Launcher.LauncherUpdateChange>(indexComparer13134);
+            global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherUpdateChange> values;
+            if (knownCount && indexSource13134 is global::BEngine.Launcher.LauncherUpdateChange[] array)
+                values = array;
+            else if (knownCount && indexSource13134 is global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherUpdateChange> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.Launcher.LauncherUpdateChange>(capacity, indexComparer13134);
+                foreach (var item in indexSource13134)
+                    result.Add(IndexKey13134(item), item);
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.Launcher.LauncherUpdateChange>(values.Length, indexComparer13134);
+                foreach (var item in values)
+                    result.Add(IndexKey13134(item), item);
+                return result;
+            }
+        
+            string IndexKey13134(global::BEngine.Launcher.LauncherUpdateChange change) => change.Path;
+        }
         long verified = 0;
         foreach (var file in plan.Files)
         {
@@ -506,7 +535,32 @@ internal static class LauncherUpdateInstaller
             if (!originals.Add(original.Path) || original.Size < 0 || original.Exists && !IsSha(original.Sha))
                 throw new InvalidDataException($"Invalid original file in the update plan: {original.Path}");
         }
-        if (files.Keys.Concat(changed).Any(path => !originals.Contains(path)))
+        bool Query29435()
+        {
+            var querySource29435 = files.Keys.Concat(changed);
+            ArgumentNullException.ThrowIfNull(querySource29435, "source");
+            if (querySource29435.GetType() == typeof(string[]) || querySource29435.GetType() == typeof(global::System.Collections.Generic.List<string>))
+            {
+                global::System.ReadOnlySpan<string> queryValues29435 = querySource29435.GetType() == typeof(string[]) ? (string[])(object)querySource29435 : global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<string>)(object)querySource29435);
+                foreach (var path in queryValues29435)
+                {
+                    if (!originals.Contains(path))
+                        return true;
+                }
+            }
+            else
+            {
+                foreach (var path in querySource29435)
+                {
+                    if (!originals.Contains(path))
+                        return true;
+                }
+            }
+        
+            return false;
+        }
+        
+        if (Query29435())
             throw new InvalidDataException("The update plan is missing the local preview baseline. Check for updates again.");
     }
 
@@ -516,13 +570,36 @@ internal static class LauncherUpdateInstaller
             throw new InvalidDataException($"Invalid relative update path: {relative}");
         var segments = relative.Split('/');
         if (segments[0].Equals("Cache", StringComparison.OrdinalIgnoreCase) ||
+            GitHubPackageManager.IsManagedPath(relative) ||
             segments[0].Equals("Projects", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"Refusing to modify protected user data: {relative}");
         foreach (var segment in segments)
         {
-            if (segment is "" or "." or ".." || segment.EndsWith('.') || segment.EndsWith(' ') ||
-                segment.Any(character => character < 32 || "<>:\"|?*".Contains(character)))
+            if (segment is "" or "." or ".." || segment.EndsWith('.') || segment.EndsWith(' ') || Query33462(segment))
                 throw new InvalidDataException($"Invalid update path: {relative}");
+            [global::BEngine.SkipLoopGuard]
+            bool Query33462(global::System.Collections.Generic.IEnumerable<char> querySource33462)
+            {
+                ArgumentNullException.ThrowIfNull(querySource33462, "source");
+                bool Matches33462(char character) => character < 32 || "<>:\"|?*".Contains(character);
+                global::System.ReadOnlySpan<char> queryValues33462;
+                if (querySource33462.GetType() == typeof(char[]))
+                    queryValues33462 = (char[])querySource33462;
+                else if (querySource33462.GetType() == typeof(global::System.Collections.Generic.List<char>))
+                    queryValues33462 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<char>)querySource33462);
+                else
+                {
+                    foreach (var character in querySource33462)
+                        if (Matches33462(character))
+                            return true;
+                    return false;
+                }
+            
+                foreach (var character in queryValues33462)
+                    if (Matches33462(character))
+                        return true;
+                return false;
+            }
             var device = segment.Split('.')[0];
             if (device.Equals("CON", StringComparison.OrdinalIgnoreCase) || device.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||
                 device.Equals("AUX", StringComparison.OrdinalIgnoreCase) || device.Equals("NUL", StringComparison.OrdinalIgnoreCase) ||
@@ -545,8 +622,32 @@ internal static class LauncherUpdateInstaller
         var name = Path.GetFileNameWithoutExtension(executablePath);
         if (!name.StartsWith("BEngine.", StringComparison.OrdinalIgnoreCase) || name.Contains("Updater", StringComparison.OrdinalIgnoreCase)) return false;
         if (IsWithin(installationRoot, executablePath)) return true;
-        return modulePaths.Any(path => IsWithin(installationRoot, path) &&
-            Path.GetFileName(path).StartsWith("BEngine.", StringComparison.OrdinalIgnoreCase));
+        bool Query32545()
+        {
+            var querySource32545 = modulePaths;
+            ArgumentNullException.ThrowIfNull(querySource32545, "source");
+            if (querySource32545.GetType() == typeof(string[]) || querySource32545.GetType() == typeof(global::System.Collections.Generic.List<string>))
+            {
+                global::System.ReadOnlySpan<string> queryValues32545 = querySource32545.GetType() == typeof(string[]) ? (string[])(object)querySource32545 : global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<string>)(object)querySource32545);
+                foreach (var path in queryValues32545)
+                {
+                    if (IsWithin(installationRoot, path) && Path.GetFileName(path).StartsWith("BEngine.", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+            else
+            {
+                foreach (var path in querySource32545)
+                {
+                    if (IsWithin(installationRoot, path) && Path.GetFileName(path).StartsWith("BEngine.", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+        
+            return false;
+        }
+        
+        return Query32545();
     }
 
     private static async Task WaitForParentAsync(LauncherUpdatePlan plan, CancellationToken cancellationToken)
@@ -612,7 +713,29 @@ internal static class LauncherUpdateInstaller
         if (process.HasExited || !process.ProcessName.StartsWith("BEngine.", StringComparison.OrdinalIgnoreCase)) return null;
         var path = process.MainModule?.FileName;
         if (string.IsNullOrWhiteSpace(path)) return null;
-        var modules = IsWithin(root, path) ? [] : process.Modules.Cast<ProcessModule>().Select(module => module.FileName).ToArray();
+        var modules = IsWithin(root, path) ? [] : Gather41881(process.Modules.Cast<ProcessModule>());
+        [global::BEngine.SkipLoopGuard]
+        string[] Gather41881(global::System.Collections.Generic.IEnumerable<global::System.Diagnostics.ProcessModule> items41881)
+        {
+            ArgumentNullException.ThrowIfNull(items41881, "source");
+            string Evaluate41881(global::System.Diagnostics.ProcessModule module) => module.FileName;
+            global::System.ReadOnlySpan<global::System.Diagnostics.ProcessModule> values;
+            if (items41881.GetType() == typeof(global::System.Diagnostics.ProcessModule[]))
+                values = (global::System.Diagnostics.ProcessModule[])items41881;
+            else if (items41881.GetType() == typeof(global::System.Collections.Generic.List<global::System.Diagnostics.ProcessModule>))
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::System.Diagnostics.ProcessModule>)items41881);
+            else
+            {
+                return global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(items41881, Evaluate41881));
+            }
+
+            if (values.IsEmpty)
+                return global::System.Array.Empty<string>();
+            var result = new string[values.Length];
+            for (var index = 0; index < values.Length; index++)
+                result[index] = Evaluate41881(values[index]);
+            return result;
+        }
         return IsInstallationProcess(root, path, modules) ? new ProcessIdentity(process.Id, process.StartTime.ToUniversalTime().Ticks, path) : null;
     }
 
@@ -698,7 +821,35 @@ internal static class LauncherUpdateInstaller
                     if (!File.Exists(backup)) throw new IOException($"Recovery backup is missing: {entry.Path}");
                     if (!entry.Path.Equals(LauncherUpdateManifest.FileName, StringComparison.OrdinalIgnoreCase))
                     {
-                        var original = journal.Plan.OriginalFiles.Single(file => file.Path.Equals(entry.Path, StringComparison.OrdinalIgnoreCase));
+                        var original = Gather47419(journal.Plan.OriginalFiles);
+                        [global::BEngine.SkipLoopGuard]
+                        global::BEngine.Launcher.LauncherUpdateLocalFile Gather47419(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherUpdateLocalFile> items47419)
+                        {
+                            ArgumentNullException.ThrowIfNull(items47419, "source");
+                            bool Evaluate47419(global::BEngine.Launcher.LauncherUpdateLocalFile file) => file.Path.Equals(entry.Path, StringComparison.OrdinalIgnoreCase);
+                            global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherUpdateLocalFile> values;
+                            if (items47419.GetType() == typeof(global::BEngine.Launcher.LauncherUpdateLocalFile[]))
+                                values = (global::BEngine.Launcher.LauncherUpdateLocalFile[])items47419;
+                            else if (items47419.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherUpdateLocalFile>))
+                                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherUpdateLocalFile>)items47419);
+                            else
+                                return global::System.Linq.Enumerable.Single(items47419, Evaluate47419);
+                            var found = false;
+                            global::BEngine.Launcher.LauncherUpdateLocalFile result = default!;
+                            foreach (var file in values)
+                            {
+                                if (!Evaluate47419(file))
+                                    continue;
+                                if (found)
+                                    return global::System.Linq.Enumerable.Single(new global::BEngine.Launcher.LauncherUpdateLocalFile[2], static _ => true);
+                                result = file;
+                                found = true;
+                            }
+
+                            if (found)
+                                return result;
+                            return global::System.Linq.Enumerable.Single(global::System.Array.Empty<global::BEngine.Launcher.LauncherUpdateLocalFile>(), static _ => true);
+                        }
                         if (!original.Exists) throw new InvalidDataException($"Recovery journal does not match the original file: {entry.Path}");
                         VerifyFileAsync(backup, new LauncherUpdateFile(entry.Path, original.Sha, original.Size), CancellationToken.None).GetAwaiter().GetResult();
                     }

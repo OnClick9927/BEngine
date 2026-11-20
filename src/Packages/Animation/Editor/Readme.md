@@ -1,8 +1,9 @@
 # Animation package
 
 The package owns Animation and Animator runtime assets and their
-authoring workflow. UIElements supplies the reusable `NodeCanvas` and
-`TrackEditorCanvas` templates so other packages can build compatible editors.
+authoring workflow. Node Editor (`com.bengine.node-editor`) supplies the reusable
+`NodeCanvas`; Track Editor (`com.bengine.track-editor`) supplies `TrackEditorCanvas`.
+Both editor-only packages depend on UIElements and can be reused by other authoring tools.
 
 When a selected GameObject has an Animator/Animation that matches the
 asset open in a window, the editor displays the live state or playhead while
@@ -76,3 +77,5 @@ pixels, typed tracks, weighted tangents, nested controllers, Timeline seek/resto
 update from v1 to v2. Bootstrap-only `--validate` does not execute the probe's Start callback
 and is not sufficient evidence of animation behavior. See `Temp/Validation/Reports/EngineCompletionChecklist.md`
 for the retained logs and `Editor/Doc/Animation/PlayerValidation.md` for reproduction.
+
+[编辑器制作流程](Doc/EditorAuthoring.md)。

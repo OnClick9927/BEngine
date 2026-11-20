@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><AssemblyName>ObjectStateContractProbe</AssemblyName>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" /><Compile Remove="FixtureWriter/**/*.cs;CoreOnly/**/*.cs" /></ItemGroup>
+  <ItemGroup>
+
+    <Reference Include="$(EngineBinaries)/BEngine.Animation.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Graphics.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Rendering2D.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.TextureAtlas.dll" />
+    
+    <Reference Include="$(EngineBinaries)/BEngine.Lighting2D.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.SpriteSkinning2D.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Particles2D.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.TiledMap.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Timeline.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Video.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+  </ItemGroup>
+</Project>

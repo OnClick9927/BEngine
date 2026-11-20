@@ -1,0 +1,24 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.track-editor
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Track Editor
+description: Retained time ruler, tracks, clips, curves, keyframes and markers for editor authoring tools.
+enabledByDefault: true
+content:
+  editor: Editor
+editor:
+  assembly: BEngine.TrackEditor.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.imgui
+    target: editor
+  - packageId: com.bengine.ui-elements
+    target: editor
+  - packageId: com.bengine.ui-elements
+    target: runtime
+  hostReferences:
+  - BEngine.Platform.Contracts
+  - BEngine.Core.Editor

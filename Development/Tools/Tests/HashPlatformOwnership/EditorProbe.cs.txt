@@ -1,0 +1,25 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using BEngine.Editor;
+using BEngine.Platform;
+
+public static class HashOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if(string.IsNullOrEmpty(folder))return;
+        var service=PlatformRuntime.GetService<IPlatformSha256Service>();
+        if(service==null||service.GetType().Assembly.GetName().Name!="BEngine.Platform.DotNet")throw new Exception("Editor hashing has no native host owner");
+        using(var digest=service.CreateIncremental())
+        {
+            digest.Append(new byte[]{97,98,99});var bytes=new byte[32];digest.FinalizeHash(bytes);
+            if(Convert.ToHexStringLower(bytes)!="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")throw new Exception("Actual editor digest is incorrect");
+            digest.Reset();digest.Append(new byte[]{97,98,99});digest.FinalizeHash(bytes);
+            if(Convert.ToHexStringLower(bytes)!="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")throw new Exception("Actual editor digest cannot be reused");
+        }
+        var record=JsonSerializer.Serialize(new{Passed=true,Checks=3,Owner=service.GetType().Assembly.GetName().Name});
+        File.AppendAllText(Path.Combine(folder,"HashOwnershipEvents.jsonl"),record+Environment.NewLine);
+    }
+}

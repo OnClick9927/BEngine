@@ -3,7 +3,7 @@ namespace BEngine;
 public sealed partial class Light2D
 {
     public List<Vector2> shapePath { get; set; } = [new(-1, -1), new(1, -1), new(1, 1), new(-1, 1)];
-    public Fix64 falloffDistance { get; set; } = (Fix64).5;
+    public Fix64 falloffDistance { get; set; } = Fix64.FromRaw(2147483648L) /* (Fix64).5 */;
     public Sprite? sprite { get; set; }
     public Vector2 spriteSize { get; set; } = new(2, 2);
     public Fix64 height { get; set; } = 1;
@@ -58,7 +58,7 @@ public sealed partial class Light2D
             distance = Fix64.Min(distance, Vector2.Distance(position, a + edge * Mathf.Clamp01(Vector2.Dot(position - a, edge) / edge.sqrMagnitude)));
             if ((a.y > position.y) != (b.y > position.y) && position.x < (b.x - a.x) * (position.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
         }
-        if (inside || distance <= (Fix64).00001) return 1;
+        if (inside || distance <= Fix64.FromRaw(42949L) /* (Fix64).00001 */) return 1;
         if (falloffDistance <= 0) return 0;
         var attenuation = 1 - Mathf.Clamp01(distance / falloffDistance);
         return attenuation * attenuation;

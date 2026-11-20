@@ -132,9 +132,21 @@ internal static class TextureAtlasResolver
             try
             {
                 var atlas = TextureAtlas.Load(legacyAtlas);
-                return atlas.Sources.FirstOrDefault(source =>
-                    source.name.Equals(reference, StringComparison.Ordinal) ||
-                    TextureAtlas.SourceIdentity(source).Equals(reference, StringComparison.OrdinalIgnoreCase));
+                return Matches6162();
+                [global::BEngine.SkipLoopGuard]
+                global::BEngine.Sprite? Matches6162()
+                {
+                    var matchSource6162 = atlas.Sources;
+                    ArgumentNullException.ThrowIfNull(matchSource6162, "source");
+                    global::System.ReadOnlySpan<global::BEngine.Sprite> matchValues6162 = matchSource6162;
+                    foreach (var source in matchValues6162)
+                    {
+                        if (source.name.Equals(reference, StringComparison.Ordinal) || TextureAtlas.SourceIdentity(source).Equals(reference, StringComparison.OrdinalIgnoreCase))
+                            return source;
+                    }
+                
+                    return default!;
+                }
             }
             catch (Exception exception) when (IsAssetReadException(exception))
             {
@@ -144,7 +156,7 @@ internal static class TextureAtlasResolver
 
         try
         {
-            return BAssetReferenceLoader.LoadObjectReference(reference, typeof(Sprite)) as Sprite;
+            return RuntimeObjectCodecs.ReadReference(typeof(Sprite), reference) as Sprite;
         }
         catch (Exception exception) when (IsAssetReadException(exception))
         {
@@ -174,11 +186,38 @@ internal static class TextureAtlasResolver
         foreach (var path in EnumerateAtlasPaths())
         {
             if (!TryLoadAtlas(path, out var atlas)) continue;
-            var atlasReference = AssetReferencePath.ToReference(path);
-            var regions = atlas.Sprites
-                .Where(item => !string.IsNullOrWhiteSpace(item.Source))
-                .GroupBy(item => item.Source, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            var atlasReference = RuntimeAssetReferences.ToReferencePath(path);
+            var regions = BuildIndex7981(atlas.Sprites.Where(item => !string.IsNullOrWhiteSpace(item.Source)).GroupBy(item => item.Source, StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+            [global::BEngine.SkipLoopGuard]
+            global::System.Collections.Generic.Dictionary<string, global::BEngine.TextureAtlasSprite> BuildIndex7981(global::System.Collections.Generic.IEnumerable<global::System.Linq.IGrouping<string, global::BEngine.TextureAtlasSprite>> indexSource7981, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer7981)
+            {
+                ArgumentNullException.ThrowIfNull(indexSource7981, "source");
+                var knownCount = indexSource7981.TryGetNonEnumeratedCount(out var capacity);
+                if (knownCount && capacity == 0)
+                    return new global::System.Collections.Generic.Dictionary<string, global::BEngine.TextureAtlasSprite>(indexComparer7981);
+                global::System.ReadOnlySpan<global::System.Linq.IGrouping<string, global::BEngine.TextureAtlasSprite>> values;
+                if (knownCount && indexSource7981 is global::System.Linq.IGrouping<string, global::BEngine.TextureAtlasSprite>[] array)
+                    values = array;
+                else if (knownCount && indexSource7981 is global::System.Collections.Generic.List<global::System.Linq.IGrouping<string, global::BEngine.TextureAtlasSprite>> list)
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+                else
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.TextureAtlasSprite>(capacity, indexComparer7981);
+                    foreach (var item in indexSource7981)
+                        result.Add(IndexKey7981(item), IndexValue7981(item));
+                    return result;
+                }
+            
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.TextureAtlasSprite>(values.Length, indexComparer7981);
+                    foreach (var item in values)
+                        result.Add(IndexKey7981(item), IndexValue7981(item));
+                    return result;
+                }
+            
+                string IndexKey7981(global::System.Linq.IGrouping<string, global::BEngine.TextureAtlasSprite> group) => group.Key;
+                global::BEngine.TextureAtlasSprite IndexValue7981(global::System.Linq.IGrouping<string, global::BEngine.TextureAtlasSprite> group) => group.First();
+            }
             foreach (var source in atlas.Sources)
             {
                 var identity = TextureAtlas.SourceIdentity(source);
@@ -190,8 +229,8 @@ internal static class TextureAtlasResolver
 
     private static string[] EnumerateAtlasPaths()
     {
-        var fileSystem = RuntimeServiceAccess.FileSystem;
-        var pathsService = RuntimeServiceAccess.PathService;
+        var fileSystem = RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>();
+        var pathsService = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>();
         var dataPath = Application.dataPath;
         if (string.IsNullOrWhiteSpace(dataPath) || !fileSystem.DirectoryExists(dataPath)) return [];
         var projectRoot = pathsService.GetDirectoryName(
@@ -215,7 +254,7 @@ internal static class TextureAtlasResolver
 
     private static bool TryLoadAtlas(string path, out TextureAtlas atlas)
     {
-        var fileSystem = RuntimeServiceAccess.FileSystem;
+        var fileSystem = RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>();
         atlas = null!;
         if (!Application.isEditor && Cache.TryGetValue(path, out var loaded) && !loaded.Atlas.isDestroyed)
         { atlas = loaded.Atlas; return true; }
@@ -252,7 +291,7 @@ internal static class TextureAtlasResolver
 
     private static string NormalizeIdentity(string reference)
     {
-        try { return AssetReferencePath.Key(reference); }
+        try { return RuntimeAssetReferences.ResolvePath(reference).Replace('\\', '/'); }
         catch (ArgumentException) { return reference.Trim(); }
     }
 

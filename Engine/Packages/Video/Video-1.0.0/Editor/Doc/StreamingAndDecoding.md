@@ -4,6 +4,18 @@
 
 Windows 使用 Media Foundation；Linux/macOS 使用已安装的 FFmpeg。Android 使用 MediaCodec，iOS 使用 AVAssetReader，并通过带时间戳的 PCM reader 接入 AudioSource 混音器。各平台的格式能力仍取决于系统解码器。移动端代码已完成宿主编译，真机播放与音画同步仍须在目标设备验收。
 
+原生容器 I/O 由 Platform 提供：Windows 的 COM/MF/D3D11 游标位于
+`BEngine.Platform.DotNet/Media/Windows`，FFmpeg 的进程、管道和时间戳索引位于
+`BEngine.Platform.DotNet/Media`。两者不要求窗口或呈现后端。Video 包仅保留 Clip/Player、便携帧格式、资源导入、
+播放及预算策略，通过 `IPlatformVideoDecoder` 适配宿主。Core 和 Platform 不引用 Video 包。
+宿主在 `OpenVideo` 返回前借用压缩输入；Video 继续拥有 Clip 的压缩数据。
+`PrepareDimensions` 在原生画面缓冲分配前执行预算检查，PCM 归一化仍由 Audio 统一完成。
+
+DotNet 在 Windows 默认注册系统解码器，其他桌面系统默认注册可选 FFmpeg 解码器；显式宿主注册优先。
+`IPlatformExternalVideoDecoder` 为显式 FFmpeg reader 提供独立入口。
+原有 `PlatformVideoDecoding` 委托继续优先，兼容现有 Web、移动端和自定义宿主。
+`Current` 查询实际注册能力，`ForPlatform` 仍提供构建目标的静态预期。
+
 Web 宿主提供 `await VideoClip.LoadAsync(url)`、`await VideoClip.FromBytesAsync(bytes, "clip.mp4")` 和 VideoPlayer.Url 的异步容器加载。浏览器 video/canvas 在主线程轮询 RGBA，暂停跳转会继续轮询，seekCompleted 在实际跳转完成后触发。每个 reader 有独立游标；关闭或销毁会释放元素、Blob URL 和音轨游标。同步原始容器资源加载请在 Web 改用上述异步入口，或继续导入便携帧。
 
 Web MP4 通过 HTTP Range 读取容器索引和音频数据，视频元素直接播放 URL；服务器不支持 Range 时仅接受最多 64 MiB 的完整下载。MP4 sample table 提供真实平均帧率；可变帧率的 `SeekFrame` 仍按名义帧率换算，应以秒数定位。AAC-LC 音轨由 WebCodecs 在浏览器主线程异步分段解码，资源预热最多两秒 PCM、每个音频游标最多四秒 PCM，不按影片总时长分配缓存。暂时无 PCM 时声部等待；源音轨存在但解码器不支持时明确报错。暂不支持 fragmented MP4、WebM 音轨、字幕、DRM、直播与自适应码率。浏览器色彩处理与 CPU 解码在色彩标签缺失或色度边界可能有差异。
@@ -52,3 +64,7 @@ Automatic 尝试创建独立 D3D11 视频设备和 DXGI manager，失败后回�
 实现依据：[Source Reader](https://learn.microsoft.com/en-us/windows/win32/medfound/source-reader)、[DXGI manager](https://learn.microsoft.com/en-us/windows/win32/medfound/mf-source-reader-d3d-manager)、[旋转元数据](https://learn.microsoft.com/en-us/windows/win32/medfound/mf-mt-video-rotation)。ABI 声明来自 Windows SDK；运行时没有捆绑 FFmpeg。
 
 验证程序 `Temp/Validation/VideoEnhancements` 使用原创动画/音轨与 FFmpeg 独立 RGBA/PCM 参考，覆盖软件/D3D11、非对齐尺寸、方向、往返跳转、音轨、HTTP、重新导入、编辑预览、资源释放和 Vulkan/OpenGL 读回。验证工具只生成测试样本。
+
+本次职责迁移的可复用消费者位于 `Tools/Tests/VideoPlatformOwnership`：使用真实 MP4 对比
+迁移前后的 Windows 解码、HTTP、内存输入及音轨；外部工具用确定性的真实子进程协议样本
+验证管道、PTS、缓存、Seek 和退出清理，不将该样本声称为已安装 FFmpeg 编解码器验证。

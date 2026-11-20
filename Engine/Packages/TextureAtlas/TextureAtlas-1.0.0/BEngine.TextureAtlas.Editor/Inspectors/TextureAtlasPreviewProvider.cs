@@ -1,10 +1,13 @@
+using EditorCapabilities = BEngine.Editor.EditorServices;
+using BEngine.Platform;
 using static BEngine.Editor.AssetPreview;
+using static BEngine.Editor.EditorAssetPreviewSources;
 namespace BEngine.Editor;
 public sealed class TextureAtlasPreviewProvider : IAssetPreviewProvider
 {
     private static readonly Lock CacheGate = new();
     private static readonly Dictionary<string, CachedAtlas> AtlasCache = new(StringComparer.OrdinalIgnoreCase);
-    static TextureAtlasPreviewProvider() => AssetPreview.CacheInvalidated += _ => { lock (CacheGate) AtlasCache.Clear(); };
+    static TextureAtlasPreviewProvider() => EditorAssetPreviewSources.Invalidated += _ => { lock (CacheGate) AtlasCache.Clear(); };
     public bool CanPreview(BObject asset) => asset is TextureAtlas || asset is DefaultAsset d && IsAtlas(d) || asset is Sprite sprite && TextureAtlasResolver.TryGetPackedAtlas(sprite, out _, out _, out _);
     public AssetPreviewImage? GetPreview(BObject asset) => asset switch
     {
@@ -40,7 +43,7 @@ public sealed class TextureAtlasPreviewProvider : IAssetPreviewProvider
         var fitted = DrawImage(area, image.Value);
         if (atlas.Width <= 0 || atlas.Height <= 0) return;
         var selection = EditorStyles.selectionRect.normal.backgroundColor;
-        var outline = new Color(selection.r, selection.g, selection.b, Fix64.FromDecimal(0.72m));
+        var outline = new Color(selection.r, selection.g, selection.b, Fix64.FromRaw(3092376453L) /* 0.72 */);
         foreach (var sprite in atlas.Sprites.Take(128))
         {
             var spriteRect = new Rect(
@@ -76,7 +79,7 @@ public sealed class TextureAtlasPreviewProvider : IAssetPreviewProvider
     private static AtlasPreviewData? GetAtlas(DefaultAsset asset)
     {
         var path = SourcePath(asset);
-        if (!EditorHostServices.FileSystem.FileExists(path)) return null;
+        if (!EditorCapabilities.GetRequiredService<FileUtility>().FileExists(path)) return null;
         var stamp = FileStamp.Read(path);
         lock (CacheGate)
         {
@@ -102,7 +105,7 @@ public sealed class TextureAtlasPreviewProvider : IAssetPreviewProvider
     private static AssetPreviewImage? GetAtlasImage(TextureAtlas atlas, string contextPath)
     {
         if (string.IsNullOrWhiteSpace(atlas.Texture)) return null;
-        return GetImage(ResolveReference(atlas.Texture, contextPath));
+        return GetImage(ResolveReference(atlas.Texture, contextPath, typeof(Texture)));
     }
 
 
@@ -111,7 +114,7 @@ public sealed class TextureAtlasPreviewProvider : IAssetPreviewProvider
         if (TextureAtlasResolver.TryGetPackedAtlas(sprite, out var atlasPath, out var atlas, out _))
             return GetAtlasImage(atlas, ResolvePath(atlasPath));
         if (string.IsNullOrWhiteSpace(sprite.Texture)) return null;
-        return GetImage(ResolveReference(sprite.Texture, sprite.sourcePath));
+        return GetImage(ResolveReference(sprite.Texture, sprite.sourcePath, typeof(Texture)));
     }
 
 

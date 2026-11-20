@@ -1,0 +1,27 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using BEngine.Editor;
+using BEngine.Player;
+using BEngine.AssetBundles;
+
+public static class PlayerHostOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder = Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if (string.IsNullOrEmpty(folder)) return;
+        if (typeof(PlayerHost).Assembly != typeof(BEnginePlayer).Assembly)
+            throw new Exception("Default host composition is not owned by Core Player");
+        if (!typeof(AssetBundlePlayerHost).IsAbstract || !typeof(AssetBundlePlayerHost).IsSealed)
+            throw new Exception("Compatibility entry points no longer form a static facade");
+        if (typeof(AssetBundleCatalog).Assembly.GetTypes().Any(t => t.Name == "AssetBundlePlayerModule" && typeof(IPlayerHost).IsAssignableFrom(t)))
+            throw new Exception("AssetBundles still owns the generic host root");
+        var adapter = typeof(AssetBundleCatalog).Assembly.GetTypes().Single(t => t.Name == "AssetBundlePlayerWorkflow");
+        if (!typeof(IPlayerContentWorkflow).IsAssignableFrom(adapter))
+            throw new Exception("Content contribution does not implement the neutral Core contract");
+        File.AppendAllText(Path.Combine(folder, "PlayerHostOwnershipEvents.jsonl"),
+            JsonSerializer.Serialize(new { Passed = true, Checks = 4, Owner = typeof(PlayerHost).Assembly.GetName().Name }) + Environment.NewLine);
+    }
+}

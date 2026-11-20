@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
 
@@ -63,28 +64,44 @@ public sealed class WebSocketNetworkClient : NetworkClientBase
     {
         EnsureConnected();
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumMessageSize);
-        var buffer = new byte[Math.Min(16 * 1024, maximumMessageSize)];
-        using var message = new MemoryStream();
-        WebSocketFrame frame;
-        do
+        var bufferLength = Math.Min(16 * 1024, maximumMessageSize);
+        var buffer = ArrayPool<byte>.Shared.Rent(bufferLength);
+        MemoryStream? message = null;
+        var bufferReusable = true;
+        try
         {
-            frame = await RunOperationAsync(
-                _transport.Receive(new ArraySegment<byte>(buffer)), cancellationToken);
-            if (frame.MessageType == WebSocketMessageType.Close)
-                return new WebSocketMessage(
-                    WebSocketMessageType.Close,
-                    [],
-                    frame.CloseStatus,
-                    frame.CloseStatusDescription);
-            if (frame.Count < 0 || frame.Count > buffer.Length)
-                throw new InvalidDataException("The WebSocket transport returned an invalid byte count.");
-            if (message.Length + frame.Count > maximumMessageSize)
-                throw new InvalidDataException(
-                    $"The WebSocket message exceeds the {maximumMessageSize} byte limit.");
-            message.Write(buffer, 0, frame.Count);
-        } while (!frame.EndOfMessage);
-
-        return new WebSocketMessage(frame.MessageType, message.ToArray());
+            while (true)
+            {
+                bufferReusable = false;
+                var frame = await RunOperationAsync(
+                    _transport.Receive(new ArraySegment<byte>(buffer, 0, bufferLength)), cancellationToken);
+                bufferReusable = true;
+                if (frame.MessageType == WebSocketMessageType.Close)
+                    return new WebSocketMessage(
+                        WebSocketMessageType.Close,
+                        [],
+                        frame.CloseStatus,
+                        frame.CloseStatusDescription);
+                if (frame.Count < 0 || frame.Count > bufferLength)
+                    throw new InvalidDataException("The WebSocket transport returned an invalid byte count.");
+                if ((message?.Length ?? 0) + frame.Count > maximumMessageSize)
+                    throw new InvalidDataException(
+                        $"The WebSocket message exceeds the {maximumMessageSize} byte limit.");
+                if (message is null && frame.EndOfMessage)
+                    return new WebSocketMessage(frame.MessageType, buffer.AsSpan(0, frame.Count).ToArray());
+                message ??= new MemoryStream();
+                message.Write(buffer, 0, frame.Count);
+                if (frame.EndOfMessage)
+                    return new WebSocketMessage(frame.MessageType, message.ToArray());
+            }
+        }
+        finally
+        {
+            message?.Dispose();
+            // A canceled transport can still be completing an asynchronous write.
+            // Only a successful Receive confirms that this buffer can be reused.
+            if (bufferReusable) ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     public BTask CloseAsync(

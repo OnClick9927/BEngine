@@ -1,0 +1,13 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Application.Editor
+rootNamespace: BEngine.App.Editor
+references:
+- BEngine.Application
+- BEngine.Core.Editor
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+

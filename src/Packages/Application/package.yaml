@@ -1,0 +1,45 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.application
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Application
+description: Game development framework and game templates composed from public engine and package APIs.
+enabledByDefault: true
+required: true
+replaces:
+- com.bengine.bframe
+content:
+  runtime: Resources
+  editor: Editor
+runtime:
+  assembly: BEngine.Application
+  aliases:
+  - BEngine.BFrame
+  rootNamespace: BEngine.App
+  packageReferences:
+  - id: Microsoft.Extensions.DependencyInjection
+    version: 10.0.11
+  dependencies:
+  - packageId: com.bengine.asset-bundles
+    target: runtime
+  - packageId: com.bengine.ui-elements
+    target: runtime
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Player
+  - BEngine.Platform.Contracts
+editor:
+  assembly: BEngine.Application.Editor
+  aliases:
+  - BEngine.BFrame.Editor
+  rootNamespace: BEngine.App.Editor
+  packageReferences:
+  - id: Microsoft.Extensions.DependencyInjection
+    version: 10.0.11
+  dependencies:
+  - packageId: com.bengine.application
+    target: runtime
+  hostReferences:
+  - BEngine.Core.Editor

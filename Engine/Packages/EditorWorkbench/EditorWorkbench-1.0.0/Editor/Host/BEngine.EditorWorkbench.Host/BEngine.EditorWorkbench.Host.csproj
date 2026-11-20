@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>BEngine.EditorWorkbench.Host</AssemblyName>
+    <RootNamespace>BEngine.Workbench</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BEngineToolingKind>Editor</BEngineToolingKind>
+    <ApplicationIcon>../../../../../../Development/Shared/Branding/BEngine.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
+    <ProjectReference Include="../../../../../Platform/Windows/BEngine.Windows.Editor/BEngine.Windows.Editor.csproj" />
+    
+    <ProjectReference Include="../../../../../Platform/*/BEngine.*.Build/BEngine.*.Build.csproj" />
+    <ProjectReference Include="../../../../../Platform/BEngine.Editor.Host.Contracts/BEngine.Editor.Host.Contracts.csproj" />
+    <ProjectReference Include="../../../BEngine.EditorWorkbench.Editor/BEngine.EditorWorkbench.Editor.csproj" />
+  </ItemGroup>
+</Project>

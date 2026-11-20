@@ -1,12 +1,13 @@
+using BEngine.Instrumentation;
 namespace BEngine.Networking;
 
 /// <summary>Admission limits for requests and buffered HTTP responses on the engine thread.</summary>
 public static class NetworkMemorySettings
 {
-    static NetworkMemorySettings() => Diagnostics.RuntimeDiagnosticRegistry.Register("budget.http", "HTTP admission",
-        new("active", "Active HTTP requests", Diagnostics.RuntimeDiagnosticUnit.Number, () => activeRequests),
-        new("buffered", "Buffered response bytes", Diagnostics.RuntimeDiagnosticUnit.Bytes, () => bufferedBytes),
-        new("limit", "Effective buffer budget", Diagnostics.RuntimeDiagnosticUnit.Bytes, () => effectiveBufferedBudgetBytes));
+    static NetworkMemorySettings() => Instrumentation.RuntimeDiagnosticRegistry.Register("budget.http", "HTTP admission",
+        new("active", "Active HTTP requests", Instrumentation.RuntimeDiagnosticUnit.Number, () => activeRequests),
+        new("buffered", "Buffered response bytes", Instrumentation.RuntimeDiagnosticUnit.Bytes, () => bufferedBytes),
+        new("limit", "Effective buffer budget", Instrumentation.RuntimeDiagnosticUnit.Bytes, () => effectiveBufferedBudgetBytes));
     public static int maximumConcurrentRequests { get; set; } = 64;
     public static long maximumResponseBytes { get; set; } = 32L * 1024 * 1024;
     public static long maximumBufferedBytes { get; set; } = 128L * 1024 * 1024;

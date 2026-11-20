@@ -42,8 +42,8 @@ public sealed class AnimationCurve
             var t = (time - left.time) / duration;
             if ((left.weightedMode & WeightedMode.Out) != 0 || (right.weightedMode & WeightedMode.In) != 0)
             {
-                var outputWeight = (left.weightedMode & WeightedMode.Out) != 0 ? left.outWeight : Fix64.One / 3;
-                var inputWeight = (right.weightedMode & WeightedMode.In) != 0 ? right.inWeight : Fix64.One / 3;
+                var outputWeight = (left.weightedMode & WeightedMode.Out) != 0 ? left.outWeight : Fix64.FromRaw(1431655765L) /* One / 3 */;
+                var inputWeight = (right.weightedMode & WeightedMode.In) != 0 ? right.inWeight : Fix64.FromRaw(1431655765L) /* One / 3 */;
                 // Solve the time coordinate of the Bezier, rather than treating time as its parameter.
                 var low = Fix64.Zero; var high = Fix64.One;
                 for (var iteration = 0; iteration < 32; iteration++)

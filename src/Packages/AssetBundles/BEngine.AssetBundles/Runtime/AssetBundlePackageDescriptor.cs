@@ -1,6 +1,7 @@
 using System.Text;
 using System.Buffers;
 using System.Security.Cryptography;
+using BEngine.Platform;
 using YamlDotNet.Serialization;
 
 namespace BEngine.AssetBundles;
@@ -97,15 +98,16 @@ public sealed class AssetBundlePackageDescriptor
     private sealed class FingerprintWriter : IDisposable
     {
         private const int BufferSize = 64 * 1024;
-        private readonly IncrementalHash? _hash;
-        private readonly AssetBundleStreamingSha256? _browserHash;
+        private readonly IPlatformIncrementalSha256? _hash;
+        private readonly IncrementalHash? _fallback;
         private byte[]? _buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         private int _count;
         private bool _finished;
         internal FingerprintWriter()
         {
-            if (OperatingSystem.IsBrowser()) _browserHash = new AssetBundleStreamingSha256();
-            else _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            _hash = PlatformRuntime.GetService<IPlatformSha256Service>()?.CreateIncremental();
+            // Fingerprints are also usable by standalone catalog tools before a host exists.
+            if (_hash is null) _fallback = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         }
         private Span<byte> Reserve(int count)
         {
@@ -162,26 +164,26 @@ public sealed class AssetBundlePackageDescriptor
         {
             ObjectDisposedException.ThrowIf(_buffer is null, this);
             if (_count == 0) return;
-            if (_browserHash is { } browserHash) browserHash.Append(_buffer.AsSpan(0, _count));
-            else _hash!.AppendData(_buffer, 0, _count);
+            if (_hash is { } hash) hash.Append(_buffer.AsSpan(0, _count));
+            else _fallback!.AppendData(_buffer, 0, _count);
             _count = 0;
         }
         internal string Finish()
         {
             Flush(); _finished = true;
-            if (_browserHash is { } browserHash)
+            if (_hash is { } hash)
             {
                 Span<byte> digest = stackalloc byte[32];
-                browserHash.FinalizeHash(digest);
-                return Convert.ToHexString(digest).ToLowerInvariant();
+                hash.FinalizeHash(digest);
+                return Convert.ToHexStringLower(digest);
             }
-            return Convert.ToHexString(_hash!.GetHashAndReset()).ToLowerInvariant();
+            return Convert.ToHexStringLower(_fallback!.GetHashAndReset());
         }
         public void Dispose()
         {
             if (_buffer is { } buffer)
             {
-                _buffer = null; _hash?.Dispose(); _browserHash?.Dispose(); ArrayPool<byte>.Shared.Return(buffer);
+                _buffer = null; _hash?.Dispose(); _fallback?.Dispose(); ArrayPool<byte>.Shared.Return(buffer);
             }
         }
     }

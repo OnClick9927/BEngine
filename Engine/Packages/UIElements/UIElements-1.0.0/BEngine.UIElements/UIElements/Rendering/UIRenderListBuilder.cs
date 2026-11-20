@@ -35,8 +35,40 @@ public static class UIRenderListBuilder
         cache.Result = result; cache.Layouts = layouts; cache.StyleRoot = styleRoot;
         cache.RootVersion = root.renderVersion; cache.StyleVersion = styleRoot.renderVersion;
         cache.AssetGeneration = BAsset.cacheGeneration; cache.LayoutScrollVersion = layoutScrollVersion;
-        cache.HasCollections = layouts is UIElementLayoutSnapshot snapshot ? snapshot.HasCollections :
-            layouts.Any(layout => layout.Element is ListView or TreeView);
+        cache.HasCollections = layouts is UIElementLayoutSnapshot snapshot ? snapshot.HasCollections : Matches2297();
+        [global::BEngine.SkipLoopGuard]
+        bool Matches2297()
+        {
+            var matchSource2297 = layouts;
+            ArgumentNullException.ThrowIfNull(matchSource2297, "source");
+            global::System.ReadOnlySpan<global::BEngine.UIElements.UIElementLayout> matchValues2297;
+            if (matchSource2297.GetType() == typeof(global::BEngine.UIElements.UIElementLayout[]))
+            {
+                matchValues2297 = (global::BEngine.UIElements.UIElementLayout[])(object)matchSource2297;
+            }
+            else if (matchSource2297.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.UIElements.UIElementLayout>))
+            {
+                matchValues2297 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.UIElements.UIElementLayout>)(object)matchSource2297);
+            }
+            else
+            {
+                foreach (var layout in (global::System.Collections.Generic.IEnumerable<global::BEngine.UIElements.UIElementLayout>)matchSource2297)
+                {
+                    if (layout.Element is ListView or TreeView)
+                        return true;
+                }
+        
+                return false;
+            }
+        
+            foreach (var layout in matchValues2297)
+            {
+                if (layout.Element is ListView or TreeView)
+                    return true;
+            }
+        
+            return false;
+        }
         lastRebuiltCommandCount = result.Commands.Count;
         return result;
     }
@@ -105,8 +137,40 @@ public static class UIRenderListBuilder
             frame.Layouts = layouts; frame.StyleRoot = styleRoot;
             frame.RootVersion = root.renderVersion; frame.StyleVersion = styleRoot.renderVersion;
             frame.AssetGeneration = BAsset.cacheGeneration; frame.ScrollVersion = scrollVersion;
-            frame.HasCollections = layouts is UIElementLayoutSnapshot current ? current.HasCollections :
-                layouts.Any(layout => layout.Element is ListView or TreeView);
+            frame.HasCollections = layouts is UIElementLayoutSnapshot current ? current.HasCollections : Matches6548();
+            [global::BEngine.SkipLoopGuard]
+            bool Matches6548()
+            {
+                var matchSource6548 = layouts;
+                ArgumentNullException.ThrowIfNull(matchSource6548, "source");
+                global::System.ReadOnlySpan<global::BEngine.UIElements.UIElementLayout> matchValues6548;
+                if (matchSource6548.GetType() == typeof(global::BEngine.UIElements.UIElementLayout[]))
+                {
+                    matchValues6548 = (global::BEngine.UIElements.UIElementLayout[])(object)matchSource6548;
+                }
+                else if (matchSource6548.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.UIElements.UIElementLayout>))
+                {
+                    matchValues6548 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.UIElements.UIElementLayout>)(object)matchSource6548);
+                }
+                else
+                {
+                    foreach (var layout in (global::System.Collections.Generic.IEnumerable<global::BEngine.UIElements.UIElementLayout>)matchSource6548)
+                    {
+                        if (layout.Element is ListView or TreeView)
+                            return true;
+                    }
+            
+                    return false;
+                }
+            
+                foreach (var layout in matchValues6548)
+                {
+                    if (layout.Element is ListView or TreeView)
+                        return true;
+                }
+            
+                return false;
+            }
             frame.Valid = true;
             lastRebuiltCommandCount = frame.Commands.Count;
             return new RendererCommandLease(layouts, frame.Commands, frame.HitRegions,
@@ -123,8 +187,37 @@ public static class UIRenderListBuilder
         int viewportWidth, int viewportHeight, Fix64? scale, RendererCommandCache frame)
     {
         var snapshot = layouts as UIElementLayoutSnapshot;
-        IReadOnlyDictionary<VisualElement, UIElementRect>? index = snapshot is null
-            ? layouts.ToDictionary(layout => layout.Element, layout => layout.Rect) : null;
+        IReadOnlyDictionary<VisualElement, UIElementRect>? index = snapshot is null ? BuildIndex10296(layouts, null) : null;
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<global::BEngine.UIElements.VisualElement, global::BEngine.UIElements.UIElementRect> BuildIndex10296(global::System.Collections.Generic.IEnumerable<global::BEngine.UIElements.UIElementLayout> indexSource10296, global::System.Collections.Generic.IEqualityComparer<global::BEngine.UIElements.VisualElement>? indexComparer10296)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource10296, "source");
+            var knownCount = indexSource10296.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<global::BEngine.UIElements.VisualElement, global::BEngine.UIElements.UIElementRect>(indexComparer10296);
+            global::System.ReadOnlySpan<global::BEngine.UIElements.UIElementLayout> values;
+            if (knownCount && indexSource10296 is global::BEngine.UIElements.UIElementLayout[] array)
+                values = array;
+            else if (knownCount && indexSource10296 is global::System.Collections.Generic.List<global::BEngine.UIElements.UIElementLayout> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<global::BEngine.UIElements.VisualElement, global::BEngine.UIElements.UIElementRect>(capacity, indexComparer10296);
+                foreach (var item in indexSource10296)
+                    result.Add(IndexKey10296(item), IndexValue10296(item));
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<global::BEngine.UIElements.VisualElement, global::BEngine.UIElements.UIElementRect>(values.Length, indexComparer10296);
+                foreach (var item in values)
+                    result.Add(IndexKey10296(item), IndexValue10296(item));
+                return result;
+            }
+        
+            global::BEngine.UIElements.VisualElement IndexKey10296(global::BEngine.UIElements.UIElementLayout layout) => layout.Element;
+            global::BEngine.UIElements.UIElementRect IndexValue10296(global::BEngine.UIElements.UIElementLayout layout) => layout.Rect;
+        }
         var scratch = frame.Scratch;
         try
         {
@@ -135,7 +228,22 @@ public static class UIRenderListBuilder
                 for (var i = 0; i < scratch.Commands.Count; i++)
                     if (scratch.Commands[i].Type == UIRenderCommandType.Text)
                         scratch.Commands[i] = scratch.Commands[i] with { FontSize = scratch.Commands[i].FontSize * (float)textScale };
-            var ordered = frame.HitRegions.Any(static layout => layout.Element.orderInLayer != 0);
+            bool __queryResult8121;
+            {
+                var __querySource8121 = frame.HitRegions;
+                ArgumentNullException.ThrowIfNull(__querySource8121, "source");
+                __queryResult8121 = false;
+                foreach (var __queryItem8121 in __querySource8121)
+                {
+                    if ((__queryItem8121.Element.orderInLayer != 0))
+                    {
+                        __queryResult8121 = true;
+                        break;
+                    }
+                }
+            }
+            
+            var ordered = __queryResult8121;
             if (ordered) OrderRendererHitRegions(frame.HitRegions, scratch.HitRegions);
             var monotonic = true;
             if (ordered)
@@ -258,8 +366,37 @@ public static class UIRenderListBuilder
         var snapshot = layouts as UIElementLayoutSnapshot;
         // A snapshot already owns its immutable element index. Access it
         // directly instead of allocating a dictionary-view wrapper per scroll.
-        IReadOnlyDictionary<VisualElement, UIElementRect>? layoutByElement = snapshot is not null
-            ? null : layouts.ToDictionary(layout => layout.Element, layout => layout.Rect);
+        IReadOnlyDictionary<VisualElement, UIElementRect>? layoutByElement = snapshot is not null ? null : BuildIndex17924(layouts, null);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<global::BEngine.UIElements.VisualElement, global::BEngine.UIElements.UIElementRect> BuildIndex17924(global::System.Collections.Generic.IEnumerable<global::BEngine.UIElements.UIElementLayout> indexSource17924, global::System.Collections.Generic.IEqualityComparer<global::BEngine.UIElements.VisualElement>? indexComparer17924)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource17924, "source");
+            var knownCount = indexSource17924.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<global::BEngine.UIElements.VisualElement, global::BEngine.UIElements.UIElementRect>(indexComparer17924);
+            global::System.ReadOnlySpan<global::BEngine.UIElements.UIElementLayout> values;
+            if (knownCount && indexSource17924 is global::BEngine.UIElements.UIElementLayout[] array)
+                values = array;
+            else if (knownCount && indexSource17924 is global::System.Collections.Generic.List<global::BEngine.UIElements.UIElementLayout> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<global::BEngine.UIElements.VisualElement, global::BEngine.UIElements.UIElementRect>(capacity, indexComparer17924);
+                foreach (var item in indexSource17924)
+                    result.Add(IndexKey17924(item), IndexValue17924(item));
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<global::BEngine.UIElements.VisualElement, global::BEngine.UIElements.UIElementRect>(values.Length, indexComparer17924);
+                foreach (var item in values)
+                    result.Add(IndexKey17924(item), IndexValue17924(item));
+                return result;
+            }
+        
+            global::BEngine.UIElements.VisualElement IndexKey17924(global::BEngine.UIElements.UIElementLayout layout) => layout.Element;
+            global::BEngine.UIElements.UIElementRect IndexValue17924(global::BEngine.UIElements.UIElementLayout layout) => layout.Rect;
+        }
         // Public lists are immutable snapshots. Only construction buffers are reused;
         // input routing and tools may retain an earlier result across UI mutations.
         if (scratch is null || scratch.InUse) scratch = new RenderListScratch();
@@ -275,10 +412,23 @@ public static class UIRenderListBuilder
             for (var index = 0; index < commands.Count; index++)
                 if (commands[index].Type == UIRenderCommandType.Text)
                     commands[index] = commands[index] with { FontSize = commands[index].FontSize * (float)textScale };
-        if (hitRegions.Any(static layout => layout.Element.orderInLayer != 0))
-            return new UIRenderCommandList(layouts,
-                SnapshotCommands(commands, previous?.Commands, ordered: true),
-                SnapshotHitRegions(hitRegions, previous?.HitRegions, ordered: true));
+        bool __queryResult15513;
+        {
+            var __querySource15513 = hitRegions;
+            ArgumentNullException.ThrowIfNull(__querySource15513, "source");
+            __queryResult15513 = false;
+            foreach (var __queryItem15513 in __querySource15513)
+            {
+                if ((__queryItem15513.Element.orderInLayer != 0))
+                {
+                    __queryResult15513 = true;
+                    break;
+                }
+            }
+        }
+        
+        if (__queryResult15513)
+            return new UIRenderCommandList(layouts, SnapshotCommands(commands, previous?.Commands, ordered: true), SnapshotHitRegions(hitRegions, previous?.HitRegions, ordered: true));
         return new UIRenderCommandList(layouts, SnapshotCommands(commands, previous?.Commands, ordered: false),
             SnapshotHitRegions(hitRegions, previous?.HitRegions, ordered: false));
         }
@@ -524,7 +674,7 @@ public static class UIRenderListBuilder
         };
         if (field is null) return false;
 
-        var labelWidth = string.IsNullOrWhiteSpace(field.Value.Label) ? Fix64.Zero : rect.Width * (Fix64)0.4;
+        var labelWidth = string.IsNullOrWhiteSpace(field.Value.Label) ? Fix64.Zero : rect.Width * Fix64.FromRaw(1717986918L) /* (Fix64)0.4 */;
         var labelRect = new UIElementRect(rect.X, rect.Y, labelWidth, rect.Height);
         var valueRect = new UIElementRect(rect.X + labelWidth, rect.Y,
             Fix64.Max(0, rect.Width - labelWidth), rect.Height);
@@ -681,7 +831,7 @@ public static class UIRenderListBuilder
             Fix64.Min(lineHeight, Fix64.Max(0, contentRect.Height - 4)));
         var caretClip = Intersect(clip, contentRect);
         var visibleCaret = Intersect(caretRect, caretClip);
-        Input.textInputRect = HasArea(visibleCaret)
+        global::BEngine.Platform.InputUtility.Current.textInputRect = HasArea(visibleCaret)
             ? new Rect(visibleCaret.X, visibleCaret.Y, visibleCaret.Width, visibleCaret.Height) : null;
         if (!element.textEditingCaretVisible) return;
         if (HasArea(caretRect) && HasArea(caretClip))

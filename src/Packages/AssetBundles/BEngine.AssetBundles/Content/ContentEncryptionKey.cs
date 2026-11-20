@@ -4,7 +4,7 @@ using System.Text;
 namespace BEngine.Content;
 
 /// <summary>A content key derived from a build-time passphrase. Never logs the key material.</summary>
-public sealed class ContentEncryptionKey
+public sealed class ContentEncryptionKey : BEngine.Player.IPlayerContentKey
 {
     private readonly byte[] _material;
 
@@ -12,7 +12,7 @@ public sealed class ContentEncryptionKey
     {
         if (material.Length != 32) throw new ArgumentException("Content keys require 32 bytes.");
         _material = material.ToArray();
-        Fingerprint = Convert.ToHexString(SHA256.HashData(_material).AsSpan(0, 16)).ToLowerInvariant();
+        Fingerprint = Convert.ToHexStringLower(SHA256.HashData(_material).AsSpan(0, 16));
     }
 
     public string Fingerprint { get; }

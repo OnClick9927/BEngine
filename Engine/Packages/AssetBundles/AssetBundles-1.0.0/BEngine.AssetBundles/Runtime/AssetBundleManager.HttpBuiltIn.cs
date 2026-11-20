@@ -1,6 +1,6 @@
 using System.Net;
-using System.Security.Cryptography;
 using BEngine.Networking;
+using BEngine.Platform;
 
 namespace BEngine.AssetBundles;
 
@@ -14,7 +14,17 @@ public sealed partial class AssetBundleManager
     {
         var selected = ResolveBundleSelection(state.Catalog, names);
         var missing = selected.Where(bundle => !IsHttpBundleLoaded(bundle)).ToArray();
-        var total = missing.Sum(static bundle => bundle.Size);
+        var total = Scan739(missing);
+        [global::BEngine.SkipLoopGuard]
+        long Scan739(global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.AssetBundleDescriptor> scanSource739)
+        {
+            ArgumentNullException.ThrowIfNull(scanSource739, "source");
+            long total = 0;
+            foreach (var scanItem739 in scanSource739)
+                total = checked(total + Match739(scanItem739));
+            return total;
+            long Match739(global::BEngine.AssetBundles.AssetBundleDescriptor bundle) => bundle.Size;
+        }
         var count = 0;
         long bytes = 0;
         progress?.Report(new(AssetBundleUpdatePhase.Downloading, 0, missing.Length, 0, total));
@@ -90,12 +100,12 @@ public sealed partial class AssetBundleManager
             _builtInBundleUris[descriptor.Sha256] = HttpContentUri(releaseRoot, "bundles/" + descriptor.FileName);
         progress?.Report(new(AssetBundleLoadKind.Catalog, AssetBundleLoadPhase.Completed, version.CatalogFile, catalogBytes.Length, version.CatalogSize));
         // Only the catalog is read at initialization. Bundle existence and integrity are checked on first use.
-        return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
+        return CreateRuntimeState(version, catalog, catalogBytes, indexSeeds);
     }
 
     private static Uri HttpContentUri(Uri root, string relativePath)
     {
-        BEngine.Serialization.AssetDataValidation.ValidateOptionalRelativePath(relativePath.TrimEnd('/'), nameof(relativePath));
+        BEngine.RuntimeAssetReferences.ValidateOptionalRelativePath(relativePath.TrimEnd('/'), nameof(relativePath));
         var escaped = string.Join('/', relativePath.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString));
         return new Uri(root, escaped);
     }
@@ -126,8 +136,8 @@ public sealed partial class AssetBundleManager
         private readonly AssetBundleDescriptor _descriptor;
         private readonly long _maximumSize;
         private readonly bool _useNativeHash;
-        private readonly IncrementalHash? _hash;
-        private readonly IBrowserAssetBundleHashBridge? _nativeBridge;
+        private readonly IPlatformIncrementalSha256? _hash;
+        private readonly IPlatformSha256Service _hashService;
         private byte[]? _bytes;
         private int _received;
         private bool _nativeVerified;
@@ -135,13 +145,12 @@ public sealed partial class AssetBundleManager
         internal MemoryBundleDownloadHandler(AssetBundleDescriptor descriptor, long maximumSize)
             : this(descriptor, maximumSize, null) { }
 
-        internal MemoryBundleDownloadHandler(AssetBundleDescriptor descriptor, long maximumSize, IBrowserAssetBundleHashBridge? nativeBridge)
+        internal MemoryBundleDownloadHandler(AssetBundleDescriptor descriptor, long maximumSize, IPlatformSha256Service? hashService)
         {
             _descriptor = descriptor; _maximumSize = maximumSize;
-            _nativeBridge = nativeBridge;
-            _useNativeHash = nativeBridge is null ? BrowserAssetBundleHash.IsSupported(descriptor.Size)
-                : BrowserAssetBundleHash.IsSupported(descriptor.Size, nativeBridge);
-            _hash = _useNativeHash ? null : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            _hashService = hashService ?? PlatformRuntime.GetRequiredService<IPlatformSha256Service>();
+            _useNativeHash = AssetBundleHashVerifier.IsSupported(descriptor.Size, _hashService);
+            _hash = _useNativeHash ? null : _hashService.CreateIncremental();
         }
 
         public void ReceiveResponse(HttpTransportResponse response)
@@ -163,7 +172,7 @@ public sealed partial class AssetBundleManager
                 data.Span.CopyTo(_bytes.AsSpan(_received));
             if (_hash is not null)
                 using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.HttpSha, data.Length))
-                    _hash.AppendData(data.Span);
+                    _hash.Append(data.Span);
             _received += data.Length;
         }
 
@@ -176,9 +185,7 @@ public sealed partial class AssetBundleManager
                     throw new InvalidDataException($"HTTP bundle '{_descriptor.Name}' failed size verification.");
                 using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.HttpSha, _bytes.Length))
                 {
-                    if (_nativeBridge is null)
-                        await BrowserAssetBundleHash.VerifyAsync(_bytes, _descriptor.Sha256, cancellationToken);
-                    else await BrowserAssetBundleHash.VerifyAsync(_bytes, _descriptor.Sha256, cancellationToken, _nativeBridge);
+                    await AssetBundleHashVerifier.VerifyAsync(_bytes, _descriptor.Sha256, cancellationToken, _hashService);
                 }
                 _nativeVerified = true;
             }
@@ -191,11 +198,17 @@ public sealed partial class AssetBundleManager
             using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.HttpSha);
             if (_bytes is null || _received != _descriptor.Size ||
                 (_useNativeHash ? !_nativeVerified :
-                    !Convert.ToHexString(_hash!.GetHashAndReset()).Equals(_descriptor.Sha256, StringComparison.OrdinalIgnoreCase)))
+                    !FinishHash().Equals(_descriptor.Sha256, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidDataException($"HTTP bundle '{_descriptor.Name}' failed size/SHA-256 verification.");
             var stream = new MemoryStream(_bytes, writable: false);
             _bytes = null;
             return stream;
+        }
+
+        private string FinishHash()
+        {
+            Span<byte> digest = stackalloc byte[32]; _hash!.FinalizeHash(digest);
+            return Convert.ToHexString(digest);
         }
 
         public void Dispose()

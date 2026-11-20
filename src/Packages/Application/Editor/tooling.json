@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "editorBootstrap": {
+    "assembly": "BEngine.Application.Editor.dll"
+  },
+  "editorBootstrapProject": "../BEngine.Application.Editor/BEngine.Application.Editor.csproj",
+  "projectTemplateDirectory": "Templates/Project",
+  "runtimeHost": true,
+  "webNativeHost": true
+}

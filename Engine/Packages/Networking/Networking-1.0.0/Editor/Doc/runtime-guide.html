@@ -1,12 +1,13 @@
 <!doctype html><meta charset="utf-8"><title>Networking</title>      <section id="networking">
         <h2>跨平台 TCP、UDP、HTTP 与 WebSocket</h2>
         <p><code>HttpNetworkRequest</code> 支持异步 HTTP、进度、取消和自定义 <code>IHttpDownloadHandler</code>。设置 <code>BypassCache = true</code> 后，Web 使用 <code>fetch cache: no-store</code>，每次从网络读取且不写入浏览器 HTTP cache；适合直接读取 StreamingAssets。数据只在当前请求/使用期间保留在内存，不自动写入文件或 IndexedDB。</p>
-        <p><code>BEngine.Networking</code> 组合 .NET 标准 <code>TcpClient</code>、<code>UdpClient</code>、<code>HttpClient</code> 和 <code>ClientWebSocket</code>，不自行实现协议。所有异步操作接受 <code>CancellationToken</code>；TCP、UDP、WebSocket 暴露 <code>Timeout/LastResult/Error/Exception</code>，HTTP 暴露 <code>Result/Error/ResponseCode/DownloadData/DownloadText</code>。区分 TimedOut、Canceled、ConnectionError、ProtocolError 和 DataProcessingError，并始终释放客户端、请求和句柄。</p>
+        <p><code>BEngine.Networking</code> 提供领域请求、客户端状态、超时、内存准入、HTTP/1.1 解析和 BTask 工作流。原生 Socket/HTTP/WebSocket 与浏览器接口由 Platform 提供，包通过中立宿主能力适配。运行时异步操作接受 <code>BCancellationToken</code>，在所属线程取消并推进调度。TCP、UDP、WebSocket 暴露 <code>Timeout/LastResult/Error/Exception</code>，HTTP 暴露 <code>Result/Error/ResponseCode/DownloadData/DownloadText</code>。区分 TimedOut、Canceled、ConnectionError、ProtocolError 和 DataProcessingError，并始终释放客户端、请求和句柄。</p>
         <pre><code>using System.Net;
 using System.Text;
+using BEngine;
 using BEngine.Networking;
 
-using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+using var stop = new BCancellationSource();
 
 await using var tcp = new TcpNetworkClient { Timeout = TimeSpan.FromSeconds(5) };
 await tcp.ConnectAsync("127.0.0.1", 7000, stop.Token);
@@ -29,5 +30,5 @@ await socket.SendTextAsync("subscribe", stop.Token);
 WebSocketMessage message = await socket.ReceiveAsync(256 * 1024, stop.Token);
 await socket.CloseAsync(cancellationToken: stop.Token);</code></pre>
         <h3>注入与扩展</h3>
-        <p>HTTP 提供 Get/Delete/Post/Put 工厂，并允许注入共享 <code>HttpClient</code> 或 <code>HttpMessageHandler</code>；外部 HttpClient 默认不由请求释放。大响应使用 <code>SendAsync(responseHandler, token)</code> 流式消费。WebSocket 可注入 <code>IWebSocketTransport</code>；默认 <code>ClientWebSocketTransport</code> 的 <code>Options</code> 可在连接前配置。测试或平台集成应实现 transport 或包装 sealed 客户端，把 TLS、代理、压缩、握手和协议解析继续交给 .NET。</p>
+        <p>HTTP 提供 Get/Delete/Post/Put 工厂；构造 <code>HttpNetworkRequest(Uri, HttpRequestMethod, IHttpTransport?)</code> 可注入领域传输。大响应使用 <code>SendAsync(IHttpDownloadHandler, BCancellationToken)</code> 流式消费，回调内的数据块按借用约定使用。WebSocket 可注入 <code>IWebSocketTransport</code>，默认 <code>PlatformWebSocketTransport</code> 委托宿主。平台可实现 <code>IPlatformHttpTransport</code> 或 <code>IPlatformWebSocketTransport</code>。默认宿主注册 <code>AddBEngineDotNetPlatform</code>；包初始化只注册领域适配器，旧 <code>AddBEngineDotNetNetworking</code> 已移除。</p>
       </section>

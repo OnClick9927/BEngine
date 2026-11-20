@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <BEngineSolutionRole>Template</BEngineSolutionRole>
+    <OutputType>Library</OutputType>
+    <RootNamespace>BEngine.App</RootNamespace>
+    <AssemblyName>BEngine.Application</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <DefineConstants>$(DefineConstants);BENGINE_PLAYER_PORTABLE</DefineConstants>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <BEnginePackageExportOwner>false</BEnginePackageExportOwner>
+    <ArtifactsProjectName>BEngine.Application.Portable</ArtifactsProjectName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    
+    <ProjectReference Include="../../UIElements/BEngine.UIElements/BEngine.UIElements.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+</Project>
+

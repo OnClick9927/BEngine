@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>AssetIdentityWorkflowProbe</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Models.cs" Link="Models.cs" />
+    <Compile Include="../../EditorStateContracts/Workflow/Host.cs" Link="Host.cs" />
+    <Reference Include="$(EngineBinaries)/*.dll" />
+  </ItemGroup>
+</Project>

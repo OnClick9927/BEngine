@@ -1,0 +1,11 @@
+namespace BEngine.DependencyInjection;
+
+public sealed class EmptyServiceProvider : IServiceProvider
+{
+    public static EmptyServiceProvider Instance { get; } = new();
+
+    private EmptyServiceProvider() { }
+
+    public object? GetService(Type serviceType) =>
+        serviceType == typeof(IServiceProvider) ? this : null;
+}

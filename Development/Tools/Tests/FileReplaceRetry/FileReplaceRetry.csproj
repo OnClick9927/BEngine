@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><AssemblyName>FileReplaceRetry</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup><ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll"/><Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll"/></ItemGroup></Project>

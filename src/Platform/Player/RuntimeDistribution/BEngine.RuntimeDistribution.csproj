@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <BEngineSolutionRole>Publish</BEngineSolutionRole><OutputType>Library</OutputType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems><GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <IsPackable>false</IsPackable><BEngineRuntimeAssembly>false</BEngineRuntimeAssembly>
+    <BEnginePackageExportOwner>false</BEnginePackageExportOwner><BEngineEngineExportOwner>false</BEngineEngineExportOwner>
+    <BEnginePlayerPlatform Condition="'$(BEnginePlayerPlatform)' == ''">Desktop</BEnginePlayerPlatform>
+  </PropertyGroup>
+  <ItemGroup>
+    <_RuntimeDescriptor Include="$(MSBuildThisFileDirectory)../../../Packages/*/Editor/tooling.json">
+      <DescriptorText>$([System.IO.File]::ReadAllText('%(Identity)'))</DescriptorText>
+      <IsRuntimeHost>$([System.Text.RegularExpressions.Regex]::IsMatch('%(DescriptorText)', '&quot;runtimeHost&quot;\s*:\s*true'))</IsRuntimeHost>
+      <IsNativeHost>$([System.Text.RegularExpressions.Regex]::IsMatch('%(DescriptorText)', '&quot;webNativeHost&quot;\s*:\s*true'))</IsNativeHost>
+    </_RuntimeDescriptor>
+    <_RuntimeModule Include="@(_RuntimeDescriptor->WithMetadataValue('IsRuntimeHost', 'True'))">
+      <PackageRoot>$([System.IO.Path]::GetFullPath('%(RootDir)%(Directory)..'))</PackageRoot>
+      <DefinitionText>$([System.IO.File]::ReadAllText('%(PackageRoot)/package.yaml'))</DefinitionText>
+      <ModuleAssembly>$([System.Text.RegularExpressions.Regex]::Match('%(DefinitionText)', '(?m)^runtime:[ \t]*\r?\n  assembly:[ \t]*([^\r\n]+)').Groups[1].Value.Trim())</ModuleAssembly>
+      <SourceProject>%(PackageRoot)/%(ModuleAssembly)/%(ModuleAssembly).csproj</SourceProject>
+    </_RuntimeModule>
+    <_RuntimeNativeModule Include="@(_RuntimeDescriptor->WithMetadataValue('IsNativeHost', 'True'))">
+      <PackageRoot>$([System.IO.Path]::GetFullPath('%(RootDir)%(Directory)..'))</PackageRoot>
+      <DefinitionText>$([System.IO.File]::ReadAllText('%(PackageRoot)/package.yaml'))</DefinitionText>
+      <ModuleAssembly>$([System.Text.RegularExpressions.Regex]::Match('%(DefinitionText)', '(?m)^runtime:[ \t]*\r?\n  assembly:[ \t]*([^\r\n]+)').Groups[1].Value.Trim())</ModuleAssembly>
+    </_RuntimeNativeModule>
+    <_CoreRuntimeModule Include="../../../Core/BEngine.Core/BEngine.Core.csproj;../../../Core/BEngine.Player/BEngine.Player.csproj">
+      <ModuleAssembly>%(Filename)</ModuleAssembly>
+    </_CoreRuntimeModule>
+    <_RuntimeModuleName Include="@(_RuntimeModule);@(_CoreRuntimeModule)" />
+    <_RuntimeNativeModuleName Include="@(_RuntimeNativeModule)" />
+    <_RuntimeNativeModuleName Include="../../../Core/BEngine.Core/BEngine.Core.csproj">
+      <ModuleAssembly>BEngine.Core</ModuleAssembly>
+    </_RuntimeNativeModuleName>
+    <ProjectReference Include="@(_RuntimeModule->'%(SourceProject)')" />
+    <ProjectReference Include="@(_CoreRuntimeModule)" />
+    <ProjectReference Include="../../DotNet/BEngine.Platform.DotNet/BEngine.Platform.DotNet.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEnginePlayerPlatform)' == 'Desktop'">
+    <ProjectReference Include="../../Windows/BEngine.Windows/BEngine.Windows.csproj" />
+    <ProjectReference Include="../../Linux/BEngine.Linux/BEngine.Linux.csproj" />
+    <ProjectReference Include="../../macOS/BEngine.macOS/BEngine.macOS.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEnginePlayerPlatform)' != 'Desktop'">
+    <ProjectReference Include="../../$(BEnginePlayerPlatform)/BEngine.$(BEnginePlayerPlatform)/BEngine.$(BEnginePlayerPlatform).csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(IntermediateOutputPath)player.native.json;$(IntermediateOutputPath)player.modules.json"
+          Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true">
+      <CopyToPublishDirectory Condition="'$(BEngineHostAssemblyBootstrap)' == ''">PreserveNewest</CopyToPublishDirectory>
+      <CopyToPublishDirectory Condition="'$(BEngineHostAssemblyBootstrap)' != ''">Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+  <Target Name="WriteRuntimeModuleManifest" BeforeTargets="GetCopyToOutputDirectoryItems;CoreCompile">
+    <PropertyGroup>
+      <_RuntimeNativeJson>[@(_RuntimeNativeModuleName->'&quot;%(ModuleAssembly)&quot;', ',')]</_RuntimeNativeJson>
+      <_RuntimeModulesJson>[@(_RuntimeModuleName->'&quot;%(ModuleAssembly)&quot;', ',')]</_RuntimeModulesJson>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(IntermediateOutputPath)player.native.json" Lines="$(_RuntimeNativeJson)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <WriteLinesToFile File="$(IntermediateOutputPath)player.modules.json" Lines="$(_RuntimeModulesJson)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+</Project>

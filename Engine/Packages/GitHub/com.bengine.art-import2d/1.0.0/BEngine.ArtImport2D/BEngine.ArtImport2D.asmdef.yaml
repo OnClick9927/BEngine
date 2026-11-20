@@ -1,0 +1,14 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.ArtImport2D
+rootNamespace: BEngine
+references:
+- BEngine.Graphics
+- BEngine.Core
+- BEngine.Platform.Contracts
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false
+allowUnsafeCode: false

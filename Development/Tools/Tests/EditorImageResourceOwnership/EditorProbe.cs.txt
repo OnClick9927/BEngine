@@ -1,0 +1,53 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Text.Json;
+using BEngine;
+using BEngine.Editor;
+using BEngine.Editor.Rendering;
+using BEngine.Rendering;
+using BEngine.Rendering.Rhi;
+
+public static class EditorImageOwnershipProbe
+{
+    [InitializeOnLoadMethod]
+    public static void Verify()
+    {
+        var output=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if(string.IsNullOrWhiteSpace(output))return;
+        var checks=new List<string>();
+        void Check(bool value,string name){if(!value)throw new Exception(name);checks.Add(name);}
+        var path=Path.Combine(output,"ImageOwnershipEvents.jsonl");
+        try
+        {
+            Check(typeof(CanvasResourceUtility).Assembly==typeof(EditorAssetPreviewSources).Assembly,
+                "Actual editor obtains shared images from EditorServices");
+            Check(ReferenceEquals(EditorServices.GetRequiredService<IGpuCanvasResourceResolver>(),FileGpuCanvasResourceResolver.Shared),
+                "The real composition contributes one default image backend");
+            var image=EditorResource.FindPath(EditorBuiltinIcons.engineLogo);
+            Check(File.Exists(image),"The active workbench theme still supplies a logo file");
+            var imgui=(IGpuCanvasResourceResolver)Activator.CreateInstance(typeof(GUI).Assembly.GetType("BEngine.Editor.EditorGpuCanvasResourceResolver",true),true);
+            var retained=(IUIRenderResourceResolver)Activator.CreateInstance(Assembly.Load("BEngine.UIElements.Editor").GetType("BEngine.Editor.UIElementsEditorResourceResolver",true),true);
+            Check(imgui.TryResolveTexture(image,out var first),"IMGUI resolves the real theme image");
+            Check(retained.TryResolveTexture(image,out var second)&&first.Width==second.Width&&first.Height==second.Height&&first.Format==second.Format&&first.Pixels.Span.SequenceEqual(second.Pixels.Span),
+                "UIElements resolves identical real image dimensions, format and alpha");
+            foreach(var type in new[]{typeof(CanvasResourceUtility),typeof(IGpuCanvasResourceResolver),typeof(FileGpuCanvasResourceResolver)})
+                Check(Type.GetType(type.FullName+", BEngine.IMGUI.Editor",true)==type,"Legacy compiled image identity remains available: "+type.Name);
+            var calls=0;
+            bool Override(string source,out EditorTextureData texture)
+            {texture=new(1,1,GraphicsTextureFormat.R8Unorm,new byte[]{33});if(source!="image-ownership://override")return false;calls++;return true;}
+            EditorInstrumentation.TextureRequested+=Override;
+            try
+            {
+                Check(imgui.TryResolveTexture("image-ownership://override",out first)&&first.Pixels.Span[0]==33,"Actual IMGUI honors the shared override");
+                Check(retained.TryResolveTexture("image-ownership://override",out second)&&second.Pixels.Span[0]==33&&calls==2,"Actual retained UI honors the override once");
+            }
+            finally{EditorInstrumentation.TextureRequested-=Override;}
+            Check(imgui.TryResolveTexture(image,out _)&&retained.TryResolveTexture(image,out _),"Both adapters recover file resolution after override removal");
+            File.AppendAllText(path,JsonSerializer.Serialize(new{Passed=true,Checks=checks.Count,Details=checks})+"\n");
+        }
+        catch(Exception exception)
+        {File.AppendAllText(path,JsonSerializer.Serialize(new{Passed=false,Checks=checks.Count,Error=exception.ToString()})+"\n");throw;}
+    }
+}

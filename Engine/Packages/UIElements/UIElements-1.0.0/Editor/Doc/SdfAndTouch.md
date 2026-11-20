@@ -1,6 +1,6 @@
 # SDF 字体和运行时触摸
 
-在 `Window/UI Toolkit/SDF Font` 打开字体窗口，输入本机已安装的字体族名称和需要烘焙的字符。默认包含基本拉丁字符；中文及其他语言应加入实际文本使用的字符。采样尺寸为 16–256，距离范围为 2–32。点击 Bake and Save 保存到工程 Assets 内的 `.sdfont`。双击字体资产可以重新打开，Rebake 更新原文件；创建和重烘焙支持文件 Undo/Redo，Play 中禁止写入。
+在 `Window/UIElement/SDF Font` 打开字体窗口，输入本机已安装的字体族名称和需要烘焙的字符。默认包含基本拉丁字符；中文及其他语言应加入实际文本使用的字符。采样尺寸为 16–256，距离范围为 2–32。点击 Bake and Save 保存到工程 Assets 内的 `.sdfont`。双击字体资产可以重新打开，Rebake 更新原文件；创建和重烘焙支持文件 Undo/Redo，Play 中禁止写入。
 
 `.sdfont` v2 保存预烘焙字形、源字体和有序 fallback 字体；Player 不依赖目标系统已安装字体。HarfBuzz 执行 OpenType GSUB/GPOS shaping，布局按 Unicode 字素选择 fallback 并组织双向运行，支持组合字符、阿拉伯/天城文/希伯来混排、换行和按词换行。缺失字形可从内嵌字体按需栅格化并缓存；彩色 Emoji/彩色字体使用 RGBA 图集，普通轮廓继续使用单通道 SDF 和描边。旧 v1 资产仍可读取，但没有内嵌源字体时无法动态补字。
 

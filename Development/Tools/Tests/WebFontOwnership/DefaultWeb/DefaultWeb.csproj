@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><AssemblyName>BEngine.Tests</AssemblyName><RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmBuildNative>true</WasmBuildNative><PublishTrimmed>true</PublishTrimmed><ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+    <WasmMainHTMLPath>index.html</WasmMainHTMLPath><WasmMainJSPath>main.js</WasmMainJSPath>
+    <NoWarn>$(NoWarn);IL2026;IL2070;IL2072;IL2057</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll;$(EngineBinaries)/BEngine.Platform.Contracts.dll;$(EngineBinaries)/BEngine.Platform.DotNet.dll;$(EngineBinaries)/BEngine.Web.dll;$(EngineBinaries)/BEngine.Player.dll;$(EngineBinaries)/BEngine.UIElements.dll;$(EngineBinaries)/BEngine.Graphics.dll;$(EngineBinaries)/BEngine.TextEditing.dll;$(EngineBinaries)/YamlDotNet.dll;$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+    
+    <Compile Include="../../../../../src/Platform/Player/Hosts/Shared/PlayerTextHost.cs" Link="PlayerTextHost.cs" />
+    <Compile Include="../Web/ProbeResult.cs" Link="ProbeResult.cs" />
+    <PackageReference Include="SkiaSharp" /><PackageReference Include="SkiaSharp.HarfBuzz" />
+    <PackageReference Include="SkiaSharp.NativeAssets.WebAssembly" /><PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly" />
+    <Content Include="../Web/index.html;../Web/main.js" Link="wwwroot/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(ProbeFonts)/arial.ttf" Link="wwwroot/fonts/arial.ttf" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../../../../src/Platform/Resources/Web/platform.js;../../../../../src/Platform/Resources/Web/text.js;../../../../../src/Platform/Resources/Web/video.js" Link="wwwroot/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

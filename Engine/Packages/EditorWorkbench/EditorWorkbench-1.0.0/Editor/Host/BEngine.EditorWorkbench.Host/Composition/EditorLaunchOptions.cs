@@ -1,0 +1,6 @@
+namespace BEngine.Workbench;
+
+public sealed record EditorLaunchOptions(
+    string ProjectPath,
+    bool OpenEditorStatusOnStart = false,
+    bool OpenUiBuilderOnStart = false);

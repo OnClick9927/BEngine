@@ -29,7 +29,7 @@ internal sealed partial class NavigationGrid2D
 
     public static NavigationGrid2D Bake(NavigationSurface2D surface)
     {
-        var cell = Mathf.Max(surface.cellSize, Fix64.Parse("0.1"));
+        var cell = Mathf.Max(surface.cellSize, Fix64.FromRaw(429496729L) /* 0.1 */);
         var size = new Vector2(Mathf.Abs(surface.size.x), Mathf.Abs(surface.size.y));
         var width = Math.Clamp((int)(size.x / cell) + 1, 2, 1024);
         var height = Math.Clamp((int)(size.y / cell) + 1, 2, 1024);
@@ -63,11 +63,19 @@ internal sealed partial class NavigationGrid2D
         for (var x = 0; x < width; x++)
         {
             var point = grid.ToWorld(new Cell(x, y));
-            var walkable = !obstacles.Any(item => item.Contains(point, surface.agentRadius)) &&
-                           !volumes.Any(item => item.area == 1 && item.Contains(point)) &&
-                           !modifiers.Any(item => item.Blocks(point, surface.agentTypeId)) &&
-                           !colliders.Any(item => ExpandedContains(item.bounds, point, surface.agentRadius)) &&
-                           !sprites.Any(item => SpriteContains(item, point, surface.agentRadius));
+            // Preserve geometry/short-circuit order without allocating captured
+            // predicates for every cell of the bake grid.
+            var walkable = true;
+            foreach (var item in obstacles)
+                if (item.Contains(point, surface.agentRadius)) { walkable = false; break; }
+            if (walkable) foreach (var item in volumes)
+                if (item.area == 1 && item.Contains(point)) { walkable = false; break; }
+            if (walkable) foreach (var item in modifiers)
+                if (item.Blocks(point, surface.agentTypeId)) { walkable = false; break; }
+            if (walkable) foreach (var item in colliders)
+                if (ExpandedContains(item.bounds, point, surface.agentRadius)) { walkable = false; break; }
+            if (walkable) foreach (var item in sprites)
+                if (SpriteContains(item, point, surface.agentRadius)) { walkable = false; break; }
             grid._walkable[y * width + x] = walkable;
             var area = 0;
             foreach (var volume in volumes)
@@ -177,7 +185,7 @@ internal sealed partial class NavigationGrid2D
                     cells.Add(current);
                 }
                 cells.Reverse();
-                var corners = Simplify(cells.Select(World).ToArray());
+                var corners = BuildCorners(cells, workspace.Corners, origin, axisX, axisY);
                 corners[0] = source;
                 var reachesTarget = IsWalkable(ToCell(target), areaMask) && ToCell(target) == goal;
                 corners[^1] = reachesTarget ? target : World(goal);
@@ -185,11 +193,17 @@ internal sealed partial class NavigationGrid2D
                 path.status = reachesTarget ? NavigationPathStatus.PathComplete : NavigationPathStatus.PathPartial;
                 yield return true; yield break;
             }
-            foreach (var edge in Neighbours(current, areaMask, links, axisX, axisY))
+            if (!workspace.CostsPrepared)
+            {
+                workspace.Costs = new NeighbourCosts(axisX, axisY);
+                workspace.CostsPrepared = true;
+            }
+            var currentScore = scores[current];
+            foreach (var edge in Neighbours(current, areaMask, workspace))
             {
                 var neighbour = edge.Cell;
                 if (closed.Contains(neighbour)) continue;
-                var score = scores[current] + edge.Cost;
+                var score = currentScore + edge.Cost;
                 if (scores.TryGetValue(neighbour, out var known) && score >= known) continue;
                 scores[neighbour] = score;
                 cameFrom[neighbour] = current;
@@ -218,18 +232,22 @@ internal sealed partial class NavigationGrid2D
         internal readonly Dictionary<Cell, Fix64> Scores = [];
         internal readonly HashSet<Cell> Closed = [];
         internal readonly List<Cell> Cells = [];
+        internal readonly List<Vector2> Corners = [];
+        internal NeighbourCosts Costs;
+        internal bool CostsPrepared;
         internal bool CanRetain => Links.Capacity <= MaximumRetainedSearchCapacity &&
             Open.EnsureCapacity(0) <= MaximumRetainedSearchCapacity &&
             CameFrom.EnsureCapacity(0) <= MaximumRetainedSearchCapacity &&
             Scores.EnsureCapacity(0) <= MaximumRetainedSearchCapacity &&
             Closed.EnsureCapacity(0) <= MaximumRetainedSearchCapacity &&
-            Cells.Capacity <= MaximumRetainedSearchCapacity;
+            Cells.Capacity <= MaximumRetainedSearchCapacity &&
+            Corners.Capacity <= MaximumRetainedSearchCapacity;
         internal void Clear()
-        { Links.Clear(); Open.Clear(); CameFrom.Clear(); Scores.Clear(); Closed.Clear(); Cells.Clear(); }
+        { Links.Clear(); Open.Clear(); CameFrom.Clear(); Scores.Clear(); Closed.Clear(); Cells.Clear(); Corners.Clear(); CostsPrepared = false; }
     }
 
-    private NeighbourEnumerable Neighbours(Cell cell, ulong areaMask, List<LinkEdge> links, Vector2 axisX, Vector2 axisY)
-        => new(this, cell, areaMask, links, axisX, axisY);
+    private NeighbourEnumerable Neighbours(Cell cell, ulong areaMask, SearchWorkspace workspace)
+        => new(this, cell, areaMask, workspace);
 
     private Cell? FindNearest(Cell cell, ulong areaMask)
     {
@@ -266,18 +284,27 @@ internal sealed partial class NavigationGrid2D
         return Vector2.Distance(ToWorld(left), ToWorld(right));
     }
 
-    private static Vector2[] Simplify(Vector2[] points)
+    private static Vector2[] BuildCorners(List<Cell> cells, List<Vector2> result,
+        Vector2 origin, Vector2 axisX, Vector2 axisY)
     {
-        if (points.Length <= 2) return points;
-        var result = new List<Vector2> { points[0] };
-        var previousDirection = (points[1] - points[0]).normalized;
-        for (var index = 2; index < points.Length; index++)
+        Vector2 World(Cell cell) => origin + axisX * cell.X + axisY * cell.Y;
+        var first = World(cells[0]);
+        result.Add(first);
+        if (cells.Count == 1) return result.ToArray();
+        var previous = World(cells[1]);
+        if (cells.Count > 2)
         {
-            var direction = (points[index] - points[index - 1]).normalized;
-            if (direction != previousDirection) result.Add(points[index - 1]);
-            previousDirection = direction;
+            var previousDirection = (previous - first).normalized;
+            for (var index = 2; index < cells.Count; index++)
+            {
+                var point = World(cells[index]);
+                var direction = (point - previous).normalized;
+                if (direction != previousDirection) result.Add(previous);
+                previousDirection = direction;
+                previous = point;
+            }
         }
-        result.Add(points[^1]);
+        result.Add(previous);
         return [.. result];
     }
 

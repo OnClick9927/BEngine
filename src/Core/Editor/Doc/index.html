@@ -22,11 +22,11 @@
       <section id="overview">
         <p class="eyebrow">CORE MANUAL</p>
         <h1>BEngine Core</h1>
-        <p class="lead">Core 是 BEngine 始终启用的 2D 基础层，负责 Scene、GameObject、Component、Transform、Camera2D、Sprite、粒子、资源、输入、序列化和编辑器扩展协议。</p>
+        <p class="lead">Core 是 BEngine 始终启用的 2D 基础层，负责 Scene、GameObject、Component、Transform、Camera2D、Sprite、资源、输入、序列化和编辑器扩展协议。</p>
         <div class="grid">
           <article class="card"><h3>纯 2D 世界</h3><p>位置和缩放使用 Vector2，旋转使用单一 Fix64 角度。Camera2D 仅支持正交投影。</p></article>
           <article class="card"><h3>运行镜像隔离</h3><p>Play 在 Scene 镜像上运行；停止后直接丢弃镜像，编辑态 Scene 与组件资产不被运行时写回。</p></article>
-          <article class="card"><h3>统一渲染队列</h3><p>世界、粒子与 UI 按 Layer、Order、Hierarchy、透明度排序，Material、Shader、Atlas 决定合批。</p></article>
+          <article class="card"><h3>统一渲染队列</h3><p>内建与扩展绘制按 Layer、Order、Hierarchy、透明度排序，Material、Shader、Atlas 决定合批。</p></article>
           <article class="card"><h3>可卸载扩展</h3><p>包可注入 Scene System、菜单、Inspector、Drawer、资源类型和 Scene Picking Provider。</p></article>
         </div>
         <figure>
@@ -38,14 +38,13 @@
       <section id="install">
         <h2>依赖与目录</h2>
         <p>扩展包按 <code>Engine/Engine/Packages/包名/包名-版本</code> 存放，清单声明 <code>minimumEngineVersion</code>。Package Manager 仅展示兼容版本；右侧选择版本后点击 Import 或 Use Version，工程会固定使用该版本。顶部工具栏左侧搜索和刷新，右侧创建和导出，表单使用紧凑的 Pop EditorWindow。创建时填写根命名空间等信息并下拉选择最低引擎版本，仅在当前工程 Assets/Packages 下生成源码模板；导出时下拉选择 Assets/Packages 中的包，校验编译后写入与 Assets 同级的 <code>Packages-Exported/包名/包名-版本</code>。完整说明见 <a href="PackageAuthoring.md">包版本与工程内开发</a>。</p>
-        <p>Core 不是可选扩展包，没有 `package.yaml`，无需在工程包清单中启用。可选包只允许依赖 Core，Core 不反向记录具体扩展包。</p>
+        <p>Core 不是可选扩展包，没有 `package.yaml`，无需在工程包清单中启用。扩展可依赖 Core 和其他扩展；Core 不反向记录任何具体扩展包。</p>
         <div class="table-wrap"><table>
           <thead><tr><th>程序集/目录</th><th>职责</th><th>运行时</th></tr></thead>
           <tbody>
             <tr><td><code>BEngine</code></td><td>运行时对象、资源、渲染、输入、数学、Scene scope</td><td>是</td></tr>
-            <tr><td><code>BEngine.Editor</code></td><td>编辑器宿主、IMGUI、窗口、菜单、导入器、Package Manager</td><td>否</td></tr>
+            <tr><td><code>BEngine.Core.Editor</code></td><td>工程编译、资产编辑、包管理和 Player 构建机制</td><td>否</td></tr>
             <tr><td><code>BEngine.Launcher</code></td><td>工程选择和启动</td><td>否</td></tr>
-            <tr><td><code>BEngine.Player</code></td><td>导出游戏的通用宿主</td><td>是</td></tr>
             <tr><td><code>Resources</code></td><td>运行时默认 Shader 与资源</td><td>是</td></tr>
             <tr><td><code>Editor</code></td><td>图标、文档、示例、Skill</td><td>否</td></tr>
           </tbody>
@@ -89,12 +88,9 @@
             <tr><td>Renderer2D</td><td><code>sortingLayer/orderInLayer/opacity</code></td><td>通用 2D 排序字段</td></tr>
             <tr><td>SpriteRenderer</td><td><code>sprite/size/pivot/useSpritePivot</code></td><td>Sprite 引用、尺寸和轴心</td></tr>
             <tr><td>SpriteRenderer</td><td><code>color/flipX/flipY/material</code></td><td>视觉与批次资源</td></tr>
-            <tr><td>ParticleSystem2D</td><td><code>duration/loop/playOnAwake/emissionRate</code></td><td>播放与发射</td></tr>
-            <tr><td>ParticleSystem2D</td><td><code>startLifetime/startSpeed/startDirection/startSize</code></td><td>新粒子的基础状态</td></tr>
-            <tr><td>ParticleSystem2D</td><td><code>startColor/startRotation/startAngularVelocity/maxParticles</code></td><td>颜色、角运动与容量</td></tr>
           </tbody>
         </table></div>
-        <p>Sorting Layer 使用连续自然编号 <code>1..63</code>，不是位值。工程默认提供五个具有稳定内建身份的 Layer；它们可以重命名和排序，但不能删除；自定义 Layer 可以增加、删除、重命名和排序。Camera 与 Physics 的 Layer Mask 是独立位掩码，应通过 <code>SortingLayer.ToMask(layer)</code>、<code>LayerMask.MaskForLayer(layer)</code> 或 <code>LayerMask.GetMask(names)</code> 创建，不要直接按位组合 Layer 编号。内建 UI Layer 通过稳定身份动态定位，不能依赖固定编号。</p>
+        <p>Sorting Layer 使用连续自然编号 <code>1..63</code>，不是位值。工程默认提供五个具有稳定内建身份的 Layer；它们可以重命名和排序，但不能删除；自定义 Layer 可以增加、删除、重命名和排序。相机与外部系统使用的 Layer Mask 是独立位掩码，应通过 <code>SortingLayer.ToMask(layer)</code>、<code>LayerMask.MaskForLayer(layer)</code> 或 <code>LayerMask.GetMask(names)</code> 创建，不要直接按位组合 Layer 编号。内建 UI Layer 通过稳定身份动态定位，不能依赖固定编号。</p>
       </section>
 
       <section id="assets">
@@ -105,7 +101,6 @@
             <tr><td>Scene</td><td><code>*.scene.yaml</code></td><td>保存 GameObject、Transform、Component；支持 Single/Additive</td></tr>
             <tr><td>PrefabAsset</td><td><code>*.prefab.yaml</code></td><td>实例化后可 Apply、Revert、Unpack</td></tr>
             <tr><td>Sprite</td><td><code>图片 + .meta</code></td><td>在图片 Inspector 将 Texture Type 设为 Sprite 后 Apply；同一图片可赋给 SpriteRenderer 或加入 Atlas</td></tr>
-            <tr><td>TextureAtlas</td><td><code>MaxSize/Padding/Extrude/Sources</code></td><td>Sources 是 Sprite 数组，以 ownerGuid + localIdentifier 保存稳定引用；在 Texture Atlas 窗口 Build</td></tr>
             <tr><td>Material</td><td><code>shader/color/renderQueue</code></td><td>保存 `.material.yaml` 和材质属性</td></tr>
             <tr><td>GUISkin</td><td><code>*.guiskin.yaml</code></td><td>继承 BAsset；保存全部 EditorStyles 样式槽和 customStyles</td></tr>
             <tr><td>TextureImporter</td><td><code>compressionFormat/filterMode/wrapMode</code></td><td>PNG/JPEG/BMP/TGA/GIF 首帧；RGBA32、BC1/3/7、ETC2、ASTC 4×4</td></tr>
@@ -114,8 +109,8 @@
           </tbody>
         </table></div>
         <h3>统一 BAsset 导入链路</h3>
-        <p>Scene、Texture、Font、Shader、Material、TextureAtlas 与 ScriptableObject 资产统一继承 <code>BAsset</code>，不存在并行的资产基类层级。Sprite 是 TextureImporter 从 Texture 创建的 <code>BObject</code> SubAsset，以主 Texture 的 GUID 与非零 localIdentifier 标识。</p>
-        <p>编辑器读取流程为 <code>Source -&gt; AssetDatabase -&gt; AssetImporter -&gt; Artifact -&gt; BAsset</code>。AssetDatabase 管理工程路径、GUID、Source/Artifact 地址、哈希、SubAsset 身份和 BAsset 缓存；Assets 面板根据这些记录构建，不直接把磁盘目录当成资源模型。内部泛型 <code>Document&lt;TAsset&gt;</code> 只负责可序列化 BAsset 与磁盘文档的转换，不构成新的资产类型。运行时从 AssetBundle 读取 BAsset 并按需创建 GPU 对象，不能保存资源。</p>
+        <p>Scene、Texture、Font、Shader、Material 与 ScriptableObject 资产统一继承 <code>BAsset</code>，不存在并行的资产基类层级。Sprite 是 TextureImporter 从 Texture 创建的 <code>BObject</code> SubAsset，以主 Texture 的 GUID 与非零 localIdentifier 标识。</p>
+        <p>编辑器读取流程为 <code>Source -&gt; AssetDatabase -&gt; AssetImporter -&gt; Artifact -&gt; BAsset</code>。AssetDatabase 管理工程路径、GUID、Source/Artifact 地址、哈希、SubAsset 身份和 BAsset 缓存；Assets 面板根据这些记录构建，不直接把磁盘目录当成资源模型。内部泛型 <code>Document&lt;TAsset&gt;</code> 只负责可序列化 BAsset 与磁盘文档的转换，不构成新的资产类型。运行时通过注册的资源提供者读取 BAsset 并按需创建 GPU 对象，不能保存资源。</p>
         <p>普通 <code>DefaultImporter</code> 的 <code>YamlAsset</code> 配置可在 <code>.meta/settings</code> 设置 <code>runtimeDataFormat: binary</code>，仅在构建时转为紧凑二进制，地址与 YAML 编辑源保持一致。运行时用 <code>YamlUtility.Deserialize&lt;T&gt;(Resources.Load&lt;byte[]&gt;(address)!)</code>，兼容原 YAML。支持公开可写的数据成员、标量、数组、List、字符串键 Dictionary 和 Fix64；最大 64 MiB、64 层。Anchor、Alias、显式 Tag、Merge Key 和非标量 Map Key 会明确导致构建失败，应继续使用 YAML；Scene、Prefab 和 BAsset 文档不使用此选项。</p>
         <div class="note">压缩导入生成带校验的 BTEX 产物。Vulkan/OpenGL 支持时直接上传块数据，否则解压全部 mip 为 RGBA8；Player 构建应用目标平台覆盖。完整范围见 <code>TextureImport.md</code>。</div>
       </section>
@@ -153,7 +148,6 @@ float4 FragmentMain() : SV_Target
             <tr><td><code>GetComponent/TryGetComponent</code></td><td>查询对象组件</td></tr>
             <tr><td><code>Scene.QueryComponents&lt;T&gt;</code></td><td>查询 Scene 中匹配组件</td></tr>
             <tr><td><code>Transform.Translate/Rotate/SetParent</code></td><td>2D 变换与层级</td></tr>
-            <tr><td><code>com.bengine.coroutines</code></td><td>可选包提供 this.StartCoroutine/this.Invoke</td></tr>
             <tr><td><code>BAsset.Load&lt;T&gt;</code></td><td>按 Assets/Packages 路径加载资源</td></tr>
             <tr><td><code>BAsset.LoadSubAsset&lt;T&gt;(path, localIdentifier)</code></td><td>用主资源路径与局部 ID 加载 SubAsset</td></tr>
             <tr><td><code>SceneManager.LoadScene</code></td><td>Single 或 Additive 场景加载</td></tr>
@@ -257,7 +251,6 @@ GUILayout.Button("Build", accent);</code></pre>
           <li>File &gt; New Scene 后立即保存到 <code>Assets/Scenes</code>。</li>
           <li>GameObject &gt; Camera 2D 创建相机，设置 size、priority、clearMode、cullingMask、viewportRect。</li>
           <li>在 Project 选中 PNG/JPEG/BMP/TGA/GIF，在 Inspector 将 Texture Type 设为 Sprite，按需调整 Pivot/PPU、Mip Maps、压缩和平台覆盖后点击 Apply；再创建 Sprite 对象，把同一图片赋给 SpriteRenderer。</li>
-          <li>需要 Atlas 时创建 Texture Atlas，在 Atlas Inspector 或 Window &gt; 2D &gt; Texture Atlas 通过 Sprite ObjectField 添加图片并 Build。清单保存 Sprite 的 ownerGuid 与 localIdentifier；生成 PNG 以 Atlas GUID 和保留 localIdentifier 注册为 SubAsset，在 Project 展开 Atlas 节点后显示，但不成为独立顶层资源。</li>
           <li>Edit &gt; Project Settings &gt; Tags and Layers 配置 Tag 与 Layer。Layer 使用连续自然编号 1..63；五个内建层可重命名和排序但不可删除，自定义层可增删、重命名和排序。</li>
           <li>在 Scene 使用 W/E/R Handle 编辑位置、旋转和缩放，使用眼睛/锁控制可见与可选。</li>
           <li>进入 Play 验证；Game View 选择逻辑分辨率并展开 Status 检查 Camera、Batch、Draw Call。</li>

@@ -1,0 +1,538 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "BEngine.RuntimeDistribution/0.1.0": {
+        "dependencies": {
+          "BEngine.Application": "0.1.0",
+          "BEngine.AssetBundles": "0.1.0",
+          "BEngine.Core": "0.1.0",
+          "BEngine.Platform.DotNet": "0.1.0",
+          "BEngine.Player": "0.1.0",
+          "BEngine.Rendering2D": "0.1.0",
+          "BEngine.Web": "0.1.0"
+        },
+        "runtime": {
+          "BEngine.RuntimeDistribution.dll": {}
+        }
+      },
+      "AssetRipper.TextureDecoder/2.6.3": {
+        "runtime": {
+          "lib/net10.0/AssetRipper.TextureDecoder.dll": {
+            "assemblyVersion": "2.6.3.0",
+            "fileVersion": "2.6.3.0"
+          }
+        }
+      },
+      "BCnEncoder.Net/2.3.0": {
+        "dependencies": {
+          "CommunityToolkit.HighPerformance": "8.4.0"
+        },
+        "runtime": {
+          "lib/netstandard2.1/BCnEncoder.dll": {
+            "assemblyVersion": "2.3.0.0",
+            "fileVersion": "2.3.0.0"
+          }
+        }
+      },
+      "CommunityToolkit.HighPerformance/8.4.0": {
+        "runtime": {
+          "lib/net8.0/CommunityToolkit.HighPerformance.dll": {
+            "assemblyVersion": "8.4.0.0",
+            "fileVersion": "8.4.0.1"
+          }
+        }
+      },
+      "HarfBuzzSharp/14.2.1.301": {
+        "dependencies": {
+          "HarfBuzzSharp.NativeAssets.Win32": "14.2.1.301",
+          "HarfBuzzSharp.NativeAssets.macOS": "14.2.1.301"
+        },
+        "runtime": {
+          "lib/net10.0/HarfBuzzSharp.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "14.2.1.301"
+          }
+        }
+      },
+      "HarfBuzzSharp.NativeAssets.macOS/14.2.1.301": {
+        "runtimeTargets": {
+          "runtimes/osx/native/libHarfBuzzSharp.dylib": {
+            "rid": "osx",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          }
+        }
+      },
+      "HarfBuzzSharp.NativeAssets.Win32/14.2.1.301": {
+        "runtimeTargets": {
+          "runtimes/win-arm64/native/libHarfBuzzSharp.dll": {
+            "rid": "win-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-arm64/native/libHarfBuzzSharp.pdb": {
+            "rid": "win-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x64/native/libHarfBuzzSharp.dll": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x64/native/libHarfBuzzSharp.pdb": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x86/native/libHarfBuzzSharp.dll": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x86/native/libHarfBuzzSharp.pdb": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          }
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection/10.0.11": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11"
+        },
+        "runtime": {
+          "lib/net10.0/Microsoft.Extensions.DependencyInjection.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.1126.37416"
+          }
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions/10.0.11": {
+        "runtime": {
+          "lib/net10.0/Microsoft.Extensions.DependencyInjection.Abstractions.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.1126.37416"
+          }
+        }
+      },
+      "SkiaSharp/4.153.1": {
+        "dependencies": {
+          "SkiaSharp.NativeAssets.Win32": "4.153.1",
+          "SkiaSharp.NativeAssets.macOS": "4.153.1"
+        },
+        "runtime": {
+          "lib/net10.0/SkiaSharp.dll": {
+            "assemblyVersion": "4.153.0.0",
+            "fileVersion": "4.153.1.0"
+          }
+        }
+      },
+      "SkiaSharp.HarfBuzz/4.153.1": {
+        "dependencies": {
+          "HarfBuzzSharp": "14.2.1.301",
+          "SkiaSharp": "4.153.1"
+        },
+        "runtime": {
+          "lib/net10.0/SkiaSharp.HarfBuzz.dll": {
+            "assemblyVersion": "4.153.0.0",
+            "fileVersion": "4.153.1.0"
+          }
+        }
+      },
+      "SkiaSharp.NativeAssets.macOS/4.153.1": {
+        "runtimeTargets": {
+          "runtimes/osx/native/libSkiaSharp.dylib": {
+            "rid": "osx",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          }
+        }
+      },
+      "SkiaSharp.NativeAssets.Win32/4.153.1": {
+        "runtimeTargets": {
+          "runtimes/win-arm64/native/libSkiaSharp.dll": {
+            "rid": "win-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-arm64/native/libSkiaSharp.pdb": {
+            "rid": "win-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x64/native/libSkiaSharp.dll": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x64/native/libSkiaSharp.pdb": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x86/native/libSkiaSharp.dll": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x86/native/libSkiaSharp.pdb": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          }
+        }
+      },
+      "StbImageSharp/2.30.16": {
+        "runtime": {
+          "lib/net8.0/StbImageSharp.dll": {
+            "assemblyVersion": "2.30.16.0",
+            "fileVersion": "2.30.16.0"
+          }
+        }
+      },
+      "YamlDotNet/18.1.0": {
+        "runtime": {
+          "lib/net10.0/YamlDotNet.dll": {
+            "assemblyVersion": "18.0.0.0",
+            "fileVersion": "18.1.0.0"
+          }
+        }
+      },
+      "BEngine.Application/0.1.0": {
+        "dependencies": {
+          "BEngine.AssetBundles": "0.1.0",
+          "BEngine.Core": "0.1.0",
+          "BEngine.Platform.Contracts": "0.1.0",
+          "BEngine.Player": "0.1.0",
+          "BEngine.UIElements": "0.1.0",
+          "Microsoft.Extensions.DependencyInjection": "10.0.11"
+        },
+        "runtime": {
+          "BEngine.Application.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.AssetBundles/0.1.0": {
+        "dependencies": {
+          "BEngine.Core": "0.1.0",
+          "BEngine.Networking": "0.1.0",
+          "BEngine.Platform.Contracts": "0.1.0",
+          "BEngine.Player": "0.1.0",
+          "Microsoft.Extensions.DependencyInjection": "10.0.11",
+          "YamlDotNet": "18.1.0"
+        },
+        "runtime": {
+          "BEngine.AssetBundles.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.Core/0.1.0": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11",
+          "YamlDotNet": "18.1.0"
+        },
+        "runtime": {
+          "BEngine.Core.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.Graphics/0.1.0": {
+        "dependencies": {
+          "AssetRipper.TextureDecoder": "2.6.3",
+          "BCnEncoder.Net": "2.3.0",
+          "BEngine.Core": "0.1.0",
+          "BEngine.Platform.Contracts": "0.1.0",
+          "StbImageSharp": "2.30.16",
+          "YamlDotNet": "18.1.0"
+        },
+        "runtime": {
+          "BEngine.Graphics.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.Networking/0.1.0": {
+        "dependencies": {
+          "BEngine.Core": "0.1.0",
+          "BEngine.Platform.Contracts": "0.1.0"
+        },
+        "runtime": {
+          "BEngine.Networking.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.Platform.Contracts/0.1.0": {
+        "dependencies": {
+          "BEngine.Core": "0.1.0"
+        },
+        "runtime": {
+          "BEngine.Platform.Contracts.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.Platform.DotNet/0.1.0": {
+        "dependencies": {
+          "BEngine.Core": "0.1.0",
+          "BEngine.Platform.Contracts": "0.1.0",
+          "BEngine.Player": "0.1.0",
+          "Microsoft.Extensions.DependencyInjection": "10.0.11"
+        },
+        "runtime": {
+          "BEngine.Platform.DotNet.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.Player/0.1.0": {
+        "dependencies": {
+          "BEngine.Core": "0.1.0",
+          "BEngine.Platform.Contracts": "0.1.0",
+          "Microsoft.Extensions.DependencyInjection": "10.0.11",
+          "YamlDotNet": "18.1.0"
+        },
+        "runtime": {
+          "BEngine.Player.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.Rendering2D/0.1.0": {
+        "dependencies": {
+          "BEngine.Core": "0.1.0",
+          "BEngine.Graphics": "0.1.0",
+          "BEngine.Platform.Contracts": "0.1.0",
+          "YamlDotNet": "18.1.0"
+        },
+        "runtime": {
+          "BEngine.Rendering2D.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.TextEditing/0.1.0": {
+        "dependencies": {
+          "BEngine.Core": "0.1.0"
+        },
+        "runtime": {
+          "BEngine.TextEditing.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.UIElements/0.1.0": {
+        "dependencies": {
+          "BEngine.Core": "0.1.0",
+          "BEngine.Graphics": "0.1.0",
+          "BEngine.Platform.Contracts": "0.1.0",
+          "BEngine.TextEditing": "0.1.0",
+          "SkiaSharp": "4.153.1",
+          "SkiaSharp.HarfBuzz": "4.153.1"
+        },
+        "runtime": {
+          "BEngine.UIElements.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      },
+      "BEngine.Web/0.1.0": {
+        "dependencies": {
+          "BEngine.Platform.Contracts": "0.1.0",
+          "BEngine.Platform.DotNet": "0.1.0"
+        },
+        "runtime": {
+          "BEngine.Web.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "BEngine.RuntimeDistribution/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "AssetRipper.TextureDecoder/2.6.3": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ksBcITGCJ2QJQ94dtmBYsx1Lg6+thSkeQYY3oN15v2Q0aCaIKfVHaw5H2iK6QF8FuGeQzf2CpcKJ8XeryCS6Cw==",
+      "path": "assetripper.texturedecoder/2.6.3",
+      "hashPath": "assetripper.texturedecoder.2.6.3.nupkg.sha512"
+    },
+    "BCnEncoder.Net/2.3.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-DJhHJiBJKXUXxlkkrv74ckzJb3wYxqIAZHjXD9G76kpsD0YyJOmqtNufHWEuJe0eH0tB1tCZn80/3JV2UVP7yQ==",
+      "path": "bcnencoder.net/2.3.0",
+      "hashPath": "bcnencoder.net.2.3.0.nupkg.sha512"
+    },
+    "CommunityToolkit.HighPerformance/8.4.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-flxspiBs0G/0GMp7IK2J2ijV9bTG6hEwFc/z6ekHqB6nwRJ4Ry2yLdx+TkbCUYFCl4XhABkAwomeKbT6zM2Zlg==",
+      "path": "communitytoolkit.highperformance/8.4.0",
+      "hashPath": "communitytoolkit.highperformance.8.4.0.nupkg.sha512"
+    },
+    "HarfBuzzSharp/14.2.1.301": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-FNlv2OCprGHp3EcaZ9Fc2O3ojl7sGHg418Ey+8g/UwKkPGgBUfdWuhdVOH8pB0wkVkMsFOZH7dr4iOFtVrB88Q==",
+      "path": "harfbuzzsharp/14.2.1.301",
+      "hashPath": "harfbuzzsharp.14.2.1.301.nupkg.sha512"
+    },
+    "HarfBuzzSharp.NativeAssets.macOS/14.2.1.301": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-NHHoxkjGkU6BnWyksKjM7TrIReXzpgXuss+ahhUgby0oJuYR9/HaxkfezYe3abpmWDN1PYWM5SBZWob3TzpkKA==",
+      "path": "harfbuzzsharp.nativeassets.macos/14.2.1.301",
+      "hashPath": "harfbuzzsharp.nativeassets.macos.14.2.1.301.nupkg.sha512"
+    },
+    "HarfBuzzSharp.NativeAssets.Win32/14.2.1.301": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-mL1atDEKtJSqutOFjLP/hiA8rTGqOQCHBpfkG3rXnTFJCqN94oAKhR8a7+bhxxxvSgj4soJXUBICSYGte5odNA==",
+      "path": "harfbuzzsharp.nativeassets.win32/14.2.1.301",
+      "hashPath": "harfbuzzsharp.nativeassets.win32.14.2.1.301.nupkg.sha512"
+    },
+    "Microsoft.Extensions.DependencyInjection/10.0.11": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-PSmotV19c7E3lKed++uYo1kSiXFI+uTl37CBSrhq+CfLC3FCHjG7R91+xPnNehQfHS1b0Tzo/CCLPWH3qaEheg==",
+      "path": "microsoft.extensions.dependencyinjection/10.0.11",
+      "hashPath": "microsoft.extensions.dependencyinjection.10.0.11.nupkg.sha512"
+    },
+    "Microsoft.Extensions.DependencyInjection.Abstractions/10.0.11": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-/a1aJz4m7ylhEDf25ugQChLQoN5XwoGjWw/BoR/ZWWKsO1v4DdJElS1uyngahz4B/eOzjFk1KNTkarRLE5wsIg==",
+      "path": "microsoft.extensions.dependencyinjection.abstractions/10.0.11",
+      "hashPath": "microsoft.extensions.dependencyinjection.abstractions.10.0.11.nupkg.sha512"
+    },
+    "SkiaSharp/4.153.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-TghYLOUaP3q6rTjQw7U9uQaaXh8lEs9rfA1U7/VtmyAptVDtj/SmjtcWzFWmcC/VMWxe3QgbV9uyvqDL7ySFtQ==",
+      "path": "skiasharp/4.153.1",
+      "hashPath": "skiasharp.4.153.1.nupkg.sha512"
+    },
+    "SkiaSharp.HarfBuzz/4.153.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-57/8+VBQPSltb5MKYIlm0mn7BSoCci7Yq2ffIJSr5nK1fM0NAIIpO6SQVmUXTP9BpZBxa/oaje5odQHyjAJBlQ==",
+      "path": "skiasharp.harfbuzz/4.153.1",
+      "hashPath": "skiasharp.harfbuzz.4.153.1.nupkg.sha512"
+    },
+    "SkiaSharp.NativeAssets.macOS/4.153.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-YTojWeWIhnpF7uC8vpMxB5wRONKkDB2t3r/nNPA3DL2pgj9fqMXRevA/rIanYazWnco4jo1ufgp3HkXuh1Tz8A==",
+      "path": "skiasharp.nativeassets.macos/4.153.1",
+      "hashPath": "skiasharp.nativeassets.macos.4.153.1.nupkg.sha512"
+    },
+    "SkiaSharp.NativeAssets.Win32/4.153.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-Yqg6rChTVh0BUE8QQxtOA3uUBnihfgID4yex/AvDa0+os2bVcBjmI3Qj9tnOB+R1hd/Jry1Gwl8qw5JI9HZG8Q==",
+      "path": "skiasharp.nativeassets.win32/4.153.1",
+      "hashPath": "skiasharp.nativeassets.win32.4.153.1.nupkg.sha512"
+    },
+    "StbImageSharp/2.30.16": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-qg1i+NHihXVKLKYacGKrauhSQIGL31eBWcTC4Vc7jnGmBFj87LkRuCdXB5aDZisWMRnB6x2mcfwYXQxMWEG/lw==",
+      "path": "stbimagesharp/2.30.16",
+      "hashPath": "stbimagesharp.2.30.16.nupkg.sha512"
+    },
+    "YamlDotNet/18.1.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-5K+9KFg2TdTl7VXv88Qzi/0lqK6JFoNP3lRuImPYGRV7K/QYklDyTrj4+A+KAki1JsQi6qKY+hDyY7d6WRqjrw==",
+      "path": "yamldotnet/18.1.0",
+      "hashPath": "yamldotnet.18.1.0.nupkg.sha512"
+    },
+    "BEngine.Application/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.AssetBundles/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.Core/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.Graphics/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.Networking/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.Platform.Contracts/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.Platform.DotNet/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.Player/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.Rendering2D/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.TextEditing/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.UIElements/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BEngine.Web/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

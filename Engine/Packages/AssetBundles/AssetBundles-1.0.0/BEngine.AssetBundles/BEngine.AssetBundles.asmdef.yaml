@@ -1,10 +1,13 @@
 format: BEngine.AssemblyDefinition
 version: 1
 name: BEngine.AssetBundles
+rootNamespace: BEngine.AssetBundles
 allowUnsafeCode: true
-rootNamespace: BEngine
-references: 
+references:
+- BEngine.Core
+- BEngine.Platform.Contracts
 - BEngine.Networking
+- BEngine.Player
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

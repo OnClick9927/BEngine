@@ -1,0 +1,15 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.IMGUI.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.Graphics
+- BEngine.TextEditing
+- BEngine.Core
+- BEngine.Platform.Contracts
+- BEngine.Core.Editor
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

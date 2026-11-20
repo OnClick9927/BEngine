@@ -1,0 +1,26 @@
+<Project>
+  <PropertyGroup>
+    <BEngineRepositoryBuild>true</BEngineRepositoryBuild>
+    <BEngineRepositoryRoot>$([System.IO.Path]::GetFullPath('$(_DirectoryBuildPropsBasePath)'))</BEngineRepositoryRoot>
+    <BEngineSourceRoot>$([System.IO.Path]::GetFullPath('$(BEngineRepositoryRoot)/src'))</BEngineSourceRoot>
+    <BEngineDevelopmentRoot>$([System.IO.Path]::GetFullPath('$(BEngineRepositoryRoot)/Development'))</BEngineDevelopmentRoot>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors Condition="'$(PublishTrimmed)' == 'true'">$(WarningsNotAsErrors);IL2026;IL2057;IL2067;IL2070;IL2072;IL2075</WarningsNotAsErrors>
+    <Deterministic>true</Deterministic>
+    <Version>0.1.0</Version>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <!-- Set before the SDK computes both NuGet/obj and bin paths. Target
+         renderers without the compiler must not share restore/build caches. -->
+    <ArtifactsProjectName Condition="'$(MSBuildProjectName)' == 'BEngine.Platform.Veldrid' and '$(BEngineRuntimeShaderCompiler)' == 'false'">$(MSBuildProjectName).Offline</ArtifactsProjectName>
+    <!-- File-based validation apps share ArtifactsPath; keep their obj/bin caches separate. -->
+    <IncludeProjectNameInArtifactsPaths Condition="'$(FileBasedProgram)' == 'true'">true</IncludeProjectNameInArtifactsPaths>
+    <!-- Anchor paths at the repository's automatic MSBuild entry point. -->
+    <ArtifactsPath>$([System.IO.Path]::GetFullPath('$(BEngineRepositoryRoot)/../Temp/Engine/Build'))</ArtifactsPath>
+    <EnableDefaultNoneItems>true</EnableDefaultNoneItems>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+</Project>

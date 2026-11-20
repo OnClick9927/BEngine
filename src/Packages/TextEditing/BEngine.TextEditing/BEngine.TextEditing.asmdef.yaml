@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.TextEditing
+rootNamespace: BEngine
+references:
+- BEngine.Core
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false

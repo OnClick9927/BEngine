@@ -1,1 +1,28 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><AssemblyName>BEngine.AssetBundles.Editor</AssemblyName><RootNamespace>BEngine.Editor</RootNamespace><TargetFramework>net10.0-windows</TargetFramework><BEnginePackageExportOwner>true</BEnginePackageExportOwner></PropertyGroup><ItemGroup><ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" /><ProjectReference Include="../../AssetBundles/BEngine.AssetBundles/BEngine.AssetBundles.csproj" /><ProjectReference Include="../../HotUpdate/BEngine.HotUpdate/BEngine.HotUpdate.csproj" /></ItemGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.AssetBundles.Editor</AssemblyName>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    
+    <ProjectReference Include="../../../Core/BEngine.Player/BEngine.Player.csproj" />
+    <ProjectReference Include="../BEngine.AssetBundles/BEngine.AssetBundles.csproj" />
+    
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../../IMGUI/BEngine.IMGUI.Editor/BEngine.IMGUI.Editor.csproj" /></ItemGroup>
+  <ItemGroup></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../Graphics/BEngine.Graphics.Editor/BEngine.Graphics.Editor.csproj" /></ItemGroup>
+  <ItemGroup>
+    
+    <ProjectReference Include="../../Graphics/BEngine.Graphics/BEngine.Graphics.csproj" />
+    <ProjectReference Include="../../Networking/BEngine.Networking/BEngine.Networking.csproj" />
+    <ProjectReference Include="../../Rendering2D/BEngine.Rendering2D/BEngine.Rendering2D.csproj" />
+  </ItemGroup>
+</Project>

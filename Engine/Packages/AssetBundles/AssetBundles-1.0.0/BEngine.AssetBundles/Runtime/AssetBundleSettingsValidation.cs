@@ -7,14 +7,24 @@ internal static class AssetBundleSettingsValidation
         if (document.Format != "BEngine.AssetBundleSettings" || document.Version != 1)
             throw new InvalidDataException(
                 $"Unsupported AssetBundle settings '{document.Format}' v{document.Version}.");
-        if (string.IsNullOrWhiteSpace(document.PackageName) || document.PackageName.Length > 128 ||
-            document.PackageName[0] is not (>= 'a' and <= 'z') and
-                not (>= 'A' and <= 'Z') and not (>= '0' and <= '9') ||
-            document.PackageName.Any(character => character is not (>= 'a' and <= 'z') and
-                not (>= 'A' and <= 'Z') and not (>= '0' and <= '9') and not '.' and not '_' and not '-'))
+        if (string.IsNullOrWhiteSpace(document.PackageName) || document.PackageName.Length > 128 || document.PackageName[0] is not (>= 'a' and <= 'z') and not (>= 'A' and <= 'Z') and not (>= '0' and <= '9') || Matches669())
             throw new InvalidDataException("AssetBundle package name is invalid.");
-        AssetDataValidation.ValidateOptionalRelativePath(document.BuiltInDirectory, nameof(document.BuiltInDirectory));
-        AssetDataValidation.ValidateOptionalRelativePath(document.CacheDirectory, nameof(document.CacheDirectory));
+        [global::BEngine.SkipLoopGuard]
+        bool Matches669()
+        {
+            var matchSource669 = document.PackageName;
+            ArgumentNullException.ThrowIfNull(matchSource669, "source");
+            global::System.ReadOnlySpan<char> matchValues669 = matchSource669.AsSpan();
+            foreach (var character in matchValues669)
+            {
+                if (character is not (>= 'a' and <= 'z') and not (>= 'A' and <= 'Z') and not (>= '0' and <= '9') and not '.' and not '_' and not '-')
+                    return true;
+            }
+        
+            return false;
+        }
+        RuntimeAssetReferences.ValidateOptionalRelativePath(document.BuiltInDirectory, nameof(document.BuiltInDirectory));
+        RuntimeAssetReferences.ValidateOptionalRelativePath(document.CacheDirectory, nameof(document.CacheDirectory));
         if (!Enum.IsDefined(document.LoadMode))
             throw new InvalidDataException("AssetBundle load mode is invalid.");
         if (document.Enabled && document.LoadMode == AssetBundleLoadMode.StreamingAssets &&

@@ -116,7 +116,36 @@ internal sealed class LoadedAssetBundle : IDisposable
                 if (entry.Length > options.MaximumAssetSize)
                     throw new InvalidDataException($"Asset bundle entry '{entry.FullName}' exceeds its size limit.");
             }
-            var missing = expected.Keys.FirstOrDefault(entry => !entries.ContainsKey(entry));
+            var missing = Matches5294();
+            [global::BEngine.SkipLoopGuard]
+            string? Matches5294()
+            {
+                var matchSource5294 = expected.Keys;
+                ArgumentNullException.ThrowIfNull(matchSource5294, "source");
+                global::System.ReadOnlySpan<string> matchValues5294;
+                if (matchSource5294.GetType() == typeof(string[]))
+                    matchValues5294 = (string[])(object)matchSource5294;
+                else if (matchSource5294.GetType() == typeof(global::System.Collections.Generic.List<string>))
+                    matchValues5294 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<string>)(object)matchSource5294);
+                else
+                {
+                    foreach (var entry in (global::System.Collections.Generic.IEnumerable<string>)matchSource5294)
+                    {
+                        if (!entries.ContainsKey(entry))
+                            return entry;
+                    }
+            
+                    return default!;
+                }
+            
+                foreach (var entry in matchValues5294)
+                {
+                    if (!entries.ContainsKey(entry))
+                        return entry;
+                }
+            
+                return default!;
+            }
             if (missing is not null)
                 throw new InvalidDataException($"Asset bundle entry '{missing}' is missing.");
             return new LoadedAssetBundle(
@@ -229,12 +258,8 @@ internal sealed class LoadedAssetBundle : IDisposable
             Stream opened;
             using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetOpen)) opened = entry.Open();
             using var source = opened;
-            var useNativeHash = asset.Size >= 256 * 1024 && BrowserAssetBundleHash.IsSupported(asset.Size);
-            // Browser IncrementalHash buffers the whole payload until finalization.
-            // Keep actual compression bounded by the same cooperative read block.
-            var useStreamingHash = !useNativeHash && OperatingSystem.IsBrowser();
-            using var streamingHash = useStreamingHash ? new AssetBundleStreamingSha256() : null;
-            using var hash = useNativeHash || useStreamingHash ? null : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            var useNativeHash = asset.Size >= 256 * 1024 && AssetBundleHashVerifier.IsSupported(asset.Size);
+            using var hash = useNativeHash ? null : PlatformRuntime.GetRequiredService<IPlatformSha256Service>().CreateIncremental();
             var offset = 0;
             var context = new AsyncLoadContext(token);
             await context.RunSteps(() =>
@@ -257,31 +282,24 @@ internal sealed class LoadedAssetBundle : IDisposable
                             read = source.Read(bytes, offset, end - offset);
                         if (read == 0) throw new InvalidDataException("Asset bundle entry ended early.");
                         AssetBundlePerformanceDiagnostics.Count(AssetBundlePerformanceDiagnostics.Phase.AssetChunks, read);
-                        if (hash is not null)
-                            using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha, read))
-                                hash.AppendData(bytes, offset, read);
                         offset += read;
                     }
-                    if (streamingHash is not null)
+                    if (hash is not null)
                         using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha, offset - start))
-                            streamingHash.Append(bytes.AsSpan(start, offset - start));
+                            hash.Append(bytes.AsSpan(start, offset - start));
                     progress?.Invoke(offset);
                     if (offset < bytes.Length) return CooperativeWorkStatus.Continue;
                 }
                 if (source.ReadByte() != -1)
                     throw new InvalidDataException($"Asset '{asset.Address}' failed its content verification.");
-                if (hash is not null || streamingHash is not null)
+                if (hash is not null)
                 {
                     string actualHash;
                     using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha))
                     {
-                        if (streamingHash is not null)
-                        {
-                            Span<byte> digest = stackalloc byte[32];
-                            streamingHash.FinalizeHash(digest);
-                            actualHash = Convert.ToHexString(digest);
-                        }
-                        else actualHash = Convert.ToHexString(hash!.GetHashAndReset());
+                        Span<byte> digest = stackalloc byte[32];
+                        hash.FinalizeHash(digest);
+                        actualHash = Convert.ToHexString(digest);
                     }
                     if (!actualHash.Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase))
                         throw new InvalidDataException($"Asset '{asset.Address}' failed its content verification.");
@@ -290,7 +308,7 @@ internal sealed class LoadedAssetBundle : IDisposable
             });
             if (useNativeHash)
                 using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha, bytes.Length))
-                    await BrowserAssetBundleHash.VerifyAsync(bytes, asset.Sha256, token);
+                    await AssetBundleHashVerifier.VerifyAsync(bytes, asset.Sha256, token);
             ThrowIfDisposed(); token.ThrowIfCancellationRequested();
             _assetCache[asset.Entry] = bytes; completion.TrySetResult(bytes); return bytes;
         }
@@ -352,7 +370,7 @@ internal sealed class LoadedAssetBundle : IDisposable
         }
         string actualHash;
         using (AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.AssetSha))
-            actualHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+            actualHash = Convert.ToHexStringLower(hash.GetHashAndReset());
         if (total != asset.Size || source.ReadByte() != -1 ||
             !actualHash.Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"Asset '{asset.Address}' failed its content verification.");

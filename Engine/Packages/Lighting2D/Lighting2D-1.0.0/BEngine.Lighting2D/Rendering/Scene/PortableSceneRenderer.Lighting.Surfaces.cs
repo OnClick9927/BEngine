@@ -44,8 +44,8 @@ internal sealed partial class LightingRenderContributor2D
         surface.OnValidate();
         var xSign = (quad.FlipX ? -1 : 1) * (quad.Size.x < 0 ? -1 : 1);
         var ySign = (quad.FlipY ? -1 : 1) * (quad.Size.y < 0 ? -1 : 1);
-        var x = Transform.RotateVector(new Vector2(xSign, 0), quad.Rotation);
-        var y = Transform.RotateVector(new Vector2(0, ySign), quad.Rotation);
+        var x = Vector2.Rotate(new Vector2(xSign, 0), quad.Rotation);
+        var y = Vector2.Rotate(new Vector2(0, ySign), quad.Rotation);
         data.Values[3] = new((float)surface.uvScale.x, (float)surface.uvScale.y, (float)surface.uvOffset.x, (float)surface.uvOffset.y);
         data.Values[4] = new((float)x.x, (float)x.y, (float)y.x, (float)y.y);
         data.Values[5] = new((float)surface.strength, 1, 0, 0);

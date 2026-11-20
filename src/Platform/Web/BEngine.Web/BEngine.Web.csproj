@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><BEnginePackageExportOwner>false</BEnginePackageExportOwner><BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <RootNamespace>BEngine.Platform</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../DotNet/BEngine.Platform.DotNet/BEngine.Platform.DotNet.csproj" />
+  </ItemGroup>
+</Project>

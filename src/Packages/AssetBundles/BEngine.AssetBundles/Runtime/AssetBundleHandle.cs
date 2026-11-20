@@ -14,12 +14,11 @@ public sealed class AssetBundleHandle<T> : IDisposable
     public string Address { get; }
     public T Value { get; }
     public T Asset => Value;
-    public bool IsDisposed => _release is null;
+    public bool IsDisposed => Volatile.Read(ref _release) is null;
 
     public void Dispose()
     {
-        var release = _release;
-        _release = null;
+        var release = Interlocked.Exchange(ref _release, null);
         release?.Invoke();
     }
 

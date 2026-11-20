@@ -15,9 +15,9 @@ internal static class UxmlSerializer
     internal static UxmlTemplate LoadTemplate(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        var fileBacked = RuntimeServiceAccess.FileSystem.FileExists(path);
+        var fileBacked = RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().FileExists(path);
         var sourcePath = fileBacked
-            ? RuntimeServiceAccess.PathService.GetFullPath(path)
+            ? RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(path)
             : path.Replace('\\', '/').TrimStart('/');
         var document = fileBacked
             ? LoadFileDocument(sourcePath)
@@ -29,39 +29,56 @@ internal static class UxmlSerializer
 
     internal static UxmlTemplate ParseTemplate(string xml, string sourcePath) =>
         CreateTemplate(XDocument.Parse(xml, LoadOptions.SetLineInfo), sourcePath,
-            fileBacked: RuntimeServiceAccess.PathService.IsPathRooted(sourcePath));
+            fileBacked: RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().IsPathRooted(sourcePath));
 
     private static UxmlTemplate CreateTemplate(XDocument document, string sourcePath, bool fileBacked)
     {
         if (!fileBacked) sourcePath = sourcePath.Replace('\\', '/');
         var documentRoot = document.Root ?? throw new InvalidDataException("UXML document has no root element.");
         var baseDirectory = fileBacked
-            ? RuntimeServiceAccess.PathService.GetDirectoryName(sourcePath)!
+            ? RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetDirectoryName(sourcePath)!
             : ResourceDirectory(sourcePath);
-        var rootNode = documentRoot.Name.LocalName.Equals("UXML", StringComparison.OrdinalIgnoreCase)
-            ? documentRoot.Elements().FirstOrDefault(element =>
-                !element.Name.LocalName.Equals("Style", StringComparison.OrdinalIgnoreCase))
-            : documentRoot;
+        var rootNode = documentRoot.Name.LocalName.Equals("UXML", StringComparison.OrdinalIgnoreCase) ? Query2026(documentRoot.Elements()) : documentRoot;
+        [global::BEngine.SkipLoopGuard]
+        global::System.Xml.Linq.XElement? Query2026(global::System.Collections.Generic.IEnumerable<global::System.Xml.Linq.XElement> querySource2026)
+        {
+            ArgumentNullException.ThrowIfNull(querySource2026, "source");
+            bool Matches2026(global::System.Xml.Linq.XElement element) => !element.Name.LocalName.Equals("Style", StringComparison.OrdinalIgnoreCase);
+            global::System.ReadOnlySpan<global::System.Xml.Linq.XElement> queryValues2026;
+            if (querySource2026.GetType() == typeof(global::System.Xml.Linq.XElement[]))
+                queryValues2026 = (global::System.Xml.Linq.XElement[])querySource2026;
+            else if (querySource2026.GetType() == typeof(global::System.Collections.Generic.List<global::System.Xml.Linq.XElement>))
+                queryValues2026 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::System.Xml.Linq.XElement>)querySource2026);
+            else
+            {
+                foreach (var element in querySource2026)
+                    if (Matches2026(element))
+                        return element;
+                return default!;
+            }
+        
+            foreach (var element in queryValues2026)
+                if (Matches2026(element))
+                    return element;
+            return default!;
+        }
         if (rootNode is null) throw new InvalidDataException("UXML document has no VisualElement root.");
 
         var styles = new List<(string Path, StyleSheet Sheet)>();
-        foreach (var styleElement in documentRoot.Descendants().Where(element =>
-                     element.Name.LocalName.Equals("Style", StringComparison.OrdinalIgnoreCase)))
         {
-            var source = Attribute(styleElement, "src");
-            if (string.IsNullOrWhiteSpace(source)) continue;
-            var stylePath = fileBacked
-                ? source.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
-                  source.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase)
-                    ? AssetReferencePath.Resolve(source)
-                    : RuntimeServiceAccess.PathService.GetFullPath(
-                    RuntimeServiceAccess.PathService.Combine(baseDirectory, source))
-                : CombineResourcePath(baseDirectory, source);
-            var sheet = fileBacked
-                ? StyleSheet.Load(stylePath)
-                : BAsset.Load<StyleSheet>(stylePath) ?? StyleSheet.Parse(Resources.Load<string>(stylePath) ??
-                                   throw new FileNotFoundException("Bundled USS document was not found.", stylePath));
-            styles.Add((stylePath, sheet));
+            var __filteredSource2384 = documentRoot.Descendants();
+            ArgumentNullException.ThrowIfNull(__filteredSource2384, "source");
+            foreach (var styleElement in __filteredSource2384)
+            {
+                if (!(styleElement.Name.LocalName.Equals("Style", StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                var source = Attribute(styleElement, "src");
+                if (string.IsNullOrWhiteSpace(source))
+                    continue;
+                var stylePath = fileBacked ? source.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) || source.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ? RuntimeAssetReferences.ResolvePath(source) : RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().Combine(baseDirectory, source)) : CombineResourcePath(baseDirectory, source);
+                var sheet = fileBacked ? StyleSheet.Load(stylePath) : BAsset.Load<StyleSheet>(stylePath) ?? StyleSheet.Parse(Resources.Load<string>(stylePath) ?? throw new FileNotFoundException("Bundled USS document was not found.", stylePath));
+                styles.Add((stylePath, sheet));
+            }
         }
         return new UxmlTemplate(sourcePath, new XElement(rootNode), styles, fileBacked);
     }
@@ -82,12 +99,37 @@ internal static class UxmlSerializer
         {
             _rootNode = rootNode;
             _styles = styles;
-            _writeTimes = fileBacked
-                ? styles.Select(style => style.Path).Append(path).Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(file => file,
-                        file => RuntimeServiceAccess.FileSystem.GetLastWriteTimeUtc(file),
-                        StringComparer.OrdinalIgnoreCase)
-                : new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            _writeTimes = fileBacked ? BuildIndex4356(styles.Select(style => style.Path).Append(path).Distinct(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase) : new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            [global::BEngine.SkipLoopGuard]
+            global::System.Collections.Generic.Dictionary<string, global::System.DateTime> BuildIndex4356(global::System.Collections.Generic.IEnumerable<string> indexSource4356, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer4356)
+            {
+                ArgumentNullException.ThrowIfNull(indexSource4356, "source");
+                var knownCount = indexSource4356.TryGetNonEnumeratedCount(out var capacity);
+                if (knownCount && capacity == 0)
+                    return new global::System.Collections.Generic.Dictionary<string, global::System.DateTime>(indexComparer4356);
+                global::System.ReadOnlySpan<string> values;
+                if (knownCount && indexSource4356 is string[] array)
+                    values = array;
+                else if (knownCount && indexSource4356 is global::System.Collections.Generic.List<string> list)
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+                else
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, global::System.DateTime>(capacity, indexComparer4356);
+                    foreach (var item in indexSource4356)
+                        result.Add(IndexKey4356(item), IndexValue4356(item));
+                    return result;
+                }
+            
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, global::System.DateTime>(values.Length, indexComparer4356);
+                    foreach (var item in values)
+                        result.Add(IndexKey4356(item), IndexValue4356(item));
+                    return result;
+                }
+            
+                string IndexKey4356(string file) => file;
+                global::System.DateTime IndexValue4356(string file) => RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().GetLastWriteTimeUtc(file);
+            }
         }
 
         internal object Capture() => new object[] { _rootNode.ToString(),
@@ -110,8 +152,8 @@ internal static class UxmlSerializer
         }
 
         internal bool IsCurrent => _writeTimes.Count == 0 || _writeTimes.All(pair =>
-            RuntimeServiceAccess.FileSystem.FileExists(pair.Key) &&
-            RuntimeServiceAccess.FileSystem.GetLastWriteTimeUtc(pair.Key) == pair.Value);
+            RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().FileExists(pair.Key) &&
+            RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().GetLastWriteTimeUtc(pair.Key) == pair.Value);
 
         internal UxmlTemplate Clone(ICollection<StyleSheet> ownedStyles)
         {
@@ -167,31 +209,31 @@ internal static class UxmlSerializer
     internal static void Save(VisualElement root, string path)
     {
         ArgumentNullException.ThrowIfNull(root);
-        var fullPath = RuntimeServiceAccess.PathService.GetFullPath(path);
-        var directory = RuntimeServiceAccess.PathService.GetDirectoryName(fullPath) ??
-                        RuntimeServiceAccess.PlatformService.CurrentDirectory;
+        var fullPath = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(path);
+        var directory = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetDirectoryName(fullPath) ??
+                        RuntimeServices.GetRequiredService<global::BEngine.Platform.PlatformUtility>().CurrentDirectory;
         var documentRoot = new XElement("UXML");
         foreach (var sheet in root.styleSheets.DistinctBy(
                      static sheet => sheet.assetPath, StringComparer.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(sheet.assetPath)) continue;
-            var sheetPath = AssetReferencePath.Resolve(sheet.assetPath);
-            var relative = RuntimeServiceAccess.PathService.GetRelativePath(directory, sheetPath)
+            var sheetPath = RuntimeAssetReferences.ResolvePath(sheet.assetPath);
+            var relative = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetRelativePath(directory, sheetPath)
                 .Replace('\\', '/');
             documentRoot.Add(new XElement("Style", new XAttribute("src", relative)));
         }
         documentRoot.Add(ToElement(root));
         var document = new XDocument(new XDeclaration("1.0", "utf-8", null), documentRoot);
-        RuntimeServiceAccess.FileSystem.CreateDirectory(directory);
-        using var stream = RuntimeServiceAccess.FileSystem.OpenFile(
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().CreateDirectory(directory);
+        using var stream = RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().OpenFile(
             fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.SequentialScan);
         document.Save(stream);
-        RuntimeServiceAccess.FileSystem.Flush(stream, flushToDisk: true);
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().Flush(stream, flushToDisk: true);
     }
 
     private static XDocument LoadFileDocument(string path)
     {
-        using var stream = RuntimeServiceAccess.FileSystem.OpenRead(path);
+        using var stream = RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().OpenRead(path);
         return XDocument.Load(stream, LoadOptions.SetLineInfo);
     }
 
@@ -267,12 +309,17 @@ internal static class UxmlSerializer
         element.atlas = Attribute(node, "atlas") ?? string.Empty;
         if (Attribute(node, "material-shader") is { Length: > 0 } materialShader)
             element.material = new Material(Shader.Find(materialShader));
-        foreach (var sourceAttribute in node.Elements().Where(child =>
-                     child.Name.LocalName.Equals("SourceAttribute", StringComparison.OrdinalIgnoreCase)))
         {
-            var sourceName = Attribute(sourceAttribute, "name");
-            if (!string.IsNullOrWhiteSpace(sourceName))
-                element.SetSourceAttribute(sourceName, Attribute(sourceAttribute, "value") ?? string.Empty);
+            var __filteredSource14907 = node.Elements();
+            ArgumentNullException.ThrowIfNull(__filteredSource14907, "source");
+            foreach (var sourceAttribute in __filteredSource14907)
+            {
+                if (!(sourceAttribute.Name.LocalName.Equals("SourceAttribute", StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                var sourceName = Attribute(sourceAttribute, "name");
+                if (!string.IsNullOrWhiteSpace(sourceName))
+                    element.SetSourceAttribute(sourceName, Attribute(sourceAttribute, "value") ?? string.Empty);
+            }
         }
         element.visible = ParseBool(Attribute(node, "visible") ?? "true", true);
         element.SetEnabled(ParseBool(Attribute(node, "enabled") ?? "true", true));

@@ -7,7 +7,7 @@ namespace BEngine.Rendering;
 public sealed record LightingShaderParameters2D(IReadOnlyList<NVector4> Values, IReadOnlyList<string> CookieTextures);
 
 /// <summary>Shares the standard light, outline, shadow and layer evaluation with custom shader pipelines.</summary>
-public sealed class LightingShaderContext2D : IDisposable
+public sealed class LightingShaderContext2D : ISceneLightingShaderContext2D
 {
     private readonly LightingRenderContributor2D _lighting;
     public LightingShaderContext2D(IGraphicsDevice device) => _lighting = new(device);
@@ -16,6 +16,12 @@ public sealed class LightingShaderContext2D : IDisposable
     public void EndFrame() => _lighting.EndFrame();
     public LightingShaderParameters2D Prepare(GameObject target, SceneQuad2D quad, RenderCamera camera, int width, int height, bool useGraphNormal) =>
         _lighting.PrepareShaderSurface(target, quad, camera, width, height, useGraphNormal);
+    (IReadOnlyList<NVector4> Values, IReadOnlyList<string> CookieTextures) ISceneLightingShaderContext2D.Prepare(
+        GameObject target, SceneQuad2D quad, RenderCamera camera, int width, int height, bool useGraphNormal)
+    {
+        var parameters = Prepare(target, quad, camera, width, height, useGraphNormal);
+        return (parameters.Values, parameters.CookieTextures);
+    }
     public static string ShaderFunctions => DefaultShaderResources.Load("Shaders/PortableScene/Lighting.evaluation.glslinc");
     public void Dispose() => _lighting.Dispose();
 }
@@ -33,8 +39,8 @@ internal sealed partial class LightingRenderContributor2D
             for (var i = 1; i < 6; i++) data.Values.Add(default);
         }
         SetLightingView(data, camera, width, height);
-        var x = Transform.RotateVector(new Vector2(quad.FlipX ^ (quad.Size.x < 0) ? -1 : 1, 0), quad.Rotation);
-        var y = Transform.RotateVector(new Vector2(0, quad.FlipY ^ (quad.Size.y < 0) ? -1 : 1), quad.Rotation);
+        var x = Vector2.Rotate(new Vector2(quad.FlipX ^ (quad.Size.x < 0) ? -1 : 1, 0), quad.Rotation);
+        var y = Vector2.Rotate(new Vector2(0, quad.FlipY ^ (quad.Size.y < 0) ? -1 : 1), quad.Rotation);
         data.Values[3] = default;
         data.Values[4] = new((float)x.x, (float)x.y, (float)y.x, (float)y.y);
         data.Values[5] = new(1, useGraphNormal ? 1 : 0, 0, 0);

@@ -41,7 +41,7 @@ public sealed class AssetBundlePackageUpdatePlan
     public AssetBundleVersion TargetVersion =>
         AssetBundleCatalogSerializer.DeserializeVersion(_targetVersionBytes);
     public IReadOnlyList<AssetBundleDescriptor> Downloads =>
-        Array.AsReadOnly(_downloads.Select(CloneDescriptor).ToArray());
+        Array.AsReadOnly((_downloads is { } projectionSource2148 ? projectionSource2148.Length == 0 ? global::System.Array.Empty<global::BEngine.AssetBundles.AssetBundleDescriptor>() : global::System.Array.ConvertAll<global::BEngine.AssetBundles.AssetBundleDescriptor, global::BEngine.AssetBundles.AssetBundleDescriptor>(projectionSource2148, CloneDescriptor) : throw new global::System.ArgumentNullException("source")));
     /// <summary>Requested packages plus all forward dependency packages.</summary>
     public IReadOnlyList<string> PackageNames => Array.AsReadOnly(_packageNames);
     public IReadOnlyList<string> BundleNames => Array.AsReadOnly(_bundleNames);

@@ -1,11 +1,15 @@
 using BEngine.Editor;
+using System.Runtime.CompilerServices;
 
 namespace BEngine.Audio.Editor;
 
 internal static class AudioEditorRegistration
 {
-    [InitializeOnLoadMethod]
-    private static void Register()
+    // Importers must be registered before the first project scan. Waiting for
+    // window initialization would import every audio file twice on each launch.
+    [ModuleInitializer, InitializeOnLoadMethod]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2255", Justification = "Package asset importer registration.")]
+    internal static void Register()
     {
         foreach (var extension in new[] { ".wav", ".mp3", ".ogg" })
             AssetTypeRegistry.Register<AudioClip>(extension, nameof(AudioClip), LoadClip,

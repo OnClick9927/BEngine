@@ -7,7 +7,7 @@ public sealed class PhysicsMaterial2D : ScriptableObject
     {
         get;
         set => field = Fix64.Max(Fix64.Zero, value);
-    } = Fix64.Parse("0.6");
+    } = Fix64.FromRaw(2576980377L) /* Parse("0.6") */;
     public Fix64 bounciness
     {
         get;

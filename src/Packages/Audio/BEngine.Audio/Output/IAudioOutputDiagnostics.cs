@@ -10,4 +10,6 @@ public interface IAudioOutputDiagnostics
     int pendingBuffers { get; }
     /// <summary>Null when the backend cannot observe queue starvation. This is not an acoustic measurement.</summary>
     long? underrunEvents => null;
+    /// <summary>Device-clock latency when observable; not an acoustic measurement.</summary>
+    double? bufferedMilliseconds => null;
 }

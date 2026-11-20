@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup><ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+<Reference Include="$(EngineBinaries)/BEngine.Core.dll;$(EngineBinaries)/BEngine.Player.dll;$(EngineBinaries)/BEngine.Platform.Contracts.dll;$(EngineBinaries)/BEngine.Platform.DotNet.dll;$(EngineBinaries)/YamlDotNet.dll;$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+
+<Compile Include="../Common/CoreProbe.cs" Link="CoreProbe.cs" />
+</ItemGroup></Project>

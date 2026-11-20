@@ -36,9 +36,32 @@ public sealed class TextureAtlasEditor : BAssetEditor
         var value = EditorGUI.ObjectField(new Rect(rect.x, rect.y + 1, rect.width, Fix64.Max(1, rect.height - 2)),
             _sources[index], typeof(Sprite), false) as Sprite;
         if (ReferenceEquals(value, _sources[index])) return;
-        if (value is not null && _sources.Where((_, candidate) => candidate != index).Any(item =>
-                item is not null && TextureAtlas.SourceIdentity(item).Equals(TextureAtlas.SourceIdentity(value),
-                    StringComparison.OrdinalIgnoreCase))) return;
+        [global::BEngine.SkipLoopGuard]
+        bool Query1613(global::System.Collections.Generic.IEnumerable<global::BEngine.Sprite?> querySource1613)
+        {
+            ArgumentNullException.ThrowIfNull(querySource1613, "source");
+            bool Matches1613(global::BEngine.Sprite? item) => item is not null && TextureAtlas.SourceIdentity(item).Equals(TextureAtlas.SourceIdentity(value), StringComparison.OrdinalIgnoreCase);
+            global::System.ReadOnlySpan<global::BEngine.Sprite?> queryValues1613;
+            if (querySource1613.GetType() == typeof(global::BEngine.Sprite? []))
+                queryValues1613 = (global::BEngine.Sprite? [])querySource1613;
+            else if (querySource1613.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Sprite?>))
+                queryValues1613 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Sprite?>)querySource1613);
+            else
+            {
+                foreach (var item in querySource1613)
+                    if (Matches1613(item))
+                        return true;
+                return false;
+            }
+        
+            foreach (var item in queryValues1613)
+                if (Matches1613(item))
+                    return true;
+            return false;
+        }
+        
+        if (value is not null && Query1613(_sources.Where((_, candidate) => candidate != index)))
+            return;
         _sources[index] = value; Changed();
     }
     private void Reload()

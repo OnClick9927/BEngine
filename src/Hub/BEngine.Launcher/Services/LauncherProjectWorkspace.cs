@@ -56,6 +56,13 @@ internal sealed class LauncherProjectWorkspace
 
     internal static LauncherProjectWorkspace Create(string rootPath, string projectName, string engineVersion)
     {
+        using var packages = new LauncherPackageCatalog();
+        return Create(rootPath, projectName, engineVersion, packages.Discover(engineVersion: engineVersion));
+    }
+
+    internal static LauncherProjectWorkspace Create(string rootPath, string projectName, string engineVersion,
+        IReadOnlyList<LauncherPackageInfo> packages)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectName);
         // Validate before creating even the parent/staging directory. The stored
         // release and the assembly names in the template must describe one engine.
@@ -74,7 +81,17 @@ internal sealed class LauncherProjectWorkspace
             var workspace = new LauncherProjectWorkspace(staging, new ProjectData
             { Name = name, EngineVersion = engineVersion, Window = new WindowData { Title = name } }, createLayout: true);
             YamlUtility.Save(workspace.Project, workspace.ProjectFilePath);
-            LauncherProjectTemplate.Write(workspace);
+            LauncherProjectTemplate.Write(workspace, packages.Where(package => package.IsRequired).ToArray());
+            YamlUtility.Save(new BEngine.Editor.Documents.PackageManifestDocument
+            {
+                Packages = packages.Where(package => package.IsRequired)
+                    .OrderBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(package => new BEngine.Editor.Documents.PackageReferenceDocument
+                    {
+                        Id = package.Id, Version = package.Version, Type = package.Type,
+                        ProjectDirectory = package.ProjectDirectory ?? string.Empty, Enabled = true
+                    }).ToList()
+            }, workspace.ResolveInside("Packages/manifest.yaml"));
             if (File.Exists(root)) throw new IOException($"The project path became a file: {root}.");
             if (Directory.Exists(root))
             {

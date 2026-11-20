@@ -22,7 +22,7 @@ public sealed class TargetJoint2D : Joint2D
     public Vector2 target { get; set; }
     public Fix64 maxForce { get; set; } = 100;
     public Fix64 frequency { get; set; } = 5;
-    public Fix64 dampingRatio { get; set; } = (Fix64).7;
+    public Fix64 dampingRatio { get; set; } = Fix64.FromRaw(3006477107L) /* (Fix64).7 */;
     internal override void Prepare(Fix64 dt)
     {
         base.Prepare(dt); var inverse = InverseMass(body); if (inverse <= 0 || dt <= 0) return;
@@ -48,7 +48,7 @@ public sealed class RelativeJoint2D : Joint2D
     public Fix64 angularOffset { get; set; }
     public Fix64 maxForce { get; set; } = 100;
     public Fix64 maxTorque { get; set; } = 100;
-    public Fix64 correctionScale { get; set; } = (Fix64).3;
+    public Fix64 correctionScale { get; set; } = Fix64.FromRaw(1288490188L) /* (Fix64).3 */;
     internal override void Prepare(Fix64 dt)
     {
         base.Prepare(dt); if (dt <= 0) return;
@@ -76,7 +76,7 @@ public sealed class WheelJoint2D : Joint2D
     public Fix64 suspensionAngle { get; set; } = 90;
     public Fix64 suspensionDistance { get; set; }
     public Fix64 frequency { get; set; } = 2;
-    public Fix64 dampingRatio { get; set; } = (Fix64).7;
+    public Fix64 dampingRatio { get; set; } = Fix64.FromRaw(3006477107L) /* (Fix64).7 */;
     public bool useMotor { get; set; }
     public Fix64 motorSpeed { get; set; }
     public Fix64 maxMotorTorque { get; set; } = 100;

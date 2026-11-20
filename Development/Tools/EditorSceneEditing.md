@@ -1,0 +1,15 @@
+# Editor scene editing mechanisms
+
+`BEngine.Editor.EditorSceneEditing` is owned by Core Editor. It provides three neutral operations, without windows, history, selection, dirty flags, import policy or notifications:
+
+- `CreateUnloadedScene` creates a live empty reference with an owned scene service scope. It performs no source I/O, preserves the supplied path, and rejects null arguments before allocating a scope. Hosts close this reference before replacing it with a source-loaded scene.
+- `AttachHierarchy` attaches an entirely detached root and its descendants. The existing scene mechanism validates all memberships before binding any node, preserves object/component identities and ordering, and initializes runtime behaviours when a runtime is active. A non-root, unloaded/disposed destination or existing membership is rejected. It supports restoring an editor parent object after Undo; it does not restore serialized values or invent history.
+- `CloseScene` marks the scene unloaded, then delegates destruction, runtime shutdown and scope disposal to the existing scene lifetime. Reentrant/repeated disposal remains guarded by Scene. Scope cleanup failures are visible to the host; a failed cleanup does not revive the scene.
+
+EditorWorkbench keeps opening policy, active-scene selection, Undo/Redo, save prompts, dirty state, asset imports and scene notifications. It uses existing public `RuntimeAssetReferences.BindScenePath` for path binding. Source writing resolves the active `ISceneDocumentCodec`/`IPrefabDocumentCodec` through `RuntimeServiceContributions.GetDefault`, matching the former internal forwarding methods. AssetPipeline still owns formats, atomic source writes, GUID binding and cache invalidation; the workbench does not replace this with raw snapshot writes or a second import policy.
+
+The workbench uses existing `BAsset.MarkTransient` for runtime-loaded scenes. Scene has no owned-asset traversal override: its hierarchy becomes transient, while borrowed source assets retain their lifetime. This public path allocates traversal bookkeeping per scene load, not per frame; this migration is a responsibility correction, not a claimed CPU/GC optimization.
+
+No Core Runtime, platform, package manifest or serialized format changes are required. No internal setter is made public, no friend grant is added, and no Core-to-package reference is introduced. Existing scenes, prefabs and GUIDs remain readable. Recompile editor extensions to consume the new Core Editor contracts.
+
+`Test-EditorSceneEditing.ps1` runs an independent, non-friend consumer without graphics or UI. It covers references, service-scope ownership, invalid targets, complete hierarchies, identity/order, parent restoration, transient lifetime, runtime descendant initialization, reentrant closure and cleanup failure. `Tests/EditorSceneEditing/EditorWorkflow/Workflow.cs` runs only in a temporary real Editor project and exercises actual commands, source providers, Prefab Stage and Play Mode. Test reflection only invokes private host commands; it does not replace their implementation or registered services.

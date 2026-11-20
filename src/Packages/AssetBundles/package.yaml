@@ -4,35 +4,51 @@ type: package
 id: com.bengine.asset-bundles
 packageVersion: 1.0.0
 minimumEngineVersion: 0.1.0
+
 displayName: AssetBundles
-description: AssetBundles runtime services and content.
+description: Incremental AssetBundle Package builds, asynchronous loading, StreamingAssets access, updates and repair.
 enabledByDefault: true
 content:
   runtime: Resources
   editor: Editor
 runtime:
   assembly: BEngine.AssetBundles
-  rootNamespace: BEngine
+  rootNamespace: BEngine.AssetBundles
   packageReferences:
   - id: YamlDotNet
     version: 18.1.0
-  - id: Microsoft.Extensions.DependencyInjection.Abstractions
-    version: 10.0.11
-  dependencies: 
-  - packageId: com.bengine.networking
-    target: runtime
-editor:
-  packageReferences:
   - id: Microsoft.Extensions.DependencyInjection
     version: 10.0.11
-  - id: YamlDotNet
-    version: 18.1.0
+  dependencies:
+  - packageId: com.bengine.networking
+    target: runtime
   hostReferences:
-  - BEngine.Platform.DotNet
+  - BEngine.Core
+  - BEngine.Player
+  - BEngine.Platform.Contracts
+editor:
   assembly: BEngine.AssetBundles.Editor
   rootNamespace: BEngine.Editor
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+  - id: Microsoft.Extensions.DependencyInjection
+    version: 10.0.11
+
   dependencies:
   - packageId: com.bengine.asset-bundles
     target: runtime
-  - packageId: com.bengine.hot-update
+  - packageId: com.bengine.imgui
+    target: editor
+  - packageId: com.bengine.graphics
+    target: editor
+  - packageId: com.bengine.graphics
     target: runtime
+  - packageId: com.bengine.networking
+    target: runtime
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Player
+  - BEngine.Platform.Contracts

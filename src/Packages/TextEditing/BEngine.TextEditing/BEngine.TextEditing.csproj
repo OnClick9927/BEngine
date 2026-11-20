@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><AssemblyName>BEngine.TextEditing</AssemblyName><RootNamespace>BEngine</RootNamespace><BEngineRuntimeAssembly>true</BEngineRuntimeAssembly><BEnginePackageExportOwner>true</BEnginePackageExportOwner></PropertyGroup><ItemGroup><ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj"/></ItemGroup></Project>

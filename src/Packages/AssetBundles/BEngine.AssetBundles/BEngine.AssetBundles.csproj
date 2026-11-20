@@ -1,4 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><AssemblyName>BEngine.AssetBundles</AssemblyName><RootNamespace>BEngine</RootNamespace><BEnginePackageExportOwner>true</BEnginePackageExportOwner><NoWarn>$(NoWarn);CA2255</NoWarn><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../../Core/BEngine/BEngine.csproj" /><ProjectReference Include="../../Networking/BEngine.Networking/BEngine.Networking.csproj" /><PackageReference Include="YamlDotNet" /><PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" /></ItemGroup>
+  <PropertyGroup>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+    <AssemblyName>BEngine.AssetBundles</AssemblyName>
+    <RootNamespace>BEngine.AssetBundles</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    <ProjectReference Include="../../Networking/BEngine.Networking/BEngine.Networking.csproj" />
+    
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../../../Core/BEngine.Player/BEngine.Player.csproj" /></ItemGroup>
 </Project>

@@ -185,7 +185,7 @@
   async function loadPackages() {
     packageState = 'loading'; grid.setAttribute('aria-busy', 'true'); renderPackages();
     try {
-      const response = await fetch('data/packages.json?v=13');
+      const response = await fetch('data/packages.json?v=14');
       if (!response.ok) throw new Error('Catalog response failed');
       const data = await response.json();
       if (!Array.isArray(data) || !data.length || data.some(pkg =>

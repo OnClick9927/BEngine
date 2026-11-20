@@ -32,7 +32,7 @@ internal static class AnimatorControllerSerialization
         if (document.Version == 2)
         {
             if (document.Graph is null) throw new InvalidDataException("Missing Animator controller graph.");
-            ComponentObjectGraphSerializer.Restore(controller, document.Graph);
+            document.Graph.Restore(controller);
         }
         ValidateTrees(controller);
         return controller;
@@ -74,14 +74,29 @@ internal static class AnimatorControllerSerialization
     internal static AnimatorControllerData Capture(AnimatorController controller)
     {
         ValidateTrees(controller);
-        return new() { Name = controller.name, Graph = ComponentObjectGraphSerializer.Capture(controller) };
+        return new() { Name = controller.name, Graph = ObjectStateSnapshot.Capture(controller) };
     }
 
     internal static void Validate(AnimatorControllerData document)
     {
         if (document.Format != "BEngine.AnimatorController" || document.Version is not (1 or 2))
             throw new InvalidDataException("Unsupported animator controller.");
-        if (document.Layers.Any(layer => layer.StateMachine.Layers.Count != 0))
+        bool __queryResult4856;
+        {
+            var __querySource4856 = document.Layers;
+            ArgumentNullException.ThrowIfNull(__querySource4856, "source");
+            __queryResult4856 = false;
+            foreach (var __queryItem4856 in __querySource4856)
+            {
+                if ((__queryItem4856.StateMachine.Layers.Count != 0))
+                {
+                    __queryResult4856 = true;
+                    break;
+                }
+            }
+        }
+        
+        if (__queryResult4856)
             throw new InvalidDataException("Animator layers cannot contain nested layers.");
     }
     internal static AnimatorController Load(string path) => Document<AnimatorController>

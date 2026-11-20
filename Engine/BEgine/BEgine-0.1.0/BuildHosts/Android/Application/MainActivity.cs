@@ -1,6 +1,6 @@
+using BEngine.Player;
+using BEngine.Hosting;
 using System;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -11,8 +11,7 @@ using Android.OS;
 using Android.Util;
 using Android.Views;
 using BEngine.Platform;
-using BEngine.Player;
-using BEngine.Startup;
+using BEngine.Platform.AndroidNative;
 using Javax.Microedition.Khronos.Egl;
 using Javax.Microedition.Khronos.Opengles;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,33 +28,30 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
 {
     private const string LogTag = "BEngine";
     private readonly Stopwatch _clock = new();
-    private readonly Dictionary<int, BEngine.Vector2> _touchPositions = [];
-    private readonly ConcurrentQueue<TouchInputState> _touchInput = new();
-    private readonly HashSet<int> _connectedGamepads = [];
-    private PlayerRuntimeSession? _session;
+    private AndroidInputAdapter? _input;
+    private AndroidSurfacePresentation? _presentation;
+    private IPlayerRuntimeSession? _session;
     private AndroidGlGraphicsDevice? _graphics;
     private AccessibleGameSurface? _surfaceView;
     private AndroidAccessibilityAdapter? _accessibility;
     private TimeSpan _lastFrame;
     private TimeSpan _nextFrame;
-    private int _requestedFrameRate;
     private int _surfaceWidth;
     private int _surfaceHeight;
-    private int _fixedSurfaceWidth;
-    private int _fixedSurfaceHeight;
     private volatile bool _resumed;
     private volatile bool _frameFailed;
     private bool _renderLogged;
-    private bool _inputLogged;
     private int _textSyncQueued;
     private bool _autoStart;
     private bool _validateGraphics;
     private bool _postProcessingValidated;
     private bool _profileFrames;
     private readonly AndroidFrameMetrics _frameMetrics = new();
-    private AotStartupPhase? _startupPhase;
+    private string? _startupPhase;
     private AndroidTextInput? _textInput;
-    private AndroidPlayerStartupView? _startupView;
+    private AndroidStartupView? _startupView;
+    private HostStartupSession? _engineStartup;
+    private AndroidRuntimeThread? _runtimeThread;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -64,31 +60,19 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         base.OnCreate(savedInstanceState);
         PlatformVideoDecoding.OpenVideo = (source, bytes, hardware) => new AndroidVideoDecoder(source, bytes, hardware);
         PlatformVideoDecoding.OpenAudio = (source, bytes) => new AndroidVideoAudioDecoder(source, bytes);
-        if (Intent?.GetBooleanExtra("bengineRunTests", false) == true)
-        {
-            System.Environment.SetEnvironmentVariable("BENGINE_TEST_RUNNER_MODE", "player");
-            var result = Intent.GetStringExtra("bengineTestResult");
-            if (!string.IsNullOrWhiteSpace(result) && result.StartsWith("files/", StringComparison.Ordinal) && !result.Contains("..", StringComparison.Ordinal))
-                System.Environment.SetEnvironmentVariable("BENGINE_TEST_RUNNER_RESULT", Path.Combine(FilesDir!.Parent!, result));
-            System.Environment.SetEnvironmentVariable("BENGINE_TEST_RUNNER_COVERAGE", Intent.GetBooleanExtra("bengineTestCoverage", false) ? "1" : "0");
-            if (Intent.GetStringExtra("bengineTestIds64") is { Length: > 0 } ids)
-                System.Environment.SetEnvironmentVariable("BENGINE_TEST_RUNNER_IDS", System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(ids)));
-            System.Environment.SetEnvironmentVariable("BENGINE_ASSET_BUNDLE_REMOTE_URL", Intent.GetStringExtra("bengineTestContentUrl"));
-            System.Environment.SetEnvironmentVariable("BENGINE_ASSET_BUNDLE_ALLOW_INSECURE_LOOPBACK", "1");
-        }
+        if (Intent?.GetStringExtra(HostLaunchEnvironment.ArgumentName) is { Length: > 0 } environment)
+            HostLaunchEnvironment.Apply(environment, FilesDir!.AbsolutePath);
         _autoStart = Intent?.GetBooleanExtra("bengineAutoStart", false) == true;
         _validateGraphics = Intent?.GetBooleanExtra("bengineValidateGraphics", false) == true;
         _profileFrames = Intent?.GetBooleanExtra("bengineProfileFrames", false) == true;
-        if (_autoStart)
-        {
-            System.Environment.SetEnvironmentVariable("BENGINE_AOT_AUTO_CHECK", "1");
-            System.Environment.SetEnvironmentVariable("BENGINE_AOT_AUTO_CONFIRM_UPDATE", "1");
-            System.Environment.SetEnvironmentVariable("BENGINE_AOT_AUTO_CONTINUE", "1");
-        }
-
         Window?.SetFlags(WindowManagerFlags.Fullscreen, WindowManagerFlags.Fullscreen);
         _accessibility = new AndroidAccessibilityAdapter();
         _surfaceView = new AccessibleGameSurface(this, _accessibility) { Focusable = true, FocusableInTouchMode = true };
+        var surface = _surfaceView;
+        _runtimeThread = new AndroidRuntimeThread(
+            action => surface.QueueEvent(new Java.Lang.Runnable(action)),
+            StopRuntimeOnRenderThread);
+        surface.BeforeRenderThreadExit = StopRuntimeAndWait;
         _accessibility.AttachSurface(_surfaceView);
         PlatformAccessibility.adapter = _accessibility;
         _surfaceView.SetEGLContextClientVersion(3);
@@ -96,14 +80,14 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         _surfaceView.PreserveEGLContextOnPause = true;
         _surfaceView.SetRenderer(this);
         _surfaceView.RenderMode = Rendermode.Continuously;
-        _surfaceView.Touch += OnTouch;
-        _surfaceView.GenericMotion += OnGenericMotion;
-        _surfaceView.LayoutChange += (_, _) => UpdateSurfaceSize();
+        _input = new AndroidInputAdapter(_surfaceView);
+        _presentation = new AndroidSurfacePresentation(this, _surfaceView);
+        _surfaceView.LayoutChange += (_, _) => _presentation?.UpdateSurfaceSize();
         var content = new global::Android.Widget.FrameLayout(this);
         content.AddView(_surfaceView, new global::Android.Widget.FrameLayout.LayoutParams(-1, -1));
         _textInput = new AndroidTextInput(this, content, _surfaceView);
-        PlayerStartupEnvironment.Begin();
-        _startupView = new AndroidPlayerStartupView(this);
+        _engineStartup = HostStartupSession.Begin(allowRuntimeThreadHandoff: true);
+        _startupView = new AndroidStartupView(this);
         content.AddView(_startupView, new global::Android.Widget.FrameLayout.LayoutParams(-1, -1));
         SetContentView(content);
         _surfaceView.RequestFocus();
@@ -118,12 +102,13 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
             throw new InvalidDataException("The Android payload must contain exactly one Player data directory.");
         // Each packaged game gets its own extraction root, including when an application ID is reused.
         var root = Path.Combine(FilesDir!.AbsolutePath, "BEnginePlayer", dataDirectories[0]);
-        ExtractAssetDirectory("BEnginePayload", root);
+        AndroidAssetFiles.ExtractDirectory(Assets, "BEnginePayload", root,
+            path => path.EndsWith("/StreamingAssets", StringComparison.Ordinal));
         var projectPath = BEnginePlayer.ResolveDefaultProjectPath(root);
         var persistentRoot = Path.Combine(FilesDir.AbsolutePath, "BEnginePersistentData");
         var services = new ServiceCollection();
         services.AddSingleton<IFileSystem>(AndroidStreamingAssets.Mount(
-            Assets, ApplicationInfo!.SourceDir!, dataDirectories[0],
+            Assets, ApplicationInfo!.SourceDir!, $"BEnginePayload/{dataDirectories[0]}/StreamingAssets/",
             Path.Combine(root, dataDirectories[0], "StreamingAssets")));
         services.AddSingleton<BEngine.Rendering.ITextRasterizer, AndroidTextRasterizer>();
         _session = BEnginePlayer.CreateRuntimeSession(
@@ -137,6 +122,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
     protected override void OnResume()
     {
         base.OnResume();
+        if (_runtimeThread?.IsStopping == true) return;
         _resumed = true;
         BEngine.Platform.AndroidPlatform.ResumeAudioOutputs();
         QueueRuntimeLifecycle(true);
@@ -146,12 +132,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
     public override void OnWindowFocusChanged(bool hasFocus)
     {
         base.OnWindowFocusChanged(hasFocus);
-#pragma warning disable CA1422 // Legacy immersive flags are required on API 26+.
-        if (hasFocus && Window?.DecorView is { } decor)
-            decor.SystemUiFlags = SystemUiFlags.ImmersiveSticky | SystemUiFlags.Fullscreen |
-                SystemUiFlags.HideNavigation | SystemUiFlags.LayoutStable |
-                SystemUiFlags.LayoutHideNavigation | SystemUiFlags.LayoutFullscreen;
-#pragma warning restore CA1422
+        if (hasFocus) _presentation?.RestoreImmersiveMode();
         if (hasFocus) _textInput?.RefreshSafeArea();
     }
 
@@ -162,6 +143,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         // runtime thread. Calling them on the Activity thread can race a scene
         // load while GLSurfaceView waits for that same runtime frame to finish.
         QueueRuntimeLifecycle(false);
+        if (IsFinishing) StopRuntimeAndWait();
         _surfaceView?.OnPause();
         BEngine.Platform.AndroidPlatform.SuspendAudioOutputs();
         base.OnPause();
@@ -169,8 +151,10 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
 
     private void QueueRuntimeLifecycle(bool resumed)
     {
+        if (_runtimeThread?.IsStopping == true) return;
         _surfaceView?.QueueEvent(new Java.Lang.Runnable(() =>
         {
+            if (_runtimeThread?.IsStopping == true) return;
             if (resumed)
             {
                 _lastFrame = _clock.Elapsed;
@@ -189,7 +173,8 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
 
     public override void OnLowMemory()
     {
-        _surfaceView?.QueueEvent(new Java.Lang.Runnable(() => _session?.RaiseLowMemory()));
+        if (_runtimeThread?.IsStopping != true)
+            _surfaceView?.QueueEvent(new Java.Lang.Runnable(() => _session?.RaiseLowMemory()));
         base.OnLowMemory();
     }
 
@@ -198,7 +183,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         // Android sends this before the process is under hard pressure. Let
         // the runtime release unused assets on its GL thread instead of
         // waiting for the OS to kill the process while a frame is rendering.
-        if (level >= global::Android.Content.TrimMemory.RunningLow)
+        if (level >= global::Android.Content.TrimMemory.RunningLow && _runtimeThread?.IsStopping != true)
             _surfaceView?.QueueEvent(new Java.Lang.Runnable(() => _session?.RaiseLowMemory()));
         base.OnTrimMemory(level);
     }
@@ -206,14 +191,14 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
     protected override void OnDestroy()
     {
         _resumed = false;
-        if (_surfaceView is not null)
-        {
-            _surfaceView.Touch -= OnTouch;
-            _surfaceView.GenericMotion -= OnGenericMotion;
-        }
-        DetachGraphicsDevice();
-        _session?.Dispose();
-        _session = null;
+        StopRuntimeAndWait();
+        _input?.Dispose();
+        _input = null;
+        _presentation = null;
+        // The GL owner has now released the runtime's initialization scope.
+        // The UI-held startup scope can be released without ending a live run.
+        _engineStartup?.Dispose();
+        _engineStartup = null;
         if (ReferenceEquals(PlatformAccessibility.adapter, _accessibility)) PlatformAccessibility.adapter = null;
         _accessibility = null;
         _startupView?.Dispose();
@@ -223,8 +208,41 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         base.OnDestroy();
     }
 
+    private void StopRuntimeAndWait()
+    {
+        try { _runtimeThread?.StopAndWait(); }
+        catch (Exception error) { Log.Error(LogTag, "BENGINE_ANDROID_SHUTDOWN_FAILED|" + error); }
+    }
+
+    private void StopRuntimeOnRenderThread()
+    {
+        try
+        {
+            if (_session is { } session)
+            {
+                session.Dispose();
+                while (session.IsDisposalPending)
+                {
+                    // I/O cancellation may finish between scheduler updates.
+                    // Keep its continuations on this owner until teardown ends.
+                    Thread.Sleep(1);
+                    if (session.IsDisposalPending) session.Tick(TimeSpan.Zero);
+                }
+                session.Dispose();
+            }
+        }
+        finally
+        {
+            _session = null;
+            try { _graphics?.Dispose(); }
+            finally { _graphics = null; }
+        }
+    }
+
     public void OnSurfaceCreated(IGL10? gl, Javax.Microedition.Khronos.Egl.EGLConfig? config)
     {
+        _runtimeThread!.BindCurrentThread();
+        if (_runtimeThread.IsStopping) return;
         try
         {
             DetachGraphicsDevice();
@@ -239,7 +257,9 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         catch (Exception exception)
         {
             Log.Error(LogTag, "BENGINE_ANDROID_GRAPHICS_FAILED|" + exception);
-            throw;
+            _frameFailed = true;
+            _runtimeThread.StopOnOwner();
+            ReportFrameFailure(exception);
         }
     }
 
@@ -247,7 +267,8 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
     {
         _surfaceWidth = Math.Max(1, width);
         _surfaceHeight = Math.Max(1, height);
-        ApplyPresentationRate(force: true);
+        _input?.SetSurfaceSize(_surfaceWidth, _surfaceHeight);
+        _presentation?.ApplyFrameRate(force: true);
         DisplayUtility.Current.ReportDisplay(_surfaceWidth, _surfaceHeight, FullScreenMode.FullScreenWindow);
         _textInput?.RefreshSafeArea();
         var safe = DisplayUtility.Current.safeArea;
@@ -256,7 +277,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
 
     public void OnDrawFrame(IGL10? gl)
     {
-        if (!_resumed || _frameFailed) return;
+        if (!_resumed || _frameFailed || _runtimeThread?.IsStopping == true) return;
         // Always clear the surface, including the short interval before the
         // Player AOT scene has submitted its first frame. This prevents a
         // device-dependent black flash while content is still being loaded.
@@ -270,13 +291,13 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
             var remaining = _nextFrame - _clock.Elapsed;
             if (remaining.TotalMilliseconds >= 1) Thread.Sleep((int)remaining.TotalMilliseconds);
             var now = _clock.Elapsed;
-            var frameInterval = TimeSpan.FromSeconds(1d / Math.Clamp(BEngine.Application.targetFrameRate > 0 ? BEngine.Application.targetFrameRate : 60, 1, 240));
+            var requestedFrameRate = RenderSettingsUtility.Current.targetFrameRate;
+            var frameInterval = TimeSpan.FromSeconds(1d / Math.Clamp(requestedFrameRate > 0 ? requestedFrameRate : 60, 1, 240));
             // Keep the deadline anchored: rounding every 16.67 ms sleep up to
             // 17 ms would cap a nominal 60 Hz loop below 60 and miss VSyncs.
             _nextFrame = _nextFrame + frameInterval > now ? _nextFrame + frameInterval : now + frameInterval;
-            ApplyPresentationRate();
-            ApplyTouchInput();
-            PollGamepads();
+            _presentation?.ApplyFrameRate();
+            _input?.ApplyFrameInput();
             var tickStarted = _profileFrames ? Stopwatch.GetTimestamp() : 0;
             _session?.Tick(now - _lastFrame);
             var tickEnded = _profileFrames ? Stopwatch.GetTimestamp() : 0;
@@ -309,6 +330,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         {
             Log.Error(LogTag, "BENGINE_ANDROID_FRAME_FAILED|" + exception);
             _frameFailed = true;
+            _runtimeThread?.StopOnOwner();
             ReportFrameFailure(exception);
             return;
         }
@@ -342,158 +364,8 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
         });
     }
 
-    private void ApplyPresentationRate(bool force = false)
-    {
-        var rate = Math.Clamp(BEngine.Application.targetFrameRate > 0 ? BEngine.Application.targetFrameRate : 60, 1, 240);
-        if (!force && rate == _requestedFrameRate) return;
-        _requestedFrameRate = rate;
-        // Games may adapt frame cadence; FIXED_SOURCE is intended for video.
-        if (OperatingSystem.IsAndroidVersionAtLeast(30))
-            _surfaceView?.Holder?.Surface?.SetFrameRate(rate, 0);
-        RunOnUiThread(() =>
-        {
-            if (OperatingSystem.IsAndroidVersionAtLeast(35) && _surfaceView is not null)
-                _surfaceView.RequestedFrameRate = rate;
-            if (Window?.Attributes is not { } attributes) return;
-            attributes.PreferredRefreshRate = rate;
-            Window.Attributes = attributes;
-        });
-    }
-
-    private void UpdateSurfaceSize()
-    {
-        if (_surfaceView is not { Width: > 0, Height: > 0 } surface) return;
-        var maximum = AndroidRuntimeSettings.maximumSurfaceDimension;
-        var scale = maximum > 0 ? Math.Min(1d, (double)maximum / Math.Max(surface.Width, surface.Height)) : 1d;
-        var targetWidth = Math.Max(1, (int)Math.Round(surface.Width * scale));
-        var targetHeight = Math.Max(1, (int)Math.Round(surface.Height * scale));
-        // LayoutChange can fire repeatedly during safe-area/insets updates.
-        // Reissuing SetFixedSize for the same dimensions recreates the EGL
-        // buffer queue on several phones and causes visible hitching or a
-        // black frame. Resize only when the requested size actually changes.
-        if (targetWidth == _fixedSurfaceWidth && targetHeight == _fixedSurfaceHeight) return;
-        _fixedSurfaceWidth = targetWidth;
-        _fixedSurfaceHeight = targetHeight;
-        if (targetWidth == surface.Width && targetHeight == surface.Height) return;
-        surface.Holder?.SetFixedSize(targetWidth, targetHeight);
-    }
-
-    public override bool DispatchKeyEvent(KeyEvent? e)
-    {
-        if (e is not null && (e.Source & (InputSourceType.Gamepad | InputSourceType.Joystick)) != 0 &&
-            TryMapGamepadButton(e.KeyCode, out var button))
-        {
-            var index = Math.Max(0, e.DeviceId);
-            _connectedGamepads.Add(index);
-            Input.SetGamepadConnected(index, true, InputDevice.GetDevice(e.DeviceId)?.Name ?? "Android gamepad");
-            Input.SetGamepadButtonState(index, button, e.Action != KeyEventActions.Up);
-            return true;
-        }
-        if (_textInput?.IsEditing == true) return base.DispatchKeyEvent(e);
-        if (e is not null && TryMapKey(e.KeyCode, out var key))
-        {
-            Input.SetKeyState(key, e.Action != KeyEventActions.Up);
-            if (e.Action == KeyEventActions.Down && e.UnicodeChar is > 0 and <= char.MaxValue)
-                Input.AppendTextInput((char)e.UnicodeChar);
-            return true;
-        }
-        return base.DispatchKeyEvent(e);
-    }
-
-    private void OnTouch(object? sender, View.TouchEventArgs args)
-    {
-        var e = args.Event;
-        if (e is null) return;
-        var changedIndex = e.ActionIndex;
-        var action = e.ActionMasked;
-        var touches = new List<BEngine.Touch>(e.PointerCount);
-        for (var index = 0; index < e.PointerCount; index++)
-        {
-            var id = e.GetPointerId(index);
-            // Input uses a bottom-left origin on every platform; Android events
-            // use a top-left origin. UI converts back to its own top-left space.
-            var height = _surfaceView?.Height ?? _surfaceHeight;
-            var position = new BEngine.Vector2((Fix64)(e.GetX(index) * _surfaceWidth / Math.Max(1f, _surfaceView?.Width ?? _surfaceWidth)),
-                (Fix64)((height - e.GetY(index)) * _surfaceHeight / Math.Max(1f, height)));
-            var previous = _touchPositions.GetValueOrDefault(id, position);
-            var phase = action switch
-            {
-                MotionEventActions.Down or MotionEventActions.PointerDown when index == changedIndex => TouchPhase.Began,
-                MotionEventActions.Up or MotionEventActions.PointerUp when index == changedIndex => TouchPhase.Ended,
-                MotionEventActions.Cancel => TouchPhase.Canceled,
-                _ when position == previous => TouchPhase.Stationary,
-                _ => TouchPhase.Moved
-            };
-            touches.Add(new BEngine.Touch(id, position, position - previous,
-                Time.unscaledDeltaTime, 1, phase, (Fix64)e.GetPressure(index), Fix64.One,
-                (Fix64)Math.Max(e.GetTouchMajor(index) * .5f, 0), Fix64.Zero));
-            if (phase is TouchPhase.Ended or TouchPhase.Canceled) _touchPositions.Remove(id);
-            else _touchPositions[id] = position;
-        }
-        var mousePosition = e.PointerCount > 0 ? touches[0].position : BEngine.Vector2.zero;
-        _touchInput.Enqueue(new TouchInputState(touches.ToArray(), mousePosition,
-            action is not MotionEventActions.Up and not MotionEventActions.Cancel));
-        if (!_inputLogged)
-        {
-            _inputLogged = true;
-            Log.Info(LogTag, $"BENGINE_ANDROID_INPUT_OK|kind=touch|count={touches.Count}");
-        }
-        args.Handled = true;
-    }
-
-    private void ApplyTouchInput()
-    {
-        if (!_touchInput.TryDequeue(out var state)) return;
-        // UI-thread callbacks must not mutate Input while the GL thread ticks.
-        // Keep down/up in separate frames, including a tap shorter than one frame,
-        // but collapse intermediate motion samples to prevent a dragging backlog.
-        if (!state.HasEdge)
-            while (_touchInput.TryPeek(out var next) && !next.HasEdge && _touchInput.TryDequeue(out var newer))
-                state = newer;
-        Input.SetTouches(state.Touches);
-        Input.SetMousePosition(state.MousePosition.x, state.MousePosition.y);
-        Input.SetKeyState(KeyCode.Mouse0, state.MouseHeld);
-    }
-
-    private sealed record TouchInputState(BEngine.Touch[] Touches, BEngine.Vector2 MousePosition, bool MouseHeld)
-    {
-        internal bool HasEdge => Touches.Any(touch => touch.phase is TouchPhase.Began or TouchPhase.Ended or TouchPhase.Canceled);
-    }
-
-    private void OnGenericMotion(object? sender, View.GenericMotionEventArgs args)
-    {
-        var e = args.Event;
-        if (e is null || (e.Source & InputSourceType.Joystick) == 0) return;
-        var index = Math.Max(0, e.DeviceId);
-        _connectedGamepads.Add(index);
-        Input.SetGamepadConnected(index, true, InputDevice.GetDevice(e.DeviceId)?.Name ?? "Android gamepad");
-        Input.SetGamepadAxis(index, GamepadAxis.LeftStickX, (Fix64)e.GetAxisValue(Axis.X));
-        Input.SetGamepadAxis(index, GamepadAxis.LeftStickY, (Fix64)(-e.GetAxisValue(Axis.Y)));
-        Input.SetGamepadAxis(index, GamepadAxis.RightStickX, (Fix64)e.GetAxisValue(Axis.Z));
-        Input.SetGamepadAxis(index, GamepadAxis.RightStickY, (Fix64)(-e.GetAxisValue(Axis.Rz)));
-        Input.SetGamepadAxis(index, GamepadAxis.LeftTrigger, (Fix64)e.GetAxisValue(Axis.Ltrigger));
-        Input.SetGamepadAxis(index, GamepadAxis.RightTrigger, (Fix64)e.GetAxisValue(Axis.Rtrigger));
-        args.Handled = true;
-    }
-
-    private void PollGamepads()
-    {
-        var current = new HashSet<int>();
-        foreach (var deviceId in InputDevice.GetDeviceIds() ?? [])
-        {
-            var device = InputDevice.GetDevice(deviceId);
-            if (device is null || (device.Sources & (InputSourceType.Gamepad | InputSourceType.Joystick)) == 0) continue;
-            var index = Math.Max(0, deviceId);
-            current.Add(index);
-            _connectedGamepads.Add(index);
-            Input.SetGamepadConnected(index, true, device.Name ?? "Android gamepad");
-        }
-        foreach (var disconnected in _connectedGamepads.Except(current).ToArray())
-        {
-            Input.SetGamepadConnected(disconnected, false);
-            _connectedGamepads.Remove(disconnected);
-        }
-    }
+    public override bool DispatchKeyEvent(KeyEvent? e) =>
+        _input?.TryHandleKeyEvent(e, _textInput?.IsEditing == true) == true || base.DispatchKeyEvent(e);
 
     private void DetachGraphicsDevice()
     {
@@ -505,7 +377,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
 
     private void DriveAutomaticStartup()
     {
-        if (!_autoStart || _session?.StartupFlow is not { } flow) return;
+        if (!_autoStart || _session?.StartupControl is not { } flow) return;
         var state = flow.Current;
         if (_startupPhase != state.Phase)
         {
@@ -513,79 +385,7 @@ public sealed class MainActivity : Activity, GLSurfaceView.IRenderer
             Log.Info(LogTag,
                 $"BENGINE_ANDROID_STARTUP|phase={state.Phase}|status={state.Status}|error={state.Error}");
         }
-        if (state.CanCheckForUpdates) flow.CheckForUpdates();
-        else if (state.RequiresUpdateConfirmation) flow.ConfirmUpdate();
-        else if (state.CanEnterGame) flow.EnterGame();
+        if (state.CanAdvance) flow.Advance();
     }
 
-    private static bool TryMapKey(Keycode code, out KeyCode key)
-    {
-        if (code is >= Keycode.A and <= Keycode.Z)
-        {
-            key = (KeyCode)((int)KeyCode.A + (int)(code - Keycode.A));
-            return true;
-        }
-        if (code is >= Keycode.Num0 and <= Keycode.Num9)
-        {
-            key = (KeyCode)((int)KeyCode.Alpha0 + (int)(code - Keycode.Num0));
-            return true;
-        }
-        key = code switch
-        {
-            Keycode.Space => KeyCode.Space,
-            Keycode.Enter => KeyCode.Return,
-            Keycode.Escape or Keycode.Back => KeyCode.Escape,
-            Keycode.Tab => KeyCode.Tab,
-            Keycode.Del => KeyCode.Backspace,
-            Keycode.ForwardDel => KeyCode.Delete,
-            Keycode.DpadUp => KeyCode.UpArrow,
-            Keycode.DpadDown => KeyCode.DownArrow,
-            Keycode.DpadLeft => KeyCode.LeftArrow,
-            Keycode.DpadRight => KeyCode.RightArrow,
-            _ => KeyCode.None
-        };
-        return key != KeyCode.None;
-    }
-
-    private static bool TryMapGamepadButton(Keycode code, out GamepadButton button)
-    {
-        button = code switch
-        {
-            Keycode.ButtonA => GamepadButton.South,
-            Keycode.ButtonB => GamepadButton.East,
-            Keycode.ButtonX => GamepadButton.West,
-            Keycode.ButtonY => GamepadButton.North,
-            Keycode.ButtonL1 => GamepadButton.LeftShoulder,
-            Keycode.ButtonR1 => GamepadButton.RightShoulder,
-            Keycode.ButtonSelect => GamepadButton.Back,
-            Keycode.ButtonStart => GamepadButton.Start,
-            Keycode.ButtonMode => GamepadButton.Home,
-            Keycode.ButtonThumbl => GamepadButton.LeftStick,
-            Keycode.ButtonThumbr => GamepadButton.RightStick,
-            Keycode.DpadUp => GamepadButton.DPadUp,
-            Keycode.DpadRight => GamepadButton.DPadRight,
-            Keycode.DpadDown => GamepadButton.DPadDown,
-            Keycode.DpadLeft => GamepadButton.DPadLeft,
-            _ => (GamepadButton)(-1)
-        };
-        return (int)button >= 0;
-    }
-
-    private void ExtractAssetDirectory(string assetPath, string destination)
-    {
-        if (assetPath.EndsWith("/StreamingAssets", StringComparison.Ordinal)) return;
-        var children = Assets!.List(assetPath) ?? [];
-        if (children.Length == 0)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            using var input = Assets.Open(assetPath);
-            var temporary = destination + ".extracting";
-            using (var output = File.Create(temporary)) input.CopyTo(output);
-            File.Move(temporary, destination, overwrite: true);
-            return;
-        }
-        Directory.CreateDirectory(destination);
-        foreach (var child in children.Order(StringComparer.Ordinal))
-            ExtractAssetDirectory($"{assetPath}/{child}", Path.Combine(destination, child));
-    }
 }

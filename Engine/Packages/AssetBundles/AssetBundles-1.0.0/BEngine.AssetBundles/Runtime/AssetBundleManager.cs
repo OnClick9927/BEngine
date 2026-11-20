@@ -30,6 +30,9 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Uri> _builtInBundleUris = new(StringComparer.OrdinalIgnoreCase);
     private readonly BCancellationSource _httpLoadsCancellation = new();
+    private readonly AssetBundleCatalogIndex.ClosureWorkspacePool _catalogWorkspaces = new();
+    private readonly Lock _leasePoolGate = new();
+    private readonly ListPool<BundleLease> _leasePool = new(maxSize: 8, maxRetainedCapacity: 4096);
     private RuntimeState? _active;
     private RuntimeState? _builtIn;
     private bool _initialized;
@@ -39,8 +42,8 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
 
     public AssetBundleManager(AssetBundleRuntimeOptions options) : this(
         options,
-        RuntimeServiceAccess.FileSystem,
-        RuntimeServiceAccess.PathService,
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>(),
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>(),
         HttpNetworkRequestFactory.Shared)
     {
     }
@@ -123,7 +126,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
                            throw new InvalidDataException(
                                "The read-only built-in AssetBundle release is missing.");
                 _active = _builtIn;
-                BAssetReferenceLoader.Clear();
+                BAsset.ClearLoadedAssets();
                 _hasPendingActivation = false;
                 _initialized = true;
                 progress?.Report(new(AssetBundleLoadKind.Initialization, AssetBundleLoadPhase.Completed, "catalog", 1, 1));
@@ -158,7 +161,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             }
             selected ??= _builtIn;
             _active = selected;
-            BAssetReferenceLoader.Clear();
+            BAsset.ClearLoadedAssets();
             _hasPendingActivation = await IsPendingActivationAsync(selected, cancellationToken);
             _initialized = true;
             progress?.Report(new(AssetBundleLoadKind.Initialization, AssetBundleLoadPhase.Completed, "catalog", 1, 1));
@@ -203,8 +206,29 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
                              version.CatalogSha256, StringComparison.OrdinalIgnoreCase) ||
                          !activeState.Version.Version.Equals(version.Version, StringComparison.Ordinal) ||
                          downloads.Count > 0;
-        return new AssetBundleUpdatePlan(version, catalog, catalogBytes, downloads, hasUpdates,
-            selectedBundles.Select(static bundle => bundle.Name).ToArray());
+        return new AssetBundleUpdatePlan(version, catalog, catalogBytes, downloads, hasUpdates, Gather9489(selectedBundles));
+        [global::BEngine.SkipLoopGuard]
+        string[] Gather9489(global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.AssetBundleDescriptor> items9489)
+        {
+            ArgumentNullException.ThrowIfNull(items9489, "source");
+            string Evaluate9489(global::BEngine.AssetBundles.AssetBundleDescriptor bundle) => bundle.Name;
+            global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundleDescriptor> values;
+            if (items9489.GetType() == typeof(global::BEngine.AssetBundles.AssetBundleDescriptor[]))
+                values = (global::BEngine.AssetBundles.AssetBundleDescriptor[])items9489;
+            else if (items9489.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundleDescriptor>))
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundleDescriptor>)items9489);
+            else
+            {
+                return global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(items9489, Evaluate9489));
+            }
+
+            if (values.IsEmpty)
+                return global::System.Array.Empty<string>();
+            var result = new string[values.Length];
+            for (var index = 0; index < values.Length; index++)
+                result[index] = Evaluate9489(values[index]);
+            return result;
+        }
     }
 
     public async BValueTask<long> GetDownloadSizeAsync(
@@ -273,12 +297,21 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         if (_requiredBundleNames is null) return catalog.Bundles;
         var names = new HashSet<string>(_requiredBundleNames, StringComparer.OrdinalIgnoreCase);
         foreach (var bundle in catalog.Bundles)
-            if (bundle.Name is "bengine-hotupdate" or "bengine-packages") names.Add(bundle.Name);
+            if (_options.RequiredBundlePredicate?.Invoke(bundle) == true) names.Add(bundle.Name);
         // Keep previously installed optional content usable when its hash changes in a new release.
         if (includeInstalled && _active is { } active)
         {
-            var availableNames = catalog.Bundles.Select(static bundle => bundle.Name)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var availableNames = BuildIndex13401(catalog.Bundles);
+            [global::BEngine.SkipLoopGuard]
+            global::System.Collections.Generic.HashSet<string> BuildIndex13401(global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundleDescriptor> indexSource13401)
+            {
+                ArgumentNullException.ThrowIfNull(indexSource13401, "source");
+                var indexComparer13401 = StringComparer.OrdinalIgnoreCase;
+                var result = new global::System.Collections.Generic.HashSet<string>(indexComparer13401);
+                foreach (var bundle in indexSource13401)
+                    result.Add(bundle.Name);
+                return result;
+            }
             foreach (var bundle in active.Catalog.Bundles)
                 if (availableNames.Contains(bundle.Name) && BundleFileExists(bundle)) names.Add(bundle.Name);
         }
@@ -412,12 +445,12 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             }
             await WritePointerAsync(PendingPointerPath, targetVersion, cancellationToken);
             await WritePointerAsync(ActivePointerPath, targetVersion, cancellationToken);
-            var activated = new RuntimeState(
+            var activated = CreateRuntimeState(
                 targetVersion,
                 targetCatalog,
                 plan.CatalogBytes.ToArray(), indexSeeds);
             _active = activated;
-            BAssetReferenceLoader.Clear();
+            BAsset.ClearLoadedAssets();
             _hasPendingActivation = true;
             progress?.Report(new AssetBundleUpdateProgress(
                 AssetBundleUpdatePhase.Completed,
@@ -463,7 +496,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
                 if (_fileSystem.FileExists(PreviousPointerPath)) _fileSystem.DeleteFile(PreviousPointerPath);
                 if (_fileSystem.FileExists(PendingPointerPath)) _fileSystem.DeleteFile(PendingPointerPath);
                 _active = _builtIn;
-                BAssetReferenceLoader.Clear();
+                BAsset.ClearLoadedAssets();
                 _hasPendingActivation = false;
                 return true;
             }
@@ -477,7 +510,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             }
             await WritePointerAsync(ActivePointerPath, previous.Version, cancellationToken);
             _active = previous;
-            BAssetReferenceLoader.Clear();
+            BAsset.ClearLoadedAssets();
             if (_fileSystem.FileExists(PendingPointerPath))
                 _fileSystem.DeleteFile(PendingPointerPath);
             _hasPendingActivation = false;
@@ -585,7 +618,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             return false;
         }
 
-        var leases = new List<BundleLease>();
+        var leases = GetBundleLeases();
         try
         {
             foreach (var indexedBundle in _active.Index.GetBundleClosure(asset.Bundle))
@@ -696,6 +729,8 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     {
         if (_disposed) return;
         _disposed = true;
+        _catalogWorkspaces.Dispose();
+        lock (_leasePoolGate) _leasePool.Dispose();
         _httpLoadsCancellation.Cancel();
         _httpLoadsCancellation.Dispose();
         _initialized = false;
@@ -740,9 +775,10 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         BCancellationToken cancellationToken)
     {
         var ordered = index.GetBundleClosure(bundleName);
-        var leases = new List<BundleLease>(ordered.Count);
+        var leases = GetBundleLeases();
         try
         {
+            leases.EnsureCapacity(ordered.Count);
             foreach (var indexedBundle in ordered)
             {
                 var bundle = await AcquireBundleAsync(
@@ -1259,7 +1295,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             // access, rather than reading the entire packaged game at startup.
             _builtInBundlePaths[descriptor.Sha256] = path;
         }
-        return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
+        return CreateRuntimeState(version, catalog, catalogBytes, indexSeeds);
     }
 
     private async BValueTask<RuntimeState?> LoadCachedStateAsync(
@@ -1293,7 +1329,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
             if (!await HasValidBundleAsync(descriptor, cancellationToken))
                 throw new FileNotFoundException(
                     $"Cached bundle '{descriptor.Name}' is missing or invalid.", descriptor.FileName);
-        return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
+        return CreateRuntimeState(version, catalog, catalogBytes, indexSeeds);
     }
 
     // Owns a newly decoded catalog until all pair checks and runtime limits pass.
@@ -1352,14 +1388,32 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         if (normalized.Equals("Assets", StringComparison.OrdinalIgnoreCase)) return "Assets/";
         if (!normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
             normalized = "Assets/" + normalized;
-        if (normalized.Split('/').Any(segment => segment is "." or ".."))
-            throw new ArgumentException("Asset address prefix cannot leave Assets.", nameof(prefix));
+        for (var cursor = 0; cursor < normalized.Length;)
+        {
+            var dot = normalized.IndexOf('.', cursor);
+            if (dot < 0) break;
+            var end = dot + 1;
+            if (end < normalized.Length && normalized[end] == '.') end++;
+            if ((dot == 0 || normalized[dot - 1] == '/') &&
+                (end == normalized.Length || normalized[end] == '/'))
+                throw new ArgumentException("Asset address prefix cannot leave Assets.", nameof(prefix));
+            cursor = end;
+        }
         return normalized;
     }
 
-    private static void ReleaseBundles(IReadOnlyList<BundleLease> leases)
+    private List<BundleLease> GetBundleLeases()
     {
-        for (var index = leases.Count - 1; index >= 0; index--) leases[index].Bundle.Release();
+        lock (_leasePoolGate) return _leasePool.Get();
+    }
+
+    private void ReleaseBundles(List<BundleLease> leases)
+    {
+        try
+        {
+            for (var index = leases.Count - 1; index >= 0; index--) leases[index].Bundle.Release();
+        }
+        finally { lock (_leasePoolGate) _leasePool.Release(leases); }
     }
 
     private void RemoveLoadedBundle(string hash, BTask<LoadedAssetBundle> task)
@@ -1549,7 +1603,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
     {
         var root = _options.RemoteBaseUri ??
                    throw new InvalidOperationException("No remote asset bundle source is configured.");
-        var baseUri = root.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
+        var baseUri = root.AbsoluteUri.EndsWith('/')
             ? root
             : new Uri(root.AbsoluteUri + "/", UriKind.Absolute);
         var relative = string.Join("/", segments.SelectMany(segment =>
@@ -1730,7 +1784,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         {
             if (!_acceptBody) return;
             if (_output is not null) _fileSystem.Flush(_output, flushToDisk: true);
-            var actualHash = Convert.ToHexString(_hash.GetHashAndReset()).ToLowerInvariant();
+            var actualHash = Convert.ToHexStringLower(_hash.GetHashAndReset());
             if (_total != _descriptor.Size ||
                 !actualHash.Equals(_descriptor.Sha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException(
@@ -1764,19 +1818,24 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
                long.TryParse(values[0], out contentLength) && contentLength >= 0;
     }
 
+    private RuntimeState CreateRuntimeState(AssetBundleVersion version, AssetBundleCatalog catalog,
+        byte[] catalogBytes, AssetBundleCatalogIndex.ValidatedSeeds? indexSeeds = null) =>
+        new(version, catalog, catalogBytes, indexSeeds, _catalogWorkspaces);
+
     private sealed class RuntimeState
     {
         internal RuntimeState(
             AssetBundleVersion version,
             AssetBundleCatalog catalog,
             byte[] catalogBytes,
-            AssetBundleCatalogIndex.ValidatedSeeds? indexSeeds = null)
+            AssetBundleCatalogIndex.ValidatedSeeds? indexSeeds,
+            AssetBundleCatalogIndex.ClosureWorkspacePool workspaces)
         {
             Version = version;
             Catalog = catalog;
             CatalogBytes = catalogBytes;
             Index = new AssetBundleCatalogIndex(catalog, cloneCatalog: false, catalogValidated: true,
-                validatedSeeds: indexSeeds);
+                validatedSeeds: indexSeeds, workspaces: workspaces);
             CanonicalCatalog = indexSeeds?.Canonical == true;
         }
 
@@ -1787,7 +1846,7 @@ public sealed partial class AssetBundleManager : ITransactionalAssetBundleManage
         internal AssetBundleCatalogIndex Index { get; }
     }
 
-    private sealed record BundleLease(
+    private readonly record struct BundleLease(
         AssetBundleDescriptor Descriptor,
         LoadedAssetBundle Bundle);
 }

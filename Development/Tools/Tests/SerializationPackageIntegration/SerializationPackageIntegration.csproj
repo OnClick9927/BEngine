@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>SerializationPackageIntegration</AssemblyName>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/*.dll"
+               Exclude="$(EngineBinaries)/BEngine.Launcher.dll;$(EngineBinaries)/glfw3.dll;$(EngineBinaries)/libHarfBuzzSharp.dll;$(EngineBinaries)/libSkiaSharp.dll;$(EngineBinaries)/libveldrid-spirv.dll;$(EngineBinaries)/SDL2.dll;$(EngineBinaries)/shaderc_shared.dll" />
+  </ItemGroup>
+</Project>

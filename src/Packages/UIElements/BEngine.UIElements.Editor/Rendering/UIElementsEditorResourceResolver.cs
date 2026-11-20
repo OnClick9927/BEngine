@@ -4,10 +4,9 @@ namespace BEngine.Editor;
 internal sealed class UIElementsEditorResourceResolver : IUIRenderResourceResolver, ITextRasterizer
 {
     internal static UIElementsEditorResourceResolver Shared { get; } = new();
-    private bool TryResolveTexture(string source, out GpuCanvasTextureData texture) => EditorGpuCanvasResourceResolver.Shared.TryResolveTexture(source, out texture);
     bool IUIRenderResourceResolver.TryResolveTexture(string source, out RasterizedImage texture)
     {
-        if (TryResolveTexture(source, out var editorTexture))
+        if (CanvasResourceUtility.Current.TryResolvePresentationTexture(source, out var editorTexture))
         {
             texture = new RasterizedImage(editorTexture.Width, editorTexture.Height,
                 editorTexture.Format, editorTexture.Pixels);

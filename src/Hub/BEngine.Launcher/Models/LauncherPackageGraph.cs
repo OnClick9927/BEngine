@@ -1,6 +1,6 @@
 namespace BEngine.Launcher;
 
-internal sealed record LauncherPackageNode(string Id, LauncherPackageInfo? Package, int Column, bool InCycle)
+internal sealed record LauncherPackageNode(string Id, LauncherPackageInfo? Package, bool InCycle)
 {
     internal string Title => Package?.DisplayName ?? Id;
 }
@@ -17,7 +17,36 @@ internal sealed record LauncherPackageGraph(IReadOnlyList<LauncherPackageNode> N
     internal static LauncherPackageGraph Create(IReadOnlyList<LauncherPackageInfo> packages,
         IEnumerable<string> roots, string assembly = "All")
     {
-        var catalog = packages.ToDictionary(package => package.Id, IdComparer);
+        var catalog = BuildIndex821(packages, IdComparer);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<string, global::BEngine.Launcher.LauncherPackageInfo> BuildIndex821(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherPackageInfo> indexSource821, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer821)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource821, "source");
+            var knownCount = indexSource821.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<string, global::BEngine.Launcher.LauncherPackageInfo>(indexComparer821);
+            global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherPackageInfo> values;
+            if (knownCount && indexSource821 is global::BEngine.Launcher.LauncherPackageInfo[] array)
+                values = array;
+            else if (knownCount && indexSource821 is global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherPackageInfo> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.Launcher.LauncherPackageInfo>(capacity, indexComparer821);
+                foreach (var item in indexSource821)
+                    result.Add(IndexKey821(item), item);
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.Launcher.LauncherPackageInfo>(values.Length, indexComparer821);
+                foreach (var item in values)
+                    result.Add(IndexKey821(item), item);
+                return result;
+            }
+        
+            string IndexKey821(global::BEngine.Launcher.LauncherPackageInfo package) => package.Id;
+        }
         string CanonicalId(string id) => catalog.TryGetValue(id, out var package) ? package.Id : id.ToLowerInvariant();
         var allEdges = packages.SelectMany(package => package.Dependencies
                 .Where(dependency => (assembly == "All" || dependency.Source == assembly) &&
@@ -38,8 +67,47 @@ internal sealed record LauncherPackageGraph(IReadOnlyList<LauncherPackageNode> N
             foreach (var edge in outgoing[id]) pending.Push(edge.Target);
         }
         var edges = allEdges.Where(edge => included.Contains(edge.Source)).ToArray();
+        var assemblyCycles = FindAssemblyCyclePackages(catalog);
 
-        // Collapse strongly connected groups before laying out the dependency DAG.
+        return new LauncherPackageGraph(included.Select(id => new LauncherPackageNode(id,
+                catalog.GetValueOrDefault(id), assemblyCycles.Contains(id)))
+            .OrderBy(node => node.Title, IdComparer).ThenBy(node => node.Id, IdComparer).ToArray(), edges);
+    }
+    private static HashSet<string> FindAssemblyCyclePackages(IReadOnlyDictionary<string, LauncherPackageInfo> catalog)
+    {
+        static string Key(string id, string kind) => id + "\0" + kind;
+        var owners = new Dictionary<string, string>(IdComparer);
+        var dependencies = new Dictionary<string, HashSet<string>>(IdComparer);
+        foreach (var package in catalog.Values)
+            foreach (var kind in new[] { "runtime", "editor" })
+            {
+                if (kind == "runtime" ? !package.HasRuntime : !package.HasEditor) continue;
+                var key = Key(package.Id, kind);
+                owners.Add(key, package.Id);
+                dependencies.Add(key, new HashSet<string>(IdComparer));
+            }
+        foreach (var package in catalog.Values)
+        {
+            if (package.HasEditor && package.HasRuntime)
+                dependencies[Key(package.Id, "editor")].Add(Key(package.Id, "runtime"));
+            foreach (var declaration in package.Dependencies)
+            {
+                var source = Key(package.Id, declaration.Source);
+                var target = Key(declaration.PackageId, declaration.Target);
+                // Missing targets have their own diagnostic and cannot form a cycle.
+                if (dependencies.TryGetValue(source, out var targets) && dependencies.ContainsKey(target))
+                    targets.Add(target);
+            }
+        }
+        var cycles = new HashSet<string>(IdComparer);
+        foreach (var component in FindComponents(dependencies.Keys, id => dependencies[id]))
+            if (component.Count > 1 || dependencies[component[0]].Contains(component[0]))
+                foreach (var id in component) cycles.Add(owners[id]);
+        return cycles;
+    }
+
+    internal static List<List<string>> FindComponents(IEnumerable<string> nodes, Func<string, IEnumerable<string>> dependencies)
+    {
         var indices = new Dictionary<string, int>(IdComparer);
         var low = new Dictionary<string, int>(IdComparer);
         var stack = new Stack<string>();
@@ -50,14 +118,14 @@ internal sealed record LauncherPackageGraph(IReadOnlyList<LauncherPackageNode> N
             indices[id] = low[id] = indices.Count;
             stack.Push(id);
             active.Add(id);
-            foreach (var edge in outgoing[id])
+            foreach (var target in dependencies(id))
             {
-                if (!indices.ContainsKey(edge.Target))
+                if (!indices.ContainsKey(target))
                 {
-                    Visit(edge.Target);
-                    low[id] = Math.Min(low[id], low[edge.Target]);
+                    Visit(target);
+                    low[id] = Math.Min(low[id], low[target]);
                 }
-                else if (active.Contains(edge.Target)) low[id] = Math.Min(low[id], indices[edge.Target]);
+                else if (active.Contains(target)) low[id] = Math.Min(low[id], indices[target]);
             }
             if (low[id] != indices[id]) return;
             var members = new List<string>();
@@ -66,25 +134,7 @@ internal sealed record LauncherPackageGraph(IReadOnlyList<LauncherPackageNode> N
             while (!IdComparer.Equals(member, id));
             components.Add(members);
         }
-        foreach (var id in included.Order(IdComparer)) if (!indices.ContainsKey(id)) Visit(id);
-        var componentById = new Dictionary<string, int>(IdComparer);
-        for (var index = 0; index < components.Count; index++)
-            foreach (var id in components[index]) componentById[id] = index;
-        var links = edges.Select(edge => (From: componentById[edge.Source], To: componentById[edge.Target]))
-            .Where(link => link.From != link.To).Distinct().ToArray();
-        var incoming = new int[components.Count];
-        var columns = new int[components.Count];
-        foreach (var link in links) incoming[link.To]++;
-        var queue = new Queue<int>(Enumerable.Range(0, components.Count).Where(index => incoming[index] == 0));
-        var targets = links.ToLookup(link => link.From, link => link.To);
-        while (queue.TryDequeue(out var from))
-            foreach (var to in targets[from])
-            {
-                columns[to] = Math.Max(columns[to], columns[from] + 1);
-                if (--incoming[to] == 0) queue.Enqueue(to);
-            }
-        return new LauncherPackageGraph(included.Select(id => new LauncherPackageNode(id,
-                catalog.GetValueOrDefault(id), columns[componentById[id]], components[componentById[id]].Count > 1))
-            .OrderBy(node => node.Column).ThenBy(node => node.Title, IdComparer).ThenBy(node => node.Id, IdComparer).ToArray(), edges);
+        foreach (var id in nodes.Order(IdComparer)) if (!indices.ContainsKey(id)) Visit(id);
+        return components;
     }
 }

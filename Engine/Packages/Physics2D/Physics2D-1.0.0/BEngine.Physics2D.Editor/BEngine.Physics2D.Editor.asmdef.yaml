@@ -3,7 +3,13 @@ version: 1
 name: BEngine.Physics2D.Editor
 rootNamespace: BEngine.Physics2D.Editor
 references:
+- BEngine.Graphics
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
 - BEngine.Physics2D
+- BEngine.Core.Editor
+- BEngine.Rendering2D.Editor
+- BEngine.Rendering2D
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

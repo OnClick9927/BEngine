@@ -1,4 +1,4 @@
-using BEngine.Diagnostics;
+using BEngine.Instrumentation;
 
 namespace BEngine.UIElements;
 

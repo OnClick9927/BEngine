@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Player</AssemblyName>
+    <RootNamespace>BEngine.Player</RootNamespace>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <BEngineCoreInternalAccess>true</BEngineCoreInternalAccess>
+    <BEnginePackageExportOwner>false</BEnginePackageExportOwner>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine.Core/BEngine.Core.csproj" />
+    <ProjectReference Include="../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+</Project>

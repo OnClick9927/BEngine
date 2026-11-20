@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><AssemblyName>ObjectStateCoreOnlyProbe</AssemblyName>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
+  </ItemGroup>
+</Project>

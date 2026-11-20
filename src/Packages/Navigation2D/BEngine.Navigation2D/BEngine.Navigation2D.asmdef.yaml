@@ -4,6 +4,8 @@ name: BEngine.Navigation2D
 rootNamespace: BEngine.Navigation2D
 references:
 - BEngine.Physics2D
+- BEngine.Rendering2D
+- BEngine.Platform.Contracts
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

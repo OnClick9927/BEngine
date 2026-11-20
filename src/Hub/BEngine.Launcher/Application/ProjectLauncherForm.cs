@@ -37,6 +37,8 @@ internal sealed partial class ProjectLauncherForm : Form
     private readonly Panel _createPage = new();
     private readonly Label _pageTitle = new();
     private readonly Label _statusLabel = new();
+    private readonly Button _githubPackagesButton = new LauncherNavigationButton();
+    private readonly Button _engineUpdatesButton = new LauncherNavigationButton();
     private readonly LauncherNavigationButton _projectsNavigation = new();
 
     private readonly TextBox _projectSearch = new();
@@ -47,7 +49,6 @@ internal sealed partial class ProjectLauncherForm : Form
 
     private readonly TextBox _packageSearch = new();
     private readonly ComboBox _packageTypeFilter = new();
-    private readonly ListView _packageList = new();
     private readonly Label _packageDetailTitle = new();
     private readonly Label _packageDetailVersion = new();
     private readonly Label _packageDetailId = new();
@@ -62,20 +63,24 @@ internal sealed partial class ProjectLauncherForm : Form
     private readonly Label _createStatusLabel = new();
     private readonly Button _createButton = new();
 
-    internal ProjectLauncherForm(string editorPath) : this(
+    internal ProjectLauncherForm(string editorPath) : this(editorPath, new LauncherPackageCatalog()) { }
+
+    private ProjectLauncherForm(string editorPath, LauncherPackageCatalog packages) : this(
         new LauncherOptions(editorPath),
         new LauncherHistoryStore(LauncherDataPaths.LauncherSettingsPath),
-        new LauncherPackageCatalog(),
+        packages,
         new LauncherEngineCatalog(),
-        new LauncherProjectService()) { }
+        new LauncherProjectService(packages)) { Disposed += (_, _) => packages.Dispose(); }
 
     internal ProjectLauncherForm(
         LauncherOptions options,
         LauncherHistoryStore historyStore,
         LauncherPackageCatalog packageCatalog,
         LauncherEngineCatalog engineCatalog,
-        LauncherProjectService projectService)
+        LauncherProjectService projectService,
+        LauncherUpdateService? updateService = null)
     {
+        _updateService = updateService ?? new();
         _editorPath = options.EditorPath;
         _historyStore = historyStore;
         _packageCatalog = packageCatalog;
@@ -95,7 +100,10 @@ internal sealed partial class ProjectLauncherForm : Form
         Font = new DrawingFont("Segoe UI", 10f);
         BuildInterface();
         BindLocalization(this);
+        BindLocalization(_engineUpdatesWindow);
         LoadHubState();
+        _packageCatalog.Changed += OnPackageCatalogChanged;
+        Disposed += (_, _) => _packageCatalog.Changed -= OnPackageCatalogChanged;
         ApplyPersonalization();
         PopulateSettings(_settings.Personalization);
         switch (_settings.Personalization.StartupPage)
@@ -106,10 +114,11 @@ internal sealed partial class ProjectLauncherForm : Form
         }
         InitializeUpdateRecovery();
         RefreshPrimaryNavigation(!_needsUpdateRecovery);
-        if (!HasLocalEngine && !_needsUpdateRecovery) ShowUpdatesPage();
+        if (!HasLocalEngine) ShowEnginesPage();
+        Shown += (_, _) => { if (_needsUpdateRecovery) OpenEngineUpdates(); };
     }
 
-    private static Icon LoadWindowIcon()
+    internal static Icon LoadWindowIcon()
     {
         // The exported Hub is a single file and may be started before an
         // editor resource root is registered. Keep the taskbar icon inside
@@ -174,11 +183,7 @@ internal sealed partial class ProjectLauncherForm : Form
         _enginesNavigation.Click += (_, _) => ShowEnginesPage();
         sidebar.Controls.Add(_enginesNavigation);
 
-        ConfigureNavigationButton(_updatesNavigation, "Updates", 194);
-        _updatesNavigation.Click += (_, _) => ShowUpdatesPage();
-        sidebar.Controls.Add(_updatesNavigation);
-
-        ConfigureNavigationButton(_settingsNavigation, "Settings", 242);
+        ConfigureNavigationButton(_settingsNavigation, "Settings", 194);
         _settingsNavigation.Click += (_, _) => ShowSettingsPage();
         sidebar.Controls.Add(_settingsNavigation);
 
@@ -226,7 +231,29 @@ internal sealed partial class ProjectLauncherForm : Form
             }
         };
         header.Controls.Add(website);
-        header.SizeChanged += (_, _) => website.Left = header.ClientSize.Width - website.Width - 30;
+        _githubPackagesButton.Text = "GitHub packages";
+        ConfigureButton(_githubPackagesButton, false);
+        _githubPackagesButton.Size = new Size(146, 34);
+        _githubPackagesButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _githubPackagesButton.Top = 20;
+        _githubPackagesButton.Visible = false;
+        _githubPackagesButton.Click += (_, _) => OpenGitHubPackages();
+        header.Controls.Add(_githubPackagesButton);
+        _engineUpdatesButton.Text = "Engine updates";
+        ConfigureButton(_engineUpdatesButton, false);
+        _engineUpdatesButton.Size = new Size(112, 34);
+        _engineUpdatesButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _engineUpdatesButton.Top = 20; _engineUpdatesButton.Visible = false;
+        _engineUpdatesButton.Click += (_, _) => OpenEngineUpdates();
+        header.Controls.Add(_engineUpdatesButton);
+        _pageTitle.AutoSize = false; _pageTitle.AutoEllipsis = true;
+        header.SizeChanged += (_, _) =>
+        {
+            website.Left = header.ClientSize.Width - website.Width - 30;
+            _githubPackagesButton.Left = website.Left - _githubPackagesButton.Width - 10;
+            _engineUpdatesButton.Left = _githubPackagesButton.Left - _engineUpdatesButton.Width - 10;
+            _pageTitle.Size = new Size(Math.Max(80, _engineUpdatesButton.Left - _pageTitle.Left - 12), 42);
+        };
         main.Controls.Add(header);
 
         _statusLabel.Dock = DockStyle.Bottom;
@@ -251,7 +278,6 @@ internal sealed partial class ProjectLauncherForm : Form
         _pageHost.Controls.Add(_packagesPage);
         _pageHost.Controls.Add(_createPage);
         _pageHost.Controls.Add(_settingsPage);
-        _pageHost.Controls.Add(_updatesPage);
         return main;
     }
 
@@ -339,16 +365,15 @@ internal sealed partial class ProjectLauncherForm : Form
             Dock = DockStyle.Top, Height = 42, BackColor = PanelBackground,
             ColumnCount = 3, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty
         };
-        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
+        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 174));
         toolbar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        toolbar.Controls.Add(BuildPackageViewSwitcher(), 0, 0);
         ConfigureTextField(_packageSearch, "Search packages");
         _packageSearch.Dock = DockStyle.Top;
-        _packageSearch.Margin = new Padding(4, 4, 12, 0);
+        _packageSearch.Margin = new Padding(0, 4, 8, 0);
         _packageSearch.TextChanged += (_, _) => RefreshPackageList();
-        toolbar.Controls.Add(_packageSearch, 1, 0);
+        toolbar.Controls.Add(_packageSearch, 0, 0);
 
         _packageTypeFilter.DropDownStyle = ComboBoxStyle.DropDownList;
         _packageTypeFilter.FlatStyle = FlatStyle.Flat;
@@ -356,12 +381,13 @@ internal sealed partial class ProjectLauncherForm : Form
         _packageTypeFilter.ForeColor = PrimaryText;
         _packageTypeFilter.Font = new DrawingFont("Segoe UI", 10f);
         _packageTypeFilter.Dock = DockStyle.Top;
-        _packageTypeFilter.Margin = new Padding(0, 4, 0, 0);
+        _packageTypeFilter.Margin = new Padding(0, 4, 8, 0);
         _packageTypeFilter.AccessibleName = "Package type";
         _packageTypeFilter.Items.AddRange(["All", "package", "project"]);
         _packageTypeFilter.SelectedIndex = 0;
         _packageTypeFilter.SelectedIndexChanged += (_, _) => { if (!_populatingSettings) RefreshPackageList(); };
-        toolbar.Controls.Add(_packageTypeFilter, 2, 0);
+        toolbar.Controls.Add(_packageTypeFilter, 1, 0);
+        BuildPackageBrowserToolbar(toolbar);
         content.Controls.Add(toolbar);
 
         var body = new Panel { Dock = DockStyle.Fill, BackColor = PanelBackground };
@@ -371,49 +397,52 @@ internal sealed partial class ProjectLauncherForm : Form
         var split = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            FixedPanel = FixedPanel.Panel1,
-            SplitterWidth = 2,
+            FixedPanel = FixedPanel.None,
+            SplitterWidth = 6,
             BackColor = Border
         };
         split.SizeChanged += (_, _) => ConfigureCatalogSplitter(split);
+        split.DpiChangedAfterParent += (_, _) => ConfigureCatalogSplitter(split);
+        split.SplitterMoving += (_, args) =>
+        {
+            var available = split.ClientSize.Width - split.SplitterWidth;
+            if (!_resizingPackageSplitter && available > 0)
+                _packageSplitterRatio = (double)Math.Clamp(args.SplitX,
+                    split.Panel1MinSize, available - split.Panel2MinSize) / available;
+        };
         split.Panel1.BackColor = RaisedBackground;
         split.Panel2.BackColor = RaisedBackground;
         body.Controls.Add(split);
         _packageDetailsSplit = split;
-
-        ConfigureListView(_packageList);
-        _packageList.ShowGroups = true;
-        _packageList.Dock = DockStyle.Fill;
-        _packageList.Columns.Add("Package", 235);
-        _packageList.Columns.Add("Version", 90);
-        _packageList.SelectedIndexChanged += (_, _) => UpdatePackageDetails();
-        _packageList.Resize += (_, _) =>
-        {
-            if (_packageList.Columns.Count == 2)
-                _packageList.Columns[0].Width = Math.Max(120, _packageList.ClientSize.Width - 100);
-        };
-        split.Panel1.Controls.Add(_packageList);
+        BuildPackageBrowserView(split.Panel1);
         BuildPackageDetails(split.Panel2);
-        BuildPackageGraphView(body);
+        ConfigureCatalogSplitter(split);
     }
 
-    private static void ConfigureCatalogSplitter(SplitContainer split)
+    private void ConfigureCatalogSplitter(SplitContainer split)
     {
-        const int leftMinimum = 260;
-        const int rightMinimum = 300;
-        if (split.ClientSize.Width < leftMinimum + rightMinimum + split.SplitterWidth) return;
-        split.Panel1MinSize = 0;
-        split.Panel2MinSize = 0;
-        split.SplitterDistance = Math.Clamp(350, leftMinimum,
-            split.ClientSize.Width - rightMinimum - split.SplitterWidth);
-        split.Panel1MinSize = leftMinimum;
-        split.Panel2MinSize = rightMinimum;
+        var available = split.ClientSize.Width - split.SplitterWidth;
+        if (_resizingPackageSplitter || available <= 1) return;
+        _resizingPackageSplitter = true;
+        try
+        {
+            var scale = split.DeviceDpi / 96d;
+            var leftMinimum = Math.Min((int)Math.Round(280 * scale), available / 2);
+            var rightMinimum = Math.Min((int)Math.Round(280 * scale), available - leftMinimum);
+            split.Panel1MinSize = split.Panel2MinSize = 0;
+            split.SplitterDistance = Math.Clamp((int)Math.Round(available * _packageSplitterRatio),
+                leftMinimum, available - rightMinimum);
+            split.Panel1MinSize = leftMinimum;
+            split.Panel2MinSize = rightMinimum;
+        }
+        finally { _resizingPackageSplitter = false; }
     }
 
     private void BuildPackageDetails(Control parent)
     {
-        var details = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28), BackColor = RaisedBackground,
+        var details = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), BackColor = RaisedBackground,
             AutoScroll = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        details.AccessibleName = "Package details";
         parent.Controls.Add(details);
         ConfigureDetailLabel(_packageDetailTitle, 20f, PrimaryText, 0, 0, 80);
         ConfigureDetailLabel(_packageDetailVersion, 10f, AccentText, 0, 46, 24);
@@ -421,30 +450,50 @@ internal sealed partial class ProjectLauncherForm : Form
         ConfigureDetailLabel(_packageDetailDescription, 10.5f, PrimaryText, 0, 124, 110);
         ConfigureDetailLabel(_packageDetailContents, 9.5f, SecondaryText, 0, 252, 50);
         ConfigureDetailLabel(_packageDetailPath, 9f, SecondaryText, 0, 322, 90);
+        ConfigureDetailLabel(_packageDetailRequired, 9.5f, AccentText, 0, 0, 50);
+        ConfigureDetailLabel(_packageDetailDependencies, 9.5f, PrimaryText, 0, 0, 80);
+        ConfigureDetailLabel(_packageDetailDependents, 9.5f, SecondaryText, 0, 0, 60);
 
         _openPackageDocumentationButton.Text = "Open Documentation";
         ConfigureButton(_openPackageDocumentationButton, true);
         _openPackageDocumentationButton.Size = new Size(190, 36);
         _openPackageDocumentationButton.Margin = new Padding(0, 0, 0, 18);
         _openPackageDocumentationButton.Enabled = false;
+        _openPackageDocumentationButton.Visible = false;
         _openPackageDocumentationButton.Click += (_, _) => OpenSelectedPackageDocumentation();
 
         details.Controls.AddRange([
-            _packageDetailTitle, _packageDetailVersion, _packageDetailId,
+            _packageDetailTitle, _packageDetailVersion, _packageDetailId, _packageDetailRequired,
             _openPackageDocumentationButton,
-            _packageDetailDescription, _packageDetailContents, _packageDetailPath
+            _packageDetailDescription, _packageDetailDependencies, _packageDetailDependents,
+            _packageDetailContents, _packageDetailPath
         ]);
-        foreach (var label in details.Controls.OfType<Label>())
         {
-            label.AutoSize = true;
-            label.AutoEllipsis = false;
-            label.Anchor = AnchorStyles.Top | AnchorStyles.Left;
-            label.Margin = new Padding(0, 0, 0, 18);
+            var __typedSource19872 = details.Controls;
+            ArgumentNullException.ThrowIfNull(__typedSource19872, "source");
+            foreach (var __typedItem19872 in __typedSource19872)
+            {
+                if (__typedItem19872 is not Label label)
+                    continue;
+                label.AutoSize = true;
+                label.AutoEllipsis = false;
+                label.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+                label.Margin = new Padding(0, 0, 0, 12);
+            }
         }
         void ReflowDetails()
         {
             var width = Math.Max(100, details.ClientSize.Width - details.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth - 6);
-            foreach (var label in details.Controls.OfType<Label>()) label.MaximumSize = new Size(width, 0);
+            {
+                var __typedSource20333 = details.Controls;
+                ArgumentNullException.ThrowIfNull(__typedSource20333, "source");
+                foreach (var __typedItem20333 in __typedSource20333)
+                {
+                    if (__typedItem20333 is not Label label)
+                        continue;
+                    label.MaximumSize = new Size(width, 0);
+                }
+            }
         }
         details.SizeChanged += (_, _) => ReflowDetails();
         ReflowDetails();
@@ -503,7 +552,7 @@ internal sealed partial class ProjectLauncherForm : Form
 
         var packageHint = new Label
         {
-            Text = "New projects contain only BEngine Core. Package dependencies are resolved when a package is enabled.",
+            Text = "Required packages and their dependencies are included automatically. Add optional packages from Package Manager.",
             AutoSize = true,
             ForeColor = SecondaryText,
             Location = new Point(0, 292)
@@ -582,6 +631,13 @@ internal sealed partial class ProjectLauncherForm : Form
         }
     }
 
+    private void OnPackageCatalogChanged()
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        try { BeginInvoke((Action)(() => { if (!IsDisposed) ReloadPackages(); })); }
+        catch (InvalidOperationException) when (IsDisposed || !IsHandleCreated) { }
+    }
+
     private void RefreshProjectList()
     {
         var search = _projectSearch.Text.Trim();
@@ -618,57 +674,54 @@ internal sealed partial class ProjectLauncherForm : Form
         UpdateProjectActions();
     }
 
-    private void RefreshPackageList()
-    {
-        var search = _packageSearch.Text.Trim();
-        var type = _packageTypeFilter.SelectedItem as string ?? "All";
-        var selectedId = SelectedPackage?.Id;
-        _packageList.BeginUpdate();
-        _packageList.Items.Clear();
-        _packageList.Groups.Clear();
-        var matches = _packages.Where(package => (type == "All" || package.Type == type) &&
-            MatchesPackageSearch(package, search)).ToArray();
-        foreach (var groupType in new[] { "package", "project" })
-        {
-            var packages = matches.Where(package => package.Type == groupType)
-                .OrderBy(package => package.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray();
-            if (packages.Length == 0) continue;
-            var group = new ListViewGroup(groupType, $"{T(groupType)} ({packages.Length})");
-            _packageList.Groups.Add(group);
-            foreach (var package in packages)
-            {
-                var item = new ListViewItem(package.DisplayName, group)
-                    { Tag = package, ToolTipText = package.Id + "\n" + T("Type: {0}", T(package.Type)) };
-                item.SubItems.Add(package.Version);
-                _packageList.Items.Add(item);
-                if (selectedId is not null && package.Id.Equals(selectedId, StringComparison.OrdinalIgnoreCase))
-                    item.Selected = true;
-            }
-        }
-        _packageList.EndUpdate();
-        if (_packageList.SelectedItems.Count == 0 && _packageList.Items.Count > 0)
-            _packageList.Items[0].Selected = true;
-        UpdatePackageDetails();
-        RefreshPackageGraph();
-    }
+    private void RefreshPackageList() => RefreshPackageBrowser();
 
     private void UpdatePackageDetails()
     {
         var package = SelectedPackage;
-        _packageDetailTitle.Text = package?.DisplayName ?? T(SelectedEngine is null
-            ? "Select an installed engine version."
-            : _packages.Count == 0 ? "No compatible packages for this engine version."
-            : "No packages match the current type and search");
-        _packageDetailVersion.Text = package is null ? string.Empty : T("Version {0}", package.Version);
-        _packageDetailId.Text = package?.Id ?? string.Empty;
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.Launcher.LauncherPackageNode? Query28686(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherPackageNode> querySource28686)
+        {
+            ArgumentNullException.ThrowIfNull(querySource28686, "source");
+            bool Matches28686(global::BEngine.Launcher.LauncherPackageNode item) => string.Equals(item.Id, _graphSelectedPackage, StringComparison.OrdinalIgnoreCase);
+            global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherPackageNode> queryValues28686;
+            if (querySource28686.GetType() == typeof(global::BEngine.Launcher.LauncherPackageNode[]))
+                queryValues28686 = (global::BEngine.Launcher.LauncherPackageNode[])querySource28686;
+            else if (querySource28686.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherPackageNode>))
+                queryValues28686 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherPackageNode>)querySource28686);
+            else
+            {
+                foreach (var item in querySource28686)
+                    if (Matches28686(item))
+                        return item;
+                return default!;
+            }
+
+            foreach (var item in queryValues28686)
+                if (Matches28686(item))
+                    return item;
+            return default!;
+        }
+
+        var node = Query28686(_allPackageDependencies.Nodes);
+        _packageDetailTitle.Text = node?.Title ?? T("Package details");
+        _packageDetailVersion.Text = package is null ? string.Empty :
+            T("Version {0} · {1}", package.Version, T(package.DistributionLabel));
+        _packageDetailVersion.Visible = package is not null;
+        _packageDetailId.Text = node?.Id ?? string.Empty;
+        _packageDetailId.Visible = node is not null;
         _packageDetailDescription.Text = package?.Description ??
-            T("Select an extension package to inspect its details.");
+            T(node is null ? "Select a package to inspect its details." : "Missing package");
         _packageDetailContents.Text = package is null
             ? string.Empty
             : package.DescribeContents(_localization);
+        _packageDetailContents.Visible = package is not null;
         _packageDetailPath.Text = package is null ? string.Empty : T("Source\n{0}", package.DirectoryPath);
+        _packageDetailPath.Visible = package is not null;
         _openPackageDocumentationButton.Enabled = package is not null &&
             LauncherPackageCatalog.FindDocumentation(package.DirectoryPath) is not null;
+        _openPackageDocumentationButton.Visible = package is not null;
+        UpdatePackageDependencyDetails();
     }
 
     private void OpenSelectedPackageDocumentation()
@@ -702,7 +755,7 @@ internal sealed partial class ProjectLauncherForm : Form
         if (!HasLocalEngine || !_primaryNavigationAllowed)
         {
             RefreshPrimaryNavigation(_primaryNavigationAllowed);
-            ShowUpdatesPage();
+            ShowEnginesPage();
             return;
         }
         ShowPage(_projectsPage, "Projects", _projectsNavigation);
@@ -716,10 +769,19 @@ internal sealed partial class ProjectLauncherForm : Form
         if (!HasLocalEngine || !_primaryNavigationAllowed)
         {
             RefreshPrimaryNavigation(_primaryNavigationAllowed);
-            ShowUpdatesPage();
+            ShowEnginesPage();
             return;
         }
-        foreach (var page in _pageHost.Controls.OfType<Control>()) page.Visible = ReferenceEquals(page, _createPage);
+        {
+            var __typedSource30951 = _pageHost.Controls;
+            ArgumentNullException.ThrowIfNull(__typedSource30951, "source");
+            foreach (var __typedItem30951 in __typedSource30951)
+            {
+                if (__typedItem30951 is not Control page)
+                    continue;
+                page.Visible = ReferenceEquals(page, _createPage);
+            }
+        }
         SetLocalizedText(_pageTitle, "New project");
         SetNavigationState(null);
         _nameField.Clear();
@@ -731,17 +793,29 @@ internal sealed partial class ProjectLauncherForm : Form
 
     private void ShowPage(Panel page, string title, Button navigation)
     {
-        foreach (var candidate in _pageHost.Controls.OfType<Control>())
-            candidate.Visible = ReferenceEquals(candidate, page);
+        {
+            var __typedSource31448 = _pageHost.Controls;
+            ArgumentNullException.ThrowIfNull(__typedSource31448, "source");
+            foreach (var __typedItem31448 in __typedSource31448)
+            {
+                if (__typedItem31448 is not Control candidate)
+                    continue;
+                candidate.Visible = ReferenceEquals(candidate, page);
+            }
+        }
         page.BringToFront();
+        _githubPackagesButton.Visible = ReferenceEquals(page, _packagesPage);
+        _githubPackagesButton.Enabled = SelectedEngine is not null && !_needsUpdateRecovery;
+        _engineUpdatesButton.Visible = ReferenceEquals(page, _packagesPage);
         SetLocalizedText(_pageTitle, title);
         SetNavigationState(navigation);
     }
 
     private void SetNavigationState(Button? active)
     {
+        if (active is null) _githubPackagesButton.Visible = _engineUpdatesButton.Visible = false;
         _activeNavigation = active;
-        foreach (var button in new[] { _projectsNavigation, _enginesNavigation, _updatesNavigation, _settingsNavigation })
+        foreach (var button in new[] { _projectsNavigation, _enginesNavigation, _settingsNavigation })
         {
             button.BackColor = ReferenceEquals(button, active) ? RaisedBackground : SidebarBackground;
             button.ForeColor = ReferenceEquals(button, active) ? PrimaryText : SecondaryText;
@@ -867,6 +941,8 @@ internal sealed partial class ProjectLauncherForm : Form
             ArgumentList = { workspace.ProjectFilePath, "--startup-token", startupToken }
         };
         ConfigureEditorEnvironment(start, environment);
+        start.Environment["BENGINE_PACKAGES_PATH"] = _packageCatalog.ResolvePackagesRoot();
+        start.Environment["BENGINE_HUB_EXECUTABLE"] = Environment.ProcessPath;
         using var editorProcess = Process.Start(start)
             ?? throw new InvalidOperationException(T("BEngine Editor process could not be started."));
         SetStatus("Starting '{0}'...", false, workspace.Project.Name);
@@ -1000,7 +1076,7 @@ internal sealed partial class ProjectLauncherForm : Form
             _createButton.Enabled = !unavailable;
             SetCreateStatus(unavailable
                 ? "The target folder is not empty: {0}"
-                : "Project path: {0}\nThe project will contain BEngine Core only.", unavailable, target);
+                : "Project path: {0}\nRequired packages will be referenced automatically.", unavailable, target);
         }
         catch (ArgumentException exception)
         {
@@ -1051,7 +1127,30 @@ internal sealed partial class ProjectLauncherForm : Form
     {
         var preferred = _settings.Personalization.DefaultProjectDirectory;
         if (!string.IsNullOrWhiteSpace(preferred) && Path.IsPathFullyQualified(preferred)) return preferred;
-        var recent = _settings.Projects.FirstOrDefault(project => Directory.Exists(project.Path));
+        var recent = Query45758(_settings.Projects);
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.Launcher.LauncherProjectRecord? Query45758(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherProjectRecord> querySource45758)
+        {
+            ArgumentNullException.ThrowIfNull(querySource45758, "source");
+            bool Matches45758(global::BEngine.Launcher.LauncherProjectRecord project) => Directory.Exists(project.Path);
+            global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherProjectRecord> queryValues45758;
+            if (querySource45758.GetType() == typeof(global::BEngine.Launcher.LauncherProjectRecord[]))
+                queryValues45758 = (global::BEngine.Launcher.LauncherProjectRecord[])querySource45758;
+            else if (querySource45758.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherProjectRecord>))
+                queryValues45758 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherProjectRecord>)querySource45758);
+            else
+            {
+                foreach (var project in querySource45758)
+                    if (Matches45758(project))
+                        return project;
+                return default!;
+            }
+
+            foreach (var project in queryValues45758)
+                if (Matches45758(project))
+                    return project;
+            return default!;
+        }
         if (recent is not null && Directory.GetParent(recent.Path) is { } parent) return parent.FullName;
         return Path.Combine(BEngine.Tooling.ToolEnvironment.InstallationDirectory, "Projects");
     }
@@ -1060,7 +1159,8 @@ internal sealed partial class ProjectLauncherForm : Form
         _projectList.SelectedItems.Count == 0 ? null : _projectList.SelectedItems[0].Tag as LauncherProjectRecord;
 
     private LauncherPackageInfo? SelectedPackage =>
-        _packageList.SelectedItems.Count == 0 ? null : _packageList.SelectedItems[0].Tag as LauncherPackageInfo;
+        _packages.FirstOrDefault(package =>
+            string.Equals(package.Id, _graphSelectedPackage, StringComparison.OrdinalIgnoreCase));
 
     private FolderBrowserDialog CreateFolderDialog(string description) => new()
     {
@@ -1076,6 +1176,8 @@ internal sealed partial class ProjectLauncherForm : Form
     private static bool MatchesPackageSearch(LauncherPackageInfo package, string search) =>
         search.Length == 0 || package.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
         package.Id.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+        package.RuntimeAssembly?.Contains(search, StringComparison.OrdinalIgnoreCase) == true ||
+        package.EditorAssembly?.Contains(search, StringComparison.OrdinalIgnoreCase) == true ||
         package.Description.Contains(search, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsProject(string path) =>

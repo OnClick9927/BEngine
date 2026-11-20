@@ -1,0 +1,19 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using BEngine.Editor;
+
+public static class NativeModuleOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var output=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");if(string.IsNullOrEmpty(output))return;
+        var native=Path.GetFullPath(Path.Combine(output,"..","Native"));
+        try
+        {
+            var result=DspProtocolProbe.Run(native);
+            File.AppendAllText(Path.Combine(output,"NativeLibraryOwnershipEvents.jsonl"),JsonSerializer.Serialize(new{Passed=true,Checks=result.Details.Count,Details=result.Details,AllocatedBytes=result.AllocatedBytes,Milliseconds=result.Milliseconds})+Environment.NewLine);
+        }
+        catch(Exception error){File.AppendAllText(Path.Combine(output,"NativeLibraryProbeFailure.log"),error.ToString()+Environment.NewLine);throw;}
+    }
+}

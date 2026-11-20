@@ -3,8 +3,12 @@ version: 1
 name: BEngine.Lighting2D.Editor
 rootNamespace: BEngine.Editor
 references:
-- BEngine.PlayerBuild.Editor
+- BEngine.Graphics.Editor
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
 - BEngine.Lighting2D
+- BEngine.Core.Editor
+- BEngine.Rendering2D.Editor
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

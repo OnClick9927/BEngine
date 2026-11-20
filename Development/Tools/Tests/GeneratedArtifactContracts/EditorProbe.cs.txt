@@ -1,0 +1,53 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using BEngine;
+using BEngine.Editor;
+
+public static class GeneratedArtifactOwnershipProbe
+{
+    [InitializeOnLoadMethod]
+    public static void Verify()
+    {
+        var output=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if(string.IsNullOrEmpty(output))return;
+        var checks=new List<string>();
+        void Check(bool value,string name){if(!value)throw new Exception(name);checks.Add(name);}
+        var receipt=Path.Combine(output,"GeneratedArtifactOwnershipEvents.jsonl");
+        try
+        {
+            var folder="Assets/GeneratedProbe-"+Guid.NewGuid().ToString("N");
+            var full=Path.Combine(EditorApplication.projectPath,folder);Directory.CreateDirectory(full);
+            var relative=folder+"/owner.bytes";var owner=AssetDatabase.GetAssetSourcePath(relative);
+            File.WriteAllBytes(owner,new byte[]{1,2,3});AssetDatabase.ImportAsset(relative);
+            var ownerGuid=AssetDatabase.AssetPathToGUID(relative);
+            Check(Guid.TryParse(ownerGuid,out _),"Real importer registers the generated owner");
+            Check(AssetDatabase.GetAssetSourcePath(owner)==owner,"Real source path query preserves an absolute source address");
+            var png=Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aAnkAAAAASUVORK5CYII=");
+            var artifact=GeneratedAssetArtifacts.Write(owner,2800000,".png",png);
+            AssetDatabase.ImportAsset(relative);
+            var child=AssetDatabase.LoadAllAssetsAtPath(relative).OfType<Texture>().Single();
+            Check(artifact.OwnerGuid.ToString("N")==ownerGuid&&artifact.Reference==$"guid:{ownerGuid}#subasset=2800000","Real generated address uses the registered owner identity");
+            Check(AssetDatabase.TryGetGUIDAndLocalFileIdentifier(child,out var bound,out long local)&&bound==ownerGuid&&local==2800000,"Real generated texture resolves as the owner's local subasset");
+            Check(child.width==1&&child.height==1,"Graphics decodes the generic store output through the normal importer");
+            var priorMeta=File.ReadAllBytes(artifact.ArtifactPath+".meta");
+            var again=GeneratedAssetArtifacts.Write(owner,2800000,"png",png);
+            AssetDatabase.ImportAsset(relative);
+            Check(artifact==again,"Reimport keeps the same Library path and stable address");
+            Check(File.ReadAllBytes(artifact.ArtifactPath+".meta").SequenceEqual(priorMeta),"Reimport retains existing child metadata");
+            Check(AssetDatabase.LoadAllAssetsAtPath(relative).OfType<Texture>().Count()==1,"Incremental owner reimport has exactly one generated child");
+            GeneratedAssetArtifacts.Delete(owner,2800000);AssetDatabase.ImportAsset(relative);
+            Check(!File.Exists(artifact.ArtifactPath)&&!File.Exists(artifact.ArtifactPath+".meta"),"Generated deletion retires the physical output pair");
+            Check(!AssetDatabase.LoadAllAssetsAtPath(relative).OfType<Texture>().Any(),"Incremental owner reimport removes a deleted generated child");
+            Check(AssetDatabase.AssetPathToGUID(relative)==ownerGuid&&File.ReadAllBytes(owner).SequenceEqual(new byte[]{1,2,3}),"Generated deletion preserves owner identity and source bytes");
+            File.AppendAllText(receipt,JsonSerializer.Serialize(new{Passed=true,Checks=checks.Count,Details=checks})+Environment.NewLine);
+        }
+        catch(Exception error)
+        {
+            File.AppendAllText(receipt,JsonSerializer.Serialize(new{Passed=false,Checks=checks.Count,Error=error.ToString()})+Environment.NewLine);
+            throw;
+        }
+    }
+}

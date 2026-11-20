@@ -98,10 +98,10 @@ internal sealed partial class NavigationGrid2D
         var owner = typeof(NavigationGrid2D);
         NavigationMethodPreparation.PrepareKnown(owner, nameof(CalculatePath), typeof(Vector2), typeof(Vector2), typeof(NavigationPath2D), typeof(ulong));
         NavigationMethodPreparation.PrepareIterator(owner, nameof(Search), typeof(Vector2), typeof(Vector2), typeof(NavigationPath2D), typeof(ulong));
-        NavigationMethodPreparation.PrepareKnown(owner, nameof(Neighbours), typeof(Cell), typeof(ulong), typeof(List<LinkEdge>), typeof(Vector2), typeof(Vector2));
-        NavigationMethodPreparation.PrepareConstructor(typeof(NeighbourEnumerable), owner, typeof(Cell), typeof(ulong), typeof(List<LinkEdge>), typeof(Vector2), typeof(Vector2));
+        NavigationMethodPreparation.PrepareKnown(owner, nameof(Neighbours), typeof(Cell), typeof(ulong), typeof(SearchWorkspace));
+        NavigationMethodPreparation.PrepareConstructor(typeof(NeighbourEnumerable), owner, typeof(Cell), typeof(ulong), typeof(SearchWorkspace));
         NavigationMethodPreparation.PrepareKnown(typeof(NeighbourEnumerable), nameof(NeighbourEnumerable.GetEnumerator));
-        NavigationMethodPreparation.PrepareConstructor(typeof(NeighbourEnumerator), owner, typeof(Cell), typeof(ulong), typeof(List<LinkEdge>), typeof(Vector2), typeof(Vector2));
+        NavigationMethodPreparation.PrepareConstructor(typeof(NeighbourEnumerator), owner, typeof(Cell), typeof(ulong), typeof(SearchWorkspace));
         NavigationMethodPreparation.PrepareKnown(typeof(NeighbourEnumerator), nameof(NeighbourEnumerator.MoveNext));
         NavigationMethodPreparation.PrepareKnown(typeof(NeighbourEnumerator), "get_Current");
         NavigationMethodPreparation.PrepareKnown(typeof(NeighbourEnumerator), "set_Current", typeof((Cell, Fix64)));
@@ -110,14 +110,18 @@ internal sealed partial class NavigationGrid2D
         NavigationMethodPreparation.PrepareKnown(owner, nameof(FindNearest), typeof(Cell), typeof(ulong));
         NavigationMethodPreparation.PrepareKnown(owner, nameof(IsWalkable), typeof(Cell), typeof(ulong));
         NavigationMethodPreparation.PrepareKnown(owner, nameof(InBounds), typeof(Cell));
-        NavigationMethodPreparation.PrepareKnown(owner, nameof(Simplify), typeof(Vector2[]));
+        NavigationMethodPreparation.PrepareKnown(owner, nameof(BuildCorners), typeof(List<Cell>), typeof(List<Vector2>), typeof(Vector2), typeof(Vector2), typeof(Vector2));
+        NavigationMethodPreparation.PrepareConstructor(typeof(NeighbourCosts), typeof(Vector2), typeof(Vector2));
+        NavigationMethodPreparation.PrepareKnown(typeof(NeighbourCosts), nameof(NeighbourCosts.Get), typeof(int), typeof(int));
+        NavigationMethodPreparation.PrepareKnown(typeof(NeighbourCosts), "Prepare", typeof(Fix64).MakeByRefType(), typeof(byte), typeof(int), typeof(int));
 
-        // Search captures its local coordinate conversion in a compiler-owned
-        // display type. Restrict this to this owner and this source local name.
+        // The search and final-corner builder capture coordinate conversion in
+        // compiler-owned display types. Restrict this to this owner/local name.
         foreach (var display in owner.GetNestedTypes(BindingFlags.NonPublic))
             if (display.Name.StartsWith("<>c__DisplayClass", StringComparison.Ordinal))
                 foreach (var body in display.GetMethods(methods | BindingFlags.DeclaredOnly))
-                    if (body.Name.StartsWith("<Search>g__World|", StringComparison.Ordinal) &&
+                    if ((body.Name.StartsWith("<Search>g__World|", StringComparison.Ordinal) ||
+                         body.Name.StartsWith("<BuildCorners>g__World|", StringComparison.Ordinal)) &&
                         body.ReturnType == typeof(Vector2) && body.GetParameters() is [{ ParameterType: var parameter }] && parameter == typeof(Cell))
                         RuntimeHelpers.PrepareMethod(body.MethodHandle);
 

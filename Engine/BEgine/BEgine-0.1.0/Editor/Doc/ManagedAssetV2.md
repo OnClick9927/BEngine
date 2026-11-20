@@ -1,6 +1,6 @@
 # 原生资产对象图 v2
 
-`.asset.yaml` 的 `BEngine.ManagedAsset` 新增 version 2，使用 `graph` 保存类型化成员；`name`、`hideFlags` 存放根对象元数据。Scene 已使用的对象图序列化器处理 Fix64、二维数学类型、枚举、集合、共享引用和多态 BObject 资源引用。创建、保存、菜单创建、运行时 BAsset 加载、AssetBundle 字节加载使用同一数据模型。
+`.asset.yaml` 的 `BEngine.ManagedAsset` 新增 version 2，使用 `graph` 保存类型化成员；`name`、`hideFlags` 存放根对象元数据。Scene 已使用的对象图序列化器处理 Fix64、二维数学类型、枚举、集合、共享引用和多态 BObject 资源引用。创建、保存、菜单创建、运行时 BAsset 加载、资源提供者字节加载使用同一数据模型。
 
 version 1 的 `data` 原始 YAML 仍可读取。保存旧资产会升级为 v2，旧版引擎不理解该格式；不要让旧 Player 加载新格式内容。此更新不改写未保存的项目资产。
 

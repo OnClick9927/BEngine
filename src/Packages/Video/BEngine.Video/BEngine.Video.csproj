@@ -6,7 +6,10 @@
     <NoWarn>$(NoWarn);CA2255</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
     <ProjectReference Include="../../Audio/BEngine.Audio/BEngine.Audio.csproj" />
   </ItemGroup>
+  <ItemGroup><ProjectReference Include="../../Graphics/BEngine.Graphics/BEngine.Graphics.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../Rendering2D/BEngine.Rendering2D/BEngine.Rendering2D.csproj" /></ItemGroup>
 </Project>

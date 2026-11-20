@@ -2,7 +2,7 @@
 
 详细的生命周期、分包更新、平台扩展、行为限制与验证步骤见 [运行与扩展指南](RuntimeGuide.md)。任务 Skills 位于 `Editor/Skills`。
 
-Animation 和 Animator 属于 `com.bengine.animation` 包。Timeline、PlayableDirector、轨道、片段与信号属于独立的 `com.bengine.timeline` 包，依赖 Animation。Core 只保留 NodeCanvas、TrackEditorCanvas 和通用预览接口。下文涉及 Timeline 的功能需要额外启用 Timeline 包。
+Animation 和 Animator 属于 `com.bengine.animation` 包。Timeline、PlayableDirector、轨道、片段与信号属于独立的 `com.bengine.timeline` 包，依赖 Animation。通用节点与轨道画布分别属于 `com.bengine.node-editor` 和 `com.bengine.track-editor` 编辑器专用包，两者依赖 UIElements.Editor；Core 提供通用预览接口。下文涉及 Timeline 的功能需要额外启用 Timeline 包。
 
 ![Animation 工作流概览](images/overview.png)
 
@@ -190,4 +190,4 @@ public sealed class PulseTarget : MonoBehaviour
 - 双击动画片段或控制器，或在组件 Inspector 点击编辑按钮进入对应窗口。New/Save/Undo/Redo 支持创建和保存工程资源。
 - 组件保存 clip / runtimeAnimatorController 资源引用。旧 clipPath / controllerPath 场景数据会在读取时迁移；兼容代码属性不再保存路径字段。
 
-Animator 图基于 `BEngine.Editor.UIElements.NodeCanvas`；Animation 与 Timeline 的时间轴共用 `BEngine.Editor.TrackEditorCanvas`。这两个 UIElements 控件负责绘制、选择、平移、缩放和指针事件，窗口控制器负责具体资产修改和 Undo。Timeline 的适配器通过 AudioSource 与 VideoPlayer 的公开播放 API 实现媒体轨道；Audio、Video 不实现 Timeline 协议。
+Animator 图基于 Node Editor 包的 `BEngine.Editor.UIElements.NodeCanvas`；Animation 与 Timeline 的时间轴共用 Track Editor 包的 `BEngine.Editor.TrackEditorCanvas`。两个画布基于 UIElements，负责绘制、选择、平移、缩放和指针事件，窗口控制器负责具体资产修改和 Undo。公开命名空间保持不变。Timeline 的适配器通过 AudioSource 与 VideoPlayer 的公开播放 API 实现媒体轨道；Audio、Video 不实现 Timeline 协议。

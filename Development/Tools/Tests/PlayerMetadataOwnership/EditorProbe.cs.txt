@@ -1,0 +1,20 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using BEngine.Editor;
+using BEngine.Player.ProjectSystem;
+using BEngine.Player.Serialization;
+public static class PlayerMetadataOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");if(string.IsNullOrEmpty(folder))return;
+        var plain=PlayerMetadataSerializer.Serialize(new PlayerMetadataDocument());
+        if(PlayerMetadataSerializer.Deserialize(plain).ContentSections.Count!=0)throw new Exception("Core metadata requires content");
+        var old=RuntimeMetadataSerializer.Serialize(new RuntimeMetadataDocument());
+        var content=PlayerMetadataSerializer.Deserialize(old);
+        if(content.ContentSections.Count!=1||content.ContentSections[0].Id!=3)throw new Exception("Content section ownership lost");
+        if(RuntimeMetadataSerializer.Deserialize(old).Project.Name!=content.Project.Name)throw new Exception("Facade metadata mismatch");
+        File.AppendAllText(Path.Combine(folder,"PlayerMetadataOwnershipEvents.jsonl"),JsonSerializer.Serialize(new{Passed=true,Checks=3,Core=typeof(PlayerMetadataSerializer).Assembly.GetName().Name})+Environment.NewLine);
+    }
+}

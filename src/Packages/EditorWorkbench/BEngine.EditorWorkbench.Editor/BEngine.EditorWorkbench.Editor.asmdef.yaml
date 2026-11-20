@@ -1,0 +1,23 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.EditorWorkbench.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.Graphics
+- BEngine.Core.Editor
+- BEngine.Graphics.Editor
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
+- BEngine.Player
+- BEngine.Rendering2D.Editor
+- BEngine.Rendering2D
+- BEngine.Core
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+
+
+
+

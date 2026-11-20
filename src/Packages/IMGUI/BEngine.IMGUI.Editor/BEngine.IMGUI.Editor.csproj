@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.IMGUI.Editor</AssemblyName>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <BEngineEditorAssembly>true</BEngineEditorAssembly>
+    <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
+    
+  </ItemGroup>
+  <ItemGroup><PackageReference Include="YamlDotNet" /></ItemGroup>
+<ItemGroup><ProjectReference Include="../../TextEditing/BEngine.TextEditing/BEngine.TextEditing.csproj"/></ItemGroup>  <ItemGroup>
+    
+    <ProjectReference Include="../../Graphics/BEngine.Graphics/BEngine.Graphics.csproj" />
+  </ItemGroup>
+</Project>

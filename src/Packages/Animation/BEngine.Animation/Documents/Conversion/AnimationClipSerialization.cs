@@ -38,7 +38,7 @@ internal static class AnimationClipSerialization
         if (document.Version == 2)
         {
             if (document.BindingGraph is null) throw new InvalidDataException("Missing animation binding graph.");
-            ComponentObjectGraphSerializer.Restore(clip, document.BindingGraph);
+            document.BindingGraph.Restore(clip);
             foreach (var binding in clip.bindings)
                 if (binding.kind == AnimationBindingKind.ObjectReference)
                     foreach (var key in binding.curve.keys) binding.ObjectAt(key.value);
@@ -52,8 +52,7 @@ internal static class AnimationClipSerialization
         FrameRate = clip.frameRate.RawValue,
         WrapMode = clip.wrapMode,
         Legacy = clip.legacy,
-        BindingGraph = ComponentObjectGraphSerializer.Capture(clip,
-            [typeof(AnimationClip).GetProperty(nameof(AnimationClip.bindings))!]),
+        BindingGraph = ObjectStateSnapshot.Capture(clip, [nameof(AnimationClip.bindings)]),
         Events = [.. clip.events.Select(item => new AnimationEventData
         {
             Time = item.time.RawValue,

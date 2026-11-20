@@ -3,8 +3,11 @@ using BEngine.ProjectSystem;
 
 namespace BEngine.Launcher;
 
-internal sealed class LauncherProjectService
+internal sealed class LauncherProjectService(LauncherPackageCatalog? packageCatalog = null) : IDisposable
 {
+    private readonly LauncherPackageCatalog _packageCatalog = packageCatalog ?? new();
+
+    public void Dispose() { if (packageCatalog is null) _packageCatalog.Dispose(); }
     private static readonly SearchValues<char> InvalidFileNameChars =
         SearchValues.Create(Path.GetInvalidFileNameChars());
 
@@ -15,7 +18,8 @@ internal sealed class LauncherProjectService
         Create(locationPath, projectName, EngineVersion.Current);
 
     internal LauncherProjectWorkspace Create(string locationPath, string projectName, string engineVersion) =>
-        LauncherProjectWorkspace.Create(ResolveTargetPath(locationPath, projectName), projectName, engineVersion);
+        LauncherProjectWorkspace.Create(ResolveTargetPath(locationPath, projectName), projectName, engineVersion,
+            _packageCatalog.Discover(engineVersion: engineVersion));
 
     internal string ResolveTargetPath(string locationPath, string projectName)
     {

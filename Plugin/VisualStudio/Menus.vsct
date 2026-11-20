@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <Extern href="stdidcmd.h" />
+  <Extern href="vsshlids.h" />
+  <Commands package="guidBEnginePackage">
+    <Menus>
+      <Menu guid="guidBEngineCommands" id="BEngineMenu" priority="0x700" type="Menu">
+        <Parent guid="guidBEngineCommands" id="ToolsGroup" />
+        <Strings><ButtonText>BEngine</ButtonText></Strings>
+      </Menu>
+      <Menu guid="guidBEngineCommands" id="BEngineToolbar" priority="0x1000" type="Toolbar">
+        <Strings><ButtonText>BEngine</ButtonText><CommandName>BEngine</CommandName></Strings>
+      </Menu>
+    </Menus>
+    <Groups>
+      <Group guid="guidBEngineCommands" id="ToolsGroup" priority="0x900"><Parent guid="guidSHLMainMenu" id="IDM_VS_MENU_TOOLS" /></Group>
+      <Group guid="guidBEngineCommands" id="CommandGroup" priority="0x0100"><Parent guid="guidBEngineCommands" id="BEngineMenu" /></Group>
+      <Group guid="guidBEngineCommands" id="ToolbarGroup" priority="0x0100"><Parent guid="guidBEngineCommands" id="BEngineToolbar" /></Group>
+    </Groups>
+    <Buttons>
+      <Button guid="guidBEngineCommands" id="Attach" priority="0x0100" type="Button">
+        <Parent guid="guidBEngineCommands" id="CommandGroup" />
+        <CommandFlag>TextOnly</CommandFlag>
+        <Strings><ButtonText>Attach to BEngine</ButtonText><ToolTipText>Attach the managed debugger to this project's running BEngine Editor</ToolTipText><CommandName>BEngine.Attach</CommandName></Strings>
+      </Button>
+      <Button guid="guidBEngineCommands" id="Sync" priority="0x0200" type="Button">
+        <Parent guid="guidBEngineCommands" id="CommandGroup" />
+        <CommandFlag>TextOnly</CommandFlag>
+        <Strings><ButtonText>Synchronize C# Projects</ButtonText><ToolTipText>Ask BEngine Editor to refresh IntelliSense projects</ToolTipText><CommandName>BEngine.SyncProjects</CommandName></Strings>
+      </Button>
+      <Button guid="guidBEngineCommands" id="OpenSolution" priority="0x0300" type="Button">
+        <Parent guid="guidBEngineCommands" id="CommandGroup" />
+        <Strings><ButtonText>Open BEngine Solution</ButtonText><CommandName>BEngine.OpenSolution</CommandName></Strings>
+      </Button>
+    </Buttons>
+  </Commands>
+  <CommandPlacements>
+    <CommandPlacement guid="guidBEngineCommands" id="Attach" priority="0x100"><Parent guid="guidBEngineCommands" id="ToolbarGroup" /></CommandPlacement>
+    <CommandPlacement guid="guidBEngineCommands" id="Sync" priority="0x200"><Parent guid="guidBEngineCommands" id="ToolbarGroup" /></CommandPlacement>
+  </CommandPlacements>
+  <Symbols>
+    <GuidSymbol name="guidBEnginePackage" value="{e4d861c6-d365-477d-bef9-694961769352}" />
+    <GuidSymbol name="guidBEngineCommands" value="{dc41ed4f-28a2-4e90-a7b5-1079b2ab7dc9}">
+      <IDSymbol name="ToolsGroup" value="0x1000" /><IDSymbol name="BEngineMenu" value="0x1001" /><IDSymbol name="CommandGroup" value="0x1002" />
+      <IDSymbol name="BEngineToolbar" value="0x1003" /><IDSymbol name="ToolbarGroup" value="0x1004" />
+      <IDSymbol name="Attach" value="0x0100" /><IDSymbol name="Sync" value="0x0101" /><IDSymbol name="OpenSolution" value="0x0102" />
+    </GuidSymbol>
+  </Symbols>
+</CommandTable>

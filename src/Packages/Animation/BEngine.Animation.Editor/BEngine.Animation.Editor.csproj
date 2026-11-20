@@ -6,8 +6,22 @@
     <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
     <ProjectReference Include="../BEngine.Animation/BEngine.Animation.csproj" />
   </ItemGroup>
   <ItemGroup><ProjectReference Include="../../UIElements/BEngine.UIElements.Editor/BEngine.UIElements.Editor.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../NodeEditor/BEngine.NodeEditor.Editor/BEngine.NodeEditor.Editor.csproj" />
+    <ProjectReference Include="../../TrackEditor/BEngine.TrackEditor.Editor/BEngine.TrackEditor.Editor.csproj" />
+  </ItemGroup>
+  <ItemGroup></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../IMGUI/BEngine.IMGUI.Editor/BEngine.IMGUI.Editor.csproj" /></ItemGroup>
+  <ItemGroup>
+    
+    <ProjectReference Include="../../UIElements/BEngine.UIElements/BEngine.UIElements.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Rendering2D/BEngine.Rendering2D.Editor/BEngine.Rendering2D.Editor.csproj" />
+  </ItemGroup>
 </Project>

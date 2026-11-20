@@ -17,6 +17,9 @@ internal readonly record struct AdvancedTextImage(int Width, int Height, byte[] 
 internal sealed class AdvancedFontRuntime : IDisposable
 {
     private readonly IAdvancedFontBackend _backend;
+    private ObjectPool<TextWorkspace>? _workspaces;
+    private ObjectPool<TextWorkspace> Workspaces => _workspaces ??= new(
+        static () => new TextWorkspace(), onRelease: static item => item.Clear(), maxSize: 2);
     private bool _disposed;
     // Measure and Render use exactly the same shaped result. Bound both the
     // number of captions and retained glyph arrays, evicting the oldest entry
@@ -60,17 +63,21 @@ internal sealed class AdvancedFontRuntime : IDisposable
         width = Math.Clamp(width, 1, 8192); height = Math.Clamp(height, 1, 8192);
         using var lease = AcquireLayout(text, size, width, wrap, direction);
         var layout = lease.Value.Layout;
-        var runs = new List<AdvancedGlyphDrawRun>();
-        var y = layout.Baseline;
-        foreach (var line in layout.Lines)
+        var pool = Workspaces;
+        var workspace = pool.Get();
+        try
         {
-            foreach (var run in line.Runs)
+            var runs = workspace.DrawRuns;
+            var y = layout.Baseline;
+            foreach (var line in layout.Lines)
             {
-                runs.Add(new(run.FontIndex, run.X, y, run.Result));
+                foreach (var run in line.Runs)
+                    runs.Add(new(run.FontIndex, run.X, y, run.Result));
+                y += layout.LineHeight;
             }
-            y += layout.LineHeight;
+            return _backend.Render(runs, width, height, layout.Size, foreground);
         }
-        return _backend.Render(runs, width, height, layout.Size, foreground);
+        finally { pool.Release(workspace); }
     }
 
     private LayoutLease AcquireLayout(string text, float size, float width, bool wrap, TextDirectionMode direction)
@@ -87,9 +94,11 @@ internal sealed class AdvancedFontRuntime : IDisposable
             return new(cached, retained: true);
         }
         var layout = Layout(text, size, width, wrap, direction);
+        var pool = Workspaces;
+        var workspace = pool.Get();
         try
         {
-            var fonts = new HashSet<int>();
+            var fonts = workspace.Fonts;
             var substitutions = false;
             var bytes = 256L + text.Length * 2L + layout.Lines.Count * 256L;
             foreach (var line in layout.Lines)
@@ -111,6 +120,7 @@ internal sealed class AdvancedFontRuntime : IDisposable
             return new(value, retained: false);
         }
         catch { layout.Dispose(); throw; }
+        finally { pool.Release(workspace); }
     }
 
     private sealed record CachedLayout(ShapedLayout Layout, AdvancedTextMetrics Metrics);
@@ -148,6 +158,12 @@ internal sealed class AdvancedFontRuntime : IDisposable
         var offsets = new int[elements.Count];
         for (var index = 1; index < offsets.Length; index++) offsets[index] = offsets[index - 1] + elements[index - 1].Length;
         if (elements.Count == 0) { lines.Add(ShapeLine("", size, direction)); return; }
+        string Slice(int first, int count)
+        {
+            var end = first + count;
+            return paragraph.Substring(offsets[first],
+                (end < offsets.Length ? offsets[end] : paragraph.Length) - offsets[first]);
+        }
         var start = 0;
         while (start < elements.Count)
         {
@@ -155,7 +171,7 @@ internal sealed class AdvancedFontRuntime : IDisposable
             var lastBreak = -1;
             for (var end = start + 1; end <= elements.Count; end++)
             {
-                var candidate = string.Concat(elements.GetRange(start, end - start));
+                var candidate = Slice(start, end - start);
                 var shaped = ShapeLine(candidate, size, direction, bidi, offsets[start]);
                 if (shaped.Width <= width || end == start + 1)
                 {
@@ -169,7 +185,7 @@ internal sealed class AdvancedFontRuntime : IDisposable
                 break;
             }
             var count = Math.Max(1, accepted - start);
-            var lineText = string.Concat(elements.GetRange(start, count)).TrimEnd();
+            var lineText = Slice(start, count).TrimEnd();
             lines.Add(ShapeLine(lineText, size, direction, bidi, offsets[start]));
             start += count;
             while (start < elements.Count && char.IsWhiteSpace(elements[start], 0)) start++;
@@ -178,9 +194,33 @@ internal sealed class AdvancedFontRuntime : IDisposable
 
     private ShapedLine ShapeLine(string text, float size, TextDirectionMode baseDirection, BidiParagraph? paragraph = null, int offset = 0)
     {
+        var pool = Workspaces;
+        var workspace = pool.Get();
+        try { return ShapeLine(text, size, baseDirection, paragraph, offset, workspace); }
+        finally { pool.Release(workspace); }
+    }
+
+    private ShapedLine ShapeLine(string text, float size, TextDirectionMode baseDirection, BidiParagraph? paragraph,
+        int offset, TextWorkspace workspace)
+    {
         paragraph ??= TextBidiResolver.Analyze(text, baseDirection);
-        var logicalRuns = BuildLogicalRuns(text, paragraph, offset);
-        var order = TextBidiResolver.VisualOrder(logicalRuns.Select(run => run.Level).ToArray());
+        var logicalRuns = BuildLogicalRuns(text, paragraph, offset, workspace);
+        var order = TextBidiResolver.VisualOrder(ProjectItems9698());
+        [global::BEngine.SkipLoopGuard]
+        sbyte[] ProjectItems9698()
+        {
+            var projectionSource9698 = logicalRuns;
+            ArgumentNullException.ThrowIfNull(projectionSource9698, "source");
+            global::System.ReadOnlySpan<global::BEngine.UIElements.AdvancedFontRuntime.LogicalRun> projectionValues9698 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(projectionSource9698);
+            var projectionOutput9698 = projectionValues9698.Length == 0 ? global::System.Array.Empty<sbyte>() : new sbyte[projectionValues9698.Length];
+            var projectionIndex9698 = 0;
+            foreach (var run in projectionValues9698)
+            {
+                projectionOutput9698[projectionIndex9698++] = run.Level;
+            }
+        
+            return projectionOutput9698;
+        }
         var shaped = new List<ShapedRun>(logicalRuns.Count);
         var x = 0f;
         foreach (var index in order)
@@ -199,24 +239,34 @@ internal sealed class AdvancedFontRuntime : IDisposable
         return new(shaped, x);
     }
 
-    private List<LogicalRun> BuildLogicalRuns(string text, BidiParagraph paragraph, int offset)
+    private List<LogicalRun> BuildLogicalRuns(string text, BidiParagraph paragraph, int offset,
+        TextWorkspace workspace)
     {
-        var result = new List<LogicalRun>();
-        var pending = new StringBuilder();
+        var result = workspace.LogicalRuns;
+        var pending = workspace.Pending;
         var currentFont = -1;
         var levels = paragraph.Utf16Levels.AsSpan(offset, text.Length).ToArray();
         var tail = text.Length;
-        foreach (var rune in text.EnumerateRunes().Reverse())
+        for (var remaining = text.Length; remaining > 0;)
         {
+            if (Rune.DecodeLastFromUtf16(text.AsSpan(0, remaining), out var rune, out var consumed)
+                != System.Buffers.OperationStatus.Done)
+            {
+                rune = Rune.ReplacementChar;
+                consumed = 1;
+            }
             var kind = UnicodeBidiData.Direction(rune.Value);
             if (kind is not (Directionality.WS or Directionality.S or Directionality.BN or Directionality.LRE or Directionality.RLE or Directionality.LRO or Directionality.RLO or Directionality.PDF)) break;
-            tail -= rune.Utf16SequenceLength;
-            Array.Fill(levels, (sbyte)paragraph.ParagraphLevel, tail, rune.Utf16SequenceLength);
+            tail -= consumed;
+            Array.Fill(levels, (sbyte)paragraph.ParagraphLevel, tail, consumed);
+            remaining -= consumed;
         }
         var currentLevel = (sbyte)paragraph.ParagraphLevel;
         var position = 0;
-        foreach (var element in TextElements(text))
+        var elements = StringInfo.GetTextElementEnumerator(text);
+        while (elements.MoveNext())
         {
+            var element = elements.GetTextElement();
             var font = ResolveFont(element);
             var level = levels[position]; position += element.Length;
             if (pending.Length > 0 && (font != currentFont || level != currentLevel))
@@ -275,11 +325,29 @@ internal sealed class AdvancedFontRuntime : IDisposable
         if (_disposed) return;
         _layouts.Clear();
         _fontChoices.Clear();
+        _workspaces?.Dispose();
         _backend.Dispose();
         _disposed = true;
     }
 
     private readonly record struct LogicalRun(string Text, int FontIndex, sbyte Level);
+    // Only transient managed data belongs here. Cached layouts, glyph arrays and
+    // returned pixel arrays retain their independent ownership.
+    private sealed class TextWorkspace
+    {
+        internal readonly List<AdvancedGlyphDrawRun> DrawRuns = [];
+        internal readonly List<LogicalRun> LogicalRuns = [];
+        internal readonly HashSet<int> Fonts = [];
+        internal readonly StringBuilder Pending = new();
+        internal void Clear()
+        {
+            DrawRuns.Clear(); LogicalRuns.Clear(); Fonts.Clear(); Pending.Clear();
+            if (DrawRuns.Capacity > 4096) DrawRuns.Capacity = 0;
+            if (LogicalRuns.Capacity > 4096) LogicalRuns.Capacity = 0;
+            if (Fonts.EnsureCapacity(0) > 4096) Fonts.TrimExcess();
+            if (Pending.Capacity > 16384) Pending.Capacity = 256;
+        }
+    }
     private sealed record ShapedRun(int FontIndex, float X, AdvancedGlyphRun Result, bool AppliedSubstitutions);
     private sealed record ShapedLine(List<ShapedRun> Runs, float Width) : IDisposable
     {

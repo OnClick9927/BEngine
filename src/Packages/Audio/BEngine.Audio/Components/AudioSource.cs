@@ -9,7 +9,7 @@ public sealed partial class AudioSource : MonoBehaviour
     [NonSerialized] private Fix64 _delay;
     [NonSerialized] private readonly List<OneShotVoice> _oneShots = [];
     [NonSerialized] private AudioVoiceReader? _reader;
-    private static readonly Fix64 MinimumPitch = Fix64.Parse("0.01");
+    private static readonly Fix64 MinimumPitch = Fix64.FromRaw(42949672L) /* Parse("0.01") */;
     [NonSerialized] private bool _wasVirtual;
     private AudioClip? _clip;
     [NonSerialized] private Fix64 _fadeStart, _fadeTarget, _fadeDuration, _fadeElapsed;

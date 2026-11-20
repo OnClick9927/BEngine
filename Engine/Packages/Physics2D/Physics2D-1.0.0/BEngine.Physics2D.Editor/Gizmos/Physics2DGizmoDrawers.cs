@@ -5,11 +5,12 @@ namespace BEngine.Physics2D.Editor;
 internal static class Physics2DGizmoDrawers
 {
     private const int CapsuleArcSegments = 24;
+    private static readonly Vector2[] CapsuleArcPoints = CreateCapsuleArcPoints();
     private const GizmoType DrawModes = GizmoType.Selected;
     private static readonly Color SelectedColor = new(
-        Fix64.Parse("0.35"), Fix64.Parse("1.0"), Fix64.Parse("0.45"), Fix64.One);
+        Fix64.FromRaw(1503238553L) /* 0.35 */, Fix64.One, Fix64.FromRaw(1932735283L) /* 0.45 */, Fix64.One);
     private static readonly Color NormalColor = new(
-        Fix64.Parse("0.25"), Fix64.Parse("0.85"), Fix64.Parse("0.35"), Fix64.Parse("0.75"));
+        Fix64.FromRaw(1073741824L) /* 0.25 */, Fix64.FromRaw(3650722201L) /* 0.85 */, Fix64.FromRaw(1503238553L) /* 0.35 */, Fix64.FromRaw(3221225472L) /* 0.75 */);
 
     [DrawGizmo(DrawModes)]
     private static void DrawBoxCollider(BoxCollider2D collider, GizmoType gizmoType)
@@ -38,18 +39,18 @@ internal static class Physics2DGizmoDrawers
         var radius = Fix64.Min(size.x, size.y) * Fix64.Half;
         var straightHalf = Fix64.Max(Fix64.Zero,
             (vertical ? size.y : size.x) * Fix64.Half - radius);
-        var points = new List<Vector2>(CapsuleArcSegments * 2 + 2);
-        for (var index = 0; index <= CapsuleArcSegments; index++)
+        var first = collider.transform.TransformPoint(
+            CapsulePoint(radius, straightHalf, CapsuleArcPoints[0], upperArc: true, vertical) + collider.offset);
+        var previous = first;
+        for (var index = 1; index < CapsuleArcPoints.Length; index++)
         {
-            var angle = Fix64.Pi * index / CapsuleArcSegments;
-            points.Add(CapsulePoint(radius, straightHalf, angle, upperArc: true, vertical));
+            var point = CapsulePoint(radius, straightHalf, CapsuleArcPoints[index],
+                upperArc: index <= CapsuleArcSegments, vertical);
+            var next = collider.transform.TransformPoint(point + collider.offset);
+            Gizmos.DrawLine(previous, next);
+            previous = next;
         }
-        for (var index = 0; index <= CapsuleArcSegments; index++)
-        {
-            var angle = Fix64.Pi + Fix64.Pi * index / CapsuleArcSegments;
-            points.Add(CapsulePoint(radius, straightHalf, angle, upperArc: false, vertical));
-        }
-        DrawLocalLoop(collider, points);
+        Gizmos.DrawLine(previous, first);
     }
 
     [DrawGizmo(DrawModes)]
@@ -94,21 +95,34 @@ internal static class Physics2DGizmoDrawers
         var from = joint.transform.TransformPoint(joint.anchor);
         var to = joint.connectedBody?.transform.TransformPoint(joint.connectedAnchor) ?? joint.connectedAnchor;
         Gizmos.DrawLine(from, to);
-        Gizmos.DrawWireSphere(from, Fix64.FromDecimal(0.05m));
-        Gizmos.DrawWireSphere(to, Fix64.FromDecimal(0.05m));
+        Gizmos.DrawWireSphere(from, Fix64.FromRaw(214748364L) /* 0.05 */);
+        Gizmos.DrawWireSphere(to, Fix64.FromRaw(214748364L) /* 0.05 */);
     }
 
     private static Vector2 CapsulePoint(
         Fix64 radius,
         Fix64 straightHalf,
-        Fix64 angle,
+        Vector2 unitPoint,
         bool upperArc,
         bool vertical)
     {
         var point = new Vector2(
-            Fix64.Cos(angle) * radius,
-            (upperArc ? straightHalf : -straightHalf) + Fix64.Sin(angle) * radius);
+            unitPoint.x * radius,
+            (upperArc ? straightHalf : -straightHalf) + unitPoint.y * radius);
         return vertical ? point : new Vector2(point.y, point.x);
+    }
+
+    private static Vector2[] CreateCapsuleArcPoints()
+    {
+        var points = new Vector2[CapsuleArcSegments * 2 + 2];
+        for (var index = 0; index <= CapsuleArcSegments; index++)
+        {
+            var angle = Fix64.Pi * index / CapsuleArcSegments;
+            points[index] = new(Fix64.Cos(angle), Fix64.Sin(angle));
+            angle = Fix64.Pi + Fix64.Pi * index / CapsuleArcSegments;
+            points[CapsuleArcSegments + 1 + index] = new(Fix64.Cos(angle), Fix64.Sin(angle));
+        }
+        return points;
     }
 
     private static void DrawLocalLoop(Collider2D collider, IReadOnlyList<Vector2> points)

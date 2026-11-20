@@ -30,7 +30,55 @@ public sealed partial class AnimatorController : ScriptableObject
     public void AddState(AnimatorState state)
     {
         ArgumentNullException.ThrowIfNull(state);
-        if (!IsValidStateName(state.name) || states.Any(item => item.name == state.name) || stateMachines.Any(item => item.name == state.name))
+        [global::BEngine.SkipLoopGuard]
+        bool Query2264(global::System.Collections.Generic.IEnumerable<global::BEngine.AnimatorState> querySource2264)
+        {
+            ArgumentNullException.ThrowIfNull(querySource2264, "source");
+            bool Matches2264(global::BEngine.AnimatorState item) => item.name == state.name;
+            global::System.ReadOnlySpan<global::BEngine.AnimatorState> queryValues2264;
+            if (querySource2264.GetType() == typeof(global::BEngine.AnimatorState[]))
+                queryValues2264 = (global::BEngine.AnimatorState[])querySource2264;
+            else if (querySource2264.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AnimatorState>))
+                queryValues2264 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AnimatorState>)querySource2264);
+            else
+            {
+                foreach (var item in querySource2264)
+                    if (Matches2264(item))
+                        return true;
+                return false;
+            }
+        
+            foreach (var item in queryValues2264)
+                if (Matches2264(item))
+                    return true;
+            return false;
+        }
+        
+        [global::BEngine.SkipLoopGuard]
+        bool Query2311(global::System.Collections.Generic.IEnumerable<global::BEngine.AnimatorStateMachine> querySource2311)
+        {
+            ArgumentNullException.ThrowIfNull(querySource2311, "source");
+            bool Matches2311(global::BEngine.AnimatorStateMachine item) => item.name == state.name;
+            global::System.ReadOnlySpan<global::BEngine.AnimatorStateMachine> queryValues2311;
+            if (querySource2311.GetType() == typeof(global::BEngine.AnimatorStateMachine[]))
+                queryValues2311 = (global::BEngine.AnimatorStateMachine[])querySource2311;
+            else if (querySource2311.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AnimatorStateMachine>))
+                queryValues2311 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AnimatorStateMachine>)querySource2311);
+            else
+            {
+                foreach (var item in querySource2311)
+                    if (Matches2311(item))
+                        return true;
+                return false;
+            }
+        
+            foreach (var item in queryValues2311)
+                if (Matches2311(item))
+                    return true;
+            return false;
+        }
+        
+        if (!IsValidStateName(state.name) || Query2264(states) || Query2311(stateMachines))
             throw new InvalidOperationException($"Animator state '{state.name}' requires a unique local name without '/'.");
         states.Add(state);
         if (string.IsNullOrWhiteSpace(defaultState)) defaultState = state.name;

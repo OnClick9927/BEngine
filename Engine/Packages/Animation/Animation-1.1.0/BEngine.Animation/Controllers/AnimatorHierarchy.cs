@@ -15,7 +15,32 @@ public sealed partial class AnimatorController
         var children = layer == 0 ? stateMachines : layers[layer - 1].stateMachines;
         AnimatorStateMachine? found = null;
         foreach (var name in path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries))
-        { found = children.FirstOrDefault(item => item.name == name); if (found is null) return null; children = found.stateMachines; }
+        { found = Matches1575();
+          [global::BEngine.SkipLoopGuard]
+          global::BEngine.AnimatorStateMachine? Matches1575()
+          {
+              var matchSource1575 = children;
+              ArgumentNullException.ThrowIfNull(matchSource1575, "source");
+              if (matchSource1575.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.AnimatorStateMachine>))
+              {
+                  foreach (var item in (global::System.Collections.Generic.IEnumerable<global::BEngine.AnimatorStateMachine>)matchSource1575)
+                  {
+                      if (item.name == name)
+                          return item;
+                  }
+          
+                  return default!;
+              }
+          
+              global::System.ReadOnlySpan<global::BEngine.AnimatorStateMachine> matchValues1575 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource1575);
+              foreach (var item in matchValues1575)
+              {
+                  if (item.name == name)
+                      return item;
+              }
+          
+              return default!;
+          } if (found is null) return null; children = found.stateMachines; }
         return found;
     }
     private AnimatorStateMachine RequireMachine(int layer, string path) => FindStateMachine(layer, path)

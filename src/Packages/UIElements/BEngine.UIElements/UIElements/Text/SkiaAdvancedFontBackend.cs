@@ -40,14 +40,14 @@ internal sealed class SkiaAdvancedFontBackend : IAdvancedFontBackend
     }
 
     public bool ContainsGlyphs(int index, string text) => _coverageFonts[index].ContainsGlyphs(text);
-    public uint[] GetGlyphs(int index, string text) => _coverageFonts[index].GetGlyphs(text).Select(value => (uint)value).ToArray();
+    public uint[] GetGlyphs(int index, string text) => (_coverageFonts[index].GetGlyphs(text) is { } projectionSource1656 ? projectionSource1656.Length == 0 ? global::System.Array.Empty<uint>() : global::System.Array.ConvertAll<ushort, uint>(projectionSource1656, value => (uint)value) : throw new global::System.ArgumentNullException("source"));
 
     public AdvancedGlyphRun Shape(int index, HarfBuzzSharp.Buffer buffer, float size)
     {
         using var font = CreateFont(index, size);
         var result = _shapers[index].Shape(buffer, font);
         return new(result.Codepoints, result.Clusters,
-            result.Points.Select(point => new AdvancedGlyphPoint(point.X, point.Y)).ToArray(), result.Width);
+            (result.Points is { } projectionSource2002 ? projectionSource2002.Length == 0 ? global::System.Array.Empty<global::BEngine.UIElements.AdvancedGlyphPoint>() : global::System.Array.ConvertAll<global::SkiaSharp.SKPoint, global::BEngine.UIElements.AdvancedGlyphPoint>(projectionSource2002, point => new AdvancedGlyphPoint(point.X, point.Y)) : throw new global::System.ArgumentNullException("source")), result.Width);
     }
 
     public AdvancedTextImage Render(IReadOnlyList<AdvancedGlyphDrawRun> runs, int width, int height,
@@ -61,8 +61,26 @@ internal sealed class SkiaAdvancedFontBackend : IAdvancedFontBackend
         {
             using var font = CreateFont(run.FontIndex, size);
             using var builder = new SKTextBlobBuilder();
-            var glyphs = run.Result.Codepoints.Select(value => checked((ushort)value)).ToArray();
-            var points = run.Result.Points.Select(point => new SKPoint(point.X + run.X, point.Y + run.Baseline)).ToArray();
+            var projectionSource2789 = run.Result.Codepoints;
+            ArgumentNullException.ThrowIfNull(projectionSource2789, "source");
+            var projectionResult2789 = projectionSource2789.Length == 0 ? global::System.Array.Empty<ushort>() : new ushort[projectionSource2789.Length];
+            for (var projectionIndex2789 = 0; projectionIndex2789 < projectionSource2789.Length; projectionIndex2789++)
+            {
+                var projectionItem2789 = projectionSource2789[projectionIndex2789];
+                projectionResult2789[projectionIndex2789] = checked((ushort)projectionItem2789);
+            }
+            
+            var glyphs = projectionResult2789;
+            var projectionSource2887 = run.Result.Points;
+            ArgumentNullException.ThrowIfNull(projectionSource2887, "source");
+            var projectionResult2887 = projectionSource2887.Length == 0 ? global::System.Array.Empty<global::SkiaSharp.SKPoint>() : new global::SkiaSharp.SKPoint[projectionSource2887.Length];
+            for (var projectionIndex2887 = 0; projectionIndex2887 < projectionSource2887.Length; projectionIndex2887++)
+            {
+                var projectionItem2887 = projectionSource2887[projectionIndex2887];
+                projectionResult2887[projectionIndex2887] = new SKPoint(projectionItem2887.X + run.X, projectionItem2887.Y + run.Baseline);
+            }
+            
+            var points = projectionResult2887;
             builder.AddPositionedRun(glyphs, font, points);
             using var blob = builder.Build();
             canvas.DrawText(blob, 0, 0, paint);

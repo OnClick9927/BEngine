@@ -1,0 +1,11 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: AOT
+rootNamespace: AOT
+references: [BEngine.Application, BEngine.UIElements, BEngine.Player]
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: false
+editorOnly: false
+allowUnsafeCode: false

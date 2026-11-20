@@ -21,15 +21,29 @@ runtime:
   assembly: BEngine.Video
   rootNamespace: BEngine.Video
   dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  - packageId: com.bengine.graphics
+    target: runtime
   - packageId: com.bengine.audio
     target: runtime
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
 editor:
   assembly: BEngine.Video.Editor
   rootNamespace: BEngine.Video.Editor
   dependencies:
+  - packageId: com.bengine.imgui
+    target: editor
+  - packageId: com.bengine.graphics
+    target: runtime
   - packageId: com.bengine.video
     target: runtime
   - packageId: com.bengine.audio
     target: runtime
   - packageId: com.bengine.audio
     target: editor
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

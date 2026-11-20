@@ -6,7 +6,13 @@
     <BEnginePackageExportOwner>true</BEnginePackageExportOwner>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../Core/BEngine.Editor/BEngine.Editor.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
     <ProjectReference Include="../BEngine.InputActions/BEngine.InputActions.csproj" />
+  </ItemGroup>
+  <ItemGroup></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../IMGUI/BEngine.IMGUI.Editor/BEngine.IMGUI.Editor.csproj" /></ItemGroup>
+  <ItemGroup>
+    
   </ItemGroup>
 </Project>

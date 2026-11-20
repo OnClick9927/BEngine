@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>GeneratedArtifactConsumer</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core.Editor.dll" />
+
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" />
+    
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection.dll" />
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
+  </ItemGroup>
+</Project>

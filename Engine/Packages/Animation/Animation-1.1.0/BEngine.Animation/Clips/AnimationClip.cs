@@ -28,8 +28,32 @@ public sealed class AnimationClip : ScriptableObject
     {
         ArgumentNullException.ThrowIfNull(type);
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
-        var binding = bindings.FirstOrDefault(item => item.relativePath == relativePath &&
-            item.componentType == type.FullName && item.propertyName == propertyName);
+        var binding = Matches1181();
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.AnimationBinding? Matches1181()
+        {
+            var matchSource1181 = bindings;
+            ArgumentNullException.ThrowIfNull(matchSource1181, "source");
+            if (matchSource1181.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.AnimationBinding>))
+            {
+                foreach (var item in (global::System.Collections.Generic.IEnumerable<global::BEngine.AnimationBinding>)matchSource1181)
+                {
+                    if (item.relativePath == relativePath && item.componentType == type.FullName && item.propertyName == propertyName)
+                        return item;
+                }
+        
+                return default!;
+            }
+        
+            global::System.ReadOnlySpan<global::BEngine.AnimationBinding> matchValues1181 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource1181);
+            foreach (var item in matchValues1181)
+            {
+                if (item.relativePath == relativePath && item.componentType == type.FullName && item.propertyName == propertyName)
+                    return item;
+            }
+        
+            return default!;
+        }
         if (curve is null)
         {
             if (binding is not null) bindings.Remove(binding);
@@ -56,8 +80,32 @@ public sealed class AnimationClip : ScriptableObject
         if (RuntimeTypeCache.TryFindInstanceMember(type, propertyName, out var member))
         {
             var valueType = RuntimeTypeCache.GetMemberAccessor(member).ValueType;
-            if (!typeof(BObject).IsAssignableFrom(valueType) || keys.Any(key => key.value is not null && !valueType.IsInstanceOfType(key.value)))
+            if (!typeof(BObject).IsAssignableFrom(valueType) || Query2799())
                 throw new ArgumentException("Object key type does not match the animated property.", nameof(keys));
+            bool Query2799()
+            {
+                var querySource2799 = keys;
+                ArgumentNullException.ThrowIfNull(querySource2799, "source");
+                if (querySource2799.GetType() == typeof(global::BEngine.ObjectReferenceKeyframe[]) || querySource2799.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.ObjectReferenceKeyframe>))
+                {
+                    global::System.ReadOnlySpan<global::BEngine.ObjectReferenceKeyframe> queryValues2799 = querySource2799.GetType() == typeof(global::BEngine.ObjectReferenceKeyframe[]) ? (global::BEngine.ObjectReferenceKeyframe[])(object)querySource2799 : global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.ObjectReferenceKeyframe>)(object)querySource2799);
+                    foreach (var key in queryValues2799)
+                    {
+                        if (key.value is not null && !valueType.IsInstanceOfType(key.value))
+                            return true;
+                    }
+                }
+                else
+                {
+                    foreach (var key in querySource2799)
+                    {
+                        if (key.value is not null && !valueType.IsInstanceOfType(key.value))
+                            return true;
+                    }
+                }
+            
+                return false;
+            }
             binding.objectType = valueType.FullName!;
         }
         bindings.RemoveAll(item => item.relativePath == relativePath && item.componentType == type.FullName && item.propertyName == propertyName);

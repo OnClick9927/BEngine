@@ -1,0 +1,5 @@
+tests/**
+Build.ps1
+.vscodeignore
+**/*.vsix
+**/node_modules/**

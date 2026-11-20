@@ -159,12 +159,12 @@ public sealed partial class UIElementsRenderer : IDisposable
 
     private void RenderCore(CommandCursor commands, int width, int height, GraphicsRect? viewport)
     {
-        using var diagnosticRender = SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiRender);
+        using var diagnosticRender = RenderDiagnostics.Measure(UIRenderDiagnosticPhases.Render);
         width = Math.Max(1, width);
         height = Math.Max(1, height);
         TrimTextureCache();
         BatchBuildResult build;
-        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiBuildBatches))
+        using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.BuildBatches))
         { build = BuildBatches(commands, width, height); }
         TrimSdfGeometry();
         if (build.Batches.Count == 0)
@@ -180,11 +180,11 @@ public sealed partial class UIElementsRenderer : IDisposable
         _device.SetDepthState(GraphicsDepthState.Disabled);
         _device.SetBlendMode(GraphicsBlendMode.AlphaBlend);
         _device.SetRasterizerState(GraphicsRasterizerState.Default);
-        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiWebSdfClip))
+        using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.WebSdfClip))
         { PrepareWebClipGeometry(build.Batches, width, height, targetViewport); }
-        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiWebSolidClip))
+        using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.WebSolidClip))
         { PrepareWebSolidClipGeometry(build.Batches, width, height, targetViewport); }
-        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiUpload))
+        using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.Upload))
         {
             UploadFrameGeometry(build.Batches);
             UploadWebClipGeometry();
@@ -194,7 +194,7 @@ public sealed partial class UIElementsRenderer : IDisposable
         var drawCalls = 0;
         var opaqueSolidDraws = 0;
         var vertexCount = 0;
-        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiDraw))
+        using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.Draw))
         {
         try
         {
@@ -573,11 +573,12 @@ public sealed partial class UIElementsRenderer : IDisposable
         var glyphHeight = cell * 7;
         var inset = Math.Min(6, fontSize / 3);
         var x = (float)rect.X + inset;
-        var lineCount = text.Count(character => character == '\n') + 1;
+        var lineCount = global::System.MemoryExtensions.Count((text ?? throw new ArgumentNullException("source")).AsSpan(), '\n') + 1;
         var textHeight = lineCount * glyphHeight + (lineCount - 1) * cell;
         var y = (float)rect.Y + Math.Max(0, ((float)rect.Height - textHeight) * 0.5f);
-        foreach (var character in text.Replace("\r", string.Empty, StringComparison.Ordinal))
+        foreach (var character in text)
         {
+            if (character == '\r') continue;
             if (character == '\n')
             {
                 x = (float)rect.X + inset;
@@ -650,7 +651,7 @@ public sealed partial class UIElementsRenderer : IDisposable
         if (_resourceResolver is FileUIRenderResourceResolver fileResolver)
         {
             bool resolved;
-            using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageResolve))
+            using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.ImageResolve))
             { resolved = fileResolver.TryResolveTextureData(source, out imported, out data); }
             if (!resolved) return false;
             importedResolved = imported is not null;
@@ -659,27 +660,27 @@ public sealed partial class UIElementsRenderer : IDisposable
         {
             if (_resourceResolver is IUIImportedTextureResolver importedResolver)
             {
-                using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageResolve))
+                using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.ImageResolve))
                 { importedResolved = importedResolver.TryResolveImportedTexture(source, out imported); }
             }
             bool rasterized;
             if (!importedResolved)
             {
-                using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageResolve))
+                using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.ImageResolve))
                 { rasterized = _resourceResolver.TryResolveTexture(source, out data); }
                 if (!rasterized) return false;
             }
         }
         if (importedResolved)
         {
-            using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageUpload))
+            using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.ImageUpload))
             {
                 texture = TextureUpload.Create(_device, $"BEngine.UIElements.{source}", imported!);
                 _textures.Add(source, texture, texture.Description.DataByteSize);
             }
             return true;
         }
-        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiImageUpload))
+        using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.ImageUpload))
         {
             data.Validate();
             texture = _device.CreateTexture2D(
@@ -711,11 +712,11 @@ public sealed partial class UIElementsRenderer : IDisposable
         var started = _textRasterProbe is null ? 0 : System.Diagnostics.Stopwatch.GetTimestamp();
         RasterizedImage data;
         bool resolved;
-        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiTextRaster))
+        using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.TextRaster))
         { resolved = textResolver.TryResolveText(command.Content, width, height, command.FontSize, wordWrap, out data); }
         if (!resolved) return false;
         var rasterized = _textRasterProbe is null ? 0 : System.Diagnostics.Stopwatch.GetTimestamp();
-        using (SceneRenderDiagnostics.Measure(SceneRenderDiagnosticPhase.UiTextUpload))
+        using (RenderDiagnostics.Measure(UIRenderDiagnosticPhases.TextUpload))
         {
             data.Validate();
             texture = _device.CreateTexture2D(

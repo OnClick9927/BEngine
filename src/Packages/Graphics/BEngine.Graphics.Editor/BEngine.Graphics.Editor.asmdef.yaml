@@ -1,0 +1,14 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Graphics.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.Graphics
+- BEngine.Core.Editor
+- BEngine.Core
+- BEngine.Platform.Contracts
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

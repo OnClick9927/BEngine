@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+    <DefineConstants Condition="'$(SceneChecks)' == 'true'">$(DefineConstants);SCENE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Compile Remove="Benchmark/**/*.cs" />
+
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Graphics.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.UIElements.dll" />
+    
+    <Reference Include="$(EngineBinaries)/BEngine.TextEditing.dll" />
+    
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Rendering2D.dll" Condition="'$(SceneChecks)' == 'true'" />
+  </ItemGroup>
+</Project>

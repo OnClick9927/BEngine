@@ -1,5 +1,6 @@
 using BEngine.Editor;
 using BEngine.Platform;
+using System.Runtime.CompilerServices;
 
 namespace BEngine.Video.Editor;
 
@@ -7,8 +8,9 @@ internal static class VideoEditorRegistration
 {
     private const string Icon = "Icons/Assets/AssetVideo.png";
 
-    [InitializeOnLoadMethod]
-    private static void Register()
+    [ModuleInitializer, InitializeOnLoadMethod]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2255", Justification = "Package asset importer registration.")]
+    internal static void Register()
     {
         foreach (var extension in new[] { ".mp4", ".m4v", ".mov", ".webm", ".avi", ".mkv", ".bvideo" })
             AssetTypeRegistry.Register<VideoClip>(extension, nameof(VideoClip),

@@ -9,8 +9,31 @@ internal static class LauncherProjectEngineResolver
     {
         BPackageVersion.Validate(engineVersion);
         ArgumentNullException.ThrowIfNull(engines);
-        var engine = engines.FirstOrDefault(candidate =>
-            string.Equals(candidate.Version, engineVersion, StringComparison.Ordinal));
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.Launcher.LauncherEngineInfo? Query378(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherEngineInfo> querySource378)
+        {
+            ArgumentNullException.ThrowIfNull(querySource378, "source");
+            bool Matches378(global::BEngine.Launcher.LauncherEngineInfo candidate) => string.Equals(candidate.Version, engineVersion, StringComparison.Ordinal);
+            global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherEngineInfo> queryValues378;
+            if (querySource378.GetType() == typeof(global::BEngine.Launcher.LauncherEngineInfo[]))
+                queryValues378 = (global::BEngine.Launcher.LauncherEngineInfo[])querySource378;
+            else if (querySource378.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>))
+                queryValues378 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>)querySource378);
+            else
+            {
+                foreach (var candidate in querySource378)
+                    if (Matches378(candidate))
+                        return candidate;
+                return default!;
+            }
+        
+            foreach (var candidate in queryValues378)
+                if (Matches378(candidate))
+                    return candidate;
+            return default!;
+        }
+        
+        var engine = Query378(engines);
         if (engine is not null)
         {
             var editor = Path.GetFullPath(Path.Combine(engine.DirectoryPath, "BEngine.Editor.exe"));

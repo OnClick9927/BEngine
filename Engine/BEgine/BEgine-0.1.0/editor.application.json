@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "assembly": "BEngine.EditorWorkbench.Host.dll",
+  "type": "BEngine.Workbench.EditorApplicationEntry",
+  "bootstrapAssemblies": [
+    "BEngine.Application.Editor.dll"
+  ]
+}

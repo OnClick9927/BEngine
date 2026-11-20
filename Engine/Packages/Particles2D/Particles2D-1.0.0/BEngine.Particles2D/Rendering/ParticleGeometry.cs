@@ -10,7 +10,7 @@ public sealed partial class ParticleSystem2D
         CollectTrails(sink);
         var camera = sink.Camera;
         var visual = ResolveSpriteUnchecked();
-        transform.GetWorldPoseUnchecked(
+        transform.GetWorldPose(
             out var systemPosition, out var systemRotation, out var systemScale);
         var sizeScale = simulationSpace == ParticleSimulationSpace.World ? Vector2.one : systemScale;
         // Keep List<T>'s version checks without boxing its struct enumerator

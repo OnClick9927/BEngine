@@ -13,8 +13,8 @@ public readonly struct Keyframe : IEquatable<Keyframe>
     public AnimationTangentMode inMode { get; init; }
     public AnimationTangentMode outMode { get; init; }
     public WeightedMode weightedMode { get; init; }
-    public Fix64 inWeight { get; init; } = Fix64.One / 3;
-    public Fix64 outWeight { get; init; } = Fix64.One / 3;
+    public Fix64 inWeight { get; init; } = Fix64.FromRaw(1431655765L) /* One / 3 */;
+    public Fix64 outWeight { get; init; } = Fix64.FromRaw(1431655765L) /* One / 3 */;
     public Keyframe(Fix64 time, Fix64 value) { this.time = time; this.value = value; inTangent = 0; outTangent = 0; }
     public Keyframe(Fix64 time, Fix64 value, Fix64 inTangent, Fix64 outTangent)
     { this.time = time; this.value = value; this.inTangent = inTangent; this.outTangent = outTangent; }

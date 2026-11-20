@@ -45,6 +45,8 @@ await using var config = await bundles.LoadTextAsync("Assets/Data/config.json", 
         <p>按包更新从最新完整远程 catalog 取得目标包，递归纳入 bundle 依赖所属的完整包。下载与激活只处理这个前向闭包；新的本地扁平 catalog 保留未选择包的 bundle、资产和内容版本，不会用整个远程 catalog 替换它们。每个 bundle 的 <code>SourceVersion</code> 保留实际不可变发布来源，因此字体仍在 v1 而配置已在 v2 时，字体修复仍从 v1 获取。服务器需保留客户端仍可能使用的旧不可变发布目录。涉及全局 address 冲突、bundle 移动或引用契约协同变化时，应显式选择相关包一起更新；不会自动反向更新所有使用方。</p>
         <p>更新计划是防御性快照，并绑定检查时的 active catalog；另一次更新、回滚或安装改变了基线后，旧包计划会被拒绝，需要重新检查。对象先完成大小与 SHA-256 校验，再原子提交 catalog 和 active 指针，沿用全局 pending 提交与 <code>RollbackAsync</code> 机制。相同内容的包不会因为远端发布号改变而切换版本。删除包内部分资产可正常发布；当前构建器不生成空包，若需要将整个包移除，应使用完整发布更新。</p>
         <p><code>RepairPackageAsync</code> 只修复当前包及其前向依赖闭包中的缺失、截断或 SHA-256 不符对象，保持 catalog 和 active 指针。有效内置内容可在无远程源时修复同 hash 的损坏缓存：通过临时文件复制、回读校验、原子替换完成，网络下载计数为 0。若无法从内置内容修复，则要求持久缓存与可用的远程来源。需要替换的损坏对象仍有加载句柄时会拒绝修复，应先释放句柄；有效旧句柄可继续持有不可变对象。维护期间拒绝新的加载，状态更改由同一状态锁串行执行。</p>
+        <h3>必需内容范围</h3>
+        <p><code>RequiredBundleNames</code> 为 null 时选择全部 Bundle；显式列表选择指定根及其依赖。可选的 <code>RequiredBundlePredicate</code> 从当前 catalog 的描述中追加必需根，闭包会自动包含依赖。只检查描述，不修改它。AssetBundles 不根据固定业务 Bundle 名隐式添加必需内容，应用宿主可提供自己的选择策略。</p>
         <h3>直接从 StreamingAssets 加载（全平台）</h3>
         <p>单机项目可在 AssetBundle Settings 中选择 <code>Load Mode: StreamingAssets</code>，或在 <code>ProjectSettings/AssetBundles.yaml</code> 设置 <code>loadMode: StreamingAssets</code>、<code>builtInDirectory: StreamingAssets/AssetBundles</code>。将标准发布内容放入 <code>Assets/StreamingAssets/AssetBundles/&lt;packageName&gt;</code>，关闭 Remote Base URL 和 Startup Update。Player 与 AOT 启动阶段均直接使用该内置版本，不调用安装器，不在 <code>Application.persistentDataPath</code> 创建 AB 副本、objects、staging 或 active 指针；存档仍可使用持久目录。</p>
         <pre><code>using var bundles = new AssetBundleManager(

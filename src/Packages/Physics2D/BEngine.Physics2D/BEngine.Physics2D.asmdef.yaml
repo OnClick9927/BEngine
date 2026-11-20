@@ -2,7 +2,9 @@ format: BEngine.AssemblyDefinition
 version: 1
 name: BEngine.Physics2D
 rootNamespace: BEngine.Physics2D
-references: []
+references:
+- BEngine.Core
+- BEngine.Platform.Contracts
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

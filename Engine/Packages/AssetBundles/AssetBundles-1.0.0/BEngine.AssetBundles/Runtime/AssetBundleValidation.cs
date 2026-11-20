@@ -368,8 +368,31 @@ internal static class AssetBundleValidation
         extension = extension?.Trim() ?? string.Empty;
         if (!extension.StartsWith('.'))
             throw new ArgumentException("A payload file extension is required.", nameof(extension));
-        if (extension.Length < 2 || extension.Skip(1).Any(character => !char.IsAsciiLetterOrDigit(character)))
+        if (extension.Length < 2 || Query23273(extension.Skip(1)))
             throw new ArgumentException($"Invalid payload file extension '{extension}'.", nameof(extension));
+        [global::BEngine.SkipLoopGuard]
+        bool Query23273(global::System.Collections.Generic.IEnumerable<char> querySource23273)
+        {
+            ArgumentNullException.ThrowIfNull(querySource23273, "source");
+            bool Matches23273(char character) => !char.IsAsciiLetterOrDigit(character);
+            global::System.ReadOnlySpan<char> queryValues23273;
+            if (querySource23273.GetType() == typeof(char[]))
+                queryValues23273 = (char[])querySource23273;
+            else if (querySource23273.GetType() == typeof(global::System.Collections.Generic.List<char>))
+                queryValues23273 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<char>)querySource23273);
+            else
+            {
+                foreach (var character in querySource23273)
+                    if (Matches23273(character))
+                        return true;
+                return false;
+            }
+        
+            foreach (var character in queryValues23273)
+                if (Matches23273(character))
+                    return true;
+            return false;
+        }
         return extension.ToLowerInvariant();
     }
 

@@ -1,0 +1,17 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.Application
+allowUnsafeCode: true
+rootNamespace: BEngine.App
+references:
+- BEngine.Core
+- BEngine.Player
+- BEngine.Platform.Contracts
+- BEngine.AssetBundles
+- BEngine.UIElements
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: false
+

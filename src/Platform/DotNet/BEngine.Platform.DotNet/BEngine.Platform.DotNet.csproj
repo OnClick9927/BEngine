@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><BEnginePackageExportOwner>false</BEnginePackageExportOwner><BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <RootNamespace>BEngine.Platform.DotNet</RootNamespace>
+    <AssemblyName>BEngine.Platform.DotNet</AssemblyName>
+    <BEngineRuntimeAssembly>false</BEngineRuntimeAssembly>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BEngineCoreInternalAccess>true</BEngineCoreInternalAccess>
+    <BEnginePackageInternalAccess>false</BEnginePackageInternalAccess>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../../../Core/BEngine.Player/BEngine.Player.csproj" /></ItemGroup>
+</Project>

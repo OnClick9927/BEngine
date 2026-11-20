@@ -1,0 +1,9 @@
+<Project>
+  <!-- Test fixture identities are build contracts, independent of Core and installed packages. -->
+  <ItemGroup>
+    <BEngineInternalAccessTestAssembly Include="BEngine.Tests;BEngine.UIElements.Editor.Tests" />
+    <BEngineInternalAccessTestAssembly Include="BEngine.ExampleTests.GpuImGui;BEngine.ExampleTests.TextureAtlas;BEngine.ExampleTests.ProjectAssetWorkflow;BEngine.ExampleTests.DocumentArchitecture;BEngine.ExampleTests.PrefabWorkflow;BEngine.ExampleTests.Physics2DIsolation;BEngine.ExampleTests.SceneRuntimeArchitecture;BEngine.ExampleTests.HierarchyMultiScene" />
+    <BEngineInternalAccessTestAssembly Include="BEngine.ExampleTests.AssetBundleHotUpdate;BEngine.ExampleTests.HotUpdateArchitecture;BEngine.ExampleTests.EditorKeyboardCommands;BEngine.ExampleTests.EditorSettingsWindows;BEngine.ExampleTests.EditorHotUpdateDomain;BEngine.ExampleTests.FrameDebugger;BEngine.ExampleTests.DependencyInjectionArchitecture" />
+    <BEngineInternalAccessTestAssembly Include="BEngine.ExampleTests.VulkanRendering;BEngine.ExampleTests.GpuDockWindowStates;BEngine.ExampleTests.EditorLayoutPersistence;BEngine.ExampleTests.ProjectPackageTree;BEngine.ExampleTests.TreeViewDragRename;BEngine.ExampleTests.ProjectPackageCache;BEngine.ExampleTests.ThreadingArchitecture;BEngine.ExampleTests.GameViewResolution;BEngine.ExampleTests.PackageExamples;BEngine.ExampleTests.EditorProgress" />
+  </ItemGroup>
+</Project>

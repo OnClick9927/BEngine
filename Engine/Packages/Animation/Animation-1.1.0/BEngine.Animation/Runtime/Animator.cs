@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Buffers;
 
 namespace BEngine;
 
@@ -511,13 +512,14 @@ public sealed partial class Animator : Behaviour
     private void ConsumeTriggers(AnimatorController controller, AnimatorTransition transition)
     {
         foreach (var condition in transition.conditions)
-            if (controller.parameters.Any(parameter => parameter.name == condition.parameter && parameter.type == AnimatorControllerParameterType.Trigger))
-                _triggers.Remove(condition.parameter);
+            foreach (var parameter in controller.parameters)
+                if (parameter.name == condition.parameter && parameter.type == AnimatorControllerParameterType.Trigger)
+                { _triggers.Remove(condition.parameter); break; }
     }
 
     private bool Evaluate(AnimatorCondition condition)
     {
-        if (_effectiveController?.parameters.FirstOrDefault(parameter => parameter.name == condition.parameter)?.type == AnimatorControllerParameterType.Trigger)
+        if (IsTrigger(condition.parameter))
             return condition.mode == AnimatorConditionMode.IfNot ? !_triggers.Contains(condition.parameter) : _triggers.Contains(condition.parameter);
         if (_bools.TryGetValue(condition.parameter, out var boolean))
             return condition.mode == AnimatorConditionMode.If ? boolean : condition.mode == AnimatorConditionMode.IfNot && !boolean;
@@ -532,42 +534,87 @@ public sealed partial class Animator : Behaviour
         };
     }
 
+    private bool IsTrigger(string name)
+    {
+        if (_effectiveController is null) return false;
+        foreach (var parameter in _effectiveController.parameters)
+            if (parameter.name == name) return parameter.type == AnimatorControllerParameterType.Trigger;
+        return false;
+    }
+
     private void DispatchEvents(AnimationClip clip, Fix64 previous, Fix64 current, bool loop,
         bool includeStart, int playVersion)
     {
         if (clip.events.Count == 0) return;
         var reverse = current < previous;
-        var events = reverse
-            ? clip.events.OrderBy(static item => -item.time).ToArray()
-            : clip.events.OrderBy(static item => item.time).ToArray();
-        var firstCycle = loop && clip.length > 0 ? Mathf.FloorToInt(previous / clip.length) : 0;
-        var lastCycle = loop && clip.length > 0 ? Mathf.FloorToInt(current / clip.length) : 0;
-        for (var cycle = firstCycle; ; cycle += reverse ? -1 : 1)
+        var eventCount = clip.events.Count;
+        // Keep a stable snapshot across callbacks and nested ticks. Unusually
+        // large authored event tables do not become long-lived pool capacity.
+        var pooled = eventCount <= 1024;
+        var events = pooled ? ArrayPool<OrderedEvent>.Shared.Rent(eventCount) : new OrderedEvent[eventCount];
+        try
         {
-            foreach (var animationEvent in events)
+            var ordered = true;
+            for (var index = 0; index < eventCount; index++)
             {
-                var eventTime = animationEvent.time + cycle * clip.length;
-                var inRange = reverse
-                    ? eventTime < previous && eventTime >= current
-                    : (eventTime > previous || includeStart && eventTime == previous) && eventTime <= current;
-                if (!inRange) continue;
-                foreach (var component in gameObject.components.ToArray())
-                {
-                    if (_playVersion != playVersion) return;
-                    if (component is not MonoBehaviour { enabled: true } behaviour) continue;
-                    try
-                    {
-                        if (!RuntimeTypeCache.TryInvokeMessage(behaviour, animationEvent.functionName, animationEvent))
-                            RuntimeTypeCache.TryInvokeMessage(behaviour, animationEvent.functionName);
-                    }
-                    catch (Exception exception)
-                    {
-                        Debug.LogError($"{behaviour.GetType().FullName}.{animationEvent.functionName} failed: " +
-                                       exception.Message);
-                    }
-                }
+                var item = clip.events[index];
+                // OrderBy does not evaluate a sort key for a single item.
+                // Preserve that detail for the checked negation of MinValue.
+                var key = eventCount == 1 ? Fix64.Zero : reverse ? -item.time : item.time;
+                events[index] = new(item, key, index);
+                if (index > 0 && events[index - 1].Order > key) ordered = false;
             }
-            if (cycle == lastCycle) break;
+            if (!ordered) Array.Sort(events, 0, eventCount);
+            var length = clip.length;
+            var lengthDirty = false;
+            var firstCycle = loop && length > 0 ? Mathf.FloorToInt(previous / length) : 0;
+            var lastCycle = loop && length > 0 ? Mathf.FloorToInt(current / length) : 0;
+            for (var cycle = firstCycle; ; cycle += reverse ? -1 : 1)
+            {
+                for (var index = 0; index < eventCount; index++)
+                {
+                    var animationEvent = events[index].Event;
+                    // The length is pure between callbacks, but a callback can edit
+                    // curves/events. Observe that edit before the next event, just
+                    // as the original per-event length evaluation did.
+                    if (lengthDirty) { length = clip.length; lengthDirty = false; }
+                    var eventTime = animationEvent.time + cycle * length;
+                    var inRange = reverse
+                        ? eventTime < previous && eventTime >= current
+                        : (eventTime > previous || includeStart && eventTime == previous) && eventTime <= current;
+                    if (!inRange) continue;
+                    foreach (var component in gameObject.components.ToArray())
+                    {
+                        if (_playVersion != playVersion) return;
+                        if (component is not MonoBehaviour { enabled: true } behaviour) continue;
+                        try
+                        {
+                            if (!RuntimeTypeCache.TryInvokeMessage(behaviour, animationEvent.functionName, animationEvent))
+                                RuntimeTypeCache.TryInvokeMessage(behaviour, animationEvent.functionName);
+                        }
+                        catch (Exception exception)
+                        {
+                            Debug.LogError($"{behaviour.GetType().FullName}.{animationEvent.functionName} failed: " +
+                                           exception.Message);
+                        }
+                    }
+                    lengthDirty = true;
+                }
+                if (cycle == lastCycle) break;
+            }
+        }
+        finally
+        {
+            if (pooled) ArrayPool<OrderedEvent>.Shared.Return(events, clearArray: true);
+        }
+    }
+
+    private readonly record struct OrderedEvent(AnimationEvent Event, Fix64 Order, int Index) : IComparable<OrderedEvent>
+    {
+        public int CompareTo(OrderedEvent other)
+        {
+            var order = Order.CompareTo(other.Order);
+            return order != 0 ? order : Index.CompareTo(other.Index);
         }
     }
 

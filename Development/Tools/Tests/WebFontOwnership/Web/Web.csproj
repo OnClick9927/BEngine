@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><AssemblyName>BEngine.Tests</AssemblyName>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+    <WasmBuildNative>true</WasmBuildNative><PublishTrimmed>true</PublishTrimmed>
+    <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+    <WasmMainHTMLPath>index.html</WasmMainHTMLPath><WasmMainJSPath>main.js</WasmMainJSPath>
+    <DefineConstants>$(DefineConstants);BENGINE_WEB_FONTS</DefineConstants>
+    <NoWarn>$(NoWarn);IL2026;IL2070;IL2072;IL2057</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <ProjectReference Include="../UIProfile/UIProfile.csproj" />
+    <Compile Include="$(LegacyBackend)" Link="LegacyWebAdvancedFontBackend.cs" />
+    <Compile Include="../../../../../src/Platform/Player/Hosts/Shared/PlayerTextHost.cs" Link="PlayerTextHost.cs" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll;$(EngineBinaries)/BEngine.Platform.Contracts.dll;$(EngineBinaries)/BEngine.Platform.DotNet.dll;$(EngineBinaries)/BEngine.Web.dll;$(EngineBinaries)/BEngine.Player.dll;$(EngineBinaries)/YamlDotNet.dll;$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+    
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll;$(EngineBinaries)/BEngine.Graphics.dll;$(EngineBinaries)/BEngine.TextEditing.dll" />
+    <PackageReference Include="HarfBuzzSharp" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly" />
+    <NativeFileReference Include="../../../../../src/Platform/Native/Web/Font/libBEngineWebFont.a" />
+    <Content Include="index.html;main.js" Link="wwwroot/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(ProbeFonts)/*.ttf" Link="wwwroot/fonts/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../../../../src/Platform/Resources/Web/platform.js;../../../../../src/Platform/Resources/Web/text.js;../../../../../src/Platform/Resources/Web/video.js" Link="wwwroot/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

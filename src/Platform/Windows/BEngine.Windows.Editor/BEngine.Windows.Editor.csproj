@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup><BEngineBootstrapAssembly>true</BEngineBootstrapAssembly><TargetFramework>net10.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><AllowUnsafeBlocks>true</AllowUnsafeBlocks><NoWarn>$(NoWarn);CA2255</NoWarn><BEngineCoreInternalAccess>true</BEngineCoreInternalAccess><BEnginePackageInternalAccess>false</BEnginePackageInternalAccess></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../DotNet/BEngine.Platform.DotNet.Editor/BEngine.Platform.DotNet.Editor.csproj" />
+    <ProjectReference Include="../BEngine.Windows/BEngine.Windows.csproj" />
+    <PackageReference Include="Silk.NET.Windowing" /><PackageReference Include="Silk.NET.Input" /><PackageReference Include="Silk.NET.OpenGL" /><PackageReference Include="Silk.NET.Shaderc" /><PackageReference Include="Veldrid" /><PackageReference Include="Veldrid.SPIRV" />
+  </ItemGroup>
+  <ItemGroup><EmbeddedResource Include="../../../../Development/Shared/Branding/BEngine.ico" LogicalName="BEngine.Editor.BEngine.ico" /></ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../../../Development/Shared/Branding/BEngine.Dark.ico" LogicalName="BEngine.Editor.BEngine.Dark.ico" />
+    <Compile Include="../../../../Development/Shared/WindowsBrandingIcons.cs" Link="Shared/WindowsBrandingIcons.cs" />
+  </ItemGroup>
+</Project>

@@ -10,5 +10,9 @@ internal static class AudioPackageRegistration
         RuntimeAssetCodecRegistry.RegisterPrepared<AudioClip, AudioClip.PreparedAudio>(
             AudioClip.FromAudio, AudioClip.PrepareAudio, AudioClip.CommitAudio);
         Application.quitting += AudioOutput.Shutdown;
+        RuntimeAssemblyCleanup.Register(static assembly =>
+        {
+            if (assembly == typeof(AudioOutput).Assembly) AudioOutput.Shutdown();
+        });
     }
 }

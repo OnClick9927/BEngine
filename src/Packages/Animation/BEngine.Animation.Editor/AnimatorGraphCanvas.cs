@@ -171,7 +171,9 @@ public sealed partial class AnimatorWindow
             if (path is null) return NoNode;
             var prefix = model.MachinePath.Length == 0 ? "" : model.MachinePath + "/";
             if (!path.StartsWith(prefix, StringComparison.Ordinal)) return ExitNode;
-            var local = path[prefix.Length..].Split('/')[0];
+            var localPath = path.AsSpan(prefix.Length);
+            var separator = localPath.IndexOf('/');
+            var local = (separator < 0 ? localPath : localPath[..separator]).ToString();
             var stateIndex = states.FindIndex(state => state.name == local);
             if (stateIndex >= 0) return stateIndex;
             var machineIndex = machines.FindIndex(machine => machine.name == local);
@@ -240,8 +242,30 @@ public sealed partial class AnimatorWindow
         else
         {
             model.TransitionIndex = -1;
-            var special = selected.Select(id => int.TryParse(id, out var value) ? value : NoNode)
-                .FirstOrDefault(value => value < 0 && value != NoNode);
+            var special = Query13180(selected.Select(id => int.TryParse(id, out var value) ? value : NoNode));
+            [global::BEngine.SkipLoopGuard]
+            int Query13180(global::System.Collections.Generic.IEnumerable<int> querySource13180)
+            {
+                ArgumentNullException.ThrowIfNull(querySource13180, "source");
+                bool Matches13180(int value) => value < 0 && value != NoNode;
+                global::System.ReadOnlySpan<int> queryValues13180;
+                if (querySource13180.GetType() == typeof(int[]))
+                    queryValues13180 = (int[])querySource13180;
+                else if (querySource13180.GetType() == typeof(global::System.Collections.Generic.List<int>))
+                    queryValues13180 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<int>)querySource13180);
+                else
+                {
+                    foreach (var value in querySource13180)
+                        if (Matches13180(value))
+                            return value;
+                    return default!;
+                }
+            
+                foreach (var value in queryValues13180)
+                    if (Matches13180(value))
+                        return value;
+                return default!;
+            }
             model.StateIndex = special != 0 ? special : model.SelectedStates.FirstOrDefault(-1);
         }
         Repaint();

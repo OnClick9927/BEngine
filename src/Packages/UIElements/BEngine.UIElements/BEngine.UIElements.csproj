@@ -1,9 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><AssemblyName>BEngine.UIElements</AssemblyName><RootNamespace>BEngine</RootNamespace><BEngineRuntimeAssembly>true</BEngineRuntimeAssembly><NoWarn>$(NoWarn);CA2255</NoWarn></PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../Core/BEngine/BEngine.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    
     <PackageReference Include="SkiaSharp" />
     <PackageReference Include="SkiaSharp.HarfBuzz" />
     <EmbeddedResource Include="../Resources/UIElements/Default.bcss" LogicalName="BEngine.UIElements.Default.bcss" />
   </ItemGroup>
+  <ItemGroup><ProjectReference Include="../../Graphics/BEngine.Graphics/BEngine.Graphics.csproj" /></ItemGroup>
+<ItemGroup><ProjectReference Include="../../TextEditing/BEngine.TextEditing/BEngine.TextEditing.csproj"/></ItemGroup>
 </Project>

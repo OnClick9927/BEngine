@@ -23,8 +23,31 @@ internal static class LauncherUpdateWorkspace
     internal static string GetOrCreate(string installationRoot, string commitSha)
     {
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(installationRoot));
-        if (commitSha.Length != 40 || commitSha.Any(character => !Uri.IsHexDigit(character)))
+        if (commitSha.Length != 40 || Query1115(commitSha))
             throw new InvalidDataException("The update snapshot must have a valid commit SHA.");
+        [global::BEngine.SkipLoopGuard]
+        bool Query1115(global::System.Collections.Generic.IEnumerable<char> querySource1115)
+        {
+            ArgumentNullException.ThrowIfNull(querySource1115, "source");
+            bool Matches1115(char character) => !Uri.IsHexDigit(character);
+            global::System.ReadOnlySpan<char> queryValues1115;
+            if (querySource1115.GetType() == typeof(char[]))
+                queryValues1115 = (char[])querySource1115;
+            else if (querySource1115.GetType() == typeof(global::System.Collections.Generic.List<char>))
+                queryValues1115 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<char>)querySource1115);
+            else
+            {
+                foreach (var character in querySource1115)
+                    if (Matches1115(character))
+                        return true;
+                return false;
+            }
+        
+            foreach (var character in queryValues1115)
+                if (Matches1115(character))
+                    return true;
+            return false;
+        }
         commitSha = commitSha.ToLowerInvariant();
         var identity = new DownloadSnapshot(root, commitSha);
         var parent = Path.Combine(root, "Temp", "HubUpdates");
@@ -70,8 +93,7 @@ internal static class LauncherUpdateWorkspace
                 catch (IOException) { /* Another Hub is still using this old download. */ }
             }
         }
-        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(root.ToUpperInvariant() + "\n" + commitSha)))[..32]
-            .ToLowerInvariant();
+        var key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(root.ToUpperInvariant() + "\n" + commitSha)).AsSpan(0, 16));
         var workspace = Path.Combine(parent, key);
         Validate(root, workspace);
         Directory.CreateDirectory(workspace);

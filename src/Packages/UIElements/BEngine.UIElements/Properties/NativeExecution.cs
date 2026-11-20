@@ -1,0 +1,1 @@
+[assembly: BEngine.Hosting.RuntimeNativeExecution]

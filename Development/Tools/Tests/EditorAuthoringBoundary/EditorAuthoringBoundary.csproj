@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+    <DefineConstants Condition="'$(SceneChecks)' == 'true'">$(DefineConstants);SCENE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core.Editor.dll" />
+    <Compile Remove="Benchmark/**/*.cs" />
+
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" />
+    
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.Editor.dll" />
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(SceneChecks)' == 'true'">
+    <Reference Include="$(EngineBinaries)/BEngine.Rendering2D.Editor.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Rendering2D.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Graphics.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Graphics.Editor.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.IMGUI.Editor.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.TextEditing.dll" />
+  </ItemGroup>
+</Project>

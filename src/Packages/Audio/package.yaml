@@ -16,15 +16,22 @@ content:
 runtime:
   assembly: BEngine.Audio
   rootNamespace: BEngine.Audio
-  dependencies: []
   packageReferences:
   - id: NVorbis
     version: 0.10.5
   - id: NLayer
     version: 3.0.0
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
 editor:
   assembly: BEngine.Audio.Editor
   rootNamespace: BEngine.Audio.Editor
   dependencies:
+  - packageId: com.bengine.imgui
+    target: editor
   - packageId: com.bengine.audio
     target: runtime
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

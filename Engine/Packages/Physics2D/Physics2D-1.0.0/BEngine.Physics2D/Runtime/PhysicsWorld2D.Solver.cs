@@ -45,7 +45,7 @@ public sealed partial class PhysicsWorld2D
         state.LeftInverseInertia = InverseInertia(state.LeftBody); state.RightInverseInertia = InverseInertia(state.RightBody);
         state.LeftCenter = state.LeftBody is { bodyType: not RigidbodyType2D.Static } ? state.LeftBody.worldCenterOfMass : Vector2.zero;
         state.RightCenter = state.RightBody is { bodyType: not RigidbodyType2D.Static } ? state.RightBody.worldCenterOfMass : Vector2.zero;
-        state.Friction = Fix64.Sqrt(Fix64.Max(0, state.Left.sharedMaterial?.friction ?? (Fix64).4) * Fix64.Max(0, state.Right.sharedMaterial?.friction ?? (Fix64).4));
+        state.Friction = Fix64.Sqrt(Fix64.Max(0, state.Left.sharedMaterial?.friction ?? Fix64.FromRaw(1717986918L) /* (Fix64).4 */) * Fix64.Max(0, state.Right.sharedMaterial?.friction ?? Fix64.FromRaw(1717986918L) /* (Fix64).4 */));
         state.PointStart = _solverPoints.Count; state.PointCount = state.Manifold.HasSecondPoint ? 2 : 1;
         var restitution = Mathf.Clamp01(Mathf.Max(state.Left.sharedMaterial?.bounciness ?? 0, state.Right.sharedMaterial?.bounciness ?? 0));
         var matched = 0; var normal = state.Manifold.Normal; var tangent = new Vector2(-normal.y, normal.x);
@@ -55,8 +55,8 @@ public sealed partial class PhysicsWorld2D
             point.NormalMass = EffectiveMass(state.LeftBody, point.Position, normal) + EffectiveMass(state.RightBody, point.Position, normal);
             point.TangentMass = EffectiveMass(state.LeftBody, point.Position, tangent) + EffectiveMass(state.RightBody, point.Position, tangent);
             var speed = Vector2.Dot(CachedVelocity(state.RightBody, state.RightCenter, point.Position) - CachedVelocity(state.LeftBody, state.LeftCenter, point.Position), normal);
-            point.BounceVelocity = speed < -(Fix64).5 ? -restitution * speed : Fix64.Zero;
-            if (previous is not null && !previous.IsTrigger && previous.DeltaTime > 0 && Vector2.Dot(previous.Manifold.Normal, normal) >= (Fix64).99)
+            point.BounceVelocity = speed < -Fix64.FromRaw(2147483648L) /* (Fix64).5 */ ? -restitution * speed : Fix64.Zero;
+            if (previous is not null && !previous.IsTrigger && previous.DeltaTime > 0 && Vector2.Dot(previous.Manifold.Normal, normal) >= Fix64.FromRaw(4252017623L) /* (Fix64).99 */)
             {
                 var nearest = -1; var distance = Fix64.FromRaw(long.MaxValue);
                 for (var j = 0; j < previous.PointCount; j++)
@@ -65,7 +65,7 @@ public sealed partial class PhysicsWorld2D
                     var candidateDistance = (_previousSolverPoints[previous.PointStart + j].Position - point.Position).sqrMagnitude;
                     if (nearest < 0 || candidateDistance < distance) { nearest = j; distance = candidateDistance; }
                 }
-                if (nearest >= 0 && distance <= (Fix64).0025)
+                if (nearest >= 0 && distance <= Fix64.FromRaw(10737418L) /* (Fix64).0025 */)
                 {
                     matched |= 1 << nearest;
                     ref readonly var old = ref _previousSolverPoints[previous.PointStart + nearest];
@@ -125,7 +125,7 @@ public sealed partial class PhysicsWorld2D
         var left = state.LeftBody; var right = state.RightBody;
         ref var p = ref _solverPoints[state.PointStart]; ref var q = ref _solverPoints[state.PointStart + 1]; var n = state.Manifold.Normal;
         var k11 = state.K11; var k22 = state.K22; var k12 = state.K12; var determinant = state.Determinant;
-        if (determinant <= (Fix64).000001 || k11 <= Fix64.Epsilon || k22 <= Fix64.Epsilon) return false;
+        if (determinant <= Fix64.FromRaw(4294L) /* (Fix64).000001 */ || k11 <= Fix64.Epsilon || k22 <= Fix64.Epsilon) return false;
         var b1 = Vector2.Dot(CachedVelocity(right, state.RightCenter, p.Position) - CachedVelocity(left, state.LeftCenter, p.Position), n) - p.BounceVelocity - k11 * p.NormalImpulse - k12 * q.NormalImpulse;
         var b2 = Vector2.Dot(CachedVelocity(right, state.RightCenter, q.Position) - CachedVelocity(left, state.LeftCenter, q.Position), n) - q.BounceVelocity - k12 * p.NormalImpulse - k22 * q.NormalImpulse;
         var x1 = (k12 * b2 - k22 * b1) / determinant; var x2 = (k12 * b1 - k11 * b2) / determinant;
@@ -159,7 +159,7 @@ public sealed partial class PhysicsWorld2D
             var point = i == 0 ? manifold.Point : manifold.Point2;
             var inverse = EffectiveMass(left, point, manifold.Normal) + EffectiveMass(right, point, manifold.Normal);
             if (inverse <= Fix64.Epsilon) continue;
-            var impulse = manifold.Normal * (Mathf.Clamp(manifold.Penetration - (Fix64).001, 0, (Fix64).2) * (Fix64).8 / (inverse * pointCount));
+            var impulse = manifold.Normal * (Mathf.Clamp(manifold.Penetration - Fix64.FromRaw(4294967L) /* (Fix64).001 */, 0, Fix64.FromRaw(858993459L) /* (Fix64).2 */) * Fix64.FromRaw(3435973836L) /* (Fix64).8 */ / (inverse * pointCount));
             CorrectBody(left, point, -impulse); CorrectBody(right, point, impulse);
         }
     }

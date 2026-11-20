@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <RootNamespace>BEngine.App</RootNamespace>
+    <AssemblyName>BEngine.Application</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <DefineConstants Condition="'$(BEnginePlayerPlatform)' != '' and '$(BEnginePlayerPlatform)' != 'Desktop'">$(DefineConstants);BENGINE_PLAYER_PORTABLE</DefineConstants>
+    <BEngineRuntimeAssembly>true</BEngineRuntimeAssembly>
+    <!-- The editor project exports the complete framework package snapshot. -->
+    <BEnginePackageExportOwner>false</BEnginePackageExportOwner>
+    <BEnginePlayerPlatform Condition="'$(BEnginePlayerPlatform)' == ''">Desktop</BEnginePlayerPlatform>
+    <ArtifactsProjectName Condition="'$(BEnginePlayerPlatform)' != 'Desktop'">$(MSBuildProjectName).$(BEnginePlayerPlatform)</ArtifactsProjectName>
+    <ArtifactsPivots Condition="'$(BEnginePlayerPlatform)' != 'Desktop'">$(Configuration.ToLowerInvariant())_$(BEnginePlayerPlatform)</ArtifactsPivots>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Player/BEngine.Player.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../AssetBundles/BEngine.AssetBundles/BEngine.AssetBundles.csproj" />
+    
+    <ProjectReference Include="../../UIElements/BEngine.UIElements/BEngine.UIElements.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+</Project>
+

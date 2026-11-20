@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+using BEngine.Platform;
 
 namespace BEngine.Audio;
 
@@ -18,9 +18,7 @@ public static class AudioDspPlugins
 
     public static IDisposable RegisterNative(string id, string libraryPath)
     {
-        if (OperatingSystem.IsBrowser() || OperatingSystem.IsIOS())
-            throw new PlatformNotSupportedException("Dynamic native DSP libraries are unavailable on this target. Register a compiled managed/static adapter instead.");
-        var library = new NativeFactory(Path.GetFullPath(libraryPath));
+        var library = new NativeFactory(libraryPath);
         try { return Register(id, library.Create, library.Release); }
         catch { library.Release(); throw; }
     }
@@ -60,7 +58,7 @@ public static class AudioDspPlugins
     private sealed unsafe class NativeFactory
     {
         private readonly object _gate = new();
-        private nint _library;
+        private IPlatformNativeLibrary? _library;
         private int _references = 1;
         private readonly delegate* unmanaged[Cdecl]<int, int, nint> _create;
         internal readonly delegate* unmanaged[Cdecl]<nint, void> Destroy;
@@ -70,25 +68,25 @@ public static class AudioDspPlugins
 
         internal NativeFactory(string path)
         {
-            _library = NativeLibrary.Load(path);
+            _library = RuntimeServices.GetRequiredService<IPlatformNativeLibraryFactory>().Load(path);
             try
             {
-                var version = (delegate* unmanaged[Cdecl]<int>)NativeLibrary.GetExport(_library, "bengine_dsp_abi_version");
+                var version = (delegate* unmanaged[Cdecl]<int>)_library.GetExport("bengine_dsp_abi_version");
                 if (version() != 1) throw new NotSupportedException("Native DSP plugin ABI must be version 1.");
-                _create = (delegate* unmanaged[Cdecl]<int, int, nint>)NativeLibrary.GetExport(_library, "bengine_dsp_create");
-                Destroy = (delegate* unmanaged[Cdecl]<nint, void>)NativeLibrary.GetExport(_library, "bengine_dsp_destroy");
-                Process = (delegate* unmanaged[Cdecl]<nint, float*, int, void>)NativeLibrary.GetExport(_library, "bengine_dsp_process");
-                SetParameter = (delegate* unmanaged[Cdecl]<nint, int, float, void>)NativeLibrary.GetExport(_library, "bengine_dsp_set_parameter");
-                HasTail = (delegate* unmanaged[Cdecl]<nint, int>)NativeLibrary.GetExport(_library, "bengine_dsp_has_tail");
+                _create = (delegate* unmanaged[Cdecl]<int, int, nint>)_library.GetExport("bengine_dsp_create");
+                Destroy = (delegate* unmanaged[Cdecl]<nint, void>)_library.GetExport("bengine_dsp_destroy");
+                Process = (delegate* unmanaged[Cdecl]<nint, float*, int, void>)_library.GetExport("bengine_dsp_process");
+                SetParameter = (delegate* unmanaged[Cdecl]<nint, int, float, void>)_library.GetExport("bengine_dsp_set_parameter");
+                HasTail = (delegate* unmanaged[Cdecl]<nint, int>)_library.GetExport("bengine_dsp_has_tail");
             }
-            catch { NativeLibrary.Free(_library); _library = 0; throw; }
+            catch { _library.Dispose(); _library = null; throw; }
         }
 
         internal IAudioDspPlugin Create(int sampleRate, int channels)
         {
             lock (_gate)
             {
-                if (_library == 0) throw new ObjectDisposedException(nameof(NativeFactory));
+                if (_library is null) throw new ObjectDisposedException(nameof(NativeFactory));
                 var state = _create(sampleRate, channels);
                 if (state == 0) throw new InvalidOperationException("Native DSP plugin rejected its format or allocation failed.");
                 _references++; return new NativeInstance(this, state, channels);
@@ -98,7 +96,11 @@ public static class AudioDspPlugins
         internal void Release()
         {
             lock (_gate)
-                if (--_references == 0) { NativeLibrary.Free(_library); _library = 0; }
+                if (--_references == 0)
+                {
+                    var library = _library; _library = null;
+                    library?.Dispose();
+                }
         }
     }
 

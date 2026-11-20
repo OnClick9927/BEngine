@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Editor.Host.Contracts</AssemblyName>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+    <BEngineToolingKind>Editor</BEngineToolingKind>
+  </PropertyGroup>
+</Project>

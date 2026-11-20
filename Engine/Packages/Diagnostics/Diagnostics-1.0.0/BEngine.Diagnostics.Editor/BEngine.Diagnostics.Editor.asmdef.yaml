@@ -3,7 +3,13 @@ version: 1
 name: BEngine.Diagnostics.Editor
 rootNamespace: BEngine.Editor
 references:
+- BEngine.Graphics
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
 - BEngine.Diagnostics
+- BEngine.Core.Editor
+- BEngine.Rendering2D
+- BEngine.Core
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

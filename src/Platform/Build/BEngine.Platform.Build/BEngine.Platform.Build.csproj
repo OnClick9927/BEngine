@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><BEnginePackageExportOwner>false</BEnginePackageExportOwner><BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <TargetFramework>net10.0</TargetFramework>
+    <BEngineToolingKind>Editor</BEngineToolingKind>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../DotNet/BEngine.Platform.DotNet.Editor/BEngine.Platform.DotNet.Editor.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
+  </ItemGroup>
+</Project>

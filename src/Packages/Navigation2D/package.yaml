@@ -16,13 +16,24 @@ runtime:
   assembly: BEngine.Navigation2D
   rootNamespace: BEngine.Navigation2D
   dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
   - packageId: com.bengine.physics2d
     target: runtime
+  hostReferences:
+  - BEngine.Platform.Contracts
 editor:
   assembly: BEngine.Navigation2D.Editor
   rootNamespace: BEngine.Navigation2D.Editor
   dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  - packageId: com.bengine.imgui
+    target: editor
   - packageId: com.bengine.navigation2d
     target: runtime
   - packageId: com.bengine.physics2d
     target: runtime
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

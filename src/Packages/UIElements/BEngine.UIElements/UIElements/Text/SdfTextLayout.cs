@@ -40,10 +40,10 @@ internal sealed record SdfTextLayout(ScreenSpaceGlyphPlacement[] Glyphs, float W
                 for (var j = i; j < runeCount && !Rune.IsWhiteSpace(runes[j]); j++) wordEnd += Advance(runes[j]);
                 if (ScaledAdvance(wordEnd) > availableWidth) NextLine();
             }
-            var advance = Advance(rune);
+            var glyph = font.Glyph(rune.Value);
+            var advance = rune.Value == '\t' ? font.Glyph(' ').Advance * 4 : glyph.Advance;
             if (wrap && x > 0 && ScaledAdvance(x + advance) > availableWidth)
             { NextLine(); if (whitespace) continue; }
-            var glyph = font.Glyph(rune.Value);
             if (!whitespace && glyph.Width > 0)
                 placements[count++] = new(ScaledAdvance(x) + glyph.BearingX * scale, y + glyph.BearingY * scale,
                     glyph.Width * scale, glyph.Height * scale,

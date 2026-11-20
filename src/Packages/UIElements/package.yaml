@@ -5,14 +5,22 @@ id: com.bengine.ui-elements
 packageVersion: 1.0.0
 minimumEngineVersion: 0.1.0
 displayName: UIElements
-description: Retained UI controls, UXML/UCSS, complex HarfBuzz text, native accessibility, input, rendering and editor integration.
+description: Retained UI controls, BXML and styles, complex text, accessibility, input and rendering, with integrated UI Builder, HTML/CSS conversion and SDF font tools.
 enabledByDefault: true
+replaces:
+- com.bengine.ui-builder
+- com.bengine.html-ui-converter
 content:
   runtime: Resources
   editor: Editor
 runtime:
   assembly: BEngine.UIElements
   rootNamespace: BEngine
+  dependencies:
+  - packageId: com.bengine.text-editing
+    target: runtime
+  - packageId: com.bengine.graphics
+    target: runtime
   packageReferences:
   - id: YamlDotNet
     version: 18.1.0
@@ -20,9 +28,28 @@ runtime:
     version: 4.153.1
   - id: SkiaSharp.HarfBuzz
     version: 4.153.1
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
 editor:
   assembly: BEngine.UIElements.Editor
   rootNamespace: BEngine.Editor
   dependencies:
+  - packageId: com.bengine.imgui
+    target: editor
+  - packageId: com.bengine.graphics
+    target: runtime
   - packageId: com.bengine.ui-elements
     target: runtime
+  - packageId: com.bengine.graphics
+    target: editor
+  packageReferences:
+  - id: AngleSharp
+    version: 1.5.2
+  - id: AngleSharp.Css
+    version: 1.0.0
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts
+commandLineOptions:
+- --convert-html

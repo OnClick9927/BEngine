@@ -44,6 +44,12 @@ source.mute = true;
 
 ## 平台与扩展
 
+平台注册 `IPlatformAudioOutputFactory`，Audio 用 `PlatformAudioOutputFactory` 适配成
+`IAudioOutput`。waveOut/OpenAL/WebAudio 的实现和设备缓冲属于 Platform，加载、混音与
+解码选择属于 Audio。自定义游戏输出仍可直接赋给 `AudioOutput.current`；无可用平台
+能力时使用静音输出。需要后台原生解码的平台还可注册 `IPlatformAudioDecoderFactory`，
+失败时保留原来的托管解码回退。退出或所属包程序集退休会释放获得的设备和解码句柄。
+
 业务代码通过 FileUtility/PathUtility 调用文件和路径能力；网络功能使用所属包的 IHttpTransport、IWebSocketTransport、ITcpTransport/IUdpTransport 或包自身的服务接口。Windows/.NET 等平台适配器处理实际文件、套接字及硬件；引擎在 Poll 中交付网络结果。扩展平台时替换服务注册，不在组件内直接创建 FileStream、HttpClient、Socket 或 Task。
 
 为 Audio 增加功能时，先查阅 `BEngine.Audio` 与 `BEngine.Audio.Editor` 的现有实现、asmdef 依赖与 Editor/Examples。保留 Unity 风格命名及本引擎二维类型；新增公共字段必须具备实际行为，暂不支持的能力应明确报错或写入限制说明。

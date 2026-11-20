@@ -1,0 +1,15 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.NodeEditor.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.UIElements
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
+- BEngine.Core.Editor
+- BEngine.UIElements.Editor
+includePlatforms: []
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true

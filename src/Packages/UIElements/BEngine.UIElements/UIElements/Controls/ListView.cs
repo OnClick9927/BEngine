@@ -7,6 +7,7 @@ public class ListView : VisualElement
 {
     private IList _itemsSource = Array.Empty<object>();
     private readonly HashSet<int> _selectedIndices = [];
+    private int[]? _sortedSelection;
     private int _selectedIndex = -1;
     private int _selectionAnchor = -1;
     private float _scrollOffset;
@@ -20,7 +21,8 @@ public class ListView : VisualElement
         set
         {
             _itemsSource = value ?? Array.Empty<object>();
-            _selectedIndices.RemoveWhere(index => index < 0 || index >= _itemsSource.Count);
+            if (_selectedIndices.RemoveWhere(index => index < 0 || index >= _itemsSource.Count) > 0)
+                _sortedSelection = null;
             if (_selectedIndex >= _itemsSource.Count) _selectedIndex = -1;
             MarkDirty();
         }
@@ -36,15 +38,38 @@ public class ListView : VisualElement
             if (_selectedIndex == value && _selectedIndices.Count == (value >= 0 ? 1 : 0)) return;
             _selectedIndex = value;
             _selectedIndices.Clear();
+            _sortedSelection = null;
             if (value >= 0 && value < _itemsSource.Count && _selectionType != SelectionType.None)
                 _selectedIndices.Add(value);
             _selectionAnchor = value;
             MarkDirty();
         }
     }
-    public IReadOnlyList<int> selectedIndices => _selectedIndices.OrderBy(index => index).ToArray();
-    public IReadOnlyList<object?> selectedItems => _selectedIndices.OrderBy(index => index)
-        .Where(index => index >= 0 && index < _itemsSource.Count).Select(index => _itemsSource[index]).ToArray();
+    public IReadOnlyList<int> selectedIndices => _selectedIndices.Count == 0
+        ? Array.Empty<int>() : (int[])SortedSelection().Clone();
+    private int[] SortedSelection()
+    {
+        if (_sortedSelection is not null) return _sortedSelection;
+        if (_selectedIndices.Count == 0) return Array.Empty<int>();
+        var indices = new int[_selectedIndices.Count];
+        _selectedIndices.CopyTo(indices);
+        Array.Sort(indices);
+        return _sortedSelection = indices;
+    }
+    public IReadOnlyList<object?> selectedItems
+    {
+        get
+        {
+            var indices = SortedSelection();
+            if (indices.Length == 0) return Array.Empty<object?>();
+            var items = new object?[indices.Length];
+            var count = 0;
+            foreach (var index in indices)
+                if (index >= 0 && index < _itemsSource.Count) items[count++] = _itemsSource[index];
+            if (count != items.Length) Array.Resize(ref items, count);
+            return items;
+        }
+    }
     public SelectionType selectionType
     {
         get => _selectionType;
@@ -111,11 +136,16 @@ public class ListView : VisualElement
 
     private void SetSelectionInternal(IEnumerable<int> indices, bool notify, int activeIndex = -1)
     {
-        var next = indices.Where(index => index >= 0 && index < _itemsSource.Count).Distinct().ToList();
+        ArgumentNullException.ThrowIfNull(indices, "source");
+        var next = new List<int>();
+        var seen = new HashSet<int>();
+        foreach (var index in indices)
+            if (index >= 0 && index < _itemsSource.Count && seen.Add(index)) next.Add(index);
         if (_selectionType == SelectionType.None) next.Clear();
         if (_selectionType == SelectionType.Single && next.Count > 1) next = [next[^1]];
         if (_selectedIndices.SetEquals(next) && (activeIndex < 0 || _selectedIndex == activeIndex)) return;
         _selectedIndices.Clear();
+        _sortedSelection = null;
         foreach (var index in next) _selectedIndices.Add(index);
         _selectedIndex = activeIndex >= 0 ? activeIndex : next.LastOrDefault(-1);
         if (_selectedIndex >= 0) _selectionAnchor = _selectionAnchor < 0 ? _selectedIndex : _selectionAnchor;

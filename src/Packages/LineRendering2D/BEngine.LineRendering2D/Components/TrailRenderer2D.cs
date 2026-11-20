@@ -8,8 +8,8 @@ public sealed partial class TrailRenderer2D : Renderer2D
     [NonSerialized] private readonly List<TrailPoint> _points = [];
 
     public Fix64 time { get; set; } = Fix64.One;
-    public Fix64 minVertexDistance { get; set; } = Fix64.Parse("0.1");
-    public Fix64 startWidth { get; set; } = Fix64.Parse("0.2");
+    public Fix64 minVertexDistance { get; set; } = Fix64.FromRaw(429496729L) /* Parse("0.1") */;
+    public Fix64 startWidth { get; set; } = Fix64.FromRaw(858993459L) /* Parse("0.2") */;
     public Fix64 endWidth { get; set; }
     public Color startColor { get; set; } = Color.white;
     public Color endColor { get; set; } = new(1, 1, 1, 0);

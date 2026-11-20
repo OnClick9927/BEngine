@@ -5,6 +5,7 @@ public sealed partial class ParticleSystem2D
     private ulong _nextParticleId;
     private bool _startBurstsEmitted;
     private readonly List<ParticleCollisionEvent2D> _pendingCollisions = [];
+    private ObjectPool<ModuleValidationWorkspace>? _moduleValidationPool;
     private ParticleCollisionProvider2D? _collisionProvider;
     public List<ParticleBurst2D> bursts { get; set; } = [];
     public List<ParticleSubEmitter2D> subEmitters { get; set; } = [];
@@ -22,8 +23,8 @@ public sealed partial class ParticleSystem2D
     public Fix64 noiseFrequency { get; set; } = 1;
     public Fix64 noiseSpeed { get; set; } = 1;
     public bool collisionEnabled { get; set; }
-    public Fix64 collisionRadius { get; set; } = (Fix64).05;
-    public Fix64 collisionBounce { get; set; } = (Fix64).5;
+    public Fix64 collisionRadius { get; set; } = Fix64.FromRaw(214748364L) /* (Fix64).05 */;
+    public Fix64 collisionBounce { get; set; } = Fix64.FromRaw(2147483648L) /* (Fix64).5 */;
     public Fix64 collisionDamping { get; set; }
     public Fix64 collisionLifetimeLoss { get; set; }
     public event Action<ParticleCollisionEvent2D>? particleCollision;
@@ -32,29 +33,119 @@ public sealed partial class ParticleSystem2D
     {
         if (sizeCurve is null || velocityX is null || velocityY is null || angularVelocityCurve is null || trailWidthCurve is null)
             throw new InvalidOperationException("Particle curves cannot be null.");
-        if (bursts is null || bursts.Count > 256 || bursts.Any(b => b is null || b.time < 0 || b.count < 0 || b.count > 100000 ||
-            b.cycles is < 1 or > 1024 || b.cycles > 1 && b.interval <= 0 || b.probability < 0 || b.probability > 1))
+        if (bursts is null || bursts.Count > 256 || Matches2062())
             throw new InvalidOperationException("Invalid particle burst settings.");
-        if (colorGradient is null || colorGradient.Count > 64 || colorGradient.Any(key => key is null || key.time < 0 || key.time > 1))
-            throw new InvalidOperationException("Particle gradient keys must be within normalized lifetime 0..1.");
-        if (subEmitters is { Count: 0 }) return;
-        var path = new HashSet<ParticleSystem2D>(ReferenceEqualityComparer.Instance);
-        var visited = new HashSet<ParticleSystem2D>(ReferenceEqualityComparer.Instance);
-        Visit(this);
-        void Visit(ParticleSystem2D system)
+        [global::BEngine.SkipLoopGuard]
+        bool Matches2062()
         {
-            if (!path.Add(system)) throw new InvalidOperationException("Cyclic particle sub-emitter references.");
-            if (path.Count > 64) throw new InvalidOperationException("Particle sub-emitter nesting exceeds 64 systems.");
-            if (system.subEmitters is null || system.subEmitters.Count > 64 || system.subEmitters.Any(child => child is null ||
-                child.count < 0 || child.count > 100000 || !Enum.IsDefined(child.trigger)))
-                throw new InvalidOperationException("Invalid particle sub-emitter settings.");
-            foreach (var child in system.subEmitters)
-                if (child.system is { isDestroyed: false } target)
+            var matchSource2062 = bursts;
+            ArgumentNullException.ThrowIfNull(matchSource2062, "source");
+            if (matchSource2062.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.ParticleBurst2D>))
+            {
+                foreach (var b in (global::System.Collections.Generic.IEnumerable<global::BEngine.ParticleBurst2D>)matchSource2062)
                 {
-                    if (!ReferenceEquals(target.gameObject.scene, system.gameObject.scene)) throw new InvalidOperationException("Sub-emitters must belong to the same scene.");
-                    if (!visited.Contains(target)) Visit(target);
+                    if (b is null || b.time < 0 || b.count < 0 || b.count > 100000 || b.cycles is < 1 or > 1024 || b.cycles > 1 && b.interval <= 0 || b.probability < 0 || b.probability > 1)
+                        return true;
                 }
-            path.Remove(system); visited.Add(system);
+        
+                return false;
+            }
+        
+            global::System.ReadOnlySpan<global::BEngine.ParticleBurst2D> matchValues2062 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource2062);
+            foreach (var b in matchValues2062)
+            {
+                if (b is null || b.time < 0 || b.count < 0 || b.count > 100000 || b.cycles is < 1 or > 1024 || b.cycles > 1 && b.interval <= 0 || b.probability < 0 || b.probability > 1)
+                    return true;
+            }
+        
+            return false;
+        }
+        if (colorGradient is null || colorGradient.Count > 64 || Matches2407())
+            throw new InvalidOperationException("Particle gradient keys must be within normalized lifetime 0..1.");
+        [global::BEngine.SkipLoopGuard]
+        bool Matches2407()
+        {
+            var matchSource2407 = colorGradient;
+            ArgumentNullException.ThrowIfNull(matchSource2407, "source");
+            if (matchSource2407.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.ParticleColorKey2D>))
+            {
+                foreach (var key in (global::System.Collections.Generic.IEnumerable<global::BEngine.ParticleColorKey2D>)matchSource2407)
+                {
+                    if (key is null || key.time < 0 || key.time > 1)
+                        return true;
+                }
+        
+                return false;
+            }
+        
+            global::System.ReadOnlySpan<global::BEngine.ParticleColorKey2D> matchValues2407 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource2407);
+            foreach (var key in matchValues2407)
+            {
+                if (key is null || key.time < 0 || key.time > 1)
+                    return true;
+            }
+        
+            return false;
+        }
+        if (subEmitters is { Count: 0 }) return;
+        _moduleValidationPool ??= new ObjectPool<ModuleValidationWorkspace>(static () => new(),
+            onRelease: static workspace => workspace.Reset(), maxSize: 1);
+        var workspace = _moduleValidationPool.Get();
+        try { ValidateSubEmitters(this, workspace); }
+        finally { _moduleValidationPool.Release(workspace); }
+    }
+
+    private static void ValidateSubEmitters(ParticleSystem2D system, ModuleValidationWorkspace workspace)
+    {
+        if (!workspace.Path.Add(system)) throw new InvalidOperationException("Cyclic particle sub-emitter references.");
+        if (workspace.Path.Count > 64) throw new InvalidOperationException("Particle sub-emitter nesting exceeds 64 systems.");
+        if (system.subEmitters is null || system.subEmitters.Count > 64 || Matches3426())
+            throw new InvalidOperationException("Invalid particle sub-emitter settings.");
+        [global::BEngine.SkipLoopGuard]
+        bool Matches3426()
+        {
+            var matchSource3426 = system.subEmitters;
+            ArgumentNullException.ThrowIfNull(matchSource3426, "source");
+            if (matchSource3426.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.ParticleSubEmitter2D>))
+            {
+                foreach (var child in (global::System.Collections.Generic.IEnumerable<global::BEngine.ParticleSubEmitter2D>)matchSource3426)
+                {
+                    if (child is null || child.count < 0 || child.count > 100000 || !Enum.IsDefined(child.trigger))
+                        return true;
+                }
+        
+                return false;
+            }
+        
+            global::System.ReadOnlySpan<global::BEngine.ParticleSubEmitter2D> matchValues3426 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource3426);
+            foreach (var child in matchValues3426)
+            {
+                if (child is null || child.count < 0 || child.count > 100000 || !Enum.IsDefined(child.trigger))
+                    return true;
+            }
+        
+            return false;
+        }
+        foreach (var child in system.subEmitters)
+            if (child.system is { isDestroyed: false } target)
+            {
+                if (!ReferenceEquals(target.gameObject.scene, system.gameObject.scene)) throw new InvalidOperationException("Sub-emitters must belong to the same scene.");
+                if (!workspace.Visited.Contains(target)) ValidateSubEmitters(target, workspace);
+            }
+        workspace.Path.Remove(system); workspace.Visited.Add(system);
+    }
+
+    private sealed class ModuleValidationWorkspace
+    {
+        internal readonly HashSet<ParticleSystem2D> Path = new(ReferenceEqualityComparer.Instance);
+        internal HashSet<ParticleSystem2D> Visited = new(ReferenceEqualityComparer.Instance);
+
+        internal void Reset()
+        {
+            Path.Clear(); Visited.Clear();
+            // A wide emitter graph is valid, but should not permanently retain
+            // an unusually large hash table or references to its scene objects.
+            if (Visited.EnsureCapacity(0) > 4096) Visited = new(ReferenceEqualityComparer.Instance);
         }
     }
 
@@ -107,7 +198,7 @@ public sealed partial class ParticleSystem2D
         var acceleration = gravity;
         if (enableNoise)
         {
-            var phase = (Fix64)(long)(particle.Id % 65536) * (Fix64).618 + _elapsed * noiseSpeed;
+            var phase = (Fix64)(long)(particle.Id % 65536) * Fix64.FromRaw(2654289788L) /* (Fix64).618 */ + _elapsed * noiseSpeed;
             acceleration += new Vector2(Mathf.Sin(particle.Position.y * noiseFrequency + phase),
                 Mathf.Cos(particle.Position.x * noiseFrequency + phase)) * noiseStrength;
         }
@@ -131,7 +222,7 @@ public sealed partial class ParticleSystem2D
                 var inward = Vector2.Dot(velocity, normal);
                 if (inward < 0) velocity -= normal * inward * (1 + Mathf.Clamp01(collisionBounce));
                 velocity *= 1 - Mathf.Clamp01(collisionDamping);
-                var position = hit.Position + normal * (Fix64).0001;
+                var position = hit.Position + normal * Fix64.FromRaw(429496L) /* (Fix64).0001 */;
                 next = next with
                 {
                     Position = world ? position : transform.InverseTransformPoint(position),

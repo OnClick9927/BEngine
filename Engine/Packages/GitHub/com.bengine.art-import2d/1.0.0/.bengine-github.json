@@ -1,0 +1,107 @@
+{
+  "Format": "BEngine.GitHubPackage",
+  "Version": 1,
+  "Id": "com.bengine.art-import2d",
+  "PackageVersion": "1.0.0",
+  "DisplayName": "Art Import 2D",
+  "Source": {
+    "Owner": "OnClick9927",
+    "Repository": "BEngine.CommonPackages",
+    "Reference": "main",
+    "Directory": "Packages-Exported/ArtImport2D"
+  },
+  "Commit": "72fc84d3fd9275a993324eac461a14c585e807c1",
+  "PackageDirectory": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0",
+  "Files": [
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/BEngine.ArtImport2D.Editor.asmdef.yaml",
+      "Sha": "bfb4c51716a50881cf4b3687dc2f11d1cca7782e",
+      "Size": 415
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/Importers/ArtDocumentImporter.cs",
+      "Sha": "edaa572183a8e7750284f3259e5e9abf0bd8f454",
+      "Size": 6345
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/Importers/AsepriteDecoder.cs",
+      "Sha": "6aecb2b4804b9ac780f74365542aed20b0e5f420",
+      "Size": 39691
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/Importers/DecodedArtData.cs",
+      "Sha": "72ebf07a9ec66ef53d302766276cde33c6f83126",
+      "Size": 1831
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/Importers/PhotoshopColorTransform.cs",
+      "Sha": "f79d65f579d8dd377f1620bc5bb2c6a7e871d924",
+      "Size": 6019
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/Importers/PhotoshopDecoder.cs",
+      "Sha": "8f5f9e6d6e0e5d1a1d56169335b31b7b0b1eb393",
+      "Size": 22820
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/Infrastructure/ArtImportEditorRegistration.cs",
+      "Sha": "d26920353accfb8e91a95db2606334c381ad6501",
+      "Size": 903
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/Inspectors/ArtDocument2DEditor.cs",
+      "Sha": "be58028285400c2abee257133ff3a80e21428db9",
+      "Size": 1540
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/Windows/ArtDocumentPreview.cs",
+      "Sha": "84d85dd70795e1df2baf675101da50d757f95335",
+      "Size": 4918
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D.Editor/Windows/ArtDocumentWindow.cs",
+      "Sha": "1d10cd05a7170ae181b4956dbf89086da73c5696",
+      "Size": 7564
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D/Assets/ArtDocument2D.cs",
+      "Sha": "fc88a7e08fcc4934e8843fea67e7a54c5af85af5",
+      "Size": 10263
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D/Assets/ArtSourceMetadata.cs",
+      "Sha": "ae09705365b41f48e03508368ac22d4bab80a664",
+      "Size": 1781
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D/BEngine.ArtImport2D.asmdef.yaml",
+      "Sha": "1aed4e74552a0355e6004a156c286a4ae7a63306",
+      "Size": 296
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/BEngine.ArtImport2D/Infrastructure/ArtImportRuntimeRegistration.cs",
+      "Sha": "5c256a6f71e065a5a2f1e78eb2801b80d172e78a",
+      "Size": 334
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/Editor/Doc/ArtImport2D.md",
+      "Sha": "a93c4b497a884aca44a45159b81587efa23df6e8",
+      "Size": 4405
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/Editor/Doc/index.html",
+      "Sha": "67d86b24e086ed51e10aee2651312d0bee663ba7",
+      "Size": 291
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/Editor/Readme.md",
+      "Sha": "60b30f8aa7b73d914029a3b3c9cc0b6b9a1c7f44",
+      "Size": 796
+    },
+    {
+      "Path": "Packages-Exported/ArtImport2D/ArtImport2D-1.0.0/package.yaml",
+      "Sha": "e3fd7b1ddb79fc5a378a2a173250b8d29283b4c8",
+      "Size": 1311
+    }
+  ]
+}

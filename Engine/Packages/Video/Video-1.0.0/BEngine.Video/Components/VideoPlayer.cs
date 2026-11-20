@@ -206,7 +206,7 @@ public sealed class VideoPlayer : MonoBehaviour
         if (!_playing || preparedClip is not { } media)
         { if ((_asyncReader is not null || _reader?.requiresPolling == true) && _texture is not null) try { PresentFrame(); } catch (Exception exception) { Release(); error = exception.Message; errorReceived?.Invoke(this, error); } return; }
         UpdateAudioSettings();
-        _time += deltaTime * Fix64.Clamp(playbackSpeed, Fix64.FromDecimal(.01m), 3);
+        _time += deltaTime * Fix64.Clamp(playbackSpeed, Fix64.FromRaw(42949672L) /* .01 */, 3);
         var reachedEnd = _time >= media.length;
         if (reachedEnd)
         {
@@ -226,7 +226,7 @@ public sealed class VideoPlayer : MonoBehaviour
     {
         if (_audio is null) return;
         _audio.loop = isLooping; _audio.volume = volume; _audio.mute = mute;
-        _audio.pitch = Fix64.Clamp(playbackSpeed, Fix64.FromDecimal(.01m), 3);
+        _audio.pitch = Fix64.Clamp(playbackSpeed, Fix64.FromRaw(42949672L) /* .01 */, 3);
     }
 
     private void PresentFrame()

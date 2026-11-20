@@ -1,0 +1,58 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using BEngine;
+using BEngine.Editor;
+using BEngine.Networking;
+using BEngine.Platform;
+
+public static class NetworkOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if(string.IsNullOrEmpty(folder))return;
+        var native=PlatformRuntime.GetService<IPlatformHttpTransport>();
+        if(native==null || native.GetType().Assembly.GetName().Name!="BEngine.Platform.DotNet")throw new Exception("Editor native HTTP has the wrong owner");
+        if(typeof(HttpNetworkRequest).Assembly.GetType("BEngine.Platform.DotNet.DotNetHttpTransport")!=null)throw new Exception("Native HTTP remains in the package");
+        var listener=new TcpListener(IPAddress.Loopback,0);listener.Start();
+        try
+        {
+            var url="http://127.0.0.1:"+((IPEndPoint)listener.LocalEndpoint).Port+"/";
+            var server=Task.Run(()=>
+            {
+                using(var client=listener.AcceptTcpClient())
+                {
+                    client.ReceiveTimeout=5000;using(var stream=client.GetStream())
+                    {
+                        var request=new StringBuilder();
+                        while(request.Length<65536 && !request.ToString().EndsWith("\r\n\r\n"))
+                        {var value=stream.ReadByte();if(value<0)throw new Exception("Request ended");request.Append((char)value);}
+                        var response=Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nnetwork");
+                        stream.Write(response,0,response.Length);
+                    }
+                }
+            });
+            using(var request=HttpNetworkRequest.Get(url))
+            {
+                var task=request.SendAsync();var timer=Stopwatch.StartNew();
+                while(!task.IsCompleted && timer.Elapsed.TotalSeconds<10)
+                {BTaskScheduler.Main.Tick(TimeSpan.FromMilliseconds(2));Thread.Sleep(1);}
+                task.GetAwaiter().GetResult();
+                if(!request.IsSuccess || request.DownloadText!="network" || request.DownloadProgress!=1)throw new Exception("Actual Editor HTTP/BTask did not complete");
+            }
+            if(!server.Wait(5000))throw new Exception("Loopback server did not retire");
+            if(NetworkMemorySettings.activeRequests!=0 || NetworkMemorySettings.bufferedBytes!=0)throw new Exception("Actual Editor request leaked its admission budget");
+            var record=JsonSerializer.Serialize(new{Passed=true,Checks=6,FactoryAssembly=native.GetType().Assembly.GetName().Name,PackageCompiled=true,ExactBodyAndProgress=true,BTaskCompleted=true,RequestBudgetReleased=true});
+            File.WriteAllText(Path.Combine(folder,"NetworkOwnershipResult.json"),record);
+            File.AppendAllText(Path.Combine(folder,"NetworkOwnershipEvents.jsonl"),record+Environment.NewLine);
+        }
+        finally{listener.Stop();}
+    }
+}

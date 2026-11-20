@@ -7,6 +7,7 @@ namespace BEngine;
 [CreateAssetMenu(fileName = "New Texture Atlas", menuName = "2D/Texture Atlas", order = 250)]
 public sealed class TextureAtlas : BAsset
 {
+    internal void RestoreIdentity(Guid identity) => RestorePersistentIdentity(identity);
     public string Format { get; set; } = "BEngine.TextureAtlas";
     public string Texture { get; set; } = string.Empty;
     public int Width { get; set; }
@@ -22,8 +23,55 @@ public sealed class TextureAtlas : BAsset
     {
         if (string.IsNullOrWhiteSpace(nameOrSource)) return null;
         var value = nameOrSource.Replace('\\', '/').Trim();
-        return Sprites.FirstOrDefault(sprite => sprite.Name.Equals(value, StringComparison.Ordinal)) ??
-               Sprites.FirstOrDefault(sprite => sprite.Source.Equals(value, StringComparison.OrdinalIgnoreCase));
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.TextureAtlasSprite? Query955(global::System.Collections.Generic.IEnumerable<global::BEngine.TextureAtlasSprite> querySource955)
+        {
+            ArgumentNullException.ThrowIfNull(querySource955, "source");
+            bool Matches955(global::BEngine.TextureAtlasSprite sprite) => sprite.Name.Equals(value, StringComparison.Ordinal);
+            global::System.ReadOnlySpan<global::BEngine.TextureAtlasSprite> queryValues955;
+            if (querySource955.GetType() == typeof(global::BEngine.TextureAtlasSprite[]))
+                queryValues955 = (global::BEngine.TextureAtlasSprite[])querySource955;
+            else if (querySource955.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.TextureAtlasSprite>))
+                queryValues955 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.TextureAtlasSprite>)querySource955);
+            else
+            {
+                foreach (var sprite in querySource955)
+                    if (Matches955(sprite))
+                        return sprite;
+                return default!;
+            }
+        
+            foreach (var sprite in queryValues955)
+                if (Matches955(sprite))
+                    return sprite;
+            return default!;
+        }
+        
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.TextureAtlasSprite? Query1060(global::System.Collections.Generic.IEnumerable<global::BEngine.TextureAtlasSprite> querySource1060)
+        {
+            ArgumentNullException.ThrowIfNull(querySource1060, "source");
+            bool Matches1060(global::BEngine.TextureAtlasSprite sprite) => sprite.Source.Equals(value, StringComparison.OrdinalIgnoreCase);
+            global::System.ReadOnlySpan<global::BEngine.TextureAtlasSprite> queryValues1060;
+            if (querySource1060.GetType() == typeof(global::BEngine.TextureAtlasSprite[]))
+                queryValues1060 = (global::BEngine.TextureAtlasSprite[])querySource1060;
+            else if (querySource1060.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.TextureAtlasSprite>))
+                queryValues1060 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.TextureAtlasSprite>)querySource1060);
+            else
+            {
+                foreach (var sprite in querySource1060)
+                    if (Matches1060(sprite))
+                        return sprite;
+                return default!;
+            }
+        
+            foreach (var sprite in queryValues1060)
+                if (Matches1060(sprite))
+                    return sprite;
+            return default!;
+        }
+        
+        return Query955(Sprites) ?? Query1060(Sprites);
     }
 
     /// <summary>Creates a sprite bound to this atlas, including atlases loaded from a resource provider.</summary>
@@ -54,9 +102,30 @@ public sealed class TextureAtlas : BAsset
             throw new InvalidDataException($"Unsupported texture atlas format '{Format}'.");
         MaxSize = Math.Clamp(MaxSize, 32, 16384); Padding = Math.Clamp(Padding, 0, 64);
         Extrude = Math.Clamp(Extrude, 0, Padding); Sources ??= []; Sprites ??= [];
-        var duplicate = Sources.Where(source => source is not null)
-            .GroupBy(SourceIdentity, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(group => group.Key.Length > 0 && group.Count() > 1);
+        var duplicate = Query2657(Sources.Where(source => source is not null).GroupBy(SourceIdentity, StringComparer.OrdinalIgnoreCase));
+        [global::BEngine.SkipLoopGuard]
+        global::System.Linq.IGrouping<string, global::BEngine.Sprite>? Query2657(global::System.Collections.Generic.IEnumerable<global::System.Linq.IGrouping<string, global::BEngine.Sprite>> querySource2657)
+        {
+            ArgumentNullException.ThrowIfNull(querySource2657, "source");
+            bool Matches2657(global::System.Linq.IGrouping<string, global::BEngine.Sprite> group) => group.Key.Length > 0 && group.Count() > 1;
+            global::System.ReadOnlySpan<global::System.Linq.IGrouping<string, global::BEngine.Sprite>> queryValues2657;
+            if (querySource2657.GetType() == typeof(global::System.Linq.IGrouping<string, global::BEngine.Sprite>[]))
+                queryValues2657 = (global::System.Linq.IGrouping<string, global::BEngine.Sprite>[])querySource2657;
+            else if (querySource2657.GetType() == typeof(global::System.Collections.Generic.List<global::System.Linq.IGrouping<string, global::BEngine.Sprite>>))
+                queryValues2657 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::System.Linq.IGrouping<string, global::BEngine.Sprite>>)querySource2657);
+            else
+            {
+                foreach (var group in querySource2657)
+                    if (Matches2657(group))
+                        return group;
+                return default!;
+            }
+        
+            foreach (var group in queryValues2657)
+                if (Matches2657(group))
+                    return group;
+            return default!;
+        }
         if (duplicate is not null)
             throw new InvalidDataException($"Texture atlas Sprite source '{duplicate.Key}' is duplicated.");
         if (Sprites.Count == 0) { Width = Math.Max(0, Width); Height = Math.Max(0, Height); return; }

@@ -76,7 +76,7 @@ public sealed partial class AudioClip
 
     internal static AudioClip CommitAudio(PreparedAudio prepared, string path)
     {
-        var clip = new AudioClip { name = RuntimeServiceAccess.PathService.GetFileNameWithoutExtension(path) };
+        var clip = new AudioClip { name = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFileNameWithoutExtension(path) };
         try
         {
             clip.samples = prepared.Samples; clip.channels = prepared.Channels; clip.frequency = prepared.Frequency;

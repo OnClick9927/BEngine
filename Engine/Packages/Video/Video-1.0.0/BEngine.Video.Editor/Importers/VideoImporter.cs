@@ -77,7 +77,21 @@ public sealed class VideoImporter : AssetImporter
         using var metadata = JsonDocument.Parse(Run(probe,
             ["-v", "error", "-show_streams", "-show_format", "-of", "json", sourcePath], cancellationToken));
         var streams = metadata.RootElement.GetProperty("streams").EnumerateArray().ToArray();
-        var video = streams.FirstOrDefault(stream => stream.GetProperty("codec_type").GetString() == "video");
+        var video = Matches4088();
+        [global::BEngine.SkipLoopGuard]
+        global::System.Text.Json.JsonElement Matches4088()
+        {
+            var matchSource4088 = streams;
+            ArgumentNullException.ThrowIfNull(matchSource4088, "source");
+            global::System.ReadOnlySpan<global::System.Text.Json.JsonElement> matchValues4088 = matchSource4088;
+            foreach (var stream in matchValues4088)
+            {
+                if (stream.GetProperty("codec_type").GetString() == "video")
+                    return stream;
+            }
+        
+            return default!;
+        }
         if (video.ValueKind == JsonValueKind.Undefined) throw new InvalidDataException("Source has no video stream.");
         var sourceWidth = video.GetProperty("width").GetInt32();
         var sourceHeight = video.GetProperty("height").GetInt32();
@@ -102,16 +116,33 @@ public sealed class VideoImporter : AssetImporter
             if (fileLength % frameBytes != 0) throw new InvalidDataException("Decoder produced an incomplete video frame.");
             var count = checked((int)(fileLength / frameBytes));
             float[] pcm = [];
-            if (importAudio && streams.Any(stream => stream.GetProperty("codec_type").GetString() == "audio"))
+            if (importAudio && Gather6723(streams))
             {
                 var audioPath = Paths.Combine(temporary, "audio.pcm");
-                Run(ffmpeg, ["-nostdin", "-v", "error", "-y", "-i", sourcePath, "-map", "0:a:0", "-vn",
-                    "-ac", "2", "-ar", "48000", "-t", (count / (double)frameRate).ToString("R", CultureInfo.InvariantCulture),
-                    "-f", "f32le", audioPath], cancellationToken);
+                Run(ffmpeg, ["-nostdin", "-v", "error", "-y", "-i", sourcePath, "-map", "0:a:0", "-vn", "-ac", "2", "-ar", "48000", "-t", (count / (double)frameRate).ToString("R", CultureInfo.InvariantCulture), "-f", "f32le", audioPath], cancellationToken);
                 var audio = Files.ReadAllBytes(audioPath);
-                if (audio.Length % 8 != 0) throw new InvalidDataException("Decoder produced incomplete stereo samples.");
+                if (audio.Length % 8 != 0)
+                    throw new InvalidDataException("Decoder produced incomplete stereo samples.");
                 pcm = new float[audio.Length / 4];
                 Buffer.BlockCopy(audio, 0, pcm, 0, audio.Length);
+            }
+
+            [global::BEngine.SkipLoopGuard]
+            bool Gather6723(global::System.Collections.Generic.IEnumerable<global::System.Text.Json.JsonElement> items6723)
+            {
+                ArgumentNullException.ThrowIfNull(items6723, "source");
+                bool Evaluate6723(global::System.Text.Json.JsonElement stream) => stream.GetProperty("codec_type").GetString() == "audio";
+                global::System.ReadOnlySpan<global::System.Text.Json.JsonElement> values;
+                if (items6723.GetType() == typeof(global::System.Text.Json.JsonElement[]))
+                    values = (global::System.Text.Json.JsonElement[])items6723;
+                else if (items6723.GetType() == typeof(global::System.Collections.Generic.List<global::System.Text.Json.JsonElement>))
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::System.Text.Json.JsonElement>)items6723);
+                else
+                    return global::System.Linq.Enumerable.Any(items6723, Evaluate6723);
+                foreach (var stream in values)
+                    if (Evaluate6723(stream))
+                        return true;
+                return false;
             }
             VideoClip.Write(output, width, height, frameRate, count, Frames(raw, frameBytes, cancellationToken), pcm);
         }

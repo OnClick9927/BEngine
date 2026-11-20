@@ -1,38 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <ApplicationIcon>../../Core/Editor/Icons/BEngine.ico</ApplicationIcon>
+    <ApplicationIcon>../../../Development/Shared/Branding/BEngine.ico</ApplicationIcon>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>BEngine.Launcher</RootNamespace>
     <AssemblyName>BEngine.Launcher</AssemblyName>
-    <!-- Hub needs metadata and WinForms, never the engine runtime or GPU host. -->
+    <!-- Hub uses the Core editor contract without loading a GPU host. -->
     <SatelliteResourceLanguages>en;zh-Hans;zh-Hant</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="../../Core/Editor/Icons/BEngine.ico" LogicalName="BEngine.Launcher.BEngine.ico" />
-    <EmbeddedResource Include="../../Core/Editor/Icons/BEngine.Dark.ico" LogicalName="BEngine.Launcher.BEngine.Dark.ico" />
+    <EmbeddedResource Include="../../../Development/Shared/Branding/BEngine.ico" LogicalName="BEngine.Launcher.BEngine.ico" />
+    <EmbeddedResource Include="../../../Development/Shared/Branding/BEngine.Dark.ico" LogicalName="BEngine.Launcher.BEngine.Dark.ico" />
     <EmbeddedResource Include="../Editor/DocumentationAssets/**/*" LogicalName="BEngine.Launcher.DocumentationAssets/%(RecursiveDir)%(Filename)%(Extension)" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Share the exact document/version/dependency rules without shipping Editor. -->
-    <Compile Include="../../Shared/BEngineToolEnvironment.cs" Link="Shared/BEngineToolEnvironment.cs" />
-    <Compile Include="../../Shared/WindowsBrandingIcons.cs" Link="Shared/WindowsBrandingIcons.cs" />
-    <Compile Include="../../Core/BEngine/Lifecycle/EngineVersion.cs" Link="Shared/EngineVersion.cs" />
-    <Compile Include="../../Core/BEngine/Math/Fix64.cs" Link="Shared/Fix64.cs" />
-    <Compile Include="../../Core/BEngine/ProjectSystem/Serialization/ProjectData.cs" Link="Shared/ProjectData.cs" />
-    <Compile Include="../../Core/BEngine/ProjectSystem/Serialization/WindowData.cs" Link="Shared/WindowData.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageDefinitionDocument.cs" Link="Shared/PackageDefinitionDocument.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageAssemblyDocument.cs" Link="Shared/PackageAssemblyDocument.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageContentDocument.cs" Link="Shared/PackageContentDocument.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageDependencyDocument.cs" Link="Shared/PackageDependencyDocument.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/Documents/Models/PackageExternalReferenceDocument.cs" Link="Shared/PackageExternalReferenceDocument.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/PackageDefinitionNormalization.cs" Link="Shared/PackageDefinitionNormalization.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/BPackageDefinition.cs" Link="Shared/BPackageDefinition.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/BPackageVersion.cs" Link="Shared/BPackageVersion.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/BPackageCompatibility.cs" Link="Shared/BPackageCompatibility.cs" />
-    <Compile Include="../../Core/BEngine.Editor/Editor/ProjectSystem/Packages/BPackageReleaseResolver.cs" Link="Shared/BPackageReleaseResolver.cs" />
+    <ProjectReference Include="../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
+    <Compile Include="../../../Development/Shared/PackageCatalogTransport.cs" Link="Shared/PackageCatalogTransport.cs" />
+    <Compile Include="../../../Development/Shared/WindowsBrandingIcons.cs" Link="Shared/WindowsBrandingIcons.cs" />
   </ItemGroup>
 </Project>

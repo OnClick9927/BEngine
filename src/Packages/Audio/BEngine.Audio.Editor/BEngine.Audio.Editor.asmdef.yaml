@@ -3,6 +3,9 @@ version: 1
 name: BEngine.Audio.Editor
 rootNamespace: BEngine.Audio.Editor
 references:
+- BEngine.IMGUI.Editor
+- BEngine.Core.Editor
+- BEngine.Platform.Contracts
 - BEngine.Audio
 includePlatforms: []
 excludePlatforms: []

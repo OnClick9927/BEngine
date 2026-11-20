@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>SceneReferenceEditor</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+ <ItemGroup><Reference Include="$(EngineBinaries)/*.dll" Exclude="$(EngineBinaries)/BEngine.Launcher.dll" /></ItemGroup>
+</Project>

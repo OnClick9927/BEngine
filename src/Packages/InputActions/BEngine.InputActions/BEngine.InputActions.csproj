@@ -4,6 +4,10 @@
     <RootNamespace>BEngine.InputActions</RootNamespace>
     <AssemblyName>BEngine.InputActions</AssemblyName>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../../Core/BEngine/BEngine.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    
+  </ItemGroup>
   <ItemGroup><PackageReference Include="YamlDotNet" /></ItemGroup>
 </Project>

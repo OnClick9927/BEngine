@@ -1,3 +1,5 @@
+using BEngine.Player;
+using BEngine.Hosting;
 using System;
 using System.Collections.Generic;
 using Stopwatch = System.Diagnostics.Stopwatch;
@@ -8,8 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using BEngine;
 using BEngine.Platform;
-using BEngine.Player;
-using BEngine.HotUpdate;
+using BEngine.Player.HotUpdate;
 using BEngine.Rendering;
 using BEngine.Rendering.Rhi;
 
@@ -18,25 +19,19 @@ namespace BEngine.Player.Hosts.Web;
 [SupportedOSPlatform("browser")]
 public static partial class Program
 {
-    private static PlayerRuntimeSession? _session;
+    private static IPlayerRuntimeSession? _session;
     private static WebGlGraphicsDevice? _graphics;
     private static double _previousTimestampMilliseconds;
     private static bool _hasPreviousTimestamp;
     private static int _width = 1;
     private static int _height = 1;
     private static long _renderedFrames;
-    private static long _keyEvents;
-    private static long _pointerEvents;
-    private static long _touchEvents;
-    private static long _wheelEvents;
-    private static long _gamepadReports;
     private static long _logEntries;
     private static double _updateMilliseconds, _renderMilliseconds;
     private static WebPhaseMemoryStatistics _updateMemory, _renderMemory;
     private static string _lastLog = string.Empty;
     private static string _lastError = string.Empty;
-    private static readonly Dictionary<int, Touch> Touches = [];
-    private static readonly HashSet<int> ConnectedGamepads = [];
+    private static readonly WebInputAdapter BrowserInput = new();
     private static readonly WebAccessibilityAdapter Accessibility = new();
     private static readonly List<WebStartupPhase> StartupPhases = new(8);
 
@@ -56,14 +51,13 @@ public static partial class Program
         }
         try
         {
-            using (var status = JSHost.GlobalThis.GetPropertyAsJSObject("BEngineStartupStatus"))
-                PlayerStartupEnvironment.Begin(TimeSpan.FromMilliseconds(
-                    status?.GetPropertyAsDouble("elapsedMilliseconds") ?? 0)).HoldPresentation();
             BEngine.Platform.WebPlatform.Initialize();
+            using (var status = JSHost.GlobalThis.GetPropertyAsJSObject("BEngineStartupStatus"))
+                HostStartupSession.Begin(elapsedBeforeStart: TimeSpan.FromMilliseconds(
+                    status?.GetPropertyAsDouble("elapsedMilliseconds") ?? 0), holdPresentation: true);
             Mark("platform");
             PlatformVideoDecoding.OpenVideoAsync = WebVideoDecoder.Open;
-            if (PlatformRuntime.GetService<IInputService>() is PlatformInputService input)
-            { input.ReadClipboard = ReadClipboard; input.WriteClipboard = WriteClipboard; }
+            WebInputAdapter.ConfigureClipboard();
             PlatformAccessibility.adapter = Accessibility;
             Debug.MessageLogged += OnMessageLogged;
             AotInterpreterRuntimeHost.DeclareInterpreterEnabled();
@@ -76,15 +70,22 @@ public static partial class Program
             _session = BEnginePlayer.CreateRuntimeSession(
                 projectPath, declareAotInterpreter: true);
             Mark("createSession");
-            _graphics = new WebGlGraphicsDevice();
+            var graphics = new WebGlGraphicsDevice();
             Mark("graphics");
-            _session.AttachGraphicsDevice(_graphics);
+            try { _session.AttachGraphicsDevice(graphics); }
+            catch { graphics.Dispose(); throw; }
+            _graphics = graphics;
             _session.Start();
             Mark("startSession");
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"BEngine Web Player startup failed:{Environment.NewLine}{exception}");
+            try { Shutdown(); }
+            catch (Exception cleanupFailure)
+            {
+                Console.Error.WriteLine($"BEngine Web Player startup cleanup failed:{Environment.NewLine}{cleanupFailure}");
+            }
             throw;
         }
         finally
@@ -103,16 +104,16 @@ public static partial class Program
     }
 
     [JSExport]
-    public static double GetStartupProgress() => PlayerStartupEnvironment.Current?.Progress ?? 0;
+    public static double GetStartupProgress() => HostStartupEnvironment.Current?.Progress ?? 0;
 
     [JSExport]
-    public static string GetStartupStage() => PlayerStartupEnvironment.Current?.Stage ?? "environment";
+    public static string GetStartupStage() => HostStartupEnvironment.Current?.Stage ?? "environment";
 
     [JSExport]
-    public static void ConfirmStartupProgressPresented() => PlayerStartupEnvironment.Current?.ConfirmProgressPresented(1);
+    public static void ConfirmStartupProgressPresented() => HostStartupEnvironment.Current?.ConfirmProgressPresented(1);
 
     [JSExport]
-    public static void ContinueStartup() => PlayerStartupEnvironment.Current?.ReleasePresentation();
+    public static void ContinueStartup() => HostStartupEnvironment.Current?.ReleasePresentation();
 
     private static bool IsStartupProfilingRequested()
     {
@@ -125,13 +126,10 @@ public static partial class Program
     }
 
     [JSExport]
-    public static string GetTestResult() => System.IO.File.Exists("/bengine-tests.json") ? System.IO.File.ReadAllText("/bengine-tests.json") : "";
-
-    [JSExport]
     public static bool Tick(double timestampMilliseconds)
     {
         var session = _session;
-        if (session is null || !BEngine.Application.isPlaying)
+        if (session is null || !Application.isPlaying)
         {
             Shutdown();
             return false;
@@ -179,105 +177,33 @@ public static partial class Program
     [JSExport]
     public static void SetPaused(bool paused) => _session?.SetPaused(paused);
     [JSExport]
-    public static void SetComposition(string text) => Input.SetComposition(text);
+    public static void SetComposition(string text) => BrowserInput.SetComposition(text);
     [JSExport]
-    public static string GetTextInputRequest() => Input.textInputRequest is { } request
-        ? JsonSerializer.Serialize(new WebTextInputRequest(request.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            request.Text, request.Anchor, request.Caret, request.Password, request.Multiline), WebHostJsonContext.Default.WebTextInputRequest)
-        : string.Empty;
+    public static string GetTextInputRequest() => BrowserInput.GetTextInputRequest();
     [JSExport]
-    public static void SubmitTextEdit(string sessionId, string text, int anchor, int caret)
-    {
-        if (long.TryParse(sessionId, System.Globalization.CultureInfo.InvariantCulture, out var id))
-            Input.SubmitTextEdit(new(id, text, anchor, caret));
-    }
+    public static void SubmitTextEdit(string sessionId, string text, int anchor, int caret) =>
+        BrowserInput.SubmitTextEdit(sessionId, text, anchor, caret);
     [JSExport]
     public static void ReportSafeArea(double left, double bottom, double right, double top) =>
-        DisplayUtility.Current.ReportSafeArea(new((Fix64)left, (Fix64)bottom, (Fix64)right, (Fix64)top));
-    [JSImport("globalThis.BEngineText.readClipboard")]
-    private static partial string ReadClipboard();
-    [JSImport("globalThis.BEngineText.writeClipboard")]
-    private static partial bool WriteClipboard(string text);
+        BrowserInput.ReportSafeArea(left, bottom, right, top);
 
     [JSExport]
-    public static void KeyEvent(string code, bool pressed, string text)
-    {
-        _keyEvents++;
-        if (TryMapKey(code, out var key)) Input.SetKeyState(key, pressed);
-        if (pressed && !string.IsNullOrEmpty(text))
-            foreach (var character in text) Input.AppendTextInput(character);
-    }
+    public static void KeyEvent(string code, bool pressed, string text) => BrowserInput.KeyEvent(code, pressed, text);
 
     [JSExport]
     public static void PointerEvent(int pointerId, string pointerType, int button, bool pressed,
-        double x, double y, double deltaX, double deltaY, double pressure, double radius)
-    {
-        _pointerEvents++;
-        if (string.Equals(pointerType, "touch", StringComparison.OrdinalIgnoreCase))
-        {
-            _touchEvents++;
-            var phase = Touches.ContainsKey(pointerId) ? TouchPhase.Moved : TouchPhase.Began;
-            Touches[pointerId] = new Touch(pointerId,
-                new Vector2((Fix64)x, (Fix64)y),
-                new Vector2((Fix64)deltaX, (Fix64)deltaY),
-                (Fix64)Math.Max(0, (double)Time.unscaledDeltaTime),
-                1, phase, (Fix64)Math.Max(0, pressure), Fix64.One,
-                (Fix64)Math.Max(0, radius), Fix64.Zero);
-            Input.SetTouches(Touches.Values);
-            return;
-        }
-
-        Input.SetMousePosition((Fix64)x, (Fix64)y);
-        Input.SetMouseDelta((Fix64)deltaX, (Fix64)deltaY);
-        if (button is >= 0 and <= 6) Input.SetKeyState((KeyCode)((int)KeyCode.Mouse0 + button), pressed);
-    }
+        double x, double y, double deltaX, double deltaY, double pressure, double radius) =>
+        BrowserInput.PointerEvent(pointerId, pointerType, button, pressed, x, y, deltaX, deltaY, pressure, radius);
 
     [JSExport]
-    public static void PointerEnded(int pointerId, string pointerType, int button,
-        double x, double y, bool canceled)
-    {
-        _pointerEvents++;
-        if (string.Equals(pointerType, "touch", StringComparison.OrdinalIgnoreCase))
-        {
-            _touchEvents++;
-            Touches[pointerId] = new Touch(pointerId,
-                new Vector2((Fix64)x, (Fix64)y), Vector2.zero, Fix64.Zero, 1,
-                canceled ? TouchPhase.Canceled : TouchPhase.Ended);
-            Input.SetTouches(Touches.Values);
-            Touches.Remove(pointerId);
-            return;
-        }
-        Input.SetMousePosition((Fix64)x, (Fix64)y);
-        if (button is >= 0 and <= 6) Input.SetKeyState((KeyCode)((int)KeyCode.Mouse0 + button), false);
-    }
+    public static void PointerEnded(int pointerId, string pointerType, int button, double x, double y, bool canceled) =>
+        BrowserInput.PointerEnded(pointerId, pointerType, button, x, y, canceled);
 
     [JSExport]
-    public static void WheelEvent(double x, double y)
-    {
-        _wheelEvents++;
-        Input.SetMouseScroll((Fix64)x, (Fix64)(-y));
-    }
+    public static void WheelEvent(double x, double y) => BrowserInput.WheelEvent(x, y);
 
     [JSExport]
-    public static void ReportGamepads(string json)
-    {
-        _gamepadReports++;
-        var snapshots = JsonSerializer.Deserialize(
-            json, WebHostJsonContext.Default.GamepadStateSnapshotArray) ?? [];
-        var current = snapshots.Select(item => item.Index).ToHashSet();
-        foreach (var disconnected in ConnectedGamepads.Except(current).ToArray())
-        {
-            Input.SetGamepadConnected(disconnected, false);
-            ConnectedGamepads.Remove(disconnected);
-        }
-        foreach (var gamepad in snapshots)
-        {
-            ConnectedGamepads.Add(gamepad.Index);
-            Input.SetGamepadConnected(gamepad.Index, true, gamepad.Id);
-            SetGamepadAxes(gamepad);
-            SetGamepadButtons(gamepad);
-        }
-    }
+    public static void ReportGamepads(string json) => BrowserInput.ReportGamepads(json);
 
     [JSExport]
     public static string GetDiagnostics() => CreateDiagnostics(includeColorReadback: false);
@@ -297,11 +223,11 @@ public static partial class Program
     public static string GetManagedCodeStartupDiagnostics() => JsonSerializer.Serialize(
         ManagedCodeStartupDiagnostics.Snapshot, WebHostJsonContext.Default.ManagedCodeStartupCounterArray);
 
-    /// <summary>Opt-in, cumulative AB measurements; nested durations are not additive.</summary>
+    /// <summary>Opt-in, cumulative content measurements; nested durations are not additive.</summary>
     [JSExport]
-    public static string GetAssetBundleDiagnostics() => JsonSerializer.Serialize(
-        BEngine.AssetBundles.AssetBundlePerformanceDiagnostics.Snapshot,
-        WebHostJsonContext.Default.AssetBundlePerformanceSnapshot);
+    public static string GetContentDiagnostics() => JsonSerializer.Serialize(
+        PlayerContentDiagnostics.Snapshot,
+        WebHostJsonContext.Default.PlayerContentPerformanceSnapshot);
 
     /// <summary>Captures diagnostic pixels explicitly because GPU readback can stall rendering.</summary>
     [JSExport]
@@ -338,7 +264,7 @@ public static partial class Program
     private static string CreateDiagnostics(bool includeColorReadback)
     {
         var graphics = _graphics;
-        var startup = _session?.StartupFlow?.Current;
+        var startup = _session?.StartupControl?.Current;
         var nonBackgroundPixels = 0;
         if (includeColorReadback && graphics is not null && _width > 0 && _height > 0)
         {
@@ -356,7 +282,7 @@ public static partial class Program
         }
         return JsonSerializer.Serialize(new WebPlayerDiagnostics
         {
-            Playing = BEngine.Application.isPlaying,
+            Playing = Application.isPlaying,
             CanRender = _session?.CanRender == true,
             Backend = graphics?.Backend.ToString() ?? string.Empty,
             Width = _width,
@@ -365,14 +291,14 @@ public static partial class Program
             Vertices = graphics?.DrawStatistics.VertexCount ?? 0,
             NonBackgroundPixels = nonBackgroundPixels,
             RenderedFrames = _renderedFrames,
-            KeyEvents = _keyEvents,
-            PointerEvents = _pointerEvents,
-            TouchEvents = _touchEvents,
-            WheelEvents = _wheelEvents,
-            GamepadReports = _gamepadReports,
+            KeyEvents = BrowserInput.KeyEvents,
+            PointerEvents = BrowserInput.PointerEvents,
+            TouchEvents = BrowserInput.TouchEvents,
+            WheelEvents = BrowserInput.WheelEvents,
+            GamepadReports = BrowserInput.GamepadReports,
             TouchCount = Input.touchCount,
             GamepadCount = Input.gamepadCount,
-            StartupPhase = startup?.Phase.ToString() ?? string.Empty,
+            StartupPhase = startup?.Phase ?? string.Empty,
             StartupStatus = startup?.Status ?? string.Empty,
             StartupError = startup?.Error ?? string.Empty,
             LogEntries = _logEntries,
@@ -384,18 +310,7 @@ public static partial class Program
     [JSExport]
     public static void AdvanceStartup(bool preferInstalledContent)
     {
-        var flow = _session?.StartupFlow;
-        if (flow is null) return;
-        var current = flow.Current;
-        if (current.CanCheckForUpdates) flow.CheckForUpdates();
-        else if (current.RequiresUpdateConfirmation)
-        {
-            if (preferInstalledContent && current.CanDeclineUpdate)
-                flow.DeclineUpdate();
-            else
-                flow.ConfirmUpdate();
-        }
-        else if (current.CanEnterGame) flow.EnterGame();
+        _session?.StartupControl?.Advance(preferInstalledContent);
     }
 
     [JSExport]
@@ -409,19 +324,14 @@ public static partial class Program
         _session = null;
         _graphics = null;
         Debug.MessageLogged -= OnMessageLogged;
-        Touches.Clear();
-        ConnectedGamepads.Clear();
+        BrowserInput.Reset();
         _hasPreviousTimestamp = false;
         _previousTimestampMilliseconds = 0;
         _renderedFrames = 0;
-        _keyEvents = 0;
-        _pointerEvents = 0;
-        _touchEvents = 0;
-        _wheelEvents = 0;
-        _gamepadReports = 0;
         if (ReferenceEquals(PlatformAccessibility.adapter, Accessibility))
             PlatformAccessibility.adapter = null;
-        session?.Dispose();
+        try { session?.Dispose(); }
+        finally { HostStartupSession.Current?.Dispose(); }
     }
 
     private static void OnMessageLogged(LogEntry entry)
@@ -437,89 +347,7 @@ public static partial class Program
             Console.WriteLine(entry.ToDetailedString());
     }
 
-    private static void SetGamepadAxes(GamepadStateSnapshot gamepad)
-    {
-        var axes = gamepad.Axes ?? [];
-        if (axes.Length > 0) Input.SetGamepadAxis(gamepad.Index, GamepadAxis.LeftStickX, (Fix64)axes[0]);
-        if (axes.Length > 1) Input.SetGamepadAxis(gamepad.Index, GamepadAxis.LeftStickY, (Fix64)(-axes[1]));
-        if (axes.Length > 2) Input.SetGamepadAxis(gamepad.Index, GamepadAxis.RightStickX, (Fix64)axes[2]);
-        if (axes.Length > 3) Input.SetGamepadAxis(gamepad.Index, GamepadAxis.RightStickY, (Fix64)(-axes[3]));
-        var buttons = gamepad.Buttons ?? [];
-        if (buttons.Length > 6) Input.SetGamepadAxis(gamepad.Index, GamepadAxis.LeftTrigger, (Fix64)buttons[6]);
-        if (buttons.Length > 7) Input.SetGamepadAxis(gamepad.Index, GamepadAxis.RightTrigger, (Fix64)buttons[7]);
-    }
 
-    private static void SetGamepadButtons(GamepadStateSnapshot gamepad)
-    {
-        var buttons = gamepad.Buttons ?? [];
-        (int Index, GamepadButton Button)[] mappings =
-        [
-            (0, GamepadButton.South), (1, GamepadButton.East), (2, GamepadButton.West),
-            (3, GamepadButton.North), (4, GamepadButton.LeftShoulder),
-            (5, GamepadButton.RightShoulder), (8, GamepadButton.Back),
-            (9, GamepadButton.Start), (10, GamepadButton.LeftStick),
-            (11, GamepadButton.RightStick), (12, GamepadButton.DPadUp),
-            (13, GamepadButton.DPadDown), (14, GamepadButton.DPadLeft),
-            (15, GamepadButton.DPadRight), (16, GamepadButton.Home)
-        ];
-        foreach (var mapping in mappings)
-            Input.SetGamepadButtonState(gamepad.Index, mapping.Button,
-                mapping.Index < buttons.Length && buttons[mapping.Index] >= 0.5);
-    }
-
-    private static bool TryMapKey(string code, out KeyCode key)
-    {
-        key = code switch
-        {
-            "Space" => KeyCode.Space, "Enter" => KeyCode.Return, "Escape" => KeyCode.Escape,
-            "Tab" => KeyCode.Tab, "Backspace" => KeyCode.Backspace, "Delete" => KeyCode.Delete,
-            "Home" => KeyCode.Home, "End" => KeyCode.End, "PageUp" => KeyCode.PageUp,
-            "PageDown" => KeyCode.PageDown, "Insert" => KeyCode.Insert,
-            "CapsLock" => KeyCode.CapsLock, "NumLock" => KeyCode.Numlock,
-            "PrintScreen" => KeyCode.Print, "ScrollLock" => KeyCode.ScrollLock,
-            "Pause" => KeyCode.Pause, "Backquote" => KeyCode.BackQuote, "Minus" => KeyCode.Minus,
-            "Equal" => KeyCode.Equals, "BracketLeft" => KeyCode.LeftBracket,
-            "BracketRight" => KeyCode.RightBracket, "Backslash" => KeyCode.Backslash,
-            "Semicolon" => KeyCode.Semicolon, "Quote" => KeyCode.Quote, "Comma" => KeyCode.Comma,
-            "Period" => KeyCode.Period, "Slash" => KeyCode.Slash,
-            "ShiftLeft" => KeyCode.LeftShift, "ShiftRight" => KeyCode.RightShift,
-            "ControlLeft" => KeyCode.LeftControl, "ControlRight" => KeyCode.RightControl,
-            "AltLeft" => KeyCode.LeftAlt, "AltRight" => KeyCode.RightAlt,
-            "MetaLeft" => KeyCode.LeftCommand, "MetaRight" => KeyCode.RightCommand,
-            "ArrowUp" => KeyCode.UpArrow, "ArrowDown" => KeyCode.DownArrow,
-            "ArrowLeft" => KeyCode.LeftArrow, "ArrowRight" => KeyCode.RightArrow,
-            _ => KeyCode.None
-        };
-        if (key != KeyCode.None) return true;
-        if (code.Length == 4 && code.StartsWith("Key", StringComparison.Ordinal) &&
-            code[3] is >= 'A' and <= 'Z')
-        {
-            key = (KeyCode)((int)KeyCode.A + code[3] - 'A');
-            return true;
-        }
-        if (code.Length == 6 && code.StartsWith("Digit", StringComparison.Ordinal) &&
-            code[5] is >= '0' and <= '9')
-        {
-            key = (KeyCode)((int)KeyCode.Alpha0 + code[5] - '0');
-            return true;
-        }
-        if (code.Length is 2 or 3 && code[0] == 'F' && int.TryParse(code.AsSpan(1), out var function) &&
-            function is >= 1 and <= 15)
-        {
-            key = (KeyCode)((int)KeyCode.F1 + function - 1);
-            return true;
-        }
-        return false;
-    }
-
-}
-
-internal sealed class GamepadStateSnapshot
-{
-    public int Index { get; set; }
-    public string Id { get; set; } = string.Empty;
-    public double[]? Axes { get; set; }
-    public double[]? Buttons { get; set; }
 }
 
 internal sealed class WebPerformanceDiagnostics
@@ -581,109 +409,11 @@ internal sealed class WebPlayerDiagnostics
     public string LastError { get; set; } = string.Empty;
 }
 
-[SupportedOSPlatform("browser")]
-internal sealed partial class WebAccessibilityAdapter : IPlatformAccessibilityAdapter
-{
-    private readonly Dictionary<long, Func<int, PlatformAccessibilityAction, bool>> _actions = [];
-
-    public bool IsScreenReaderActive => HasAccessibilitySupport();
-    public void AttachWindow(nint nativeHandle) { }
-
-    public void UpdateHierarchy(long documentId, PlatformAccessibilitySnapshot snapshot,
-        Func<int, PlatformAccessibilityAction, bool> performAction)
-    {
-        _actions[documentId] = performAction;
-        var document = new WebAccessibilityDocument
-        {
-            DocumentId = documentId,
-            Revision = snapshot.Revision,
-            Nodes = snapshot.Nodes.Select(node => new WebAccessibilityNode
-            {
-                Id = node.Id,
-                ParentId = node.ParentId,
-                Role = (int)node.Role,
-                Name = node.Name,
-                Description = node.Description,
-                Value = node.Value,
-                State = (int)node.State,
-                X = node.Bounds.X,
-                Y = node.Bounds.Y,
-                Width = node.Bounds.Width,
-                Height = node.Bounds.Height,
-                MinimumValue = node.MinimumValue,
-                MaximumValue = node.MaximumValue,
-                LiveRegion = (int)node.LiveRegion
-            }).ToArray()
-        };
-        UpdateAccessibility(JsonSerializer.Serialize(document, WebHostJsonContext.Default.WebAccessibilityDocument));
-    }
-
-    public void RemoveHierarchy(long documentId)
-    {
-        _actions.Remove(documentId);
-        RemoveAccessibility(documentId);
-    }
-
-    public void Notify(PlatformAccessibilityEvent accessibilityEvent)
-    {
-        if (accessibilityEvent.Kind == PlatformAccessibilityEventKind.Announcement &&
-            !string.IsNullOrWhiteSpace(accessibilityEvent.Message))
-            AnnounceAccessibility(accessibilityEvent.Message, (int)accessibilityEvent.LiveRegion);
-    }
-
-    internal bool Perform(long documentId, int nodeId, PlatformAccessibilityAction action) =>
-        _actions.TryGetValue(documentId, out var callback) && callback(nodeId, action);
-
-    public void Dispose()
-    {
-        foreach (var documentId in _actions.Keys.ToArray()) RemoveAccessibility(documentId);
-        _actions.Clear();
-    }
-
-    [JSImport("globalThis.BEngineAccessibility.hasSupport")]
-    private static partial bool HasAccessibilitySupport();
-    [JSImport("globalThis.BEngineAccessibility.update")]
-    private static partial void UpdateAccessibility(string json);
-    [JSImport("globalThis.BEngineAccessibility.remove")]
-    private static partial void RemoveAccessibility(double documentId);
-    [JSImport("globalThis.BEngineAccessibility.announce")]
-    private static partial void AnnounceAccessibility(string message, int liveRegion);
-}
-
-internal sealed class WebAccessibilityDocument
-{
-    public long DocumentId { get; set; }
-    public long Revision { get; set; }
-    public WebAccessibilityNode[] Nodes { get; set; } = [];
-}
-
-internal sealed class WebAccessibilityNode
-{
-    public int Id { get; set; }
-    public int? ParentId { get; set; }
-    public int Role { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public string Value { get; set; } = string.Empty;
-    public int State { get; set; }
-    public float X { get; set; }
-    public float Y { get; set; }
-    public float Width { get; set; }
-    public float Height { get; set; }
-    public float? MinimumValue { get; set; }
-    public float? MaximumValue { get; set; }
-    public int LiveRegion { get; set; }
-}
-
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
 [JsonSerializable(typeof(WebStartupPhase[]))]
 [JsonSerializable(typeof(PlayerStartupPerformanceSample[]))]
 [JsonSerializable(typeof(ManagedCodeStartupCounter[]))]
-[JsonSerializable(typeof(BEngine.AssetBundles.AssetBundlePerformanceSnapshot))]
-[JsonSerializable(typeof(GamepadStateSnapshot[]))]
+[JsonSerializable(typeof(PlayerContentPerformanceSnapshot))]
 [JsonSerializable(typeof(WebPlayerDiagnostics))]
 [JsonSerializable(typeof(WebPerformanceDiagnostics))]
-[JsonSerializable(typeof(WebAccessibilityDocument))]
-[JsonSerializable(typeof(WebTextInputRequest))]
 internal sealed partial class WebHostJsonContext : JsonSerializerContext;
-internal sealed record WebTextInputRequest(string Id, string Text, int Anchor, int Caret, bool Password, bool Multiline);

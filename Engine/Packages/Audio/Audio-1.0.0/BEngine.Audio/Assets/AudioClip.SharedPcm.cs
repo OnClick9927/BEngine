@@ -10,8 +10,8 @@ public sealed partial class AudioClip
     private PcmKey? SharedKey()
     {
         if (!AudioLoadingSettings.shareDecodedResources || _streamPath is null || _factory is not null || _encoded is not null) return null;
-        var files = RuntimeServiceAccess.FileSystem;
-        return new(RuntimeServiceAccess.PathService.GetFullPath(_streamPath), files.GetLastWriteTimeUtc(_streamPath).Ticks,
+        var files = RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>();
+        return new(RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(_streamPath), files.GetLastWriteTimeUtc(_streamPath).Ticks,
             files.GetFileLength(_streamPath), _streamOffset, _mono, _gain, samples, channels, frequency);
     }
     private void Attach(SharedPcm storage)

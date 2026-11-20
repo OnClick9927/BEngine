@@ -1,0 +1,74 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using BEngine;
+using BEngine.Editor;
+
+public static class AssetMoveOwnershipProbe
+{
+    [InitializeOnLoadMethod]
+    public static void Verify()
+    {
+        var output=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if(string.IsNullOrWhiteSpace(output))return;
+        var checks=new List<string>();
+        void Check(bool value,string name){if(!value)throw new Exception(name);checks.Add(name);}
+        var receipt=Path.Combine(output,"AssetMoveOwnershipEvents.jsonl");
+        try
+        {
+            Check(typeof(AssetMoveTransaction).Assembly==typeof(AssetDatabase).Assembly,"Real host uses the shared source transaction");
+            var folder="Assets/AssetMove-"+Guid.NewGuid().ToString("N");
+            Directory.CreateDirectory(Path.Combine(EditorApplication.projectPath,folder));
+            string Full(string path)=>Path.Combine(EditorApplication.projectPath,path);
+            var png=folder+"/old.png"; var atlas=folder+"/old.atlas.yaml";
+            File.WriteAllBytes(Full(png),Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aAnkAAAAASUVORK5CYII="));
+            var document=new TextureAtlas{Texture=png,Width=1,Height=1,Sprites=new List<TextureAtlasSprite>{new TextureAtlasSprite{Name="unit",Width=1,Height=1}}};
+            document.Save(Full(atlas));
+            AssetDatabase.Refresh();
+            var atlasGuid=AssetDatabase.AssetPathToGUID(atlas); var pngGuid=AssetDatabase.AssetPathToGUID(png);
+            Check(atlasGuid.Length>0&&pngGuid.Length>0,"Real atlas and texture are imported");
+            // Recreate the persisted metadata of a legacy file-backed atlas.
+            var meta=YamlUtility.Load<BEngine.ProjectSystem.Editor.AssetMetaDocument>(Full(png)+".meta");
+            meta.ParentGuid=atlasGuid;meta.LocalIdentifier=2800000;
+            YamlUtility.Save(meta,Full(png)+".meta");
+            AssetDatabase.ImportAsset(png);
+            var destination=folder+"/new.atlas.yaml";
+            Check(AssetDatabase.MoveAsset(atlas,destination)==string.Empty,"Public asset move dispatches the atlas handler without recursion");
+            Check(AssetDatabase.AssetPathToGUID(destination)==atlasGuid,"Real atlas move preserves its GUID");
+            Check(File.Exists(Full(folder+"/new.png"))&&!File.Exists(Full(png)),"Real legacy companion follows its owner");
+            Check(TextureAtlas.Load(Full(destination)).Texture==folder+"/new.png","Real manifest refers to the moved texture");
+            var allAssets=AssetDatabase.LoadAllAssetsAtPath(destination);
+            EditorAssetInfo? childInfo=null;
+            AssetMoveTransaction.Execute(tx=>childInfo=tx.FindFileSubAsset(destination,2800000,nameof(Texture)));
+            File.AppendAllText(Path.Combine(output,"AssetMoveDiagnostics.jsonl"),JsonSerializer.Serialize(new{Root=destination,ExpectedType=typeof(Texture).AssemblyQualifiedName,Assets=allAssets.Select(a=>new{Type=a.GetType().AssemblyQualifiedName,AssetPath=AssetDatabase.GetAssetPath(a)}).ToArray(),Child=childInfo,ArtifactExists=childInfo.HasValue&&File.Exists(childInfo.Value.ArtifactPath),Registered=childInfo.HasValue?AssetTypeRegistry.ResolveAssetType(childInfo.Value.SourcePath)?.AssemblyQualifiedName:null})+"\n");
+            var child=allAssets.OfType<Texture>().SingleOrDefault();
+            string childOwner=string.Empty;long childLocal=0;
+            var bound=child!=null&&AssetDatabase.TryGetGUIDAndLocalFileIdentifier(child,out childOwner,out childLocal);
+            Check(bound&&childOwner==atlasGuid&&childLocal==2800000,$"Real file subasset retains owner and local identifier: type={child?.GetType().FullName}, owner={childOwner}, expected={atlasGuid}, local={childLocal}");
+            Check(File.ReadAllText(Full(folder+"/new.png")+".meta").Contains(pngGuid),"Companion metadata retains its own GUID");
+            var restored=TextureAtlas.Load(Full(destination));
+            Check(restored.GetSprite("unit")!=null,"Prepacked sprite regions remain usable after the move");
+            var before=File.ReadAllBytes(Full(destination));
+            var err=AssetMoveTransaction.Execute(tx=>{tx.Move(destination,folder+"/rollback.atlas.yaml");tx.EditSource(folder+"/rollback.atlas.yaml",p=>{File.WriteAllText(p,"invalid");throw new IOException("intentional-source-failure");});});
+            Check(err.Contains("intentional-source-failure")&&File.ReadAllBytes(Full(destination)).AsSpan().SequenceEqual(before),"Real source failure rolls back original bytes");
+            Check(AssetDatabase.AssetPathToGUID(destination)==atlasGuid&&!File.Exists(Full(folder+"/rollback.atlas.yaml")),"Real rollback restores source address and GUID");
+            var generatedPath=folder+"/generated.atlas.yaml";
+            var sourcePath=folder+"/source.png";
+            File.Copy(Full(folder+"/new.png"),Full(sourcePath));AssetDatabase.ImportAsset(sourcePath);
+            var source=AssetDatabase.LoadAssetAtPath<Texture>(sourcePath);
+            var generated=new TextureAtlas{Sources=new[]{Sprite.Create(source,new Vector2(Fix64.Half,Fix64.Half))}};
+            generated.Save(Full(generatedPath));
+            var build=TextureAtlasBuilder.Build(generated,Full(generatedPath));
+            var generatedGuid=AssetDatabase.AssetPathToGUID(generatedPath);
+            var generatedReference=TextureAtlas.Load(Full(generatedPath)).Texture;
+            Check(generatedReference.StartsWith("guid:")&&generatedGuid.Length>0,"Real builder creates a Library-backed atlas subasset");
+            Check(AssetDatabase.MoveAsset(generatedPath,folder+"/generated-moved.atlas.yaml")==string.Empty,"Generated atlas moves through the same shared transaction");
+            Check(TextureAtlas.Load(Full(folder+"/generated-moved.atlas.yaml")).Texture==generatedReference&&AssetDatabase.AssetPathToGUID(folder+"/generated-moved.atlas.yaml")==generatedGuid,"Generated reference and owner GUID survive the move");
+            File.AppendAllText(receipt,JsonSerializer.Serialize(new{Passed=true,Checks=checks.Count,Details=checks})+"\n");
+        }
+        catch(Exception exception)
+        {File.AppendAllText(receipt,JsonSerializer.Serialize(new{Passed=false,Checks=checks.Count,Error=exception.ToString()})+"\n");throw;}
+    }
+}

@@ -101,7 +101,14 @@ public sealed class VideoPreviewSession : IDisposable
                 if (!worker.TryTakeFrame(out var snapshot)) return;
                 _rgba = snapshot.Rgba; timestamp = snapshot.Timestamp;
             }
-            else { _reader!.ReadFrame(Math.Min(_time, _reader.duration), _rgba); timestamp = _reader.timestamp; }
+            else
+            {
+                // Portable frames are immutable: a paused preview already owns
+                // these pixels. Polling readers still need their ordinary reads.
+                if (_requestedTime == _time && !_reader!.requiresPolling) return;
+                _reader!.ReadFrame(Math.Min(_time, _reader.duration), _rgba);
+                _requestedTime = _time; timestamp = _reader.timestamp;
+            }
             if (timestamp == _presentedTimestamp) return;
             var frame = Math.Clamp((int)Math.Round(timestamp * clip.frameRateExact), 0, clip.frameCount - 1);
             _texture.SetPixelData(_rgba); _texture.Apply(false); _frame = frame;

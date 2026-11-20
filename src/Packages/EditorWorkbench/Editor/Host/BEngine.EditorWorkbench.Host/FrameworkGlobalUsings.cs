@@ -1,0 +1,10 @@
+global using BEngine.Editor;
+global using AssetDatabase = BEngine.Editor.AssetDatabase;
+global using ObjectEditor = BEngine.Editor.Editor;
+global using ObjectFactory = BEngine.Editor.ObjectFactory;
+global using EditorTools = BEngine.Editor.Tools;
+global using NativeWindow = BEngine.Editor.NativeWindow;
+global using BEngine.Instrumentation;
+global using BEngine.ProjectSystem;
+global using BEngine.ProjectSystem.Editor;
+global using BEngine.Hosting;

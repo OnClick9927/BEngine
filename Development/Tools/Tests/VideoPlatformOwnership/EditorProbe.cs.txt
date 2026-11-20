@@ -1,0 +1,43 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using BEngine;
+using BEngine.Editor;
+using BEngine.Platform;
+using BEngine.Video;
+
+public static class VideoOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if(string.IsNullOrEmpty(folder))return;
+        var decoder=PlatformRuntime.GetService<IPlatformVideoDecoder>();
+        if(decoder==null || decoder.GetType().Assembly.GetName().Name!="BEngine.Platform.DotNet")throw new Exception("Actual Editor did not select host-owned native media");
+        var clip=VideoClip.Load("E:/Project/_BZP/BEngine/Engine/src/Packages/Video/Editor/Doc/VideoPlayback.mp4",false);
+        var reader=clip.OpenReader(VideoDecodeMode.Software);
+        var rgba=new byte[reader.width*reader.height*4];reader.ReadFrame(0,rgba);
+        if(reader.decodedFrames<=0 || reader.hardwareDecodedFrames!=0)throw new Exception("Actual Editor native decode counters failed");
+        BObject.DestroyImmediate(clip);
+        try { reader.ReadFrame(0,rgba);throw new Exception("Clip did not retire its reader"); }catch(ObjectDisposedException){}
+        var frame=new byte[]{1,2,3,255,4,5,6,255};
+        using(var output=new MemoryStream())
+        {
+            VideoClip.Write(output,2,1,30,1,new ReadOnlyMemory<byte>[] {frame});
+            var portable=VideoClip.FromBytes(output.ToArray(),"portable.bvideo");
+            try
+            {
+                using(var cursor=portable.OpenReader())
+                {
+                    var decoded=new byte[8];cursor.ReadFrame(0,decoded);
+                    for(var i=0;i<8;i++)if(decoded[i]!=frame[i])throw new Exception("Portable .bvideo compatibility failed");
+                }
+            }
+            finally{BObject.DestroyImmediate(portable);}
+        }
+        if(VideoDecoder.activeNativeSessions!=0 || VideoRuntimeSettings.activeDecoders!=0 || VideoRuntimeSettings.estimatedMemoryBytes!=0)throw new Exception("Actual Editor video lifetime leaked");
+        var record=JsonSerializer.Serialize(new {Passed=true,Checks=6,NativeOwner=decoder.GetType().Assembly.GetName().Name,ActualMp4=true,NativeCounters=true,ClipRetiresReaders=true,PortableFrames=true,BudgetsReleased=true});
+        File.WriteAllText(Path.Combine(folder,"VideoOwnershipResult.json"),record);
+        File.AppendAllText(Path.Combine(folder,"VideoOwnershipEvents.jsonl"),record+Environment.NewLine);
+    }
+}

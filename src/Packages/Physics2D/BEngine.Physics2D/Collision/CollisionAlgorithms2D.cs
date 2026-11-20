@@ -55,10 +55,10 @@ internal static partial class CollisionAlgorithms2D
                 if (!TryCollide(_left[i], _right[j], out var contact)) continue;
                 var duplicate = false;
                 foreach (var existing in _contacts)
-                    if (Vector2.Dot(existing.Manifold.Normal, contact.Normal) > (Fix64).999 &&
-                        (existing.Manifold.Point - contact.Point).sqrMagnitude < (Fix64).000001 &&
+                    if (Vector2.Dot(existing.Manifold.Normal, contact.Normal) > Fix64.FromRaw(4290672328L) /* (Fix64).999 */ &&
+                        (existing.Manifold.Point - contact.Point).sqrMagnitude < Fix64.FromRaw(4294L) /* (Fix64).000001 */ &&
                         existing.Manifold.HasSecondPoint == contact.HasSecondPoint &&
-                        (!contact.HasSecondPoint || (existing.Manifold.Point2 - contact.Point2).sqrMagnitude < (Fix64).000001))
+                        (!contact.HasSecondPoint || (existing.Manifold.Point2 - contact.Point2).sqrMagnitude < Fix64.FromRaw(4294L) /* (Fix64).000001 */))
                     { duplicate = true; break; }
                 if (!duplicate) _contacts.Add(new(contact, i, j));
             }

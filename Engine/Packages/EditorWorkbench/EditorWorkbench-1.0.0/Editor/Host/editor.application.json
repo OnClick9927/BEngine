@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "assembly": "BEngine.EditorWorkbench.Host.dll",
+  "type": "BEngine.Workbench.EditorApplicationEntry"
+}

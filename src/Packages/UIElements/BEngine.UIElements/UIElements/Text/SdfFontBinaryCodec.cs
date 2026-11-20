@@ -24,7 +24,16 @@ internal static class SdfFontBinaryCodec
     {
         data.Validate();
         var family = Encode(data.FontFamily, MaximumFamilyBytes);
-        var names = data.SourceFonts.Select(source => Encode(source.Name, MaximumSourceNameBytes)).ToArray();
+        var projectionSource1092 = data.SourceFonts;
+        ArgumentNullException.ThrowIfNull(projectionSource1092, "source");
+        var projectionResult1092 = projectionSource1092.Length == 0 ? global::System.Array.Empty<byte[]>() : new byte[projectionSource1092.Length][];
+        for (var projectionIndex1092 = 0; projectionIndex1092 < projectionSource1092.Length; projectionIndex1092++)
+        {
+            var projectionItem1092 = projectionSource1092[projectionIndex1092];
+            projectionResult1092[projectionIndex1092] = Encode(projectionItem1092.Name, MaximumSourceNameBytes);
+        }
+        
+        var names = projectionResult1092;
         long length = HeaderSize + (long)family.Length + data.Pixels.Length + (long)data.Glyphs.Length * GlyphSize;
         for (var index = 0; index < names.Length; index++)
             length += 8L + names[index].Length + data.SourceFonts[index].Data.Length;

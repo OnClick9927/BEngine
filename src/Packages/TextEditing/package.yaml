@@ -1,0 +1,14 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.text-editing
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: Text Editing
+description: Shared Unicode text selection, caret navigation and undo for UI controls.
+enabledByDefault: false
+runtime:
+  assembly: BEngine.TextEditing
+  rootNamespace: BEngine
+  hostReferences:
+  - BEngine.Core

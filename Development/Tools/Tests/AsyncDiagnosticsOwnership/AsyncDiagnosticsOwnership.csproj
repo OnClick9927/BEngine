@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../../src/Core/BEngine.Core/BEngine.Core.csproj" />
+    <ProjectReference Include="../../../../src/Packages/Diagnostics/BEngine.Diagnostics/BEngine.Diagnostics.csproj" />
+
+  </ItemGroup>
+</Project>

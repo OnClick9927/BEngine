@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Rendering2D.Editor</AssemblyName>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <BEngineEditorAssembly>true</BEngineEditorAssembly>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
+    <ProjectReference Include="../BEngine.Rendering2D/BEngine.Rendering2D.csproj" />
+    <ProjectReference Include="../../Graphics/BEngine.Graphics.Editor/BEngine.Graphics.Editor.csproj" />
+    <ProjectReference Include="../../IMGUI/BEngine.IMGUI.Editor/BEngine.IMGUI.Editor.csproj" />
+    
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Graphics/BEngine.Graphics/BEngine.Graphics.csproj" />
+  </ItemGroup>
+</Project>

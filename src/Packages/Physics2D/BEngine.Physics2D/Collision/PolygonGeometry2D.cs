@@ -26,16 +26,24 @@ public static class PolygonGeometry2D
         var status = Clipper.Triangulate(region, out var triangles);
         if (status != TriangulateResult.success)
             throw new InvalidDataException($"Polygon triangulation failed: {status}.");
-        var vertices = new List<Vector2>(triangles.Count * 3);
-        var indices = new List<int>(triangles.Count * 3);
-        foreach (var path in FromPaths(triangles))
+        var count = 0;
+        foreach (var triangle in triangles)
+            if (triangle.Count == 3) count = checked(count + 3);
+        var vertices = count == 0 ? Array.Empty<Vector2>() : new Vector2[count];
+        var indices = count == 0 ? Array.Empty<int>() : new int[count];
+        var index = 0;
+        foreach (var triangle in triangles)
         {
-            if (path.points.Count != 3) continue;
-            var start = vertices.Count;
-            vertices.AddRange(path.points);
-            indices.Add(start); indices.Add(start + 1); indices.Add(start + 2);
+            if (triangle.Count != 3) continue;
+            foreach (var point in triangle)
+            {
+                vertices[index] = new Vector2(Fix64.FromRaw(checked(point.X * GridRaw)),
+                    Fix64.FromRaw(checked(point.Y * GridRaw)));
+                indices[index] = index;
+                index++;
+            }
         }
-        return new(vertices.ToArray(), indices.ToArray());
+        return new(vertices, indices);
     }
 
     internal static Paths64 Apply(Paths64 subject, Paths64 clip, PolygonBooleanOperation2D operation) => operation switch
@@ -60,8 +68,18 @@ public static class PolygonGeometry2D
     internal static Paths64 ToPaths(IReadOnlyList<ColliderPath2D> paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        if (paths.Count > 1024 || paths.Sum(path => path?.points?.Count ?? 0) > 16384)
+        if (paths.Count > 1024 || Scan3186(paths) > 16384)
             throw new InvalidDataException("Polygon geometry is limited to 1024 paths and 16384 total vertices.");
+        [global::BEngine.SkipLoopGuard]
+        int Scan3186(global::System.Collections.Generic.IEnumerable<global::BEngine.Physics2D.ColliderPath2D> scanSource3186)
+        {
+            ArgumentNullException.ThrowIfNull(scanSource3186, "source");
+            int total = 0;
+            foreach (var scanItem3186 in scanSource3186)
+                total = checked(total + Match3186(scanItem3186));
+            return total;
+            int Match3186(global::BEngine.Physics2D.ColliderPath2D path) => path?.points?.Count ?? 0;
+        }
         var result = new Paths64();
         foreach (var path in paths)
         {
@@ -88,12 +106,22 @@ public static class PolygonGeometry2D
         return result;
     }
 
-    internal static List<ColliderPath2D> FromPaths(Paths64 paths) => paths.Select(path => new ColliderPath2D
+    [global::BEngine.SkipLoopGuard]
+    internal static List<ColliderPath2D> FromPaths(Paths64 paths)
     {
-        isHole = Area(path) < 0,
-        points = path.Select(point => new Vector2(Fix64.FromRaw(checked(point.X * GridRaw)),
-            Fix64.FromRaw(checked(point.Y * GridRaw)))).ToList()
-    }).ToList();
+        ArgumentNullException.ThrowIfNull(paths, "source");
+        var result = new List<ColliderPath2D>(paths.Count);
+        foreach (var path in paths)
+        {
+            var isHole = Area(path) < 0;
+            var points = new List<Vector2>(path.Count);
+            foreach (var point in path)
+                points.Add(new Vector2(Fix64.FromRaw(checked(point.X * GridRaw)),
+                    Fix64.FromRaw(checked(point.Y * GridRaw))));
+            result.Add(new ColliderPath2D { isHole = isHole, points = points });
+        }
+        return result;
+    }
 
     internal static Vector2 Snap(Vector2 point) => new(Fix64.FromRaw(Quantize(point.x) * GridRaw),
         Fix64.FromRaw(Quantize(point.y) * GridRaw));

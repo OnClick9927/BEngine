@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>AssetPreviewHeadless</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+ <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core.Editor.dll" />
+
+  <Reference Include="$(EngineBinaries)/BEngine.Graphics*.dll" />
+  <Reference Include="$(EngineBinaries)/BEngine.Core*.dll" />
+  
+  <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" />
+  <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+  <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.Editor.dll" />
+  
+  <Reference Include="$(EngineBinaries)/Microsoft.Extensions*.dll" />
+  <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+  <Reference Include="$(EngineBinaries)/BCnEncoder.dll" />
+  <Reference Include="$(EngineBinaries)/CommunityToolkit.HighPerformance.dll" />
+ </ItemGroup>
+</Project>

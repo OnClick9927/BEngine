@@ -9,7 +9,8 @@ internal sealed partial class ProjectLauncherForm
     private readonly FlowLayoutPanel _updateActions = new();
     private readonly SplitContainer _updateSplit = new();
     private readonly Panel _updateFilesFooter = new();
-    private readonly Button _updatesNavigation = new();
+    private EngineUpdatesForm _engineUpdatesWindow = null!;
+    private bool _closeUpdatesWhenIdle;
     private readonly Button _checkUpdateButton = new LauncherNavigationButton();
     private readonly Button _installUpdateButton = new LauncherNavigationButton();
     private readonly Button _cancelUpdateButton = new LauncherNavigationButton();
@@ -25,7 +26,7 @@ internal sealed partial class ProjectLauncherForm
     private readonly TextBox _updateCommit = new();
     private readonly LauncherUpdateChangesView _updateChanges = new();
     private readonly LauncherUpdateStatistics _updateStatistics = new();
-    private readonly LauncherUpdateService _updateService = new();
+    private readonly LauncherUpdateService _updateService;
     private readonly System.Windows.Forms.Timer _updateCompletionTimer = new() { Interval = 500 };
     private readonly System.Windows.Forms.Timer _updateProgressTimer = new() { Interval = 100 };
     private readonly LauncherUpdateProgressBuffer _updateProgressBuffer = new();
@@ -47,6 +48,31 @@ internal sealed partial class ProjectLauncherForm
         _updatesPage.Dock = DockStyle.Fill;
         _updatesPage.BackColor = PanelBackground;
         _updatesPage.AutoScroll = true;
+        _engineUpdatesWindow = new(_updatesPage, _palette);
+        _engineUpdatesWindow.FormClosing += (_, args) =>
+        {
+            if (_startingUpdateInstaller) return;
+            if (_updateCancellation is not null)
+            {
+                args.Cancel = true; _closeUpdatesWhenIdle = true; _updateCancellation.Cancel();
+                _cancelUpdateButton.Enabled = false;
+                SetLocalizedText(_updateStage, "Cancelling update operation...");
+                return;
+            }
+            try { _updateService.ClearPreview(); }
+            catch (IOException error)
+            {
+                args.Cancel = true; _updateDetail.ForeColor = ErrorText;
+                _updateDetail.Text = DescribeUpdateFailure(error);
+                ApplyUpdatePageMode(UpdatePageMode.Result); return;
+            }
+            if (!_needsUpdateRecovery)
+            {
+                _pendingUpdate = null; _updateHasRetainedDownload = false;
+                _updateChanges.ClearChanges(); UpdateCommitHistory(); UpdateChangeSummary();
+                ApplyUpdatePageMode(UpdatePageMode.Idle);
+            }
+        };
         var layout = _updateLayout;
         layout.Dock = DockStyle.Top;
         layout.ColumnCount = 1;
@@ -203,6 +229,7 @@ internal sealed partial class ProjectLauncherForm
         _updatesPage.ClientSizeChanged += (_, _) => ResizeUpdateLayout();
         _updatesPage.FontChanged += (_, _) => ResizeUpdateLayout();
         DpiChanged += (_, _) => ResizeUpdateLayout();
+        _engineUpdatesWindow.DpiChanged += (_, _) => ResizeUpdateLayout();
         _updateStage.TextChanged += (_, _) =>
         {
             _updateDetailToolTip.SetToolTip(_updateStage, _updateStage.Text);
@@ -227,7 +254,7 @@ internal sealed partial class ProjectLauncherForm
             if (_updateProgressTimer.Enabled && (_updatePageMode is UpdatePageMode.Checking or UpdatePageMode.Downloading)
                 && _updateProgressBuffer.TryTake(out var progress)) ReportUpdateProgress(progress);
         };
-        FormClosed += (_, _) =>
+        Disposed += (_, _) =>
         {
             _updateCompletionTimer.Stop();
             _updateCompletionTimer.Dispose();
@@ -236,6 +263,7 @@ internal sealed partial class ProjectLauncherForm
             _updateProgressBuffer.Clear();
             _updateDetailToolTip.Dispose();
             _updateService.Dispose();
+            _engineUpdatesWindow.Dispose();
         };
         ApplyUpdatePageMode(UpdatePageMode.Idle);
     }
@@ -277,6 +305,7 @@ internal sealed partial class ProjectLauncherForm
         _updateProgressRow.BackColor = PanelBackground;
         _updateSplit.BackColor = Border;
         _updateSplit.Panel1.BackColor = _updateSplit.Panel2.BackColor = PanelBackground;
+        _engineUpdatesWindow.Text = T("Engine updates");
         UpdateCommitHistory();
         UpdateChangeSummary();
         if (_updateLastProgress is { } progress && _updatePageMode is UpdatePageMode.Checking or UpdatePageMode.Downloading)
@@ -306,12 +335,18 @@ internal sealed partial class ProjectLauncherForm
         _updateCommit.Text = $"GitHub main · {plan.CommitSha[..Math.Min(12, plan.CommitSha.Length)]}{Environment.NewLine}{message}";
     }
 
-    private void ShowUpdatesPage()
+    private void OpenEngineUpdates()
     {
-        ShowPage(_updatesPage, "Updates", _updatesNavigation);
+        if (IsDisposed || Disposing) return;
+        if (_engineUpdatesWindow.Visible) { _engineUpdatesWindow.Activate(); return; }
+        InitializeUpdateRecovery();
+        ShowEnginesPage();
+        _engineUpdatesWindow.Text = T("Engine updates");
         SetLocalizedText(_updateInstallation, "Installation: {0}", LauncherInstallationPaths.ResolveRoot());
-        SetLocalizedText(_statusLabel, "Update source: OnClick9927/BEngine · main / Engine");
         ResizeUpdateLayout();
+        _engineUpdatesWindow.ShowDialog(this);
+        if (!IsDisposed && !Disposing && !_startingUpdateInstaller)
+        { ReloadEngines(); RefreshPrimaryNavigation(!_needsUpdateRecovery); RefreshEnvironmentActions(); }
     }
 
     private void InitializeUpdateRecovery()
@@ -331,7 +366,7 @@ internal sealed partial class ProjectLauncherForm
             return;
         }
         _needsUpdateRecovery = true;
-        ShowUpdatesPage();
+        ShowEnginesPage();
         SetUpdateBusy(false);
         if (installationInProgress)
         {
@@ -398,7 +433,16 @@ internal sealed partial class ProjectLauncherForm
             _updateLayout.Height = (int)heights.Sum();
             _updateSplit.SplitterWidth = Scale(7);
             foreach (var panel in new[] { _updateSplit.Panel1, _updateSplit.Panel2 })
-                foreach (var label in panel.Controls.OfType<Label>()) label.Height = Scale(28);
+                {
+                    var __typedSource21748 = panel.Controls;
+                    ArgumentNullException.ThrowIfNull(__typedSource21748, "source");
+                    foreach (var __typedItem21748 in __typedSource21748)
+                    {
+                        if (__typedItem21748 is not Label label)
+                            continue;
+                        label.Height = Scale(28);
+                    }
+                }
             var available = _updateSplit.ClientSize.Width - _updateSplit.SplitterWidth;
             if (available >= Scale(430))
             {
@@ -431,6 +475,8 @@ internal sealed partial class ProjectLauncherForm
         _updateProgress.Style = ProgressBarStyle.Continuous;
         _environmentCheck.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery;
         _environmentInstall.Enabled = !busy && !_environmentBusy && !_needsUpdateRecovery && _environmentSnapshot?.IsReady != true;
+        if (!busy && _updateCancellation is null && _closeUpdatesWhenIdle)
+        { _closeUpdatesWhenIdle = false; _engineUpdatesWindow.Close(); }
     }
 
     private void ReportUpdateProgress(LauncherUpdateProgress progress)

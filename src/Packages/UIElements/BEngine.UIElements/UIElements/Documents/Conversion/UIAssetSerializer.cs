@@ -82,8 +82,16 @@ internal static class UIAssetSerializer
         element.atlas = document.Atlas;
         if (!string.IsNullOrWhiteSpace(document.MaterialShader))
             element.material = new Material(Shader.Find(document.MaterialShader));
-        foreach (var className in document.Classes.Where(value => !string.IsNullOrWhiteSpace(value)))
-            element.AddToClassList(className);
+        {
+            var __filteredSource5095 = document.Classes;
+            ArgumentNullException.ThrowIfNull(__filteredSource5095, "source");
+            foreach (var className in __filteredSource5095)
+            {
+                if (!(!string.IsNullOrWhiteSpace(className)))
+                    continue;
+                element.AddToClassList(className);
+            }
+        }
         ApplyStyle(element.style, document.Style);
         foreach (var child in document.Children) element.Add(CreateElement(child));
         return element;

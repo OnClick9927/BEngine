@@ -110,9 +110,17 @@ public sealed partial class InputActionSession : IDisposable
         Fix64 Key(KeyCode key) => useKeyboard && key != KeyCode.None && Input.GetKey(key) ? Fix64.One : Fix64.Zero;
         var pad = CanReadGamepad;
         var touch = touchInput.GetTouch(binding.fingerId);
-        Vector2 Gesture(TouchGestureKind kind) => touchInput.gestures
-            .Where(gesture => gesture.kind == kind && (binding.fingerId < 0 || gesture.fingerId == binding.fingerId))
-            .Select(gesture => kind == TouchGestureKind.Swipe ? gesture.displacement : Vector2.right).FirstOrDefault();
+        Vector2 Gesture(TouchGestureKind kind)
+        {
+            var gestures = touchInput.gestures;
+            for (var index = 0; index < gestures.Count; index++)
+            {
+                var gesture = gestures[index];
+                if (gesture.kind == kind && (binding.fingerId < 0 || gesture.fingerId == binding.fingerId))
+                    return kind == TouchGestureKind.Swipe ? gesture.displacement : Vector2.right;
+            }
+            return default;
+        }
         if (useTouch && binding.control is >= InputControlKind.TouchPosition and <= InputControlKind.TouchRotate)
         {
             var raw = binding.control switch
@@ -167,8 +175,33 @@ public sealed partial class InputActionSession : IDisposable
         if (document.format != "BEngine.InputBindings" || document.version is not (1 or 2)) throw new InvalidDataException("Unsupported binding override document.");
         var known = _actions.Values.SelectMany(a => a.bindings).Select(b => b.id).ToHashSet(StringComparer.Ordinal);
         var pending = new Dictionary<string, InputBinding>(StringComparer.Ordinal);
-        if (document.bindings is null || document.bindings.Count > known.Count || document.bindings.Any(binding => binding is null))
+        if (document.bindings is null || document.bindings.Count > known.Count || Matches9502())
             throw new InvalidDataException("Invalid binding override entries.");
+        [global::BEngine.SkipLoopGuard]
+        bool Matches9502()
+        {
+            var matchSource9502 = document.bindings;
+            ArgumentNullException.ThrowIfNull(matchSource9502, "source");
+            if (matchSource9502.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.InputActions.InputBindingOverride>))
+            {
+                foreach (var binding in (global::System.Collections.Generic.IEnumerable<global::BEngine.InputActions.InputBindingOverride>)matchSource9502)
+                {
+                    if (binding is null)
+                        return true;
+                }
+        
+                return false;
+            }
+        
+            global::System.ReadOnlySpan<global::BEngine.InputActions.InputBindingOverride> matchValues9502 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource9502);
+            foreach (var binding in matchValues9502)
+            {
+                if (binding is null)
+                    return true;
+            }
+        
+            return false;
+        }
         using var budget = LoopExecutionGuard.AllowIterations(document.bindings.Count + 1);
         foreach (var saved in document.bindings)
         {
@@ -264,7 +297,22 @@ public sealed class InputAction
     internal InputAction(string map, InputActionDefinition definition)
     {
         this.map = map; name = definition.name; type = definition.type; interaction = definition.interaction;
-        bindings = definition.bindings.Select(binding => binding.Copy()).ToArray();
+        bindings = ProjectItems14188();
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.InputActions.InputBinding[] ProjectItems14188()
+        {
+            var projectionSource14188 = definition.bindings;
+            ArgumentNullException.ThrowIfNull(projectionSource14188, "source");
+            global::System.ReadOnlySpan<global::BEngine.InputActions.InputBinding> projectionValues14188 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(projectionSource14188);
+            var projectionOutput14188 = projectionValues14188.Length == 0 ? global::System.Array.Empty<global::BEngine.InputActions.InputBinding>() : new global::BEngine.InputActions.InputBinding[projectionValues14188.Length];
+            var projectionIndex14188 = 0;
+            foreach (var binding in projectionValues14188)
+            {
+                projectionOutput14188[projectionIndex14188++] = binding.Copy();
+            }
+        
+            return projectionOutput14188;
+        }
         _holdDuration = definition.holdDuration; _tapDuration = definition.tapDuration;
         _tapInterval = definition.tapInterval; _tapCount = definition.tapCount;
     }

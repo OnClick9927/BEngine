@@ -6,6 +6,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
+namespace BEngine.Player.BuildTools;
+
 // Format and signature spellings follow dotnet/runtime v10.0.12 profiler/aot.h
 // and metadata/debug-helpers.c. Read metadata only; never execute target code.
 internal sealed class MonoSignature : ISignatureTypeProvider<string, object?>
@@ -368,7 +370,18 @@ internal static class Program
                     hotProfile?.ObserveType(assemblyName, name);
                     if (!IsNativeType(assemblyName, name))
                     {
-                        interpretedCount += type.GetMethods().Count(handle => metadata.GetMethodDefinition(handle).RelativeVirtualAddress != 0);
+                        interpretedCount += Query26662();
+                        int Query26662()
+                        {
+                            int matches = 0;
+                            var values26662 = type.GetMethods();
+                            foreach (var handle in values26662)
+                            {
+                                if (metadata.GetMethodDefinition(handle).RelativeVirtualAddress != 0)
+                                    checked { matches++; }
+                            }
+                            return matches;
+                        }
                         continue;
                     }
                     var classId=nextId++;Record(2,classId);writer.Write((byte)0x12);writer.Write(imageId);writer.Write(-1);String(name.Contains('.')?name:"."+name);
@@ -379,7 +392,7 @@ internal static class Program
                         if(method.RelativeVirtualAddress==0 || (method.Attributes&(MethodAttributes.Abstract|MethodAttributes.PinvokeImpl))!=0)continue;
                         // Keep validated BTEX metadata native without pulling the
                         // optional generic ASTC/ETC CPU decoders into native AOT.
-                        if (assemblyName == "BEngine" && name.Contains("TextureImageData", StringComparison.Ordinal) &&
+                        if (assemblyName == "BEngine.Core" && name.Contains("TextureImageData", StringComparison.Ordinal) &&
                             (name != "BEngine.Rendering.TextureImageData" || metadata.GetString(method.Name) is not
                                 ("get_Signature" or "IsContainer" or "Inspect" or "LevelSize")))
                         { interpretedCount++; continue; }

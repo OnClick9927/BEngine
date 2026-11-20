@@ -5,7 +5,7 @@ internal sealed partial class PhysicsWorld2DState
     private readonly HashSet<CollisionPair> _ignoredPairs = [];
     private readonly HashSet<LayerPair> _ignoredLayerPairs = [];
 
-    public Vector2 Gravity { get; set; } = Vector2.down * Fix64.Parse("9.81");
+    public Vector2 Gravity { get; set; } = Vector2.down * Fix64.FromRaw(42133629173L) /* Parse("9.81") */;
     public bool QueriesHitTriggers { get; set; } = true;
     public bool AutoSimulation { get; set; } = true;
     public int VelocityIterations { get; set; } = 4;

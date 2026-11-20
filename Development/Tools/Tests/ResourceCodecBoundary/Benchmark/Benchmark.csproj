@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+
+    <Reference Include="$(EngineBinaries)/BEngine.Player.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.AssetBundles.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Graphics.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Networking.dll" />
+    
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+  </ItemGroup>
+</Project>

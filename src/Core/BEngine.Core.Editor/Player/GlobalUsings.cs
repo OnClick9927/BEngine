@@ -1,0 +1,9 @@
+global using BEngine;
+global using BEngine.Editor;
+global using BEngine.Editor.Build.ProjectSystem;
+global using BEngine.ProjectSystem;
+global using BEngine.ProjectSystem.Editor;
+global using BEngine.Hosting;
+global using BEngine.Player;
+global using BEngine.Player.HotUpdate;
+global using BEngine.Instrumentation;

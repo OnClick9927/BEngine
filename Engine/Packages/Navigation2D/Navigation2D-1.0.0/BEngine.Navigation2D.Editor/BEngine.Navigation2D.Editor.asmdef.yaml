@@ -4,7 +4,11 @@ name: BEngine.Navigation2D.Editor
 rootNamespace: BEngine.Navigation2D.Editor
 references:
 - BEngine.Navigation2D
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
 - BEngine.Physics2D
+- BEngine.Core.Editor
+- BEngine.Rendering2D
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

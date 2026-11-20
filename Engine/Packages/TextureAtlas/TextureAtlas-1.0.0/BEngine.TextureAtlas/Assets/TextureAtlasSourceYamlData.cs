@@ -50,7 +50,7 @@ internal sealed class TextureAtlasSourceYamlData
             var reference = $"guid:{ownerGuid}#subasset={localIdentifier}";
             try
             {
-                if (BAssetReferenceLoader.LoadObjectReference(reference, typeof(Sprite)) is Sprite resolved)
+                if (RuntimeObjectCodecs.ReadReference(typeof(Sprite), reference) is Sprite resolved)
                     return resolved;
             }
             catch (Exception exception) when (IsRecoverableReferenceException(exception))

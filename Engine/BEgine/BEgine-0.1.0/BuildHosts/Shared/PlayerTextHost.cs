@@ -1,7 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System;
-using BEngine.HotUpdate;
+using BEngine.Player.HotUpdate;
+using BEngine.Hosting;
 
 namespace BEngine.Player.Hosts;
 
@@ -13,17 +14,22 @@ internal static class PlayerTextHost
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2255", Justification = "Keep native text bindings in the static Player host.")]
     internal static void Initialize()
     {
-#if !BENGINE_WEB_FONTS
-        ManagedCodeHostAssemblies.Register(typeof(SkiaSharp.SKFont).Assembly);
-        ManagedCodeHostAssemblies.Register(typeof(SkiaSharp.HarfBuzz.SKShaper).Assembly);
+#if BENGINE_WEB_FONTS
+        BEngine.Platform.WebFontRasterizer.Register();
 #endif
-        ManagedCodeHostAssemblies.Register(typeof(HarfBuzzSharp.Blob).Assembly);
+#if !BENGINE_WEB_FONTS
+        BEngine.Hosting.HostAssemblyRegistry.Register(typeof(SkiaSharp.SKFont).Assembly);
+        BEngine.Hosting.HostAssemblyRegistry.Register(typeof(SkiaSharp.HarfBuzz.SKShaper).Assembly);
+#endif
+        BEngine.Hosting.HostAssemblyRegistry.Register(typeof(HarfBuzzSharp.Blob).Assembly);
         if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
         {
 #if !BENGINE_WEB_FONTS
-            NativeLibrary.SetDllImportResolver(typeof(SkiaSharp.SKFont).Assembly, SystemPlayerNativeLibraryLoader.ResolveDesktopImport);
+            NativeLibrary.SetDllImportResolver(typeof(SkiaSharp.SKFont).Assembly,
+                static (name, assembly, path) => NativeLibraryUtility.Current.ResolveImport(name, assembly, path));
 #endif
-            NativeLibrary.SetDllImportResolver(typeof(HarfBuzzSharp.Blob).Assembly, SystemPlayerNativeLibraryLoader.ResolveDesktopImport);
+            NativeLibrary.SetDllImportResolver(typeof(HarfBuzzSharp.Blob).Assembly,
+                static (name, assembly, path) => NativeLibraryUtility.Current.ResolveImport(name, assembly, path));
         }
     }
 }

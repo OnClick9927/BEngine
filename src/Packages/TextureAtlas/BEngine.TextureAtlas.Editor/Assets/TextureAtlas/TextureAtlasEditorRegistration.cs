@@ -12,6 +12,6 @@ internal static class TextureAtlasEditorRegistration
             context => TextureAtlas.Load(context.SourcePath), "Icons/Assets/AssetAtlas.png",
             typeof(TextureAtlasImporter));
         PlatformAssetBuildPipeline.RegisterRuntimeCompiler(".yaml", nameof(TextureAtlas), "atlas-envelope-v1",
-            BinaryDataSerializer.MaximumDocumentBytes, TextureAtlasRuntimeData.CompileRuntimeBytes);
+            BinaryDataSerializer.MaximumDocumentBytes, TextureAtlasBuildDataCompiler.Compile);
     }
 }

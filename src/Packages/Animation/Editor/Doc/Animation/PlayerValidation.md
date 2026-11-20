@@ -13,7 +13,7 @@ New-Item -ItemType Directory -Path (Join-Path $content 'main') -Force | Out-Null
 在另一个终端启动 `python -m http.server 58000 --bind 127.0.0.1 --directory <上述 content/main 的绝对路径>`。资源 URL 指向 `main/latest.yaml` 所在目录。
 
 ```powershell
-dotnet build Engine/src/Hosts/BEngine.Editor.Host/BEngine.Editor.Host.csproj -c Release --disable-build-servers -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false
+dotnet build Engine/src/Platform/BEngine.Editor.Host/BEngine.Editor.Host.csproj -c Release --disable-build-servers -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false
 dotnet run --project Temp/Validation/AnimationEnhancements/AnimationEnhancements.csproj -c Release --disable-build-servers -p:BEngineEngineExportOwner=false -p:BEnginePackageExportOwner=false -- --player-fixture --content-url=http://127.0.0.1:58000/
 $project = Get-Content Temp/Engine/Validation/FullEnhancement/animation-player-project.txt -Raw
 $hostDll = 'Temp/Engine/Build/bin/BEngine.Editor.Host/release/BEngine.Editor.Host.dll'

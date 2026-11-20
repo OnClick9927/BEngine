@@ -23,7 +23,7 @@ public sealed partial class UIDocument : MonoBehaviour
     [YamlDotNet.Serialization.YamlIgnore, HideInInspector]
     public string sourceAsset { get => visualTreeAsset?.assetPath ?? string.Empty; set => visualTreeAsset = BAsset.Load<VisualTreeAsset>(value); }
     [YamlDotNet.Serialization.YamlIgnore, HideInInspector]
-    public bool isVisible => enabled && !isDestroyed && (GameObjectOrNull?.activeInHierarchy ?? true);
+    public bool isVisible => enabled && !isDestroyed && (!TryGetGameObject(out var owner) || owner.activeInHierarchy);
     public event Action<UIDocument>? visualTreeChanged;
     public event Action<AccessibilityEvent>? accessibilityEvent;
     /// <summary>Raised after the mouse hover target changes, including changes to no target.
@@ -165,8 +165,40 @@ public sealed partial class UIDocument : MonoBehaviour
 
     public bool PerformAccessibilityAction(int nodeId, AccessibilityAction action)
     {
-        var element = EnsureRoot().DescendantsAndSelf()
-            .FirstOrDefault(candidate => candidate.accessibilityId == nodeId);
+        var element = Matches6917();
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.UIElements.VisualElement? Matches6917()
+        {
+            var matchSource6917 = EnsureRoot().DescendantsAndSelf();
+            ArgumentNullException.ThrowIfNull(matchSource6917, "source");
+            global::System.ReadOnlySpan<global::BEngine.UIElements.VisualElement> matchValues6917;
+            if (matchSource6917.GetType() == typeof(global::BEngine.UIElements.VisualElement[]))
+            {
+                matchValues6917 = (global::BEngine.UIElements.VisualElement[])(object)matchSource6917;
+            }
+            else if (matchSource6917.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.UIElements.VisualElement>))
+            {
+                matchValues6917 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.UIElements.VisualElement>)(object)matchSource6917);
+            }
+            else
+            {
+                foreach (var candidate in (global::System.Collections.Generic.IEnumerable<global::BEngine.UIElements.VisualElement>)matchSource6917)
+                {
+                    if (candidate.accessibilityId == nodeId)
+                        return candidate;
+                }
+        
+                return default!;
+            }
+        
+            foreach (var candidate in matchValues6917)
+            {
+                if (candidate.accessibilityId == nodeId)
+                    return candidate;
+            }
+        
+            return default!;
+        }
         if (element is null || !IsAvailable(element)) return false;
         switch (action)
         {
@@ -202,7 +234,7 @@ public sealed partial class UIDocument : MonoBehaviour
             var anchor = textField.editing.Anchor;
             var scale = ResolveScale(viewportWidth, viewportHeight);
             var fontSize = UIElementLayoutEngine.EffectiveFontSize(textField) * scale;
-            var labelWidth = string.IsNullOrEmpty(textField.label) ? Fix64.Zero : fieldRect.Width * (Fix64)0.4;
+            var labelWidth = string.IsNullOrEmpty(textField.label) ? Fix64.Zero : fieldRect.Width * Fix64.FromRaw(1717986918L) /* (Fix64)0.4 */;
             var localX = position.x - fieldRect.X - labelWidth - UIRenderListBuilder.TextInset(textField, fontSize);
             if (localX >= 0 || extendSelection)
             {
@@ -461,8 +493,8 @@ public sealed partial class UIDocument : MonoBehaviour
     {
         if (ReferenceEquals(_focusedText, field)) { if (field is not null) ResetTextCaret(); return; }
         _focusedText?.SetTextEditingState(null, 0, false);
-        if (_focusedText is not null) Input.textInputRect = null;
-        if (_focusedText is not null) { Input.textInputRequest = null; Input.SetComposition(string.Empty); }
+        if (_focusedText is not null) global::BEngine.Platform.InputUtility.Current.textInputRect = null;
+        if (_focusedText is not null) { global::BEngine.Platform.InputUtility.Current.textInputRequest = null; Input.SetComposition(string.Empty); }
         _focusedText?.SetInteractionState(isFocused: false);
         _focusedText = field;
         _focusedText?.SetInteractionState(isFocused: true);
@@ -478,15 +510,15 @@ public sealed partial class UIDocument : MonoBehaviour
         if (!interactable || !isVisible || !IsAvailable(field))
         {
             field.SetTextEditingState(null, 0, false);
-            Input.textInputRect = null;
-            Input.textInputRequest = null;
+            global::BEngine.Platform.InputUtility.Current.textInputRect = null;
+            global::BEngine.Platform.InputUtility.Current.textInputRequest = null;
             return;
         }
         var visible = (int)((Time.unscaledTime - _caretResetTime) * 2) % 2 == 0;
         var edit = field.editing;
         if (field.isReadOnly)
         {
-            Input.textInputRequest = null;
+            global::BEngine.Platform.InputUtility.Current.textInputRequest = null;
             field.SetTextEditingState(field.value, edit.Caret, false, edit.Anchor, edit.Caret);
             return;
         }
@@ -496,7 +528,7 @@ public sealed partial class UIDocument : MonoBehaviour
             if (changed.Text != edit.Text) { edit.SelectAll(); edit.ReplaceSelection(changed.Text); field.value = edit.Text; }
             edit.Select(changed.Anchor, changed.Caret);
         }
-        Input.textInputRequest = new(sessionId, field.value, edit.Anchor, edit.Caret, field.isPasswordField, field.multiline);
+        global::BEngine.Platform.InputUtility.Current.textInputRequest = new(sessionId, field.value, edit.Anchor, edit.Caret, field.isPasswordField, field.multiline);
         var composition = Input.compositionString;
         var display = composition.Length == 0 ? field.value : field.value[..edit.SelectionStart] + composition + field.value[edit.SelectionEnd..];
         field.SetTextEditingState(display, composition.Length == 0 ? edit.Caret : edit.SelectionStart + composition.Length,
@@ -512,7 +544,7 @@ public sealed partial class UIDocument : MonoBehaviour
     private static void UpdateSlider(Slider slider, Vector2 position, UIRenderListBuilder.RendererCommandLease list)
     {
         if (!list.TryGetRect(slider, out var rect)) return;
-        var labelWidth = string.IsNullOrWhiteSpace(slider.label) ? Fix64.Zero : rect.Width * (Fix64)0.4;
+        var labelWidth = string.IsNullOrWhiteSpace(slider.label) ? Fix64.Zero : rect.Width * Fix64.FromRaw(1717986918L) /* (Fix64)0.4 */;
         var ratio = Math.Clamp((float)((position.x - rect.X - labelWidth) /
             Fix64.Max(1, rect.Width - labelWidth)), 0, 1);
         slider.value = slider.lowValue + ratio * (slider.highValue - slider.lowValue);

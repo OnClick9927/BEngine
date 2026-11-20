@@ -1,14 +1,18 @@
 # UIElements
 
-独立的保留模式 UI 包：UIDocument、VisualElement、控件、布局、UXML/UCSS、输入路由及 RHI 渲染。
+保留模式 UI 包：UIDocument、VisualElement、控件、布局、BXML/样式、输入路由及 RHI 渲染，同时包含 UI Builder、HTML/CSS Converter 和 SDF Font 编辑工具。
 
-启用 com.bengine.ui-elements。运行时程序集为 BEngine.UIElements，编辑器程序集为 BEngine.UIElements.Editor。Core 只保留通用资产和窗口内容接口；节点／轨道控件及数据模型由本包提供。UI Builder 与 HTML 转换器仍由各自包提供，并依赖本包。
+复杂文字依赖 Pooling，按字体运行时实例复用逻辑文本段、拼接缓冲与同步栅格提交暂存，重入调用各自持有工作区。归还清除引用并限制保留容量；缓存布局、字形数组和输出像素仍独立拥有，字体运行时销毁时释放池。工作区与字体后端在其拥有者线程使用。
+
+启用 com.bengine.ui-elements 即可使用 UI 工具。运行时程序集为 BEngine.UIElements，编辑器程序集为 BEngine.UIElements.Editor。Core 只保留通用资产和窗口内容接口；通用节点／轨道控件及数据模型分别由 Node Editor、Track Editor 编辑器专用包提供。UI Builder 与 HTML 转换器均由本包的编辑器程序集提供，HTML 解析依赖不会进入运行时程序集。
+
+工具入口统一位于 `Window/UIElement`：UI Builder、HTML Converter、Samples、Event Debugger 和 SDF Font。命令行 `--convert-html <source.html> [destination.bxml]` 也由本包提供。
 
 自定义保留模式编辑器窗口请继承 UIElementsEditorWindow 或 UIElementsEditorWindow<TModel,TController>；IMGUI 窗口继续继承 EditorWindow。
 
 完整交互示例位于仓库 Example/Project，主菜单包含 UI 控件、布局、窗口排序、表单、滚动、页签与进度场景。Examples 页签提供 Runtime HUD 和 Controls Gallery 的导入包。
 
-Controls Gallery 示例还需要启用 Reactive 与 UI Builder 包。
+Controls Gallery 示例还需要启用 Reactive。UI Builder 入门与 HTML Converter 入门示例也可从本包的 Examples 页签导入。
 
 [控件与样式文档](Doc/UIElements/Readme.md)
 
@@ -28,7 +32,7 @@ Controls Gallery 示例还需要启用 Reactive 与 UI Builder 包。
 激活、增减值，`Announce` 与 live region 产生事件。平台接入通过 `UIAccessibility.bridge` 实现
 `IUIAccessibilityBridge`；默认桥接把语义快照交给 `PlatformAccessibility`，Windows UIA、Web ARIA、Android AccessibilityNodeProvider 和 iOS VoiceOver 适配器负责系统呈现，并把动作排回游戏线程。
 
-通用 NodeCanvas 支持带 ID、标题和颜色的输入/输出端口，PortConnectionRequested 返回规范化的源节点/端口及目标节点/端口。画布继续支持不带端口的状态机节点；allowEditing=false 时保留导航和选择，禁止移动、连线。
+通用 NodeCanvas 已移至 `com.bengine.node-editor`，支持带 ID、标题和颜色的输入/输出端口，PortConnectionRequested 返回规范化的源节点/端口及目标节点/端口。画布继续支持不带端口的状态机节点；allowEditing=false 时保留导航和选择，禁止移动、连线。公开命名空间保持不变。
 
 TextField.maxLength 默认 -1（无限制），非负值限制 UTF-16 长度，并保留完整字素簇。输入、粘贴、选区替换、程序赋值和绑定赋值均使用该约束；交互式替换只截断插入内容，保留选区外文本。UXML 使用 `max-length`，UI Builder Inspector 可设置长度、占位符、只读、密码和滚动到底。`.ui`、`.bxml` 及 VisualTreeAsset 克隆保留这些文本属性与 maskCharacter。长度限制不代替应用的数据合法性校验。
 

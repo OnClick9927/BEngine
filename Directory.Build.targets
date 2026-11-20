@@ -1,0 +1,4 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)Development/Build/Directory.Build.targets"
+          Condition="'$(BEngineRepositoryBuild)' == 'true'" />
+</Project>

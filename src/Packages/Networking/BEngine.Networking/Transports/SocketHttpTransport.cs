@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Net;
-using System.Net.Sockets;
+using BEngine.Platform;
 using System.Text;
 
 namespace BEngine.Networking;
@@ -31,8 +31,8 @@ public sealed class SocketHttpTransport : IHttpTransport
         private const int MaximumHeaderBytes = 64 * 1024;
         private readonly HttpTransportRequest _request;
         private readonly IHttpDownloadHandler _downloadHandler;
-        private readonly Socket _socket;
-        private readonly IPEndPoint _remoteEndPoint;
+        private readonly IPlatformTcpTransport _socket;
+        private IPlatformNetworkOperation? _connect;
         private readonly byte[] _requestBytes;
         private readonly byte[] _receiveBuffer = new byte[64 * 1024];
         private readonly MemoryStream _headerBuffer = new();
@@ -49,15 +49,10 @@ public sealed class SocketHttpTransport : IHttpTransport
         {
             _request = request;
             _downloadHandler = downloadHandler;
-            var address = ResolveAddress(request.Uri.Host);
-            var port = request.Uri.IsDefaultPort ? 80 : request.Uri.Port;
-            _remoteEndPoint = new IPEndPoint(address, port);
-            _socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
-            {
-                Blocking = false,
-                NoDelay = true
-            };
             _requestBytes = BuildRequest(request);
+            _socket = (PlatformRuntime.GetService<IPlatformSocketTransportFactory>() ??
+                throw new PlatformNotSupportedException("The host has no TCP transport.")).CreateTcpTransport();
+            _socket.NoDelay = true;
         }
 
         public NetworkOperationStatus Status { get; private set; } = NetworkOperationStatus.Running;
@@ -85,10 +80,7 @@ public sealed class SocketHttpTransport : IHttpTransport
                         break;
                 }
             }
-            catch (SocketException exception) when (IsPending(exception.SocketErrorCode))
-            {
-            }
-            catch (Exception exception)
+catch (Exception exception)
             {
                 Fail(exception);
             }
@@ -104,6 +96,7 @@ public sealed class SocketHttpTransport : IHttpTransport
         {
             if (_disposed) return;
             _disposed = true;
+            _connect?.Dispose();
             _socket.Dispose();
             _headerBuffer.Dispose();
             _chunkBuffer.Dispose();
@@ -111,26 +104,13 @@ public sealed class SocketHttpTransport : IHttpTransport
 
         private void PollConnect()
         {
-            if (_phase == OperationPhase.Connect)
-            {
-                try
-                {
-                    _socket.Connect(_remoteEndPoint);
-                    _phase = OperationPhase.Send;
-                    return;
-                }
-                catch (SocketException exception) when (IsPending(exception.SocketErrorCode))
-                {
-                    _phase = OperationPhase.Connecting;
-                    return;
-                }
-            }
-
-            if (!_socket.Poll(0, SelectMode.SelectWrite) &&
-                !_socket.Poll(0, SelectMode.SelectError)) return;
-            var error = (SocketError)(int)_socket.GetSocketOption(
-                SocketOptionLevel.Socket, SocketOptionName.Error)!;
-            if (error != SocketError.Success) throw new SocketException((int)error);
+            _connect ??= _socket.Connect(_request.Uri.Host, _request.Uri.IsDefaultPort ? 80 : _request.Uri.Port);
+            _phase = OperationPhase.Connecting;
+            _connect.Poll();
+            if (_connect.Status == PlatformNetworkOperationStatus.Running) return;
+            if (_connect.Status != PlatformNetworkOperationStatus.Succeeded)
+                throw _connect.Exception ?? new IOException("The TCP connection failed.");
+            _connect.Dispose(); _connect = null;
             _phase = OperationPhase.Send;
         }
 
@@ -141,9 +121,7 @@ public sealed class SocketHttpTransport : IHttpTransport
                 _phase = OperationPhase.Receive;
                 return;
             }
-            if (!_socket.Poll(0, SelectMode.SelectWrite)) return;
-            var count = _socket.Send(
-                _requestBytes.AsSpan(_requestOffset), SocketFlags.None);
+            if (!_socket.TrySend(_requestBytes.AsSpan(_requestOffset), out var count)) return;
             if (count == 0)
                 throw new EndOfStreamException("The HTTP connection closed while sending the request.");
             _requestOffset += count;
@@ -152,8 +130,7 @@ public sealed class SocketHttpTransport : IHttpTransport
 
         private void PollReceive()
         {
-            if (!_socket.Poll(0, SelectMode.SelectRead)) return;
-            var count = _socket.Receive(_receiveBuffer, SocketFlags.None);
+            if (!_socket.TryReceive(_receiveBuffer, out var count)) return;
             if (count == 0)
             {
                 if (Response is null)
@@ -213,10 +190,37 @@ public sealed class SocketHttpTransport : IHttpTransport
                     values[name] = entries = [];
                 entries.Add(value);
             }
-            var headers = values.ToDictionary(
-                pair => pair.Key,
-                pair => pair.Value.ToArray(),
-                StringComparer.OrdinalIgnoreCase);
+            var headers = BuildIndex8645(values, StringComparer.OrdinalIgnoreCase);
+            [global::BEngine.SkipLoopGuard]
+            global::System.Collections.Generic.Dictionary<string, string[]> BuildIndex8645(global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, global::System.Collections.Generic.List<string>>> indexSource8645, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer8645)
+            {
+                ArgumentNullException.ThrowIfNull(indexSource8645, "source");
+                var knownCount = indexSource8645.TryGetNonEnumeratedCount(out var capacity);
+                if (knownCount && capacity == 0)
+                    return new global::System.Collections.Generic.Dictionary<string, string[]>(indexComparer8645);
+                global::System.ReadOnlySpan<global::System.Collections.Generic.KeyValuePair<string, global::System.Collections.Generic.List<string>>> values;
+                if (knownCount && indexSource8645 is global::System.Collections.Generic.KeyValuePair<string, global::System.Collections.Generic.List<string>>[] array)
+                    values = array;
+                else if (knownCount && indexSource8645 is global::System.Collections.Generic.List<global::System.Collections.Generic.KeyValuePair<string, global::System.Collections.Generic.List<string>>> list)
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+                else
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, string[]>(capacity, indexComparer8645);
+                    foreach (var item in indexSource8645)
+                        result.Add(IndexKey8645(item), IndexValue8645(item));
+                    return result;
+                }
+            
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, string[]>(values.Length, indexComparer8645);
+                    foreach (var item in values)
+                        result.Add(IndexKey8645(item), IndexValue8645(item));
+                    return result;
+                }
+            
+                string IndexKey8645(global::System.Collections.Generic.KeyValuePair<string, global::System.Collections.Generic.List<string>> pair) => pair.Key;
+                string[] IndexValue8645(global::System.Collections.Generic.KeyValuePair<string, global::System.Collections.Generic.List<string>> pair) => pair.Value.ToArray();
+            }
             if (headers.TryGetValue("Content-Length", out var lengths))
             {
                 if (lengths.Length != 1 ||
@@ -245,6 +249,16 @@ public sealed class SocketHttpTransport : IHttpTransport
                 _chunkBuffer.Position = _chunkBuffer.Length;
                 _chunkBuffer.Write(bytes);
                 ParseChunks();
+                // Keep only an incomplete chunk between polls. Retaining consumed
+                // chunks would grow this buffer to the size of the whole download.
+                if (!_disposed && _chunkOffset > 0)
+                {
+                    var remaining = checked((int)_chunkBuffer.Length) - _chunkOffset;
+                    var buffer = _chunkBuffer.GetBuffer();
+                    buffer.AsSpan(_chunkOffset, remaining).CopyTo(buffer);
+                    _chunkBuffer.SetLength(remaining);
+                    _chunkOffset = 0;
+                }
                 return;
             }
 
@@ -266,10 +280,10 @@ public sealed class SocketHttpTransport : IHttpTransport
             {
                 var lineEnd = FindCrlf(bytes, _chunkOffset);
                 if (lineEnd < 0) return;
-                var sizeText = Encoding.ASCII.GetString(bytes[_chunkOffset..lineEnd]);
-                var extension = sizeText.IndexOf(';');
+                var sizeText = bytes[_chunkOffset..lineEnd];
+                var extension = sizeText.IndexOf((byte)';');
                 if (extension >= 0) sizeText = sizeText[..extension];
-                if (!int.TryParse(sizeText.Trim(), NumberStyles.AllowHexSpecifier,
+                if (!int.TryParse(sizeText, NumberStyles.HexNumber,
                         CultureInfo.InvariantCulture, out var size) || size < 0)
                     throw new InvalidDataException("The HTTP chunk size is invalid.");
                 var dataOffset = lineEnd + 2;
@@ -314,16 +328,6 @@ public sealed class SocketHttpTransport : IHttpTransport
             Exception = exception;
             Status = NetworkOperationStatus.Failed;
             _socket.Dispose();
-        }
-
-        private static IPAddress ResolveAddress(string host)
-        {
-            if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
-                return IPAddress.Loopback;
-            if (IPAddress.TryParse(host, out var address)) return address;
-            throw new PlatformNotSupportedException(
-                "The Runtime HTTP transport accepts IP addresses and localhost only. " +
-                "Register a platform HTTP transport for host-name resolution.");
         }
 
         private static byte[] BuildRequest(HttpTransportRequest request)
@@ -375,9 +379,9 @@ public sealed class SocketHttpTransport : IHttpTransport
 
         private static void ValidateHeader(string name, string value)
         {
-            if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(['\r', '\n', ':']) >= 0)
+            if (string.IsNullOrWhiteSpace(name) || name.AsSpan(0, name.Length).IndexOfAny('\r', '\n', ':') >= 0)
                 throw new ArgumentException("An HTTP header name is invalid.", nameof(name));
-            if (value.IndexOfAny(['\r', '\n']) >= 0)
+            if (value.AsSpan(0, value.Length).IndexOfAny('\r', '\n') >= 0)
                 throw new ArgumentException("An HTTP header value is invalid.", nameof(value));
         }
 
@@ -397,11 +401,6 @@ public sealed class SocketHttpTransport : IHttpTransport
                     return index;
             return -1;
         }
-
-        private static bool IsPending(SocketError error) =>
-            error is SocketError.WouldBlock or SocketError.IOPending or
-                SocketError.InProgress or SocketError.AlreadyInProgress or
-                SocketError.NoBufferSpaceAvailable;
 
         private enum OperationPhase
         {

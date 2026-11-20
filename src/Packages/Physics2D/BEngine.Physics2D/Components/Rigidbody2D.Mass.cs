@@ -36,12 +36,12 @@ public sealed partial class Rigidbody2D
                 var data = ShapeMass2D.Measure(PhysicsShapeFactory2D.Create(collider), position, collider.density);
                 total = ShapeMass2D.Combine(total, data);
             }
-            var selectedMass = useAutoMass ? Fix64.Max((Fix64).0001, total.Mass) : mass;
+            var selectedMass = useAutoMass ? Fix64.Max(Fix64.FromRaw(429496L) /* (Fix64).0001 */, total.Mass) : mass;
             if (total.Mass <= Fix64.Epsilon)
                 return new(selectedMass, selectedMass, automaticCenterOfMass ? Vector2.zero : _manualCenter);
             var worldOffset = automaticCenterOfMass ? total.Center : transform.TransformVector(_manualCenter);
             var selectedInertia = (total.Inertia / total.Mass + (total.Center - worldOffset).sqrMagnitude) * selectedMass;
-            return new(selectedMass, Fix64.Max((Fix64).0001, selectedInertia), transform.InverseTransformVector(worldOffset));
+            return new(selectedMass, Fix64.Max(Fix64.FromRaw(429496L) /* (Fix64).0001 */, selectedInertia), transform.InverseTransformVector(worldOffset));
         }
         finally { _massColliders.Clear(); }
     }

@@ -121,8 +121,30 @@ public sealed class AnimatorBlendTree
             if (copies.TryGetValue(tree, out var existing)) return existing;
             var copy = new AnimatorBlendTree { blendType = tree.blendType, parameter = tree.parameter, parameterY = tree.parameterY };
             copies.Add(tree, copy);
-            copy.motions = tree.motions.Select(motion => new AnimatorBlendMotion
-            { clip = motion.clip, threshold = motion.threshold, position = motion.position, blendTree = motion.blendTree is { } child ? Copy(child) : null }).ToList();
+            copy.motions = ProjectItems5773();
+            [global::BEngine.SkipLoopGuard]
+            global::System.Collections.Generic.List<global::BEngine.AnimatorBlendMotion> ProjectItems5773()
+            {
+                var projectionSource5773 = tree.motions;
+                ArgumentNullException.ThrowIfNull(projectionSource5773, "source");
+                global::System.ReadOnlySpan<global::BEngine.AnimatorBlendMotion> projectionValues5773 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(projectionSource5773);
+                var projectionOutput5773 = new global::System.Collections.Generic.List<global::BEngine.AnimatorBlendMotion>(projectionValues5773.Length);
+                global::System.Runtime.InteropServices.CollectionsMarshal.SetCount(projectionOutput5773, projectionValues5773.Length);
+                var projectionTarget5773 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(projectionOutput5773);
+                var projectionIndex5773 = 0;
+                foreach (var motion in projectionValues5773)
+                {
+                    projectionTarget5773[projectionIndex5773++] = new AnimatorBlendMotion
+                    {
+                        clip = motion.clip,
+                        threshold = motion.threshold,
+                        position = motion.position,
+                        blendTree = motion.blendTree is { } child ? Copy(child) : null
+                    };
+                }
+            
+                return projectionOutput5773;
+            }
             return copy;
         }
     }
@@ -253,11 +275,11 @@ public sealed class AnimatorBlendMotion
         {
             if (_clip is { isDestroyed: false }) return _clip;
             if (string.IsNullOrWhiteSpace(_clipPath)) return null;
-            if (_clipGeneration != BAsset.CacheGeneration || _clip?.isDestroyed == true)
-            { _clip = BAsset.Load<AnimationClip>(_clipPath); _clipGeneration = BAsset.CacheGeneration; }
+            if (_clipGeneration != BAsset.cacheGeneration || _clip?.isDestroyed == true)
+            { _clip = BAsset.Load<AnimationClip>(_clipPath); _clipGeneration = BAsset.cacheGeneration; }
             return _clip is { isDestroyed: false } ? _clip : null;
         }
-        set { _clip = value; _clipPath = value?.assetPath ?? string.Empty; _clipGeneration = BAsset.CacheGeneration; }
+        set { _clip = value; _clipPath = value?.assetPath ?? string.Empty; _clipGeneration = BAsset.cacheGeneration; }
     }
     public Fix64 threshold { get; set; }
     public Vector2 position { get; set; }

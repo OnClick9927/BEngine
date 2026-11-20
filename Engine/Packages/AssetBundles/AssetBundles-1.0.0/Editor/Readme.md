@@ -1,169 +1,22 @@
 # AssetBundles
 
-HTTP 读取 AB 使用 `AssetBundleRuntimeOptions.HttpInactivityTimeout`（默认 60 秒）限制连续无进展的时长；有数据持续到达时不限制总下载时长。响应头或接收字节推进会刷新计时，网络停滞会失败并按 `MaxRetries` 重试。随包 HTTP 读取继续使用 `no-store`，不写入沙盒或浏览器缓存。
+独立资源包，提供 AssetBundle Package 分组和增量构建、异步加载、StreamingAssets 直接读取、下载更新与修复。
 
-### AssetBundle Package 与增量构建
+运行时程序集为 `BEngine.AssetBundles`，编辑器程序集为 `BEngine.AssetBundles.Editor`。现有 `BEngine.AssetBundles`、`BEngine.Content` 与 `BEngine.Editor` 的公开 API 命名空间保持不变；自定义程序集若曾从 `BEngine.Player` 或 `BEngine.Application.Editor` 引用这些类型，应重新编译并引用独立程序集。
 
-`assetbundle package` 是构建时的资源分组，一个包可以包含多个 Bundle。
-例如把字体、图片、配置分别归入 `fonts`、`images`、`config`：只修改配置后，
-构建会重新生成有变化的配置 Bundle，字体和图片直接复用已验证的压缩产物。
-仍会扫描、校验输入并生成完整发布清单；复用不是完全跳过资源检查。
+运行时依赖 Networking、Pooling、Graphics 与 Rendering2D；运行时和编辑器均不依赖 Application。底层 AB 构建器只处理导入资源和 `AssetBundleBuildOptions.AdditionalBundles` 的通用内容。Player 内容接入、Play Mode、程序集与包资源收集由本包适配层实现，注册到 Core Player 的宿主与构建扩展接口。
 
-构建默认输出紧凑的运行时目录 `catalog.bin`，减少下载体积和启动解析开销。
-`version.yaml` 的 `CatalogFile` 指向该发布实际使用的目录文件，不应在业务代码中固定文件名。
-项目配置继续使用 YAML，运行时仍兼容旧 YAML 目录；现有资源加载、更新和修复 API 无需调整。
+**构建入口：** `Assets → Build Asset Bundles...` / `AssetBundle Packages...` 只构建所选导入资源。完整 Player 构建由 Core 管理构建事务，本包的内容提供者补充代码和运行资源。原 `IncludeHotUpdateAssemblies`、`IncludeManagedSymbols`、`IncludePackageRuntimeResources` 构建选项已移除。
 
-编辑器菜单 **Assets → AssetBundle Packages...** 可配置、保存并构建；
-**Project Settings → Asset Bundles → Configure AssetBundle Packages...** 也可打开。
-项目配置位于 `ProjectSettings/AssetBundlePackages.yaml`，只在编辑器构建时读取：
+`EditorVirtualAssetBundleBuilder`、`IEditorVirtualContentSession` 及其 factory 归属 `BEngine.AssetBundles.Editor`，命名空间为 `BEngine.Editor.Build`；使用这些集成类型的编辑器脚本需要更新引用并重新编译。
 
-```yaml
-format: BEngine.AssetBundlePackages
-version: 1
-defaultPackageName: default
-packages:
-  - name: fonts
-    assetPaths: [Assets/GameContent/Fonts]
-  - name: images
-    assetPaths: [Assets/GameContent/Images]
-  - name: config
-    assetPaths: [Assets/GameContent/Config]
-```
+编辑器的 **Project Settings → Editor Play Mode** 由本包提供内容接入，EditorWorkbench 提供界面。可选择默认的 Virtual 或读取发布目录的 Real。参见 [Editor Play Mode：虚拟 AB 与真实 AB](Doc/EditorPlayMode.md)。
 
-规则可以指定目录或单个资源，最长路径匹配优先；相同路径不能属于两个包。
-未匹配的资源进入 `defaultPackageName`。`bengine` 为自动生成的程序集和引擎资源保留。
-资源原有 `.meta` 中的 `assetBundleName` / `assetBundleVariant` 决定包内 Bundle 分组，
-未指定名称的资源使用构建入口的默认 Bundle。存在包规则时全局 Bundle 名为
-`包名--包内Bundle名`，资源 address 保持不变。
-没有配置时保留原有 Bundle 名，并归入 `default` 包。
-Player 内容构建继续遵循 AOT / Resources 与热更资源的原有边界。
+- [配置、分包与增量构建](Doc/index.html)
+- [运行时加载、按包更新与修复](Doc/runtime-guide.html)
+- [格式与加密说明](Doc/Overview.md)
+- [平台构建与 StreamingAssets](Doc/PlatformAndBundles.md)
 
-首次使用 **Build All Packages** 建立基线，之后可继续全部增量构建，或勾选包后使用
-**Build Selected Packages**。选包构建仍检查完整发布输入：未选包如果有修改、缓存缺失
-或缓存损坏，会报错并要求把对应包纳入构建；不会静默发布旧内容。
-**Force Rebuild Selected** 会重新压缩本次选择的包；全部构建时作用于所有包。
+目录依赖闭包与加载句柄的临时列表使用有容量上限的 Pooling 工作区；目录索引、返回的资源和持有中的句柄保留独立所有权。加载取消、失败和管理器销毁都会归还工作区，句柄支持并发幂等释放。
 
-默认构建缓存位于 `Library/AssetBundleBuildCache/<发布标识>`，与临时 Player staging 分离。
-输入指纹包含资产内容、导入器设置、依赖关系、平台、压缩、加密以及构建器格式；
-复用前检查大小和 SHA-256，缓存损坏会重建选中包。删除 Library 后需要重新 Build All。
-结果的 `BuiltBundleCount`、`ReusedBundleCount` 和 `Packages` 可用于记录每包实际构建量。
-
-脚本可使用强类型包定义：
-
-```csharp
-AssetBundleBuildResult result = await AssetBundleBuilder.BuildPackagesAsync(
-    workspace, database,
-    [
-        new AssetBundlePackageBuildDefinition
-        {
-            Name = "fonts",
-            Bundles = [new() { Name = "main", AssetPaths = ["Assets/GameContent/Fonts"] }]
-        },
-        new AssetBundlePackageBuildDefinition
-        {
-            Name = "images",
-            Bundles = [new() { Name = "main", AssetPaths = ["Assets/GameContent/Images"] }]
-        },
-        new AssetBundlePackageBuildDefinition
-        {
-            Name = "config",
-            Bundles = [new() { Name = "main", AssetPaths = ["Assets/GameContent/Config"] }]
-        }
-    ],
-    new AssetBundleBuildOptions
-    {
-        PackageName = "my-game", // 整个发布流的标识，与上述逻辑分包名不同
-        Version = "v2",
-        OutputDirectory = outputDirectory,
-        // 首次设为 null 构建全部；有完整基线后可仅选择配置包。
-        SelectedPackageNames = ["config"],
-        IncludeHotUpdateAssemblies = false
-    });
-```
-
-项目配置与脚本定义是两种入口：Player 内容构建自动读取项目配置；直接传入
-`BuildPackagesAsync` 的包定义决定该次脚本构建的归属。已有 `BuildAsync` 也可在每个
-`AssetBundleBuildDefinition.PackageName` 指定归属。
-运行时仍用同一 manager 按原 address 加载资源，无需先选择包或为每包创建 manager。
-包描述只用于按包检查更新、下载、修复；其 Bundle 依赖闭包会随操作一起验证。
-具体运行时 API 见 [runtime-guide.html](Doc/runtime-guide.html)。
-
-内容加密由通用 `BEngine.Content.ContentEncryption` / `ContentEncryptionKey` 提供。
-构建设置 `AssetBundleBuildOptions.EncryptionKey`，运行时对应设置
-`AssetBundleRuntimeOptions.EncryptionKey`；`RequireEncryptedContent` 可强制拒绝明文包。
-加密容器支持分块认证和随机读取，下载/缓存保留密文，运行时解密不写临时明文文件。
-PlayerBuild 的主包与热更新流程会自动传递打包时输入的 Key。
-
-AssetBundles 的运行时实现和服务注册由本包持有。依赖见 package.yaml。
-
-Player 内置资源归档支持 v1/v2/v3 读取。PlayerBuild 的通用压缩开关会为主包逐资源选择 Brotli 或原样存储，
-按 SHA-256 和原始长度去重；总压缩收益不足以抵消索引开销时回退为 v2。
-加载时只打开指定载荷，限制其存储范围及解码长度，再验证原始 SHA-256；压缩与内容加密可以组合使用。
-异步读取使用引擎协作调度器，不创建工作线程，不预先分配整个压缩归档。
-
-### AssetBundle 运行时、远程更新与只读契约
-
-`AssetBundleManager.InitializeAsync` 从内置目录、active/previous 指针和本地 content-addressed cache 选择一个已验证状态。每个状态只构建一次不可变 `AssetBundleCatalogIndex`，以大小写不敏感的冻结索引保存 address、bundle、每 bundle 的资产和预计算依赖闭包；`ContainsAddress` 与 `GetDependencyClosure` 可用于检查，`LoadBytesAsync`/`LoadTextAsync` 的热路径不再扫描 catalog。公开构造索引时会克隆 catalog，因此之后修改原对象不会改变索引。
-
-```csharp
-using BEngine.AssetBundles;
-
-await using var bundles = new AssetBundleManager(new AssetBundleRuntimeOptions
-{
-    PackageName = "com.example.game",
-    CacheDirectory = cachePath,
-    BuiltInDirectory = builtInPath,
-    RemoteBaseUri = new Uri("https://cdn.example.test/content/"),
-    RequireHttps = true,
-    MaxRetries = 3
-});
-
-await bundles.InitializeAsync(stop.Token);
-AssetBundleUpdatePlan plan = await bundles.CheckForUpdatesAsync(stop.Token);
-if (plan.HasUpdates)
-    await bundles.ApplyUpdateAsync(plan, progress: null, cancellationToken: stop.Token);
-
-await using AssetBundleHandle<string> text =
-    await bundles.LoadTextAsync("Assets/Data/config.json", stop.Token);
-```
-
-同一 manager 支持并发初始化和并发加载：相同内容 hash 只创建一个 loaded bundle task，句柄使用引用计数；每个句柄都必须释放，之后可调用 `UnloadUnused`。初始化、Apply、Rollback 和 Cleanup 串行修改管理状态；加载先捕获当前不可变快照，因此更新发布新状态时不会原地改变正在读取的 catalog。并发提交同一更新计划只有一次实际激活。
-
-远程元数据和 bundle 都执行大小、SHA-256 与目录边界校验。bundle 使用 `HttpNetworkRequest` 的流式响应入口逐块写入 staging、增量计算 hash，验证后才移动到 content-addressed object cache；catalog 和 active/previous 指针采用临时文件原子替换。验证失败保留旧 active 状态并清理 `.part`，`RollbackAsync` 只在已验证指针间切换而不重新下载。运行时契约是只读：不要修改 `ActiveCatalog` 后期待影响 manager，不要改写索引或 bundle 内容，也不要让运行时保存回 `Assets`；新版本必须通过构建 catalog、检查、下载、验证和原子 Apply 发布。
-
-
-### 轮询加载进度
-
-需要进度时使用 `InitializeRequest()`、`LoadBytesRequest(address)`、`LoadTextRequest(address)`。
-这些操作继承 `AsyncOperation`，外部逐帧读取只读的 `progress`（0～1）、`isDone`、`status`、`exception`。运行时不提供进度通知事件，`completed` 完成事件保留。
-直接 `InitializeAsync` / `LoadBytesAsync` / `LoadTextAsync` 的 await 入口保持可用。
-
-```csharp
-using var initialization = bundles.InitializeRequest();
-while (!initialization.isDone)
-{
-    // UI reads these properties; the manager does not call user progress handlers.
-    var detail = initialization.loadProgress;
-    DrawProgress(initialization.progress, detail.Resource, detail.ProcessedBytes, detail.TotalBytes);
-    await BEngine.BTask.Yield();
-}
-if (initialization.exception is { } initializationError) throw initializationError;
-
-using var request = bundles.LoadBytesRequest("Assets/Data/config.json");
-while (!request.isDone)
-{
-    var detail = request.loadProgress;
-    DrawProgress(request.progress, detail.Resource, detail.ProcessedBytes, detail.TotalBytes);
-    await BEngine.BTask.Yield();
-}
-if (request.exception is { } loadError) throw loadError;
-byte[] bytes = request.asset!; // retain/copy ownership before disposing the request as appropriate
-```
-
-`loadProgress` 包含当前资源的 Kind、Phase、Resource、ProcessedBytes、TotalBytes、Attempt。
-Phase 区分等待、接收、校验、解析、读取/解压、重试、完成、失败、取消；未知长度的 TotalBytes 为 null，不能伪造分母。
-依赖包可通过 `bundleCount` 和 `GetBundleProgress(index)` 逐个读取，不分配快照数组。
-相同 hash 的并发请求共享实际传输和状态；汇总多个请求时，应通过 catalog 的 bundle hash 去重。
-`progress` 是依赖读取、校验、解压工作的单调阶段进度，不等于网络字节比例；当前文件的字节比例应由 detail 计算。
-只有操作成功才到 1，取消和校验失败保留部分进度。完成接收后仍会执行完整性和格式检查。
-所有属性在引擎所属线程读取；工作线程仅更新内部计数，不调用 UI。
+[索引、并发与更新约定](Doc/EngineContracts.md)。

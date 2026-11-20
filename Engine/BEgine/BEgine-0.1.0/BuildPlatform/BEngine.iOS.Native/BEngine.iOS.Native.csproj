@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../../PlatformNative.props" Condition="Exists('../../../../PlatformNative.props')" />
+  <Import Project="../PlatformNative.props" Condition="!Exists('../../../../PlatformNative.props')" />
+  <PropertyGroup>
+    <BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <BEngineNativeSourceProject>../../../BEngine.iOS/BEngine.iOS.csproj</BEngineNativeSourceProject>
+    <BEngineSolutionRole>Template</BEngineSolutionRole>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <RootNamespace>BEngine.Platform.IosNative</RootNamespace>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('../../../BEngine.iOS/BEngine.iOS.csproj')">
+    <ProjectReference Include="../../../BEngine.iOS/BEngine.iOS.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('../../../BEngine.iOS/BEngine.iOS.csproj')">
+    <Reference Include="BEngine.Core" HintPath="$(BEnginePlatformRuntimeRoot)/BEngine.Core.dll" />
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <Reference Include="BEngine.iOS" HintPath="$(BEnginePlatformRuntimeRoot)/BEngine.iOS.dll" />
+    <Reference Include="BEngine.Platform.DotNet" HintPath="$(BEnginePlatformRuntimeRoot)/BEngine.Platform.DotNet.dll" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('../../../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj')">
+    <ProjectReference Include="../../../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('../../../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj')">
+    <Reference Include="BEngine.Platform.Contracts" HintPath="$(BEnginePlatformRuntimeRoot)/BEngine.Platform.Contracts.dll" />
+  </ItemGroup>
+</Project>

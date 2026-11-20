@@ -1,10 +1,14 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace BEngine.UIElements;
 
 public sealed class UIBinding : IDisposable
 {
-    private static readonly Dictionary<(Type Type, string Path), MemberInfo[]> PathCache = [];
+    private const int MaximumCachedPathsPerType = 256;
+    // Bindings can target reloadable script types. A completed path may refer
+    // back to its key type; the weak table still permits that whole graph to unload.
+    private static readonly ConditionalWeakTable<Type, TypePaths> PathCache = new();
     private readonly object _source;
     private readonly List<Entry> _entries = [];
     private bool _disposed;
@@ -40,26 +44,34 @@ public sealed class UIBinding : IDisposable
 
     private static MemberInfo[] ResolvePath(Type sourceType, string path)
     {
-        var key = (sourceType, path);
-        if (PathCache.TryGetValue(key, out var cached)) return cached;
-        var current = sourceType;
-        var members = new List<MemberInfo>();
-        foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        var cache = PathCache.GetValue(sourceType, static _ => new TypePaths());
+        lock (cache)
         {
-            var member = (MemberInfo?)current.GetProperty(segment,
-                             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ??
-                         current.GetField(segment,
-                             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ??
-                         throw new InvalidOperationException(
-                             $"Binding path '{path}' was not found on '{sourceType.FullName}'.");
-            current = MemberType(member);
-            members.Add(member);
+            if (cache.Members.TryGetValue(path, out var cached)) return cached;
+            var current = sourceType;
+            var members = new List<MemberInfo>();
+            foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var member = (MemberInfo?)current.GetProperty(segment,
+                                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ??
+                             current.GetField(segment,
+                                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ??
+                             throw new InvalidOperationException(
+                                 $"Binding path '{path}' was not found on '{sourceType.FullName}'.");
+                current = MemberType(member);
+                members.Add(member);
+            }
+            if (members.Count == 0) throw new ArgumentException("Binding path is empty.", nameof(path));
+            var resolved = members.ToArray();
+            if (cache.Members.Count == MaximumCachedPathsPerType)
+                cache.Members.Remove(cache.Order.Dequeue());
+            cache.Members.Add(path, resolved);
+            cache.Order.Enqueue(path);
+            return resolved;
         }
-        if (members.Count == 0) throw new ArgumentException("Binding path is empty.", nameof(path));
-        return PathCache[key] = members.ToArray();
     }
 
-    private static object? ReadPath(object source, IReadOnlyList<MemberInfo> members)
+    private static object? ReadPath(object source, MemberInfo[] members)
     {
         object? current = source;
         foreach (var member in members)
@@ -77,12 +89,12 @@ public sealed class UIBinding : IDisposable
 
     private static void WritePath(
         object source,
-        IReadOnlyList<MemberInfo> members,
+        MemberInfo[] members,
         object? value,
         Type sourceValueType)
     {
         object? owner = source;
-        for (var index = 0; index < members.Count - 1; index++)
+        for (var index = 0; index < members.Length - 1; index++)
         {
             owner = members[index] switch
             {
@@ -121,4 +133,10 @@ public sealed class UIBinding : IDisposable
     };
 
     private sealed record Entry(IBindableField Field, MemberInfo[] Members, Action<object?> Changed);
+
+    private sealed class TypePaths
+    {
+        internal readonly Dictionary<string, MemberInfo[]> Members = new(StringComparer.Ordinal);
+        internal readonly Queue<string> Order = new();
+    }
 }

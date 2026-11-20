@@ -25,5 +25,5 @@ public sealed class EdgeCollider2D : Collider2D
 {
     public List<Vector2> points { get; set; } = [new(-Fix64.Half, 0), new(Fix64.Half, 0)];
     /// <summary>Positive thickness provides stable solid contacts on both sides of the edge.</summary>
-    public Fix64 edgeRadius { get; set; } = Fix64.FromDecimal(0.01m);
+    public Fix64 edgeRadius { get; set; } = Fix64.FromRaw(42949672L) /* FromDecimal(0.01m) */;
 }

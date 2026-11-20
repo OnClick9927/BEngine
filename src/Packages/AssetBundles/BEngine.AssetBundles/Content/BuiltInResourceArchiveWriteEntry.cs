@@ -62,7 +62,7 @@ internal sealed class BuiltInResourceArchiveWriteEntry
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         return new BuiltInResourceArchiveWriteEntry(
             address, assetType, guid, ownerGuid, localIdentifier, importer, importerSettings,
-            sha256, size, RuntimeServiceAccess.PathService.GetFullPath(filePath), null);
+            sha256, size, RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(filePath), null);
     }
 
     internal static BuiltInResourceArchiveWriteEntry FromMemory(
@@ -78,12 +78,12 @@ internal sealed class BuiltInResourceArchiveWriteEntry
         var bytes = content.ToArray();
         return new BuiltInResourceArchiveWriteEntry(
             address, assetType, guid, ownerGuid, localIdentifier, importer, importerSettings,
-            Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(), bytes.LongLength, null, bytes);
+            Convert.ToHexStringLower(SHA256.HashData(bytes)), bytes.LongLength, null, bytes);
     }
 
     internal Stream OpenRead(FileUtility? fileSystem = null) => _content is not null
         ? new MemoryStream(_content, writable: false)
-        : (fileSystem ?? RuntimeServiceAccess.FileSystem).OpenFile(
+        : (fileSystem ?? RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>()).OpenFile(
             FilePath ?? throw new InvalidDataException(
                 $"Built-in resource '{Address}' has no payload source."),
             FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.SequentialScan);

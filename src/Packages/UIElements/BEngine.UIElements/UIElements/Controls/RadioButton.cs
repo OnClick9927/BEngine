@@ -8,8 +8,17 @@ public class RadioButton : Toggle
         valueChanged += selected =>
         {
             if (!selected || parent is null) return;
-            foreach (var sibling in parent.Children.OfType<RadioButton>())
-                if (!ReferenceEquals(this, sibling)) sibling.value = false;
+            {
+                var __typedSource328 = parent.Children;
+                ArgumentNullException.ThrowIfNull(__typedSource328, "source");
+                foreach (var __typedItem328 in __typedSource328)
+                {
+                    if (__typedItem328 is not RadioButton sibling)
+                        continue;
+                    if (!ReferenceEquals(this, sibling))
+                        sibling.value = false;
+                }
+            }
         };
     }
 }

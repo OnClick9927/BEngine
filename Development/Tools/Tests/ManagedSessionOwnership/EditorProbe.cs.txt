@@ -1,0 +1,32 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using BEngine.Editor;
+using BEngine.Build;
+using BEngine.Platform;
+using BEngine.Player;
+using BEngine.Player.HotUpdate;
+using BEngine.AssetBundles;
+
+public static class ManagedSessionOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if(string.IsNullOrEmpty(folder))return;
+        if(typeof(BuildTargetManifest).Assembly!=typeof(ManagedCodePlayerSession).Assembly)
+            throw new Exception("Editor deployment metadata has no Core owner");
+        if(typeof(PlayerManagedCodeRuntimeFactory).Assembly!=typeof(ManagedCodePlayerSession).Assembly)
+            throw new Exception("Editor runtime strategy has no Core owner");
+        if(typeof(AssetBundleCatalog).Assembly.GetReferencedAssemblies().Any(a=>a.Name=="BEngine.Platform.DotNet"))
+            throw new Exception("Editor AB Runtime still references the concrete DotNet backend");
+        if(!new CoreClrManagedCodeRuntimeProvider().IsAvailable)
+            throw new Exception("Actual Editor host has no native assembly-domain capability");
+        var target=BuildTargetUtility.Current.InferCurrentDesktop();
+        var manifest=BuildTargetManifestSerializer.Deserialize(BuildTargetManifestSerializer.Serialize(BuildTargetManifest.FromDescriptor(target)));
+        if(manifest.ToDescriptor().TargetId!=target.TargetId)throw new Exception("Editor deployment metadata changed");
+        File.AppendAllText(Path.Combine(folder,"ManagedSessionOwnershipEvents.jsonl"),
+            JsonSerializer.Serialize(new{Passed=true,Checks=5,Owner=typeof(ManagedCodePlayerSession).Assembly.GetName().Name})+Environment.NewLine);
+    }
+}

@@ -1,3 +1,4 @@
+using EditorCapabilities = BEngine.Editor.EditorServices;
 using BEngine.Platform;
 
 namespace BEngine.Editor;
@@ -51,9 +52,17 @@ public sealed class TextureAtlasWindowController :
     public void AddSelected()
     {
         var sprites = Selection.objects.OfType<Sprite>().ToList();
-        foreach (var texture in Selection.objects.OfType<Texture>())
-            if (AssetDatabase.LoadAssetAtPath<Sprite>(texture.assetPath) is { } sprite)
-                sprites.Add(sprite);
+        {
+            var __typedSource1833 = Selection.objects;
+            ArgumentNullException.ThrowIfNull(__typedSource1833, "source");
+            foreach (var __typedItem1833 in __typedSource1833)
+            {
+                if (__typedItem1833 is not Texture texture)
+                    continue;
+                if (AssetDatabase.LoadAssetAtPath<Sprite>(texture.assetPath)is { } sprite)
+                    sprites.Add(sprite);
+            }
+        }
         foreach (var sprite in sprites) AddSource(sprite);
         Repaint();
     }
@@ -163,9 +172,22 @@ public sealed class TextureAtlasWindowController :
     private bool ContainsSource(Sprite sprite, int ignoredIndex = -1)
     {
         var identity = TextureAtlas.SourceIdentity(sprite);
-        return Model.Atlas.Sources.Where((_, index) => index != ignoredIndex)
-            .Any(source => TextureAtlas.SourceIdentity(source)
-                .Equals(identity, StringComparison.OrdinalIgnoreCase));
+        bool __queryResult5535;
+        {
+            var __querySource5535 = Model.Atlas.Sources.Where((_, index) => index != ignoredIndex);
+            ArgumentNullException.ThrowIfNull(__querySource5535, "source");
+            __queryResult5535 = false;
+            foreach (var __queryItem5535 in __querySource5535)
+            {
+                if ((TextureAtlas.SourceIdentity(__queryItem5535).Equals(identity, StringComparison.OrdinalIgnoreCase)))
+                {
+                    __queryResult5535 = true;
+                    break;
+                }
+            }
+        }
+        
+        return __queryResult5535;
     }
 
     private void EnsureAssetPath()
@@ -178,11 +200,11 @@ public sealed class TextureAtlasWindowController :
 
     private static string ResolvePath(string path) => Paths.IsPathRooted(path)
         ? Paths.GetFullPath(path)
-        : AssetDatabase.ResolveAssetPath(path);
+        : AssetDatabase.GetAssetSourcePath(path);
 
     private static FileUtility FileSystem =>
-        EditorServiceAccess.GetRequiredService<FileUtility>();
+        EditorCapabilities.GetRequiredService<FileUtility>();
 
     private static PathUtility Paths =>
-        EditorServiceAccess.GetRequiredService<PathUtility>();
+        EditorCapabilities.GetRequiredService<PathUtility>();
 }

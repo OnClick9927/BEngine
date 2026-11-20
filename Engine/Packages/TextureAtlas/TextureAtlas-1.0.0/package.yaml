@@ -16,12 +16,31 @@ runtime:
   packageReferences:
   - id: YamlDotNet
     version: 18.1.0
+  dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  - packageId: com.bengine.graphics
+    target: runtime
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
 editor:
   packageReferences:
   - id: YamlDotNet
     version: 18.1.0
   dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  - packageId: com.bengine.imgui
+    target: editor
+  - packageId: com.bengine.graphics
+    target: runtime
   - packageId: com.bengine.texture-atlas
     target: runtime
   assembly: BEngine.TextureAtlas.Editor
   rootNamespace: BEngine.Editor
+
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Core
+  - BEngine.Platform.Contracts

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><BEngineBootstrapAssembly>true</BEngineBootstrapAssembly><NoWarn>$(NoWarn);CA2255</NoWarn></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" /><ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" /><ProjectReference Include="../BEngine.Platform.DotNet/BEngine.Platform.DotNet.csproj" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Veldrid" />
+    <PackageReference Include="Veldrid.SPIRV" />
+  </ItemGroup>
+<ItemGroup></ItemGroup>
+  <ItemGroup><Compile Include="../../../../Development/Shared/PackageCatalogTransport.cs" Link="Tooling/PackageCatalogTransport.cs" /></ItemGroup>
+</Project>

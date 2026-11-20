@@ -43,7 +43,17 @@ internal sealed class TextureAtlasYamlData
     {
         Sources ??= [];
         Sprites ??= [];
-        var sources = Sources.Select(source => source.ToSprite()).ToList();
+        var projectionSource1598 = Sources;
+        ArgumentNullException.ThrowIfNull(projectionSource1598, "source");
+        var projectionValues1598 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(projectionSource1598);
+        var projectionResult1598 = new global::System.Collections.Generic.List<global::BEngine.Sprite>(projectionValues1598.Length);
+        for (var projectionIndex1598 = 0; projectionIndex1598 < projectionValues1598.Length; projectionIndex1598++)
+        {
+            var projectionItem1598 = projectionValues1598[projectionIndex1598];
+            projectionResult1598.Add(projectionItem1598.ToSprite());
+        }
+        
+        var sources = projectionResult1598;
         if (sources.Count == 0 && SpriteReferences is { Count: > 0 })
             sources.AddRange(SpriteReferences.Select(TextureAtlasSourceYamlData.FromLegacyReference)
                 .Select(source => source.ToSprite()));
@@ -61,7 +71,7 @@ internal sealed class TextureAtlasYamlData
             name = Name,
             hideFlags = HideFlags
         };
-        if (Id != Guid.Empty) atlas.Id = Id;
+        if (Id != Guid.Empty) atlas.RestoreIdentity(Id);
         return atlas;
     }
 }

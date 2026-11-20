@@ -5,7 +5,7 @@ id: com.bengine.networking
 packageVersion: 1.0.0
 minimumEngineVersion: 0.1.0
 displayName: Networking
-description: TCP, UDP and WebSocket asynchronous clients.
+description: Cross-platform HTTP requests, downloads, TCP, UDP and WebSocket clients.
 enabledByDefault: true
 content:
   runtime: Resources
@@ -13,3 +13,7 @@ content:
 runtime:
   assembly: BEngine.Networking
   rootNamespace: BEngine
+
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts

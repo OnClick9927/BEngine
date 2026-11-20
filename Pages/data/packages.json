@@ -9,6 +9,16 @@
     ]
   },
   {
+    "name": "Application",
+    "nameEn": "Application",
+    "description": "组合引擎与扩展包，提供应用启动、开发、热更新和发布工作流的快速开发框架。",
+    "descriptionEn": "Rapid-development framework composing engine and package capabilities for startup, development, code updates, and publishing.",
+    "categories": [
+      "assets",
+      "development"
+    ]
+  },
+  {
     "name": "2D 美术导入",
     "nameEn": "Art Import 2D",
     "description": "导入分层 PSD/PSB 与 Aseprite 文档，保留图层、帧时长及稳定资源引用。",
@@ -21,11 +31,9 @@
   {
     "name": "AssetBundles",
     "nameEn": "AssetBundles",
-    "description": "按资源包增量构建，提供资源加载、远程更新、完整性校验、修复与回滚。",
-    "descriptionEn": "Incremental package builds, asset loading, updates, integrity checks, and repairs.",
-    "categories": [
-      "assets"
-    ]
+    "description": "资源目录、分包增量构建、跨平台加载，以及按包更新与修复。",
+    "descriptionEn": "Asset catalogs, incremental package builds, cross-platform loading, updates, and repair.",
+    "categories": ["assets", "development"]
   },
   {
     "name": "音频",
@@ -61,33 +69,6 @@
     "descriptionEn": "Coordinate frame-based logic, timed calls, and asynchronous flows with coroutines.",
     "categories": [
       "development"
-    ]
-  },
-  {
-    "name": "诊断工具",
-    "nameEn": "Diagnostics",
-    "description": "分析 CPU/GPU 与帧提交，检查对象堆快照，并连接经身份验证的远程 Player 诊断。",
-    "descriptionEn": "CPU/GPU profiling, frame debugging, memory inspection, and remote Player diagnostics.",
-    "categories": [
-      "development"
-    ]
-  },
-  {
-    "name": "热更新",
-    "nameEn": "HotUpdate",
-    "description": "提供热更新运行时服务与程序集加载，配合资源发布流程切换业务内容。",
-    "descriptionEn": "Runtime services and assembly loading for updating game code and content.",
-    "categories": [
-      "assets"
-    ]
-  },
-  {
-    "name": "HTML 界面转换",
-    "nameEn": "HtmlUIConverter",
-    "description": "将 HTML 与 CSS 转换为 UIElements 文档，辅助复用界面结构和样式。",
-    "descriptionEn": "Convert HTML and CSS into UIElements documents to reuse interface structure and styles.",
-    "categories": [
-      "ui"
     ]
   },
   {
@@ -145,29 +126,19 @@
     ]
   },
   {
-    "name": "网络",
+    "name": "Networking",
     "nameEn": "Networking",
-    "description": "通过异步 TCP、UDP 与 WebSocket 客户端连接应用服务。",
-    "descriptionEn": "Asynchronous TCP, UDP, and WebSocket clients for application services.",
+    "description": "提供 HTTP 请求与流式下载、TCP、UDP 和 WebSocket，支持跨平台传输适配。",
+    "descriptionEn": "HTTP requests and streamed downloads, TCP, UDP, and WebSocket with platform transport adapters.",
     "categories": [
       "development"
     ]
   },
   {
-    "name": "2D 粒子物理",
-    "nameEn": "Particle Physics 2D",
-    "description": "让粒子与 2D 碰撞体进行扫掠碰撞，支持层与触发器过滤。",
-    "descriptionEn": "Swept particle collisions against 2D colliders with layer and trigger filtering.",
-    "categories": [
-      "graphics",
-      "physics"
-    ]
-  },
-  {
     "name": "2D 粒子",
     "nameEn": "Particles2D",
-    "description": "制作 2D 粒子发射与运动效果，支持运行时渲染和编辑模式预览。",
-    "descriptionEn": "Create particle motion and emission effects with runtime rendering and editor previews.",
+    "description": "制作 2D 粒子效果，支持渲染、编辑模式预览与粒子物理碰撞。",
+    "descriptionEn": "Create 2D particle effects with rendering, editor previews, and physics collisions.",
     "categories": [
       "graphics"
     ]
@@ -191,24 +162,6 @@
     ]
   },
   {
-    "name": "Player",
-    "nameEn": "Player",
-    "description": "组织独立 Player 生命周期、分阶段启动与按包组合的运行时服务。",
-    "descriptionEn": "Standalone Player lifecycle, staged startup, and package-based runtime composition.",
-    "categories": [
-      "assets"
-    ]
-  },
-  {
-    "name": "Player 构建",
-    "nameEn": "PlayerBuild",
-    "description": "管理构建配置、Player 发布、资源压缩与裁剪，并生成主包和热更新内容。",
-    "descriptionEn": "Build profiles, Player publishing, compression, stripping, and content delivery.",
-    "categories": [
-      "assets"
-    ]
-  },
-  {
     "name": "对象池",
     "nameEn": "Pooling",
     "description": "复用对象与集合，提供预热、有界租用、租约和运行统计。",
@@ -216,6 +169,13 @@
     "categories": [
       "development"
     ]
+  },
+  {
+    "name": "Node Editor",
+    "nameEn": "Node Editor",
+    "description": "可复用的节点画布，支持端口连线、选择、拖动、平移和缩放，用于构建图形化编辑工具。",
+    "descriptionEn": "Reusable editor node canvas with ports, connections, selection, dragging, panning, and zooming.",
+    "categories": ["ui", "development"]
   },
   {
     "name": "后处理",
@@ -294,19 +254,10 @@
   {
     "name": "瓦片地图",
     "nameEn": "Tiled Map",
-    "description": "用调色板与可撤销画笔绘制稀疏 Tilemap，支持运行时修改和相机剔除。",
-    "descriptionEn": "Paint sparse tilemaps with palettes, undoable brushes, runtime edits, and camera culling.",
+    "description": "用调色板与可撤销画笔绘制 Tilemap，支持运行时修改、相机剔除与瓦片物理碰撞。",
+    "descriptionEn": "Paint tilemaps with palettes, undoable brushes, runtime edits, camera culling, and tile collisions.",
     "categories": [
       "graphics"
-    ]
-  },
-  {
-    "name": "瓦片地图物理",
-    "nameEn": "Tilemap Physics 2D",
-    "description": "从瓦片碰撞标记生成 2D 碰撞，支持运行时刷新和横向单元合并。",
-    "descriptionEn": "Generate 2D collision from tile flags, with runtime refresh and horizontal cell merging.",
-    "categories": [
-      "physics"
     ]
   },
   {
@@ -320,19 +271,17 @@
     ]
   },
   {
-    "name": "UI Builder",
-    "nameEn": "UIBuilder",
-    "description": "可视化编辑与预览 UIElements 文档，配置控件、层级和样式。",
-    "descriptionEn": "Visually edit and preview UIElements controls, hierarchy, and styles.",
-    "categories": [
-      "ui"
-    ]
+    "name": "Track Editor",
+    "nameEn": "Track Editor",
+    "description": "可复用的轨道编辑画布，提供时间标尺、关键帧、曲线、片段裁剪和标记交互。",
+    "descriptionEn": "Reusable editor track canvas with a time ruler, keyframes, curves, clip trimming, and markers.",
+    "categories": ["animation", "ui", "development"]
   },
   {
     "name": "UIElements",
     "nameEn": "UIElements",
-    "description": "用保留模式控件、布局及 bxml/bss/bcss 组织界面，处理复杂文字和交互输入。",
-    "descriptionEn": "Retained UI controls, layout, complex text, and interaction with bxml/bss/bcss.",
+    "description": "UI 控件、布局、复杂文字与输入渲染，内置 UI Builder、HTML/CSS 转换和 SDF 字体制作工具。",
+    "descriptionEn": "UI controls, layout, complex text, input and rendering, with built-in UI Builder, HTML/CSS conversion and SDF font tools.",
     "categories": [
       "ui"
     ]

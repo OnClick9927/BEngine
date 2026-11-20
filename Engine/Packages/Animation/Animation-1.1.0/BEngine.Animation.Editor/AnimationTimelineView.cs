@@ -13,7 +13,7 @@ public sealed partial class AnimationWindow
     private void FrameAll(AnimationClip clip, Fix64 width)
     {
         model.StartTime = 0;
-        model.PixelsPerSecond = Fix64.Clamp((width - SidebarWidth(width) - 30) / Fix64.Max((Fix64).25, clip.length + (Fix64).15), 12, 3000);
+        model.PixelsPerSecond = Fix64.Clamp((width - SidebarWidth(width) - 30) / Fix64.Max(Fix64.FromRaw(1073741824L) /* (Fix64).25 */, clip.length + Fix64.FromRaw(644245094L) /* (Fix64).15 */), 12, 3000);
         model.Message = ""; Repaint();
     }
     private void FrameSelection(AnimationClip clip, Fix64 width)
@@ -26,11 +26,11 @@ public sealed partial class AnimationWindow
         if (times.Length == 0) { FrameAll(clip, width); return; }
         var first = times.Min(); var last = times.Max();
         var available = Fix64.Max(100, width - SidebarWidth(width) - 50);
-        model.PixelsPerSecond = Fix64.Clamp(available / Fix64.Max((Fix64).25, last - first + (Fix64).2), 12, 3000);
+        model.PixelsPerSecond = Fix64.Clamp(available / Fix64.Max(Fix64.FromRaw(1073741824L) /* (Fix64).25 */, last - first + Fix64.FromRaw(858993459L) /* (Fix64).2 */), 12, 3000);
         model.StartTime = Fix64.Max(0, first - (Fix64)25 / model.PixelsPerSecond);
         Repaint();
     }
-    private static Fix64 SidebarWidth(Fix64 width) => Fix64.Clamp(width * (Fix64).29, 170, 290);
+    private static Fix64 SidebarWidth(Fix64 width) => Fix64.Clamp(width * Fix64.FromRaw(1245540515L) /* (Fix64).29 */, 170, 290);
 
     private void DrawTimeline(Rect area, AnimationClip clip)
     {
@@ -39,9 +39,9 @@ public sealed partial class AnimationWindow
         var graph = new Rect(area.x + sidebarWidth, area.y,
             Fix64.Max(1, area.width - sidebarWidth), Fix64.Max(1, area.height - 24));
         var bottom = new Rect(area.x, area.yMax - 24, sidebarWidth, 24);
-        GUI.DrawRect(sidebar, new Color((Fix64).18, (Fix64).19, (Fix64).2));
+        GUI.DrawRect(sidebar, new Color(Fix64.FromRaw(773094113L) /* (Fix64).18 */, Fix64.FromRaw(816043786L) /* (Fix64).19 */, Fix64.FromRaw(858993459L) /* (Fix64).2 */));
         GUI.DrawRect(new Rect(sidebar.xMax - 1, area.y, 1, area.height),
-            new Color((Fix64).35, (Fix64).36, (Fix64).38));
+            new Color(Fix64.FromRaw(1503238553L) /* (Fix64).35 */, Fix64.FromRaw(1546188226L) /* (Fix64).36 */, Fix64.FromRaw(1632087572L) /* (Fix64).38 */));
         if (GUI.Button(new Rect(area.x + 3, area.y + 2, sidebarWidth - 6, 21), "Add Property"))
             ShowProperties(new Rect(area.x, area.y, sidebarWidth, 24));
         GUI.Label(new Rect(area.x + 8, area.y + 24, sidebarWidth - 10, 20), "Events", EditorStyles.miniLabel);
@@ -63,10 +63,10 @@ public sealed partial class AnimationWindow
                 var y = rows.y + index * RowHeight - model.VerticalScroll;
                 if (y + RowHeight < rows.y || y > rows.yMax) continue;
                 var name = (binding.relativePath.Length == 0 ? model.Target?.name ?? "Root" : binding.relativePath) +
-                    " / " + binding.componentType.Split('.').Last();
+                    " / " + binding.componentType.AsSpan(binding.componentType.LastIndexOf('.') + 1).ToString();
                 var row = new Rect(rows.x + 2, y, sidebarWidth - 4, RowHeight - 1);
                 if (model.CurveBindings.Contains(index))
-                    GUI.DrawRect(row, new Color((Fix64).24, (Fix64).35, (Fix64).47));
+                    GUI.DrawRect(row, new Color(Fix64.FromRaw(1030792151L) /* (Fix64).24 */, Fix64.FromRaw(1503238553L) /* (Fix64).35 */, Fix64.FromRaw(2018634629L) /* (Fix64).47 */));
                 GUI.Label(new Rect(row.x + 5, y, row.width - 67, 14), name, EditorStyles.miniLabel);
                 GUI.Label(new Rect(row.x + 14, y + 13, row.width - 75, 16),
                     binding.propertyName, EditorStyles.miniLabel);
@@ -126,7 +126,7 @@ public sealed partial class AnimationWindow
                 sidebarWidth / 2 - 4, 21), model.Curves, "Curves", EditorStyles.toolbarButton) && !model.Curves)
             model.Curves = true;
         var nav = new Rect(graph.x + 5, area.yMax - 20, Fix64.Max(30, graph.width - 66), 18);
-        var viewDuration = Fix64.Max((Fix64).1, graph.width / model.PixelsPerSecond);
+        var viewDuration = Fix64.Max(Fix64.FromRaw(429496729L) /* (Fix64).1 */, graph.width / model.PixelsPerSecond);
         var range = Fix64.Max(viewDuration, Fix64.Max(clip.length * 2, model.StartTime + viewDuration));
         model.StartTime = GUI.HorizontalSlider(nav, model.StartTime, 0, range);
         GUI.Label(new Rect(area.xMax - 57, area.yMax - 20, 55, 18), "Seconds", EditorStyles.miniLabel);
@@ -238,7 +238,7 @@ public sealed partial class AnimationWindow
         var rows = clip.bindings.Select((binding, index) =>
         {
             var label = (binding.relativePath.Length == 0 ? model.Target?.name ?? "Root" : binding.relativePath) +
-                        " / " + binding.componentType.Split('.').Last();
+                        " / " + binding.componentType.AsSpan(binding.componentType.LastIndexOf('.') + 1).ToString();
             var row = new TrackEditorTrack(index, label)
             {
                 sample = time => binding.kind == AnimationBindingKind.Numeric ? binding.curve.Evaluate(time) : binding.curve.EvaluateDiscrete(time),

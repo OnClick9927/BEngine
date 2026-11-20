@@ -42,15 +42,29 @@ internal static class Program
             ? Path.GetDirectoryName(Path.GetFullPath(processPath))!
             : AppContext.BaseDirectory;
         var editorPath = ResolveEditorPath(args, launcherDirectory, requireInstalled: false);
+        var packagesOption = Array.IndexOf(args, "--packages-root");
+        var packagesRoot = packagesOption < 0 ? null : packagesOption + 1 < args.Length
+            ? Path.GetFullPath(args[packagesOption + 1])
+            : throw new ArgumentException("The --packages-root option requires a path.");
         using var services = new ServiceCollection()
-            .AddBEngineLauncher(editorPath)
+            .AddBEngineLauncher(editorPath, packagesRoot)
             .BuildServiceProvider(new ServiceProviderOptions
             {
                 ValidateOnBuild = true,
                 ValidateScopes = true
             });
+        var packages = services.GetRequiredService<LauncherPackageCatalog>();
+        using var packageServer = new LauncherPackageServer(packages, packages.ResolvePackagesRoot());
+        if (!packageServer.IsOwner && Array.IndexOf(args, "--ensure-running") >= 0) return;
+        packages.Start();
+        foreach (var engine in services.GetRequiredService<LauncherEngineCatalog>().Discover())
+        {
+            try { _ = packages.GetSnapshot(packages.ResolvePackagesRoot(), engine.Version); }
+            catch (InvalidDataException exception) { System.Diagnostics.Trace.WriteLine(exception.Message); }
+        }
         System.Windows.Forms.Application.Run(services.GetRequiredService<ProjectLauncherForm>());
     }
+
 
     private static void ReportStartupFailure(Exception exception)
     {

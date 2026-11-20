@@ -10,6 +10,12 @@ public sealed class UIElementsEventDebuggerWindow :
     [
         nameof(PointerDownEvent), nameof(ClickEvent), "ChangeEvent<T>"
     ];
+    private long _visibleRevision = -1;
+    private VisualElement? _visiblePanel;
+    private string _visibleSearch = string.Empty;
+    private IReadOnlyList<UIEventDebugRecord> _visibleEvents = [];
+    private long _eventTypesRevision = -1;
+    private IReadOnlyList<string> _eventTypes = [];
 
     public UIElementsEventDebuggerWindow()
     {
@@ -45,13 +51,13 @@ public sealed class UIElementsEventDebuggerWindow :
         GUILayout.Label(model.Suspended ? "Suspended" : "Recording", EditorStyles.miniBoldLabel);
         GUILayout.EndHorizontal();
 
-        var eventHeight = Fix64.Max(130, position.height * (Fix64)0.28);
+        var eventHeight = Fix64.Max(130, position.height * Fix64.FromRaw(1202590842L) /* (Fix64)0.28 */);
         DrawEventTable(GUILayoutUtility.GetRect(400, 4096, eventHeight, eventHeight,
             GUILayout.ExpandWidth(true)) , visible);
         DrawTransport();
 
         GUILayout.Label("Event Callbacks", EditorStyles.boldLabel);
-        var callbackHeight = Fix64.Max(90, position.height * (Fix64)0.18);
+        var callbackHeight = Fix64.Max(90, position.height * Fix64.FromRaw(773094113L) /* (Fix64)0.18 */);
         DrawCallbackTable(GUILayoutUtility.GetRect(400, 4096, callbackHeight, callbackHeight,
             GUILayout.ExpandWidth(true)), model.SelectedRecord);
         DrawDetails(model.SelectedRecord);
@@ -67,14 +73,65 @@ public sealed class UIElementsEventDebuggerWindow :
             panelIndex = index;
             break;
         }
-        var nextPanel = EditorGUILayout.Popup(string.Empty, panelIndex,
-            panels.Select(static panel => panel.Name).ToArray(), EditorStyles.toolbarPopup,
-            GUILayout.Width(220));
+        var nextPanel = EditorGUILayout.Popup(string.Empty, panelIndex, Gather3432(panels), EditorStyles.toolbarPopup, GUILayout.Width(220));
+        [global::BEngine.SkipLoopGuard]
+        string[] Gather3432(global::System.Collections.Generic.IEnumerable<global::BEngine.UIElements.Editor.UIElementsEventDebuggerWindow.PanelOption> items3432)
+        {
+            ArgumentNullException.ThrowIfNull(items3432, "source");
+            string Evaluate3432(global::BEngine.UIElements.Editor.UIElementsEventDebuggerWindow.PanelOption panel) => panel.Name;
+            global::System.ReadOnlySpan<global::BEngine.UIElements.Editor.UIElementsEventDebuggerWindow.PanelOption> values;
+            if (items3432.GetType() == typeof(global::BEngine.UIElements.Editor.UIElementsEventDebuggerWindow.PanelOption[]))
+                values = (global::BEngine.UIElements.Editor.UIElementsEventDebuggerWindow.PanelOption[])items3432;
+            else if (items3432.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.UIElements.Editor.UIElementsEventDebuggerWindow.PanelOption>))
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.UIElements.Editor.UIElementsEventDebuggerWindow.PanelOption>)items3432);
+            else
+            {
+                return global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(items3432, Evaluate3432));
+            }
+
+            if (values.IsEmpty)
+                return global::System.Array.Empty<string>();
+            var result = new string[values.Length];
+            for (var index = 0; index < values.Length; index++)
+                result[index] = Evaluate3432(values[index]);
+            return result;
+        }
         if (nextPanel >= 0 && nextPanel < panels.Count && nextPanel != panelIndex)
             controller.SelectPanel(panels[nextPanel].Root);
 
         var eventTypes = KnownEventTypes();
-        var enabledCount = eventTypes.Count(type => model.IsEventTypeEnabled(type));
+        var enabledCount = Query3762();
+        int Query3762()
+        {
+            var querySource3762 = eventTypes;
+            ArgumentNullException.ThrowIfNull(querySource3762, "source");
+            int matches = 0;
+            if (querySource3762.GetType() == typeof(string[]) || querySource3762.GetType() == typeof(global::System.Collections.Generic.List<string>))
+            {
+                global::System.ReadOnlySpan<string> queryValues3762 = querySource3762.GetType() == typeof(string[]) ? (string[])(object)querySource3762 : global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<string>)(object)querySource3762);
+                foreach (var type in queryValues3762)
+                {
+                    if (model.IsEventTypeEnabled(type))
+                        checked
+                        {
+                            matches++;
+                        }
+                }
+            }
+            else
+            {
+                foreach (var type in querySource3762)
+                {
+                    if (model.IsEventTypeEnabled(type))
+                        checked
+                        {
+                            matches++;
+                        }
+                }
+            }
+        
+            return matches;
+        }
         if (GUILayout.Button($"{enabledCount} selected event types", EditorStyles.toolbarDropDown,
                 GUILayout.Width(170)))
             ShowEventTypeMenu(eventTypes, GUILayoutUtility.GetLastRect());
@@ -110,9 +167,9 @@ public sealed class UIElementsEventDebuggerWindow :
         var header = new Rect(rect.x, rect.y, width, 22);
         GUI.Box(header, string.Empty, EditorStyles.contentToolbar);
         GUI.Label(new Rect(header.x + 4, header.y, 92, header.height), "Timestamp", EditorStyles.miniBoldLabel);
-        GUI.Label(new Rect(header.x + 100, header.y, width * (Fix64)0.31, header.height), "Event",
+        GUI.Label(new Rect(header.x + 100, header.y, width * Fix64.FromRaw(1331439861L) /* (Fix64)0.31 */, header.height), "Event",
             EditorStyles.miniBoldLabel);
-        GUI.Label(new Rect(header.x + width * (Fix64)0.47, header.y, width * (Fix64)0.39, header.height),
+        GUI.Label(new Rect(header.x + width * Fix64.FromRaw(2018634629L) /* (Fix64)0.47 */, header.y, width * Fix64.FromRaw(1675037245L) /* (Fix64)0.39 */, header.height),
             "Target", EditorStyles.miniBoldLabel);
         GUI.Label(new Rect(header.x + width - 76, header.y, 72, header.height), "Stopped",
             EditorStyles.miniBoldLabel);
@@ -124,19 +181,26 @@ public sealed class UIElementsEventDebuggerWindow :
             new Rect(0, 0, contentWidth, contentHeight));
         try
         {
+            var first = Math.Clamp(Mathf.FloorToInt(model.EventScroll.y / 21), 0, events.Count);
+            var end = Math.Clamp(Mathf.CeilToInt((model.EventScroll.y + viewport.height) / 21), first, events.Count);
             for (var index = 0; index < events.Count; index++)
             {
-                var record = events[index];
                 var row = new Rect(0, index * 21, contentWidth, 21);
+                var id = GUIUtility.GetControlID(GUIContent.none.text.GetHashCode(StringComparison.Ordinal),
+                    FocusType.Keyboard, row);
+                var visible = index >= first && index < end;
+                if (!visible && GUIUtility.hotControl != id && GUIUtility.keyboardControl != id) continue;
+                var record = events[index];
                 var selected = model.SelectedDispatchId == record.DispatchId;
-                if (GUI.Button(row, GUIContent.none,
+                if (GUI.Button(id, row, GUIContent.none,
                         selected ? EditorStyles.treeViewRowSelected : EditorStyles.treeViewRow))
                     controller.Select(record.DispatchId);
+                if (!visible) continue;
                 GUI.Label(new Rect(4, row.y, 92, row.height), FormatTimestamp(record.Timestamp),
                     EditorStyles.miniLabel);
-                GUI.Label(new Rect(100, row.y, contentWidth * (Fix64)0.31, row.height), record.EventType,
+                GUI.Label(new Rect(100, row.y, contentWidth * Fix64.FromRaw(1331439861L) /* (Fix64)0.31 */, row.height), record.EventType,
                     EditorStyles.miniLabel);
-                GUI.Label(new Rect(contentWidth * (Fix64)0.47, row.y, contentWidth * (Fix64)0.39, row.height),
+                GUI.Label(new Rect(contentWidth * Fix64.FromRaw(2018634629L) /* (Fix64)0.47 */, row.y, contentWidth * Fix64.FromRaw(1675037245L) /* (Fix64)0.39 */, row.height),
                     record.TargetPath, EditorStyles.miniLabel);
                 GUI.Label(new Rect(contentWidth - 76, row.y, 72, row.height),
                     record.PropagationStopped ? "Yes" : string.Empty, EditorStyles.centeredMiniLabel);
@@ -152,12 +216,12 @@ public sealed class UIElementsEventDebuggerWindow :
         var header = new Rect(rect.x, rect.y, rect.width, 22);
         GUI.Box(header, string.Empty, EditorStyles.contentToolbar);
         GUI.Label(new Rect(header.x + 4, header.y, 92, header.height), "Timestamp", EditorStyles.miniBoldLabel);
-        GUI.Label(new Rect(header.x + 100, header.y, header.width * (Fix64)0.43, header.height), "Handler",
+        GUI.Label(new Rect(header.x + 100, header.y, header.width * Fix64.FromRaw(1846835937L) /* (Fix64)0.43 */, header.height), "Handler",
             EditorStyles.miniBoldLabel);
-        GUI.Label(new Rect(header.x + header.width * (Fix64)0.58, header.y, 100, header.height), "Phase",
+        GUI.Label(new Rect(header.x + header.width * Fix64.FromRaw(2491081031L) /* (Fix64)0.58 */, header.y, 100, header.height), "Phase",
             EditorStyles.miniBoldLabel);
-        GUI.Label(new Rect(header.x + header.width * (Fix64)0.73, header.y,
-            header.width * (Fix64)0.26, header.height), "Current Target", EditorStyles.miniBoldLabel);
+        GUI.Label(new Rect(header.x + header.width * Fix64.FromRaw(3135326126L) /* (Fix64)0.73 */, header.y,
+            header.width * Fix64.FromRaw(1116691496L) /* (Fix64)0.26 */, header.height), "Current Target", EditorStyles.miniBoldLabel);
 
         var viewport = new Rect(rect.x, rect.y + 22, rect.width, Fix64.Max(1, rect.height - 22));
         var contentWidth = Fix64.Max(1, viewport.width - 14);
@@ -166,17 +230,19 @@ public sealed class UIElementsEventDebuggerWindow :
             new Rect(0, 0, contentWidth, contentHeight));
         try
         {
-            for (var index = 0; index < callbacks.Count; index++)
+            var first = Math.Clamp(Mathf.FloorToInt(model.CallbackScroll.y / 21), 0, callbacks.Count);
+            var end = Math.Clamp(Mathf.CeilToInt((model.CallbackScroll.y + viewport.height) / 21), first, callbacks.Count);
+            for (var index = first; index < end; index++)
             {
                 var callback = callbacks[index];
                 var y = index * 21;
                 GUI.Label(new Rect(4, y, 92, 21), FormatTimestamp(callback.Timestamp),
                     EditorStyles.miniLabel);
-                GUI.Label(new Rect(100, y, contentWidth * (Fix64)0.43, 21), callback.Handler,
+                GUI.Label(new Rect(100, y, contentWidth * Fix64.FromRaw(1846835937L) /* (Fix64)0.43 */, 21), callback.Handler,
                     EditorStyles.miniLabel);
-                GUI.Label(new Rect(contentWidth * (Fix64)0.58, y, 100, 21),
+                GUI.Label(new Rect(contentWidth * Fix64.FromRaw(2491081031L) /* (Fix64)0.58 */, y, 100, 21),
                     callback.PropagationPhase.ToString(), EditorStyles.miniLabel);
-                GUI.Label(new Rect(contentWidth * (Fix64)0.73, y, contentWidth * (Fix64)0.26, 21),
+                GUI.Label(new Rect(contentWidth * Fix64.FromRaw(3135326126L) /* (Fix64)0.73 */, y, contentWidth * Fix64.FromRaw(1116691496L) /* (Fix64)0.26 */, 21),
                     callback.CurrentTarget, EditorStyles.miniLabel);
             }
         }
@@ -210,7 +276,9 @@ public sealed class UIElementsEventDebuggerWindow :
             new Rect(0, 0, Fix64.Max(1, rect.width - 14), contentHeight));
         try
         {
-            for (var index = 0; index < lines.Count; index++)
+            var first = Math.Clamp(Mathf.FloorToInt((scroll.y - 2) / 20), 0, lines.Count);
+            var end = Math.Clamp(Mathf.CeilToInt((scroll.y + rect.height - 2) / 20), first, lines.Count);
+            for (var index = first; index < end; index++)
                 GUI.Label(new Rect(4, 2 + index * 20, Fix64.Max(1, rect.width - 22), 20),
                     lines[index], EditorStyles.miniLabel);
         }
@@ -221,6 +289,11 @@ public sealed class UIElementsEventDebuggerWindow :
 
     private IReadOnlyList<UIEventDebugRecord> VisibleEvents()
     {
+        if (_visibleRevision == model.Revision && ReferenceEquals(_visiblePanel, model.SelectedPanelRoot) &&
+            _visibleSearch == model.Search) return _visibleEvents;
+        _visibleRevision = model.Revision;
+        _visiblePanel = model.SelectedPanelRoot;
+        _visibleSearch = model.Search;
         IEnumerable<UIEventDebugRecord> result = model.Events;
         if (model.SelectedPanelRoot is { } panel)
             result = result.Where(record => ReferenceEquals(record.PanelRoot, panel));
@@ -230,12 +303,13 @@ public sealed class UIElementsEventDebuggerWindow :
                                                  StringComparison.OrdinalIgnoreCase) ||
                                              record.TargetPath.Contains(model.Search,
                                                  StringComparison.OrdinalIgnoreCase));
-        return result.Reverse().ToArray();
+        return _visibleEvents = result.Reverse().ToArray();
     }
 
     private IReadOnlyList<PanelOption> BuildPanels()
     {
         var panels = new List<PanelOption> { new("All panels", null) };
+        var roots = new HashSet<VisualElement>(ReferenceEqualityComparer.Instance);
         foreach (var document in BObject.FindObjectsByType<UIDocument>())
         {
             VisualElement root;
@@ -249,19 +323,24 @@ public sealed class UIElementsEventDebuggerWindow :
             {
                 continue;
             }
-            if (panels.All(panel => !ReferenceEquals(panel.Root, root))) panels.Add(new PanelOption(name, root));
+            if (roots.Add(root)) panels.Add(new PanelOption(name, root));
         }
         foreach (var record in model.Events)
         {
-            if (record.PanelRoot is not { } root || panels.Any(panel => ReferenceEquals(panel.Root, root))) continue;
+            if (record.PanelRoot is not { } root || !roots.Add(root)) continue;
             panels.Add(new PanelOption($"{UIElementsEventDebuggerWindowController.ElementName(root)} (detached)", root));
         }
         return panels;
     }
 
-    private IReadOnlyList<string> KnownEventTypes() => BuiltInEventTypes
-        .Concat(model.Events.Select(record => NormalizeEventType(record.EventType)))
-        .Distinct(StringComparer.Ordinal).OrderBy(static name => name, StringComparer.Ordinal).ToArray();
+    private IReadOnlyList<string> KnownEventTypes()
+    {
+        if (_eventTypesRevision == model.Revision) return _eventTypes;
+        _eventTypesRevision = model.Revision;
+        return _eventTypes = BuiltInEventTypes
+            .Concat(model.Events.Select(record => NormalizeEventType(record.EventType)))
+            .Distinct(StringComparer.Ordinal).OrderBy(static name => name, StringComparer.Ordinal).ToArray();
+    }
 
     private void ShowEventTypeMenu(IEnumerable<string> eventTypes, Rect position)
     {

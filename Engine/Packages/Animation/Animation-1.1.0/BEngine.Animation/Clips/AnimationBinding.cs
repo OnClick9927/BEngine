@@ -15,17 +15,56 @@ public sealed class AnimationBinding
     public List<BObject?> objectReferences { get; set; } = [];
 
     public ObjectReferenceKeyframe[] GetObjectReferenceKeys() => kind != AnimationBindingKind.ObjectReference ? [] :
-        curve.keys.Select(key => new ObjectReferenceKeyframe(key.time, ObjectAt(key.value))).ToArray();
+        (curve.keys is { } projectionSource769 ? projectionSource769.Length == 0 ? global::System.Array.Empty<global::BEngine.ObjectReferenceKeyframe>() : global::System.Array.ConvertAll<global::BEngine.Keyframe, global::BEngine.ObjectReferenceKeyframe>(projectionSource769, key => new ObjectReferenceKeyframe(key.time, ObjectAt(key.value))) : throw new global::System.ArgumentNullException("source"));
 
     public void SetObjectReferenceKeys(IEnumerable<ObjectReferenceKeyframe> keys)
     {
         ArgumentNullException.ThrowIfNull(keys);
         var ordered = keys.ToArray();
-        if (ordered.Any(key => key.value is not null and not BAsset and not Sprite))
+        bool __queryResult1053;
+        {
+            var __querySource1053 = ordered;
+            ArgumentNullException.ThrowIfNull(__querySource1053, "source");
+            __queryResult1053 = false;
+            foreach (var __queryItem1053 in __querySource1053)
+            {
+                if ((__queryItem1053.value is not null and not BAsset and not Sprite))
+                {
+                    __queryResult1053 = true;
+                    break;
+                }
+            }
+        }
+        
+        if (__queryResult1053)
             throw new ArgumentException("Animation object keys must reference assets or sprites, not scene objects.", nameof(keys));
         var expected = RuntimeTypeCache.FindType(objectType);
-        if (expected is not null && ordered.Any(key => key.value is not null && !expected.IsInstanceOfType(key.value)))
+        if (expected is not null && Query1811())
             throw new ArgumentException("Object key type does not match the animated property.", nameof(keys));
+        bool Query1811()
+        {
+            var querySource1811 = ordered;
+            ArgumentNullException.ThrowIfNull(querySource1811, "source");
+            if (querySource1811.GetType() == typeof(global::BEngine.ObjectReferenceKeyframe[]) || querySource1811.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.ObjectReferenceKeyframe>))
+            {
+                global::System.ReadOnlySpan<global::BEngine.ObjectReferenceKeyframe> queryValues1811 = querySource1811.GetType() == typeof(global::BEngine.ObjectReferenceKeyframe[]) ? (global::BEngine.ObjectReferenceKeyframe[])(object)querySource1811 : global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.ObjectReferenceKeyframe>)(object)querySource1811);
+                foreach (var key in queryValues1811)
+                {
+                    if (key.value is not null && !expected.IsInstanceOfType(key.value))
+                        return true;
+                }
+            }
+            else
+            {
+                foreach (var key in querySource1811)
+                {
+                    if (key.value is not null && !expected.IsInstanceOfType(key.value))
+                        return true;
+                }
+            }
+        
+            return false;
+        }
         kind = AnimationBindingKind.ObjectReference;
         objectReferences.Clear(); curve.keys = [];
         foreach (var key in ordered) SetObjectReferenceKey(key.time, key.value);

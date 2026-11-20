@@ -8,7 +8,7 @@ TextureImporter 支持 PNG、JPEG（.jpg/.jpeg）、BMP、TGA（含 RLE）和 GI
 
 开启 Generate Mip Maps 后生成到 1×1 的完整 mip 链。Trilinear 在 mip 层间线性混合，Bilinear 在选中的单层内线性采样，Point 使用最近邻。桌面 Vulkan/OpenGL 按设备支持情况直接上传块压缩数据；不支持格式的设备用托管解码器解压全部 mip 层上传 RGBA8。当前 Vulkan 的 Veldrid 后端没有 ASTC 格式映射，因此 ASTC 在该后端回退，占用 RGBA 显存。Windows OpenGL 的 ASTC/ETC2 与 Vulkan 的 ETC2 已在实际 GPU 上验证，移动/Web 仍须目标设备验收。
 
-Inspector 的 Platform Overrides 列表为 Windows、Linux、MacOS、Android、IOS、Web 分别保存 Overridden、Max Texture Size、Format 和 Generate Mip Maps。覆盖只用于 Player/AOT/内容更新构建，编辑器继续使用默认导入设置。AssetBundleBuilder 的 TargetPlatform 参数也可显式选择平台；未指定时使用编辑器产物。构建会检查源文件是否与资源数据库快照一致；文件改变后应先刷新，不能悄悄打包不一致的数据。
+Inspector 的 Platform Overrides 列表为 Windows、Linux、MacOS、Android、IOS、Web 分别保存 Overridden、Max Texture Size、Format 和 Generate Mip Maps。覆盖只用于 Player/AOT/内容更新构建，编辑器继续使用默认导入设置。内容构建扩展也可显式选择目标平台；未指定时使用编辑器产物。构建会检查源文件是否与资源数据库快照一致；文件改变后应先刷新，不能悄悄打包不一致的数据。
 
 导入版本变更通过 AssetImporterVersionAttribute 使旧缓存重新导入。引用由原 meta GUID 和 Sprite local ID 保持；新格式和压缩不会生成新的资源身份。默认无 mip 的 RGBA32 产物继续用 PNG，其他产物使用 BTEX0001（尺寸、格式、各 mip 字节数、SHA-256）。运行时检查完整结构、长度和校验和，既有 PNG 资源仍可读取。
 

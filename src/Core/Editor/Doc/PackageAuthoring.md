@@ -3,7 +3,7 @@
 引擎包仓库使用 `Engine/Engine/Packages/<包目录名>/<包目录名>-<版本>/package.yaml`。
 例如 `Engine/Engine/Packages/Audio/Audio-1.0.0/package.yaml`。不同版本共存；源代码仓库
 `Engine/src/Packages` 的开发目录保持原结构。`ExportEngine.ps1` 和程序集构建导出均写入版本子目录。
-旧的平铺导出目录可由 `Engine/src/MigratePackageLayout.ps1` 迁移；重复执行不会再次移动已迁移包。
+旧的平铺导出目录可由 `Engine/Development/Scripts/MigratePackageLayout.ps1` 迁移；重复执行不会再次移动已迁移包。
 
 每个新发布的包必须声明：
 
@@ -46,6 +46,32 @@ Package Manager 左侧每个包 ID 只显示一行，包含仓库里尚未安装
 
 `type: project` 包导入后属于工程可编辑内容；为保留用户修改，不提供覆盖升级或一键删除。
 引擎扩展包 `type: package` 支持版本切换。依赖按包 ID 解析，不提供依赖版本范围求解。
+
+## Git 依赖来源
+
+`runtime.dependencies` 和 `editor.dependencies` 的每条依赖可以增加可选的 `gitUrl`，记录该包的 Git 添加地址：
+
+```yaml
+runtime:
+  assembly: Studio.Inventory
+  rootNamespace: Studio.Inventory
+  dependencies:
+  - packageId: com.studio.shared
+    target: runtime
+    gitUrl: https://github.com/studio/packages.git?path=/Shared#main
+```
+
+`packageId` 标识依赖包，`target` 指定其 `runtime` 或 `editor` 程序集；`gitUrl` 只提供下载来源。
+Git 地址支持 `?path=/子目录` 和 `#分支、标签或提交`，也可以直接指向分支根目录。
+无需下载来源的本地或引擎自带依赖可以省略 `gitUrl`，旧清单继续有效。
+
+在 Hub 的“GitHub 包管理”安装主包时，优先复用已选或本地兼容依赖；缺失时读取 `gitUrl`，
+按包 ID 和目标程序集选择最新的引擎兼容版本，并递归补齐必需依赖。一个仓库可以包含多个包，
+只下载实际需要的包，来源和固定提交分别写入各包的安装记录。
+`optional: true` 的缺失依赖不会自动下载；同一缺失依赖的多处声明应使用相同 Git 地址。
+
+所有主包及新依赖作为同一次安装提交；缺少地址、包 ID 不匹配、程序集目标缺失、循环依赖或下载失败时不发布不完整的安装。
+编辑器仍使用 Hub 的本地包仓库和工程固定版本，Git 来源不会改变程序集引用或工程版本锁定规则。
 
 ## 在工程内创建模板
 
@@ -118,7 +144,8 @@ Assets/Packages/Inventory/
 
 发布内容仅包括清单、程序集源代码、Resources 和 Editor；跳过构建目录和 csproj，拒绝 DLL/PDB。
 同一 ID 和版本已存在时拒绝覆盖，请增加 `packageVersion`。
-此按钮面向 `type: package` 引擎扩展；普通工程资源仍可使用 `Assets/Export Package...` 导出 `.bpackage`。
+此按钮支持 `type: package` 引擎扩展，以及 StandardAsset 这类带有 `Scripts` 的 `type: project` 可编辑包。
+工程类型包保留自己的类型，在独立临时工程中编译、校验源码后导出；普通工程资源仍可使用 `Assets/Export Package...` 导出 `.bpackage`。
 Play 模式及切换期间禁止创建和导出。
 
 发布操作不会在作者工程再次安装自己的包：该工程已在编译模板源码。

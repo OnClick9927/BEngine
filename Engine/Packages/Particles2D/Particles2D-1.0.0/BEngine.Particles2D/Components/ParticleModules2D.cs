@@ -29,7 +29,7 @@ public sealed class ParticleColorKey2D
 public readonly record struct ParticleCollisionHit2D(Vector2 Position, Vector2 Normal, BObject? Collider = null);
 public readonly record struct ParticleCollisionEvent2D(Particle2D Particle, ParticleCollisionHit2D Hit);
 
-/// <summary>Optional world-space swept collision provider. Particles2D has no Physics2D dependency.</summary>
+/// <summary>World-space swept collision provider. Override to integrate a custom collision world.</summary>
 public abstract class ParticleCollisionProvider2D : Component
 {
     public virtual IDisposable? BeginPreview() => null;

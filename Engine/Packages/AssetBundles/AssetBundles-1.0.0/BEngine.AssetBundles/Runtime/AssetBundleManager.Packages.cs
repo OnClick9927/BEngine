@@ -37,9 +37,31 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
             var selected = SelectPackageClosure(source.Catalog, requested);
             var packageSet = selected.Select(static package => package.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var currentPackages = GetCurrentPackages(current?.Catalog, source.Catalog);
-            var changed = current is null || (current.Catalog.Packages.Count == 0 && source.Catalog.Packages.Count > 0) || selected.Any(package =>
-                !currentPackages.TryGetValue(package.Name, out var installed) ||
-                !installed.Version.Equals(package.Version, StringComparison.OrdinalIgnoreCase));
+            var changed = current is null || (current.Catalog.Packages.Count == 0 && source.Catalog.Packages.Count > 0) || Query2120();
+            bool Query2120()
+            {
+                var querySource2120 = selected;
+                ArgumentNullException.ThrowIfNull(querySource2120, "source");
+                if (querySource2120.GetType() == typeof(global::BEngine.AssetBundles.AssetBundlePackageDescriptor[]) || querySource2120.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundlePackageDescriptor>))
+                {
+                    global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundlePackageDescriptor> queryValues2120 = querySource2120.GetType() == typeof(global::BEngine.AssetBundles.AssetBundlePackageDescriptor[]) ? (global::BEngine.AssetBundles.AssetBundlePackageDescriptor[])(object)querySource2120 : global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundlePackageDescriptor>)(object)querySource2120);
+                    foreach (var package in queryValues2120)
+                    {
+                        if (!currentPackages.TryGetValue(package.Name, out var installed) || !installed.Version.Equals(package.Version, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                }
+                else
+                {
+                    foreach (var package in querySource2120)
+                    {
+                        if (!currentPackages.TryGetValue(package.Name, out var installed) || !installed.Version.Equals(package.Version, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                }
+            
+                return false;
+            }
             // An unrelated release version never advances this client's package state.
             var target = changed ? MergePackageState(current, source, packageSet, currentPackages) : current!;
             var selectedBundles = ResolvePackageBundles(target.Catalog, packageSet);
@@ -50,10 +72,52 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
                 if (!await HasValidBundleAsync(descriptor, cancellationToken)) downloads.Add(descriptor);
             }
             ThrowIfDisposed();
-            return new AssetBundlePackageUpdatePlan(source.Version, target.Version, target.CatalogBytes,
-                downloads, selected.Select(static package => package.Name).ToArray(),
-                selectedBundles.Select(static bundle => bundle.Name).ToArray(),
-                changed || downloads.Count > 0, AssetBundleResourceRevision.FromVersion(current?.Version));
+            return new AssetBundlePackageUpdatePlan(source.Version, target.Version, target.CatalogBytes, downloads, Gather4615(selected), Gather4690(selectedBundles), changed || downloads.Count > 0, AssetBundleResourceRevision.FromVersion(current?.Version));
+            [global::BEngine.SkipLoopGuard]
+            string[] Gather4690(global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.AssetBundleDescriptor> items4690)
+            {
+                ArgumentNullException.ThrowIfNull(items4690, "source");
+                string Evaluate4690(global::BEngine.AssetBundles.AssetBundleDescriptor bundle) => bundle.Name;
+                global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundleDescriptor> values;
+                if (items4690.GetType() == typeof(global::BEngine.AssetBundles.AssetBundleDescriptor[]))
+                    values = (global::BEngine.AssetBundles.AssetBundleDescriptor[])items4690;
+                else if (items4690.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundleDescriptor>))
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundleDescriptor>)items4690);
+                else
+                {
+                    return global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(items4690, Evaluate4690));
+                }
+
+                if (values.IsEmpty)
+                    return global::System.Array.Empty<string>();
+                var result = new string[values.Length];
+                for (var index = 0; index < values.Length; index++)
+                    result[index] = Evaluate4690(values[index]);
+                return result;
+            }
+
+            [global::BEngine.SkipLoopGuard]
+            string[] Gather4615(global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.AssetBundlePackageDescriptor> items4615)
+            {
+                ArgumentNullException.ThrowIfNull(items4615, "source");
+                string Evaluate4615(global::BEngine.AssetBundles.AssetBundlePackageDescriptor package) => package.Name;
+                global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundlePackageDescriptor> values;
+                if (items4615.GetType() == typeof(global::BEngine.AssetBundles.AssetBundlePackageDescriptor[]))
+                    values = (global::BEngine.AssetBundles.AssetBundlePackageDescriptor[])items4615;
+                else if (items4615.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundlePackageDescriptor>))
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundlePackageDescriptor>)items4615);
+                else
+                {
+                    return global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(items4615, Evaluate4615));
+                }
+
+                if (values.IsEmpty)
+                    return global::System.Array.Empty<string>();
+                var result = new string[values.Length];
+                for (var index = 0; index < values.Length; index++)
+                    result[index] = Evaluate4615(values[index]);
+                return result;
+            }
         }
     }
 
@@ -109,7 +173,7 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
             var catalog = DeserializeCatalogPair(version, plan.CatalogBytes.Span, out var indexSeeds);
             var selected = ResolvePackageBundles(catalog, plan.PackageNames);
             var current = _active;
-            var target = new RuntimeState(version, catalog, plan.CatalogBytes.ToArray(), indexSeeds);
+            var target = CreateRuntimeState(version, catalog, plan.CatalogBytes.ToArray(), indexSeeds);
             var result = await MaintainPackageObjectsAsync(target, selected, progress, cancellationToken,
                 reportCompleted: false);
             if (SameRelease(current, target))
@@ -137,7 +201,7 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
             ThrowIfDisposed();
             _active = target;
             _hasPendingActivation = true;
-            BAssetReferenceLoader.Clear();
+            BAsset.ClearLoadedAssets();
             progress?.Report(new AssetBundleUpdateProgress(AssetBundleUpdatePhase.Completed,
                 selected.Count, selected.Count, result.DownloadedBytes, result.DownloadedBytes));
             ThrowIfDisposed();
@@ -157,7 +221,7 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
         _localInstallInProgress = true;
         try
         {
-            _localInstallUsesAsyncIo = !RuntimeServiceAccess.PlatformService.IsBrowser;
+            _localInstallUsesAsyncIo = !RuntimeServices.GetRequiredService<global::BEngine.Platform.PlatformUtility>().IsBrowser;
             _localInstallSliceStarted = System.Diagnostics.Stopwatch.GetTimestamp();
             var downloads = new List<AssetBundleDescriptor>();
             foreach (var descriptor in selected)
@@ -245,7 +309,7 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
             AssetBundleHttpResourceKind.Catalog, _options.MaximumCatalogSize, cancellationToken);
         VerifyPayload(bytes, version.CatalogSize, version.CatalogSha256, "remote package catalog");
         var catalog = DeserializeCatalogPair(version, bytes, out var indexSeeds);
-        return new RuntimeState(version, catalog, bytes, indexSeeds);
+        return CreateRuntimeState(version, catalog, bytes, indexSeeds);
     }
 
     private RuntimeState MergePackageState(RuntimeState? current, RuntimeState source,
@@ -282,7 +346,7 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
             CatalogFile = AssetBundleCatalogSerializer.RuntimeCatalogFileName, CatalogSize = bytes.LongLength,
             CatalogSha256 = AssetBundleCatalogSerializer.ComputeSha256(bytes)
         };
-        return new RuntimeState(version, catalog, bytes);
+        return CreateRuntimeState(version, catalog, bytes);
     }
 
     private static Dictionary<string, AssetBundlePackageDescriptor> GetCurrentPackages(
@@ -294,8 +358,37 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
                 static package => package.Name, ClonePackage, StringComparer.OrdinalIgnoreCase);
         // Older catalogs have no package membership. Adopt the new ownership map for existing
         // bundle names without changing their payloads, so the first scoped update can migrate them.
-        var owners = target.Packages.SelectMany(package => package.Bundles.Select(bundle => (bundle, package.Name)))
-            .ToDictionary(static item => item.bundle, static item => item.Name, StringComparer.OrdinalIgnoreCase);
+        var owners = BuildIndex18898(target.Packages.SelectMany(package => package.Bundles.Select(bundle => (bundle, package.Name))), StringComparer.OrdinalIgnoreCase);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<string, string> BuildIndex18898(global::System.Collections.Generic.IEnumerable<(string bundle, string Name)> indexSource18898, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer18898)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource18898, "source");
+            var knownCount = indexSource18898.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<string, string>(indexComparer18898);
+            global::System.ReadOnlySpan<(string bundle, string Name)> values;
+            if (knownCount && indexSource18898 is (string bundle, string Name)[] array)
+                values = array;
+            else if (knownCount && indexSource18898 is global::System.Collections.Generic.List<(string bundle, string Name)> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, string>(capacity, indexComparer18898);
+                foreach (var item in indexSource18898)
+                    result.Add(IndexKey18898(item), IndexValue18898(item));
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, string>(values.Length, indexComparer18898);
+                foreach (var item in values)
+                    result.Add(IndexKey18898(item), IndexValue18898(item));
+                return result;
+            }
+        
+            string IndexKey18898((string bundle, string Name) item) => item.bundle;
+            string IndexValue18898((string bundle, string Name) item) => item.Name;
+        }
         return current.Bundles.GroupBy(bundle => owners.GetValueOrDefault(bundle.Name) ?? AssetBundlePackageDescriptor.DefaultName,
                 StringComparer.OrdinalIgnoreCase)
             .ToDictionary(static group => group.Key, group => new AssetBundlePackageDescriptor
@@ -309,11 +402,97 @@ public sealed partial class AssetBundleManager : IAssetBundlePackageManager
     private static IReadOnlyList<AssetBundlePackageDescriptor> SelectPackageClosure(
         AssetBundleCatalog catalog, IEnumerable<string> packageNames)
     {
-        var packages = AssetBundlePackageUtility.GetPackages(catalog).ToDictionary(
-            static package => package.Name, StringComparer.OrdinalIgnoreCase);
-        var owners = packages.Values.SelectMany(package => package.Bundles.Select(bundle => (bundle, package.Name)))
-            .ToDictionary(static item => item.bundle, static item => item.Name, StringComparer.OrdinalIgnoreCase);
-        var bundles = catalog.Bundles.ToDictionary(static bundle => bundle.Name, StringComparer.OrdinalIgnoreCase);
+        var packages = BuildIndex19877(AssetBundlePackageUtility.GetPackages(catalog), StringComparer.OrdinalIgnoreCase);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.AssetBundlePackageDescriptor> BuildIndex19877(global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.AssetBundlePackageDescriptor> indexSource19877, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer19877)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource19877, "source");
+            var knownCount = indexSource19877.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.AssetBundlePackageDescriptor>(indexComparer19877);
+            global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundlePackageDescriptor> values;
+            if (knownCount && indexSource19877 is global::BEngine.AssetBundles.AssetBundlePackageDescriptor[] array)
+                values = array;
+            else if (knownCount && indexSource19877 is global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundlePackageDescriptor> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.AssetBundlePackageDescriptor>(capacity, indexComparer19877);
+                foreach (var item in indexSource19877)
+                    result.Add(IndexKey19877(item), item);
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.AssetBundlePackageDescriptor>(values.Length, indexComparer19877);
+                foreach (var item in values)
+                    result.Add(IndexKey19877(item), item);
+                return result;
+            }
+        
+            string IndexKey19877(global::BEngine.AssetBundles.AssetBundlePackageDescriptor package) => package.Name;
+        }
+        var owners = BuildIndex20038(packages.Values.SelectMany(package => package.Bundles.Select(bundle => (bundle, package.Name))), StringComparer.OrdinalIgnoreCase);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<string, string> BuildIndex20038(global::System.Collections.Generic.IEnumerable<(string bundle, string Name)> indexSource20038, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer20038)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource20038, "source");
+            var knownCount = indexSource20038.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<string, string>(indexComparer20038);
+            global::System.ReadOnlySpan<(string bundle, string Name)> values;
+            if (knownCount && indexSource20038 is (string bundle, string Name)[] array)
+                values = array;
+            else if (knownCount && indexSource20038 is global::System.Collections.Generic.List<(string bundle, string Name)> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, string>(capacity, indexComparer20038);
+                foreach (var item in indexSource20038)
+                    result.Add(IndexKey20038(item), IndexValue20038(item));
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, string>(values.Length, indexComparer20038);
+                foreach (var item in values)
+                    result.Add(IndexKey20038(item), IndexValue20038(item));
+                return result;
+            }
+        
+            string IndexKey20038((string bundle, string Name) item) => item.bundle;
+            string IndexValue20038((string bundle, string Name) item) => item.Name;
+        }
+        var bundles = BuildIndex20271(catalog.Bundles, StringComparer.OrdinalIgnoreCase);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.AssetBundleDescriptor> BuildIndex20271(global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.AssetBundleDescriptor> indexSource20271, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer20271)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource20271, "source");
+            var knownCount = indexSource20271.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.AssetBundleDescriptor>(indexComparer20271);
+            global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundleDescriptor> values;
+            if (knownCount && indexSource20271 is global::BEngine.AssetBundles.AssetBundleDescriptor[] array)
+                values = array;
+            else if (knownCount && indexSource20271 is global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundleDescriptor> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.AssetBundleDescriptor>(capacity, indexComparer20271);
+                foreach (var item in indexSource20271)
+                    result.Add(IndexKey20271(item), item);
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.AssetBundleDescriptor>(values.Length, indexComparer20271);
+                foreach (var item in values)
+                    result.Add(IndexKey20271(item), item);
+                return result;
+            }
+        
+            string IndexKey20271(global::BEngine.AssetBundles.AssetBundleDescriptor bundle) => bundle.Name;
+        }
         var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pending = new Queue<string>(packageNames);
         while (pending.TryDequeue(out var name))

@@ -69,10 +69,10 @@ public sealed partial class AudioClip : BAsset
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         // Imported containers retain their authored load policy. Plain files may be read on demand.
-        var clip = new AudioClip { name = RuntimeServiceAccess.PathService.GetFileNameWithoutExtension(path), _streamPath = path, loadType = loadType };
+        var clip = new AudioClip { name = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFileNameWithoutExtension(path), _streamPath = path, loadType = loadType };
         try
         {
-            using (var source = RuntimeServiceAccess.FileSystem.OpenRead(path))
+            using (var source = RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().OpenRead(path))
             {
                 Span<byte> header = stackalloc byte[ContainerHeaderSize];
                 var read = source.ReadAtLeast(header, header.Length, false);
@@ -97,7 +97,7 @@ public sealed partial class AudioClip : BAsset
     public static AudioClip Load(string path, bool forceToMono, bool normalize)
     {
         if (!forceToMono && !normalize) return Load(path);
-        return FromAudio(BuildImportedBytes(RuntimeServiceAccess.FileSystem.ReadAllBytes(path), AudioClipLoadType.DecompressOnLoad, forceToMono, normalize), path);
+        return FromAudio(BuildImportedBytes(RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().ReadAllBytes(path), AudioClipLoadType.DecompressOnLoad, forceToMono, normalize), path);
     }
 
     public AudioSampleReader OpenReader()
@@ -159,7 +159,7 @@ public sealed partial class AudioClip : BAsset
     internal static AudioClip FromWav(ReadOnlyMemory<byte> bytes, string path) => FromAudio(bytes, path);
     internal static AudioClip FromAudio(ReadOnlyMemory<byte> bytes, string path)
     {
-        var clip = new AudioClip { name = RuntimeServiceAccess.PathService.GetFileNameWithoutExtension(path) };
+        var clip = new AudioClip { name = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFileNameWithoutExtension(path) };
         try
         {
             clip.ReadContainer(bytes);
@@ -193,7 +193,7 @@ public sealed partial class AudioClip : BAsset
     {
         // Snapshot dependencies before starting work; no background task mutates the asset.
         var factory = _factory; var encoded = _encoded; var path = _streamPath; var offset = _streamOffset;
-        var mono = _mono; var gain = _gain; var files = RuntimeServiceAccess.FileSystem;
+        var mono = _mono; var gain = _gain; var files = RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>();
         var diagnosticName = name;
         return () =>
         {

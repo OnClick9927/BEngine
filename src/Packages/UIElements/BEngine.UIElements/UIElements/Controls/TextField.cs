@@ -23,7 +23,30 @@ public class TextField : BaseField<string>
     {
         value ??= string.Empty;
         if (_maxLength < 0 || value.Length <= _maxLength) return value;
-        var end = System.Globalization.StringInfo.ParseCombiningCharacters(value).LastOrDefault(index => index <= _maxLength);
+        var end = Scan817(System.Globalization.StringInfo.ParseCombiningCharacters(value));
+        [global::BEngine.SkipLoopGuard]
+        int Scan817(global::System.Collections.Generic.IEnumerable<int> scanSource817)
+        {
+            ArgumentNullException.ThrowIfNull(scanSource817, "source");
+            if (scanSource817 is global::System.Collections.Generic.IList<int> scanList817)
+            {
+                for (var scanIndex817 = scanList817.Count - 1; scanIndex817 >= 0; scanIndex817--)
+                {
+                    var scanItem817 = scanList817[scanIndex817];
+                    if (Match817(scanItem817))
+                        return scanItem817;
+                }
+        
+                return default!;
+            }
+        
+            int result = default!;
+            foreach (var scanItem817 in scanSource817)
+                if (Match817(scanItem817))
+                    result = scanItem817;
+            return result;
+            bool Match817(int index) => index <= _maxLength;
+        }
         return value[..end];
     }
     internal TextEditingBuffer editing { get { _editing.Synchronize(value); return _editing; } }

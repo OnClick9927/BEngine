@@ -30,7 +30,7 @@ public sealed class SdfFontWindowController(EditorWindowMvcContext context, SdfF
         SdfFontAsset? font = null;
         try
         {
-            var paths = RuntimeServiceAccess.PathService;
+            var paths = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>();
             var root = paths.GetFullPath(EditorApplication.projectPath);
             var full = paths.GetFullPath(paths.IsPathRooted(path) ? path : paths.Combine(root, path));
             var relative = paths.GetRelativePath(root, full).Replace('\\', '/');
@@ -64,7 +64,7 @@ public sealed class SdfFontWindow : EditorWindow<SdfFontWindowModel, SdfFontWind
     public SdfFontWindow() { titleContent = new("SDF Font"); minSize = new(520, 400); }
     protected override SdfFontWindowModel CreateWindowModel(EditorWindowMvcContext context) => new(context.WindowId);
     protected override SdfFontWindowController CreateWindowController(EditorWindowMvcContext context, SdfFontWindowModel model) => new(context, model);
-    [MenuItem("Window/UI Toolkit/SDF Font", false, 310)]
+    [MenuItem("Window/UIElement/SDF Font", false, 310)]
     public static void Open() => GetWindow<SdfFontWindow>("SDF Font").ShowUtility();
     [OnOpenAsset]
     private static bool OpenAsset(string path)
@@ -101,7 +101,7 @@ public sealed class SdfFontWindow : EditorWindow<SdfFontWindowModel, SdfFontWind
             GUILayout.BeginHorizontal();
             if (!model.Dynamic && GUILayout.Button("Add Basic Latin")) model.Characters += SdfFontBuilder.DefaultCharacters;
             if (GUILayout.Button("Bake and Save..."))
-                EditorFileDialog.Save("Save SDF Font", RuntimeServiceAccess.PathService.Combine(EditorApplication.projectPath, "Assets"),
+                EditorFileDialog.Save("Save SDF Font", RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().Combine(EditorApplication.projectPath, "Assets"),
                     "SDF Font|*.sdfont", "Font.sdfont", path => controller.Save(path));
             using (new EditorGUI.DisabledScope(model.Path.Length == 0))
                 if (GUILayout.Button("Rebake")) controller.Save(model.Path);

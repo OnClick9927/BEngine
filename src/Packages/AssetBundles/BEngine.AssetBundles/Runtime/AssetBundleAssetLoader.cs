@@ -1,182 +1,151 @@
-using System.Globalization;
-using BEngine.Rendering;
 using BEngine.Serialization;
 
 namespace BEngine.AssetBundles;
 
-/// <summary>Creates runtime assets directly from an active bundle catalog and its verified payloads.</summary>
+/// <summary>Supplies catalog identity and verified bytes to registered object-format codecs.</summary>
 public static class AssetBundleAssetLoader
 {
-    public static Texture? LoadTexture(IAssetBundleManager manager, string reference)
-    {
-        ArgumentNullException.ThrowIfNull(manager);
-        ArgumentException.ThrowIfNullOrWhiteSpace(reference);
-        if (!manager.IsInitialized) return null;
-
-        var canonical = AssetBundleValidation.NormalizeAddress(reference);
-        var fallbackCatalog = manager is AssetBundleManager or VirtualAssetBundleManager ? null : manager.ActiveCatalog;
-        var asset = FindAsset(manager, fallbackCatalog, canonical);
-        if (asset is null ||
-            !asset.AssetType.Equals(nameof(Texture), StringComparison.OrdinalIgnoreCase)) return null;
-        AssetBundleAsset owner;
-        if (asset.LocalIdentifier > 0)
-        {
-            if (asset.OwnerGuid == Guid.Empty ||
-                !asset.Address.Equals(AssetBundleValidation.CreateSubAssetAddress(
-                    asset.OwnerGuid, asset.LocalIdentifier), StringComparison.Ordinal)) return null;
-            owner = FindMainAsset(manager, fallbackCatalog, asset.OwnerGuid)!;
-            if (owner is null) return null;
-        }
-        else owner = asset;
-        if (!manager.TryLoadBytes(asset.Address, out var bytes)) return null;
-        // Loading metadata must not decompress every mip into a discarded CPU
-        // buffer. Imported containers validate their header, lengths and hash;
-        // their blocks are uploaded directly by the renderer when supported.
-        if (!ImageCodec.TryGetInfo(bytes, out var width, out var height))
-            throw new InvalidDataException(
-                $"Bundled Texture sub-asset '{canonical}' is not a supported image.");
-
-        var texture = new Texture
-        {
-            name = GetAssetFileNameWithoutExtension(owner.Address),
-            width = width,
-            height = height,
-            sRGB = ReadBoolean(asset.ImporterSettings, "sRGBTexture", true),
-            alphaIsTransparency = ReadBoolean(asset.ImporterSettings, "alphaIsTransparency", true),
-            isReadable = ReadBoolean(asset.ImporterSettings, "isReadable", false),
-            compressionFormat = ReadEnum(asset.ImporterSettings, "compressionFormat",
-                TextureCompressionFormat.Automatic),
-            filterMode = ReadEnum(asset.ImporterSettings, "filterMode", TextureFilterMode.Bilinear),
-            wrapMode = ReadEnum(asset.ImporterSettings, "wrapMode", TextureWrapMode.Clamp),
-            mipMaps = ReadBoolean(asset.ImporterSettings, "generateMipMaps", false),
-            maxSize = NormalizeMaxSize(ReadInteger(asset.ImporterSettings, "maxTextureSize", 2048)),
-            pixelsPerUnit = Math.Clamp(ReadInteger(asset.ImporterSettings, "pixelsPerUnit", 100), 1, 10000)
-        };
-        if (asset.LocalIdentifier > 0)
-        {
-            texture.BindAssetFile(owner.Address, string.Empty, string.Empty, asset.Guid, asset.AssetType);
-            texture.BindSubAssetReference(owner.Address, asset.OwnerGuid, asset.LocalIdentifier, asset.Guid);
-        }
-        else texture.BindAssetFile(asset.Address, string.Empty, string.Empty, asset.Guid, asset.AssetType);
-        return texture;
-    }
-
     public static BAsset? LoadAsset(IAssetBundleManager manager, string reference, Type assetType)
     {
-        ArgumentNullException.ThrowIfNull(manager);
-        ArgumentException.ThrowIfNullOrWhiteSpace(reference);
-        ArgumentNullException.ThrowIfNull(assetType);
-        if (!typeof(BAsset).IsAssignableFrom(assetType) || assetType.IsAbstract)
-            throw new ArgumentException($"{assetType.FullName} is not a concrete BAsset type.", nameof(assetType));
-        if (!manager.IsInitialized) return null;
-        if (assetType == typeof(Texture)) return LoadTexture(manager, reference);
-
-        var canonical = AssetBundleValidation.NormalizeAddress(reference);
-        var fallbackCatalog = manager is AssetBundleManager or VirtualAssetBundleManager ? null : manager.ActiveCatalog;
-        var entry = FindAsset(manager, fallbackCatalog, canonical);
-        if (entry is null || entry.LocalIdentifier > 0 ||
-            !manager.TryLoadBytes(entry.Address, out var bytes)) return null;
-        var virtualPath = AssetBundleResourceProvider.ToVirtualPath(entry.Address);
-        var asset = DecodeAsset(bytes, virtualPath, entry.Address, assetType);
-        if (asset is null) return null;
-        if (!assetType.IsInstanceOfType(asset))
-            throw new InvalidDataException(
-                $"Bundled asset '{entry.Address}' contains {asset.GetType().FullName}, " +
-                $"expected {assetType.FullName}.");
-        asset.BindAssetFile(entry.Address, string.Empty, string.Empty, entry.Guid, entry.AssetType);
-        if (string.IsNullOrWhiteSpace(asset.name)) asset.name = AssetName(entry.Address);
-        if (asset is Scene scene) scene.path = entry.Address;
-        return asset;
+        ValidateType(assetType, typeof(BAsset));
+        return LoadObject(manager, reference, assetType) as BAsset;
     }
 
-    /// <summary>Reads and prepares payloads off-thread when the codec supports it; creates engine objects on the owning thread.</summary>
+    public static BObject? LoadObject(IAssetBundleManager manager, string reference, Type objectType)
+    {
+        ValidateType(objectType, typeof(BObject));
+        var codec = RuntimeResourceCodecs.Find(objectType);
+        if (!TryDescribe(manager, reference, out var metadata, codec)) return null;
+        if (!CanDecode(codec, metadata, objectType) || !manager.TryLoadBytes(metadata.Address, out var bytes)) return null;
+        var value = codec is null ? DecodeAsset(bytes, metadata.SourcePath, metadata.Address, objectType)
+            : codec.PreferAssetDecoder && RuntimeAssetDecoding.TryDecodeRegistered(bytes, metadata.SourcePath, objectType, out var overridden)
+                ? overridden : codec.Decode(bytes, metadata);
+        return Bind(value, metadata, objectType);
+    }
+
     public static async BTask<BAsset?> LoadAssetAsync(IAssetBundleManager manager, string reference,
         Type assetType, AsyncLoadContext context)
     {
-        ArgumentNullException.ThrowIfNull(manager);
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(assetType);
-        if (!typeof(BAsset).IsAssignableFrom(assetType) || assetType.IsAbstract)
-            throw new ArgumentException("A concrete BAsset type is required.", nameof(assetType));
-        context.cancellationToken.ThrowIfCancellationRequested();
-        if (!manager.IsInitialized) return null;
-        var canonical = AssetBundleValidation.NormalizeAddress(reference);
-        var entry = FindAsset(manager, manager is AssetBundleManager or VirtualAssetBundleManager ? null : manager.ActiveCatalog, canonical);
-        if (entry is null || (entry.LocalIdentifier > 0 && assetType != typeof(Texture))) return null;
-        using var payload = await manager.LoadBytesAsync(entry.Address, context.cancellationToken);
-        var virtualPath = AssetBundleResourceProvider.ToVirtualPath(entry.Address);
-        BAsset? asset = null;
-        if (RuntimeAssetCodecRegistry.HasDecoder(assetType))
-            asset = await RuntimeAssetCodecRegistry.DecodeAsync(payload.Asset, virtualPath, assetType, context);
-        else
-            await context.RunSteps(() =>
-            {
-                asset = assetType == typeof(Texture) ? LoadTexture(manager, entry.Address)
-                    : DecodeAsset(payload.Asset, virtualPath, entry.Address, assetType);
-                return CooperativeWorkStatus.Complete;
-            });
-        context.cancellationToken.ThrowIfCancellationRequested();
-        if (asset is null) return null;
-        if (!assetType.IsInstanceOfType(asset)) throw new InvalidDataException($"Bundled asset '{entry.Address}' has an incompatible type.");
-        if (assetType != typeof(Texture))
-            asset.BindAssetFile(entry.Address, string.Empty, string.Empty, entry.Guid, entry.AssetType);
-        if (string.IsNullOrWhiteSpace(asset.name)) asset.name = AssetName(entry.Address);
-        if (asset is Scene scene) scene.path = entry.Address;
-        return asset;
+        ValidateType(assetType, typeof(BAsset));
+        return await LoadObjectAsync(manager, reference, assetType, context) as BAsset;
     }
 
-    public static Sprite? LoadSprite(IAssetBundleManager manager, string address)
+    public static async BTask<BObject?> LoadObjectAsync(IAssetBundleManager manager, string reference,
+        Type objectType, AsyncLoadContext context)
+    {
+        ValidateType(objectType, typeof(BObject));
+        ArgumentNullException.ThrowIfNull(context);
+        context.cancellationToken.ThrowIfCancellationRequested();
+        var codec = RuntimeResourceCodecs.Find(objectType);
+        if (!TryDescribe(manager, reference, out var metadata, codec)) return null;
+        if (!CanDecode(codec, metadata, objectType)) return null;
+        using var payload = await manager.LoadBytesAsync(metadata.Address, context.cancellationToken);
+        BObject? value = null;
+        try
+        {
+            if ((codec is null || codec.PreferAssetDecoder) && RuntimeAssetDecoding.HasDecoder(objectType))
+                value = await RuntimeAssetDecoding.DecodeRegisteredAsync(payload.Asset, metadata.SourcePath, objectType, context);
+            else
+                await context.RunSteps(() =>
+                {
+                    if (!ReferenceEquals(RuntimeResourceCodecs.Find(objectType), codec))
+                        throw new InvalidOperationException("The resource codec changed while data was loading.");
+                    value = codec is null ? DecodeAsset(payload.Asset, metadata.SourcePath, metadata.Address, objectType)
+                        : codec.Decode(payload.Asset, metadata);
+                    return CooperativeWorkStatus.Complete;
+                });
+            context.cancellationToken.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(RuntimeResourceCodecs.Find(objectType), codec))
+                throw new InvalidOperationException("The resource codec changed while data was loading.");
+            return Bind(value, metadata, objectType);
+        }
+        catch
+        {
+            if (value is not null) BObject.DestroyImmediate(value);
+            throw;
+        }
+    }
+
+    // Canonical object identity is independent of the address of the backing payload.
+    internal static string? ResolveObjectAddress(IAssetBundleManager manager, string reference, Type? objectType = null)
+    {
+        var codec = objectType is null ? null : RuntimeResourceCodecs.Find(objectType);
+        if (!TryDescribe(manager, reference, out var metadata, codec)) return null;
+        if (objectType is not null && !CanDecode(codec, metadata, objectType)) return null;
+        if (metadata.IsSynthetic)
+            return (objectType is not null || RuntimeResourceCodecs.CanDecodeSynthetic(metadata))
+                ? AssetBundleValidation.CreateSubAssetAddress(metadata.OwnerGuid, metadata.LocalIdentifier) : null;
+        if (codec is { SyntheticLocalIdentifier: > 0 } && metadata.LocalIdentifier == 0)
+            return AssetBundleValidation.CreateSubAssetAddress(metadata.OwnerGuid, codec.SyntheticLocalIdentifier);
+        return metadata.Address;
+    }
+
+    internal static string? ResolveReferencePayloadAddress(IAssetBundleManager manager, string reference) =>
+        TryDescribe(manager, reference, out var metadata) && (!metadata.IsSynthetic || RuntimeResourceCodecs.CanDecodeSynthetic(metadata))
+            ? metadata.Address : null;
+
+    private static bool CanDecode(RuntimeResourceCodec? codec, in RuntimeResourceMetadata metadata, Type objectType) =>
+        codec is null ? !metadata.IsSynthetic && metadata.LocalIdentifier == 0 && typeof(BAsset).IsAssignableFrom(objectType)
+            : (!metadata.IsSynthetic || codec.SyntheticLocalIdentifier == metadata.LocalIdentifier) && codec.CanDecode(metadata);
+
+    private static bool TryDescribe(IAssetBundleManager manager, string reference, out RuntimeResourceMetadata metadata,
+        RuntimeResourceCodec? codec = null)
     {
         ArgumentNullException.ThrowIfNull(manager);
-        ArgumentException.ThrowIfNullOrWhiteSpace(address);
-        if (!manager.IsInitialized) return null;
-
-        var canonical = AssetBundleValidation.NormalizeAddress(address);
-        var fallbackCatalog = manager is AssetBundleManager or VirtualAssetBundleManager ? null : manager.ActiveCatalog;
-        AssetBundleAsset? asset;
-        Guid ownerGuid;
-        long localIdentifier;
-        if (AssetBundleValidation.TryParseSubAssetAddress(canonical, out ownerGuid, out localIdentifier))
+        ArgumentException.ThrowIfNullOrWhiteSpace(reference);
+        metadata = default;
+        if (!manager.IsInitialized) return false;
+        var canonical = AssetBundleValidation.NormalizeAddress(reference);
+        var fallback = manager is AssetBundleManager or VirtualAssetBundleManager ? null : manager.ActiveCatalog;
+        var entry = FindAsset(manager, fallback, canonical);
+        var synthetic = false;
+        var localIdentifier = entry?.LocalIdentifier ?? 0;
+        if (entry is null && AssetBundleValidation.TryParseSubAssetAddress(canonical, out var requestedOwner, out localIdentifier))
         {
-            // TextureImporter exposes its single Sprite as a stable synthetic sub-asset. It does not
-            // need a separate catalog payload; the owner Texture contains the image bytes.
-            if (localIdentifier != 21300000) return null;
-            asset = FindMainAsset(manager, fallbackCatalog, ownerGuid);
+            entry = FindMainAsset(manager, fallback, requestedOwner);
+            synthetic = true;
         }
-        else
+        if (entry is null) return false;
+        var owner = entry;
+        if (entry.LocalIdentifier > 0)
         {
-            asset = FindAsset(manager, fallbackCatalog, canonical);
-            ownerGuid = asset?.OwnerGuid is { } owner && owner != Guid.Empty ? owner : asset?.Guid ?? Guid.Empty;
-            localIdentifier = 21300000;
+            if (entry.OwnerGuid == Guid.Empty || !entry.Address.Equals(
+                AssetBundleValidation.CreateSubAssetAddress(entry.OwnerGuid, entry.LocalIdentifier), StringComparison.Ordinal)) return false;
+            owner = FindMainAsset(manager, fallback, entry.OwnerGuid);
+            if (owner is null) return false;
+            // A module may describe an owner-backed child even when a legacy
+            // catalog also contains a child record. Its format policy is identical.
+            if (codec?.SyntheticLocalIdentifier == localIdentifier)
+            { entry = owner; synthetic = true; }
         }
-        if (asset is null ||
-            !asset.Importer.Equals("TextureImporter", StringComparison.OrdinalIgnoreCase) ||
-            !asset.ImporterSettings.TryGetValue("textureType", out var textureType) ||
-            !textureType.Equals(nameof(Sprite), StringComparison.OrdinalIgnoreCase)) return null;
+        var ownerGuid = owner.OwnerGuid == Guid.Empty ? owner.Guid : owner.OwnerGuid;
+        metadata = new(entry.Address, AssetBundleResourceProvider.VirtualPathPrefix, owner.Address,
+            entry.Guid, ownerGuid, localIdentifier, entry.AssetType, entry.Importer, entry.ImporterSettings, synthetic);
+        return true;
+    }
 
-        if (!manager.TryLoadBytes(asset.Address, out var bytes)) return null;
-        if (!Texture.IsSupportedSourcePath(asset.Address) ||
-            !ImageCodec.TryGetInfo(bytes, out _, out _))
-            throw new InvalidDataException(
-                $"Bundled Sprite '{address}' is not a supported image.");
+    private static BObject? Bind(BObject? value, in RuntimeResourceMetadata metadata, Type objectType)
+    {
+        if (value is null) return null;
+        if (!objectType.IsInstanceOfType(value))
+        {
+            var actualType = value.GetType();
+            BObject.DestroyImmediate(value);
+            throw new InvalidDataException($"Resource '{metadata.Address}' contains {actualType.FullName}, expected {objectType.FullName}.");
+        }
+        if (value is BAsset asset)
+        {
+            RuntimeAssetReferences.Bind(asset, metadata);
+            if (string.IsNullOrWhiteSpace(asset.name)) asset.name = AssetName(metadata.Address);
+        }
+        return value;
+    }
 
-        var sprite = Sprite.FromTexture(AssetBundleResourceProvider.ToVirtualPath(asset.Address),
-            new Vector2(
-                ReadPivot(asset.ImporterSettings, "spritePivotX"),
-                ReadPivot(asset.ImporterSettings, "spritePivotY")),
-            asset.Address);
-        sprite.Id = asset.Guid;
-        sprite.border = new(ReadSpriteNumber("spriteBorderLeft", 0), ReadSpriteNumber("spriteBorderBottom", 0),
-            ReadSpriteNumber("spriteBorderRight", 0), ReadSpriteNumber("spriteBorderTop", 0));
-        sprite.pixelsPerUnit = Fix64.Max(1, ReadSpriteNumber("pixelsPerUnit", 100));
-        sprite.BindSourceIdentity(ownerGuid.ToString("N"), localIdentifier, asset.Address);
-        sprite.sourcePath = string.Empty;
-        sprite.assetType = nameof(Sprite);
-        return sprite;
-
-        Fix64 ReadSpriteNumber(string key, Fix64 fallback) => asset.ImporterSettings.TryGetValue(key, out var text) &&
-            Fix64.TryParse(text, CultureInfo.InvariantCulture, out var value)
-            ? Fix64.Max(0, value) : fallback;
+    private static void ValidateType(Type type, Type baseType)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        if (!baseType.IsAssignableFrom(type) || type.IsAbstract)
+            throw new ArgumentException($"A concrete {baseType.Name} type is required.", nameof(type));
     }
 
     private static BAsset? DecodeAsset(
@@ -184,28 +153,7 @@ public static class AssetBundleAssetLoader
         string virtualPath,
         string address,
         Type assetType)
-    {
-        if (RuntimeAssetCodecRegistry.TryDecode(bytes, virtualPath, assetType, out var decoded)) return decoded;
-        var text = TextAsset.Decode(bytes);
-        if (assetType == typeof(PrefabAsset)) return PrefabAssetSerialization.Deserialize(text, virtualPath);
-        if (assetType == typeof(Material)) return Material.Deserialize(text);
-        if (assetType == typeof(Scene)) return SceneAssetSerialization.Deserialize(text);
-        if (assetType == typeof(TextAsset)) return new TextAsset(text, virtualPath);
-        if (assetType == typeof(Shader)) return new Shader(AssetName(address), text);
-        if (assetType == typeof(Font)) return new Font { name = AssetName(address) };
-        if (address.EndsWith(".asset.yaml", StringComparison.OrdinalIgnoreCase))
-        {
-            var document = YamlUtility.Deserialize<ManagedAssetData>(text);
-            var storedType = BAssetReferenceLoader.ResolveType(document.TypeName) ??
-                             throw new InvalidDataException(
-                                 $"Managed asset type '{document.TypeName}' is not loaded.");
-            if (!assetType.IsAssignableFrom(storedType))
-                throw new InvalidDataException(
-                    $"Managed asset contains {storedType.FullName}, expected {assetType.FullName}.");
-            return document.Create(storedType) as BAsset;
-        }
-        return YamlUtility.Deserialize(text, assetType) as BAsset;
-    }
+        => RuntimeAssetDecoding.Decode(bytes, virtualPath, assetType, address);
 
     private static AssetBundleAsset? FindAsset(
         IAssetBundleManager manager,
@@ -234,45 +182,6 @@ public static class AssetBundleAssetLoader
             (candidate.OwnerGuid == Guid.Empty ? candidate.Guid : candidate.OwnerGuid) == ownerGuid);
     }
 
-    private static Fix64 ReadPivot(IReadOnlyDictionary<string, string> settings, string key) =>
-        settings.TryGetValue(key, out var value) &&
-        Fix64.TryParse(value, CultureInfo.InvariantCulture, out var pivot)
-            ? Mathf.Clamp01(pivot)
-            : Fix64.Half;
-
-    private static bool ReadBoolean(
-        IReadOnlyDictionary<string, string> settings,
-        string key,
-        bool fallback) =>
-        settings.TryGetValue(key, out var value) && bool.TryParse(value, out var parsed) ? parsed : fallback;
-
-    private static int ReadInteger(
-        IReadOnlyDictionary<string, string> settings,
-        string key,
-        int fallback) =>
-        settings.TryGetValue(key, out var value) &&
-        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : fallback;
-
-    private static TEnum ReadEnum<TEnum>(
-        IReadOnlyDictionary<string, string> settings,
-        string key,
-        TEnum fallback) where TEnum : struct, Enum =>
-        settings.TryGetValue(key, out var value) &&
-        Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
-            ? parsed
-            : fallback;
-
-    private static int NormalizeMaxSize(int value)
-    {
-        var clamped = Math.Clamp(value, 32, 16384);
-        var lower = 32;
-        while (lower <= clamped / 2) lower *= 2;
-        var upper = Math.Min(16384, lower * 2);
-        return clamped - lower < upper - clamped ? lower : upper;
-    }
-
     private static string AssetName(string path)
     {
         var name = GetAssetFileNameWithoutExtension(path);
@@ -293,11 +202,4 @@ public static class AssetBundleAssetLoader
         return extension <= 0 ? fileName : fileName[..extension];
     }
 
-    private static string GetAssetExtension(string path)
-    {
-        var normalized = path.Replace('\\', '/');
-        var fileName = normalized[(normalized.LastIndexOf('/') + 1)..];
-        var extension = fileName.LastIndexOf('.');
-        return extension <= 0 ? string.Empty : fileName[extension..];
-    }
 }

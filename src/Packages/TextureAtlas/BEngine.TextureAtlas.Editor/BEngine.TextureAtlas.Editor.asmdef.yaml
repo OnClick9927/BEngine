@@ -3,7 +3,13 @@ version: 1
 name: BEngine.TextureAtlas.Editor
 rootNamespace: BEngine.Editor
 references:
+- BEngine.Graphics
+- BEngine.IMGUI.Editor
+- BEngine.Core.Editor
+- BEngine.Platform.Contracts
+- BEngine.Core
 - BEngine.TextureAtlas
+- BEngine.Rendering2D
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

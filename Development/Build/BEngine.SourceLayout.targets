@@ -1,0 +1,25 @@
+<Project>
+  <!-- Browse shared sources and assets at their physical solution path. Keeping
+       the build items preserves compilation, resource names and output paths. -->
+  <ItemGroup>
+    <Compile Update="@(Compile)">
+      <Visible Condition="!$([System.String]::Copy('%(Compile.FullPath)').StartsWith('$(MSBuildProjectDirectory)$([System.IO.Path]::DirectorySeparatorChar)', System.StringComparison.OrdinalIgnoreCase))">false</Visible>
+      <Link Condition="$([System.String]::Copy('%(Compile.FullPath)').StartsWith('$(MSBuildProjectDirectory)$([System.IO.Path]::DirectorySeparatorChar)', System.StringComparison.OrdinalIgnoreCase))" />
+    </Compile>
+    <EmbeddedResource Update="@(EmbeddedResource)">
+      <Visible Condition="!$([System.String]::Copy('%(EmbeddedResource.FullPath)').StartsWith('$(MSBuildProjectDirectory)$([System.IO.Path]::DirectorySeparatorChar)', System.StringComparison.OrdinalIgnoreCase))">false</Visible>
+    </EmbeddedResource>
+    <Content Update="@(Content)">
+      <Visible Condition="!$([System.String]::Copy('%(Content.FullPath)').StartsWith('$(MSBuildProjectDirectory)$([System.IO.Path]::DirectorySeparatorChar)', System.StringComparison.OrdinalIgnoreCase))">false</Visible>
+    </Content>
+    <None Update="@(None)">
+      <Visible Condition="!$([System.String]::Copy('%(None.FullPath)').StartsWith('$(MSBuildProjectDirectory)$([System.IO.Path]::DirectorySeparatorChar)', System.StringComparison.OrdinalIgnoreCase))">false</Visible>
+    </None>
+  </ItemGroup>
+  <!-- A backend may exclude local source from compilation. It still belongs in
+       the project tree, using its on-disk relative path. -->
+  <ItemGroup Condition="'$(EnableDefaultNoneItems)' == 'true'">
+    <None Include="../../src/**/*.cs;../../src/**/*.resx"
+          Exclude="@(Compile);@(EmbeddedResource);@(Content);@(None);$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+  </ItemGroup>
+</Project>

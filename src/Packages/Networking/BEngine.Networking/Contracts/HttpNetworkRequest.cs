@@ -87,7 +87,7 @@ public sealed class HttpNetworkRequest : IDisposable
                 "Request headers cannot be changed after sending starts.");
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(value);
-        if (name.IndexOfAny(['\r', '\n', ':']) >= 0 || value.IndexOfAny(['\r', '\n']) >= 0)
+        if (name.AsSpan(0, name.Length).IndexOfAny('\r', '\n', ':') >= 0 || value.AsSpan(0, value.Length).IndexOfAny('\r', '\n') >= 0)
             throw new ArgumentException("The HTTP header contains invalid characters.", nameof(name));
         _headers[name] = value;
     }
@@ -144,7 +144,7 @@ public sealed class HttpNetworkRequest : IDisposable
             {
                 try
                 {
-                    DownloadData = handler.ToArray();
+                    DownloadData = handler.TakeData();
                     var transient = _bufferReservation - DownloadData.LongLength;
                     NetworkMemorySettings.Release(transient); _bufferReservation -= transient;
                 }
@@ -180,7 +180,7 @@ public sealed class HttpNetworkRequest : IDisposable
             if (MaximumDownloadBytes < 0) throw new InvalidDataException("HTTP response byte limit cannot be negative.");
             NetworkMemorySettings.Enter(); entered = true;
             var transport = _transport ?? NetworkTransportRegistry.HttpTransport ??
-                RuntimeServiceAccess.GetRequiredService<IHttpTransport>();
+                RuntimeServices.GetRequiredService<IHttpTransport>();
             _activeOperation = transport.Send(
                 new HttpTransportRequest(
                     Uri,
@@ -354,13 +354,40 @@ public sealed class HttpNetworkRequest : IDisposable
     private sealed class BufferedDownloadHandler : IHttpDownloadHandler, IDisposable
     {
         private readonly MemoryStream _stream = new();
+        private int? _expectedLength;
 
         public void ReceiveResponse(HttpTransportResponse response)
         {
+            // A length is only a growth hint. Reserve no storage from an untrusted
+            // header: the observing handler admits each actual block before writing.
+            _expectedLength = response.Headers.TryGetValue("Content-Length", out var values) &&
+                values.Length > 0 && int.TryParse(values[0], out var length) && length >= 0
+                ? length : null;
         }
 
-        public void ReceiveData(ReadOnlyMemory<byte> data) => _stream.Write(data.Span);
-        public byte[] ToArray() => _stream.ToArray();
+        public void ReceiveData(ReadOnlyMemory<byte> data)
+        {
+            var required = _stream.Length + data.Length;
+            if (_expectedLength is { } expected && required > _stream.Capacity && required <= expected)
+            {
+                // Match MemoryStream's normal bounded growth, capped at the expected
+                // final length. This never allocates ahead of the old growth policy.
+                var capacity = Math.Max(required, Math.Min(expected, Math.Max(256L, (long)_stream.Capacity * 2)));
+                _stream.Capacity = checked((int)capacity);
+            }
+            _stream.Write(data.Span);
+        }
+
+        public byte[] TakeData()
+        {
+            // The request owns this stream and the transport has finished. An exact
+            // backing array can become DownloadData without copying; no pool or cache
+            // retains or reuses it. Partial/unknown lengths still return an exact copy.
+            if (_stream.TryGetBuffer(out var buffer) && buffer.Array is { } bytes &&
+                buffer.Offset == 0 && buffer.Count == bytes.Length)
+                return bytes;
+            return _stream.ToArray();
+        }
         public void Dispose() => _stream.Dispose();
     }
 }

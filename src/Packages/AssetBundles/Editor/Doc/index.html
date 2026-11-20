@@ -16,9 +16,12 @@ packages:
     assetPaths: [Assets/GameContent/Images]
   - name: config
     assetPaths: [Assets/GameContent/Config]</pre>
-<p>路径最长匹配优先；没有匹配的资产进入默认包。资源导入器的 Bundle 名决定包内分组。<code>bengine</code> 是自动生成的程序集和引擎资源保留包。</p>
+<p>路径最长匹配优先；没有匹配的资产进入默认包。资源导入器的 Bundle 名决定包内分组。<code>bengine</code> 不能用于导入器包配置；调用方可通过通用 <code>AdditionalBundles</code> 提供该分组的内容。</p>
 <p>首次执行 <strong>Build All Packages</strong> 建立完整基线。修改配置后选择 <code>config</code>，执行 <strong>Build Selected Packages</strong>，字体、图片复用已校验缓存。未选包有变化、缺失或损坏时会报错，需把该包纳入构建。</p>
 <p>缓存位于 <code>Library/AssetBundleBuildCache</code>，不随 Player staging 删除。输入内容、导入设置、依赖、平台、压缩、加密和构建器变更都会影响指纹；复用时会核对大小与 SHA-256。</p>
+<h2>调用方提供的内容</h2>
+<p><code>AssetBundleBuildOptions.AdditionalBundles</code> 接收通用文件或内存内容。每项通过 <code>FilePath</code> 或 <code>Content</code> 二选一提供数据，可指定 <code>ExpectedSha256</code> / <code>ExpectedSize</code> 验证调用方快照。内存和导入设置会复制，文件在捕获和归档时验证哈希与大小；附加内容同样参与重名检查、依赖验证、分包选择和增量缓存。</p>
+<p>资源菜单只构建导入资源，不自动包含程序集或扩展包资源。完整 Player 构建由 Core 协调，AssetBundles 内容提供者收集这些内容后调用通用接口。AssetBundles 的运行时与编辑器程序集均不依赖 Application。</p>
 <h2>运行时</h2>
 <p>构建时明确区分包，运行时继续使用同一 manager 和原资源 address。只有按包更新、下载或修复时才需要指定包名；普通加载无需感知包归属。</p>
 <p><a href="runtime-guide.html">运行时、按包更新与修复 API</a></p>

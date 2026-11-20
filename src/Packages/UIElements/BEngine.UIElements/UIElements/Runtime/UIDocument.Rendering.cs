@@ -7,7 +7,7 @@ public sealed partial class UIDocument
     /// camera excludes its sorting layer. Disabled by default.
     /// </summary>
     /// <remarks>
-    /// Applies only to the exact built-in List&lt;RenderSubmission2D&gt; collection.
+    /// Applies only to the exact built-in List&lt;RenderSubmission&gt; collection.
     /// Layout, styles, resource resolution and collection factories still run;
     /// excluded commands still consume their original submission-order numbers.
     /// Per-command material/atlas preparation, payload copies and Add calls are

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <BEngineToolingKind>Editor</BEngineToolingKind>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>BEngine.Editor.Host</AssemblyName>
+    <RootNamespace>BEngine.Editor.Host</RootNamespace>
+    <ApplicationIcon>../../../Development/Shared/Branding/BEngine.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine.Editor.Host.Contracts/BEngine.Editor.Host.Contracts.csproj" />
+  </ItemGroup>
+</Project>

@@ -103,13 +103,13 @@ public sealed class AudioPreviewSession : IDisposable
         GUILayout.Label("Editor Preview", EditorStyles.boldLabel);
         using var disabled = new EditorGUI.DisabledScope(clip is null || clip.isDestroyed || EditorApplication.isPlaying);
         var wave = GUILayoutUtility.GetControlRect(70);
-        GUI.DrawRect(wave, new Color((Fix64).08, (Fix64).1, (Fix64).12));
+        GUI.DrawRect(wave, new Color(Fix64.FromRaw(343597383L) /* (Fix64).08 */, Fix64.FromRaw(429496729L) /* (Fix64).1 */, Fix64.FromRaw(515396075L) /* (Fix64).12 */));
         for (var index = 0; index < _peaks.Length; index++)
         {
             var height = (Fix64)Math.Clamp(_peaks[index], .015f, 1) * (wave.height - 8);
             GUI.DrawRect(new Rect(wave.x + wave.width * index / _peaks.Length,
                 wave.y + (wave.height - height) / 2, Fix64.Max(1, wave.width / _peaks.Length - 1), height),
-                new Color((Fix64).25, (Fix64).7, (Fix64).85));
+                new Color(Fix64.FromRaw(1073741824L) /* (Fix64).25 */, Fix64.FromRaw(3006477107L) /* (Fix64).7 */, Fix64.FromRaw(3650722201L) /* (Fix64).85 */));
         }
         if (clip is { isDestroyed: false } && clip.length > 0)
         {

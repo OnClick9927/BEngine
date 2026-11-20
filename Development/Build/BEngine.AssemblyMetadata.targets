@@ -1,0 +1,44 @@
+<Project>
+  <UsingTask TaskName="ReadBEngineAssemblyAliases" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <DefinitionPath ParameterType="System.String" Required="true" />
+      <AssemblyName ParameterType="System.String" Required="true" />
+      <Aliases ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" /><Using Namespace="System.IO" /><Using Namespace="System.Linq" />
+      <Using Namespace="System.Collections.Generic" /><Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        try {
+            var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Match section in Regex.Matches(File.ReadAllText(DefinitionPath),
+                @"(?ms)^(?:runtime|editor):\s*\r?\n(?<body>.*?)(?=^[^\s#]|\z)")) {
+                var body = section.Groups["body"].Value;
+                var declared = Regex.Match(body, @"(?m)^  assembly:\s*([^\r\n#]+)").Groups[1].Value.Trim().Trim('"', '\'');
+                if (!declared.Equals(AssemblyName, StringComparison.Ordinal)) continue;
+                var list = Regex.Match(body, @"(?ms)^  aliases:\s*\r?\n(?<items>(?:  -[^\r\n]*(?:\r?\n|$))*)");
+                foreach (Match item in Regex.Matches(list.Groups["items"].Value, @"(?m)^  -\s*([^\r\n#]+)")) {
+                    var name = item.Groups[1].Value.Trim().Trim('"', '\'');
+                    if (!Regex.IsMatch(name, @"^[A-Za-z_][A-Za-z0-9_.-]*$") || name.Equals(AssemblyName, StringComparison.OrdinalIgnoreCase) || !names.Add(name))
+                        throw new InvalidDataException("Invalid or duplicate persisted assembly alias: " + name);
+                }
+            }
+            Aliases = names.Select(name => (Microsoft.Build.Framework.ITaskItem)new Microsoft.Build.Utilities.TaskItem(name)).ToArray();
+        }
+        catch (Exception exception) { Log.LogError("Cannot read assembly aliases: {0}", exception.Message); return false; }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="GenerateBEngineAssemblyAliases" BeforeTargets="GetAssemblyAttributes"
+          Condition="Exists('$(MSBuildProjectDirectory)/../package.yaml')">
+    <ReadBEngineAssemblyAliases DefinitionPath="$(MSBuildProjectDirectory)/../package.yaml" AssemblyName="$(AssemblyName)">
+      <Output TaskParameter="Aliases" ItemName="_BEngineAssemblyAlias" />
+    </ReadBEngineAssemblyAliases>
+    <ItemGroup>
+      <AssemblyAttribute Include="BEngine.RuntimeAssemblyAliasAttribute" Condition="'@(_BEngineAssemblyAlias)' != ''">
+        <_Parameter1>%(_BEngineAssemblyAlias.Identity)</_Parameter1>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+</Project>

@@ -23,7 +23,7 @@ internal sealed partial class ProjectLauncherForm
         _primaryNavigationAllowed = allowed;
         var enabled = allowed && HasLocalEngine;
         _projectsNavigation.Enabled = enabled;
-        _enginesNavigation.Enabled = enabled;
+        _enginesNavigation.Enabled = true;
     }
 
     private Control BuildEngineSelector()
@@ -77,12 +77,6 @@ internal sealed partial class ProjectLauncherForm
 
     private void ShowEnginesPage()
     {
-        if (!HasLocalEngine || !_primaryNavigationAllowed)
-        {
-            RefreshPrimaryNavigation(_primaryNavigationAllowed);
-            ShowUpdatesPage();
-            return;
-        }
         ShowPage(_packagesPage, "Engines & packages", _enginesNavigation);
     }
 
@@ -101,7 +95,7 @@ internal sealed partial class ProjectLauncherForm
         }
         RefreshPrimaryNavigation(_primaryNavigationAllowed);
         if (!HasLocalEngine && (_activeNavigation == _projectsNavigation ||
-            _activeNavigation == _enginesNavigation || _createPage.Visible)) ShowUpdatesPage();
+            _activeNavigation == _enginesNavigation || _createPage.Visible)) ShowEnginesPage();
     }
 
     private void RefreshEngineSelector()
@@ -113,11 +107,55 @@ internal sealed partial class ProjectLauncherForm
         {
             _engineSelector.Items.Clear();
             _engineSelector.Items.AddRange(_engines.Cast<object>().ToArray());
-            var selected = _engines.FirstOrDefault(engine =>
-                engine.DirectoryPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase))
-                ?? _engines.FirstOrDefault(engine => Path.Combine(engine.DirectoryPath, "BEngine.Editor.exe")
-                    .Equals(_editorPath, StringComparison.OrdinalIgnoreCase))
-                ?? _engines.FirstOrDefault();
+            [global::BEngine.SkipLoopGuard]
+            global::BEngine.Launcher.LauncherEngineInfo? Query4637(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherEngineInfo> querySource4637)
+            {
+                ArgumentNullException.ThrowIfNull(querySource4637, "source");
+                bool Matches4637(global::BEngine.Launcher.LauncherEngineInfo engine) => engine.DirectoryPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase);
+                global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherEngineInfo> queryValues4637;
+                if (querySource4637.GetType() == typeof(global::BEngine.Launcher.LauncherEngineInfo[]))
+                    queryValues4637 = (global::BEngine.Launcher.LauncherEngineInfo[])querySource4637;
+                else if (querySource4637.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>))
+                    queryValues4637 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>)querySource4637);
+                else
+                {
+                    foreach (var engine in querySource4637)
+                        if (Matches4637(engine))
+                            return engine;
+                    return default!;
+                }
+
+                foreach (var engine in queryValues4637)
+                    if (Matches4637(engine))
+                        return engine;
+                return default!;
+            }
+
+            [global::BEngine.SkipLoopGuard]
+            global::BEngine.Launcher.LauncherEngineInfo? Query4785(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherEngineInfo> querySource4785)
+            {
+                ArgumentNullException.ThrowIfNull(querySource4785, "source");
+                bool Matches4785(global::BEngine.Launcher.LauncherEngineInfo engine) => Path.Combine(engine.DirectoryPath, "BEngine.Editor.exe").Equals(_editorPath, StringComparison.OrdinalIgnoreCase);
+                global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherEngineInfo> queryValues4785;
+                if (querySource4785.GetType() == typeof(global::BEngine.Launcher.LauncherEngineInfo[]))
+                    queryValues4785 = (global::BEngine.Launcher.LauncherEngineInfo[])querySource4785;
+                else if (querySource4785.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>))
+                    queryValues4785 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>)querySource4785);
+                else
+                {
+                    foreach (var engine in querySource4785)
+                        if (Matches4785(engine))
+                            return engine;
+                    return default!;
+                }
+
+                foreach (var engine in queryValues4785)
+                    if (Matches4785(engine))
+                        return engine;
+                return default!;
+            }
+
+            var selected = Query4637(_engines) ?? Query4785(_engines) ?? _engines.FirstOrDefault();
             _engineSelector.SelectedItem = selected;
             _engineSelector.Enabled = _engines.Count > 0;
         }
@@ -139,9 +177,31 @@ internal sealed partial class ProjectLauncherForm
         {
             _createEngineSelector.Items.Clear();
             _createEngineSelector.Items.AddRange(_engines.Cast<object>().ToArray());
-            _createEngineSelector.SelectedItem = _engines.FirstOrDefault(engine =>
-                engine.DirectoryPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase))
-                ?? SelectedEngine ?? _engines.FirstOrDefault();
+            [global::BEngine.SkipLoopGuard]
+            global::BEngine.Launcher.LauncherEngineInfo? Query5792(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherEngineInfo> querySource5792)
+            {
+                ArgumentNullException.ThrowIfNull(querySource5792, "source");
+                bool Matches5792(global::BEngine.Launcher.LauncherEngineInfo engine) => engine.DirectoryPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase);
+                global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherEngineInfo> queryValues5792;
+                if (querySource5792.GetType() == typeof(global::BEngine.Launcher.LauncherEngineInfo[]))
+                    queryValues5792 = (global::BEngine.Launcher.LauncherEngineInfo[])querySource5792;
+                else if (querySource5792.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>))
+                    queryValues5792 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>)querySource5792);
+                else
+                {
+                    foreach (var engine in querySource5792)
+                        if (Matches5792(engine))
+                            return engine;
+                    return default!;
+                }
+
+                foreach (var engine in queryValues5792)
+                    if (Matches5792(engine))
+                        return engine;
+                return default!;
+            }
+
+            _createEngineSelector.SelectedItem = Query5792(_engines) ?? SelectedEngine ?? _engines.FirstOrDefault();
         }
         finally { _createEngineSelector.EndUpdate(); }
         UpdateCreateActions();
@@ -149,6 +209,7 @@ internal sealed partial class ProjectLauncherForm
 
     private void UpdateEngineDetails()
     {
+        _githubPackagesButton.Enabled = SelectedEngine is not null && !_needsUpdateRecovery;
         var engine = SelectedEngine;
         _openEngineDocumentationButton.Enabled = engine is not null && File.Exists(engine.DocumentationPath);
     }

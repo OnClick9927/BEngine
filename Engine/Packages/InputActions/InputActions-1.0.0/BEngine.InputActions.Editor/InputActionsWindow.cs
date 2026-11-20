@@ -7,6 +7,9 @@ public sealed class InputActionsWindow : EditorWindow<InputActionsWindowModel, I
 {
     private readonly EditorScrollView _maps = new(), _actions = new(), _details = new();
     private Vector2 _mapScroll, _actionScroll, _detailScroll;
+    private GamepadInfo[] _gamepadSlots = [];
+    private int[] _gamepadIds = [-1];
+    private string[] _gamepadLabels = ["No gamepad"];
     public InputActionsWindow() { titleContent = new("Input Actions"); minSize = new(760, 420); }
     protected override InputActionsWindowModel CreateWindowModel(EditorWindowMvcContext context) => new(context.WindowId);
     protected override InputActionsWindowController CreateWindowController(EditorWindowMvcContext context, InputActionsWindowModel model) => new(context, model);
@@ -166,18 +169,40 @@ public sealed class InputActionsWindow : EditorWindow<InputActionsWindowModel, I
     private void DrawPreview()
     {
         GUILayout.Space(12); GUILayout.Label("Input monitor", EditorStyles.boldLabel);
-        var slots = Input.GetGamepads(); var ids = new[] { -1 }.Concat(slots.Select(slot => slot.index)).ToArray();
-        var labels = new[] { "No gamepad" }.Concat(slots.Select(slot => $"{slot.index}: {slot.name}" + (slot.connected ? "" : " (disconnected)"))).ToArray();
-        var index = EditorGUILayout.Popup("Gamepad", Math.Max(0, Array.IndexOf(ids, model.GamepadIndex)), labels);
-        if (ids[index] != model.GamepadIndex) { controller.StopPreview(); model.GamepadIndex = ids[index]; }
+        RefreshGamepadOptions(Input.GetGamepads());
+        var index = EditorGUILayout.Popup("Gamepad", Math.Max(0, Array.IndexOf(_gamepadIds, model.GamepadIndex)), _gamepadLabels);
+        if (_gamepadIds[index] != model.GamepadIndex) { controller.StopPreview(); model.GamepadIndex = _gamepadIds[index]; }
         using (new EditorGUI.DisabledScope(!EditorAssetWritePolicy.CanWrite || model.Map is null))
         {
             if (model.Preview is null) { if (GUILayout.Button("Listen")) controller.StartPreview(); }
             else if (GUILayout.Button("Stop")) controller.StopPreview();
         }
         if (model.Preview is { } session)
-            foreach (var action in session.actions.Where(action => action.map == model.Map?.name))
-                GUILayout.Label(action.name + ": " + action.phase + " " + action.value, EditorStyles.wordWrappedLabel);
+            {
+                var __filteredSource12669 = session.actions;
+                ArgumentNullException.ThrowIfNull(__filteredSource12669, "source");
+                foreach (var action in __filteredSource12669)
+                {
+                    if (!(action.map == model.Map?.name))
+                        continue;
+                    GUILayout.Label(action.name + ": " + action.phase + " " + action.value, EditorStyles.wordWrappedLabel);
+                }
+            }
+    }
+    private void RefreshGamepadOptions(GamepadInfo[] slots)
+    {
+        if (_gamepadSlots.AsSpan().SequenceEqual(slots)) return;
+        _gamepadSlots = (GamepadInfo[])slots.Clone();
+        _gamepadIds = new int[slots.Length + 1];
+        _gamepadLabels = new string[slots.Length + 1];
+        _gamepadIds[0] = -1;
+        _gamepadLabels[0] = "No gamepad";
+        for (var index = 0; index < slots.Length; index++)
+        {
+            var slot = slots[index];
+            _gamepadIds[index + 1] = slot.index;
+            _gamepadLabels[index + 1] = $"{slot.index}: {slot.name}" + (slot.connected ? "" : " (disconnected)");
+        }
     }
     private bool Matches(string value) => model.Search.Length == 0 || value.Contains(model.Search, StringComparison.OrdinalIgnoreCase);
     private static Fix64 Number(string name, Fix64 value) => (Fix64)EditorGUILayout.FloatField(name, (float)value);

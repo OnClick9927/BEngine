@@ -9,9 +9,9 @@ public sealed class FileUIDocumentSourceLoader : IUIDocumentSourceLoader
     private readonly PlatformUtility _platform;
 
     public static FileUIDocumentSourceLoader Shared { get; } = new(
-        RuntimeServiceAccess.FileSystem,
-        RuntimeServiceAccess.PathService,
-        RuntimeServiceAccess.PlatformService);
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>(),
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>(),
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.PlatformUtility>());
 
     public FileUIDocumentSourceLoader(
         FileUtility fileSystem,

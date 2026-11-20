@@ -1,0 +1,8 @@
+{
+  "id": "bengine.bengine-tools",
+  "version": "0.1.0",
+  "file": "BEngine.VSCode-0.1.0.vsix",
+  "sha256": "F4F217C989F6D5D2F029346A8286D87BD92AAAD8E9C7555329625AACF5A213E2",
+  "length": 17580,
+  "dependency": "ms-dotnettools.csharp"
+}

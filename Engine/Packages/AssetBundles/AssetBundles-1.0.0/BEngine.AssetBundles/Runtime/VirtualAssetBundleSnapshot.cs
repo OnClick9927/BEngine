@@ -89,8 +89,8 @@ public sealed class VirtualAssetBundleEntry
         PathUtility? pathService = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-        fileSystem ??= RuntimeServiceAccess.FileSystem;
-        pathService ??= RuntimeServiceAccess.PathService;
+        fileSystem ??= RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>();
+        pathService ??= RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>();
         var path = pathService.GetFullPath(filePath);
         if (!fileSystem.FileExists(path))
             throw new FileNotFoundException("Virtual AssetBundle input was not found.", path);
@@ -121,7 +121,7 @@ public sealed class VirtualAssetBundleEntry
             path, FileMode.Open, FileAccess.Read, FileShare.Read,
             64 * 1024, FileOptions.SequentialScan);
         var offset = 0;
-        var platform = RuntimeServiceAccess.PlatformService;
+        var platform = RuntimeServices.GetRequiredService<global::BEngine.Platform.PlatformUtility>();
         var sliceStarted = platform.MonotonicTimestamp;
         while (offset < bytes.Length)
         {
@@ -168,7 +168,36 @@ public sealed class VirtualAssetBundleSnapshot
         ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
         ArgumentException.ThrowIfNullOrWhiteSpace(releaseId);
         ArgumentNullException.ThrowIfNull(entries);
-        _entries = entries.ToDictionary(entry => entry.Address, StringComparer.OrdinalIgnoreCase);
+        _entries = BuildIndex6535(entries, StringComparer.OrdinalIgnoreCase);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.VirtualAssetBundleEntry> BuildIndex6535(global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.VirtualAssetBundleEntry> indexSource6535, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer6535)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource6535, "source");
+            var knownCount = indexSource6535.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.VirtualAssetBundleEntry>(indexComparer6535);
+            global::System.ReadOnlySpan<global::BEngine.AssetBundles.VirtualAssetBundleEntry> values;
+            if (knownCount && indexSource6535 is global::BEngine.AssetBundles.VirtualAssetBundleEntry[] array)
+                values = array;
+            else if (knownCount && indexSource6535 is global::System.Collections.Generic.List<global::BEngine.AssetBundles.VirtualAssetBundleEntry> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.VirtualAssetBundleEntry>(capacity, indexComparer6535);
+                foreach (var item in indexSource6535)
+                    result.Add(IndexKey6535(item), item);
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.AssetBundles.VirtualAssetBundleEntry>(values.Length, indexComparer6535);
+                foreach (var item in values)
+                    result.Add(IndexKey6535(item), item);
+                return result;
+            }
+        
+            string IndexKey6535(global::BEngine.AssetBundles.VirtualAssetBundleEntry entry) => entry.Address;
+        }
         if (_entries.Count == 0) throw new ArgumentException("A virtual bundle requires at least one entry.", nameof(entries));
         Catalog = BuildCatalog(packageName, releaseId, _entries.Values);
         var catalogBytes = AssetBundleCatalogSerializer.SerializeCatalog(Catalog);
@@ -218,7 +247,7 @@ public sealed class VirtualAssetBundleSnapshot
                     Size = entry.Size
                 });
             }
-            var bundleHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+            var bundleHash = Convert.ToHexStringLower(hash.GetHashAndReset());
             catalog.Bundles.Add(new AssetBundleDescriptor
             {
                 Name = group.Key,

@@ -1,0 +1,26 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using BEngine.Editor;
+using BEngine.Player;
+using BEngine.AssetBundles;
+
+public static class PlayerLogOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if(string.IsNullOrEmpty(folder))return;
+        if(typeof(PlayerStartupLog).Assembly!=typeof(PlayerHost).Assembly)
+            throw new Exception("Actual Editor startup log has no Core owner");
+        if(!typeof(IPlayerStartupLog).IsAssignableFrom(typeof(PlayerStartupLog)))
+            throw new Exception("Actual Editor startup log has no neutral lifetime contract");
+        var adapter=typeof(AssetBundleCatalog).Assembly.GetType("BEngine.Player.PlayerStartupDiagnostics",true);
+        if(!(adapter!.IsAbstract&&adapter.IsSealed)||adapter.GetFields(BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance).Any(f=>!f.IsLiteral))
+            throw new Exception("Actual Editor AB log adapter still owns capture state");
+        File.AppendAllText(Path.Combine(folder,"PlayerLogOwnershipEvents.jsonl"),
+            JsonSerializer.Serialize(new{Passed=true,Checks=3,Owner=typeof(PlayerStartupLog).Assembly.GetName().Name})+Environment.NewLine);
+    }
+}

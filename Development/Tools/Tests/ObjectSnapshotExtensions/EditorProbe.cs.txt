@@ -1,0 +1,26 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using BEngine;
+using BEngine.Editor;
+
+public static class ObjectSnapshotExtensionProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var output=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");if(string.IsNullOrEmpty(output))return;
+        var checks=new System.Collections.Generic.List<string>();
+        void Check(bool value,string name){if(!value)throw new Exception(name);checks.Add(name);}
+        using var target=new RenderTexture(11,9){name="snapshot probe"};var id=target.Id;
+        var state=EditorObjectSnapshot.Capture(target);target.Resize(23,17);target.useDepth=false;state.Restore();
+        Check(target.width==11&&target.height==9&&target.useDepth,"Actual host restores dimensions and descriptor");
+        using var copy=new RenderTexture(2,2);var destination=copy.Id;state.CopyValuesTo(copy);
+        Check(copy.width==11&&copy.height==9&&copy.Id==destination,"Actual host copies dimensions while preserving destination identity");
+        Undo.ClearAll();Undo.RecordObject(target,"resize probe");target.Resize(29,19);Undo.PerformUndo();
+        Check(target.width==11&&target.height==9&&target.Id==id,"Actual Undo uses Graphics-owned dimension restoration");
+        Undo.PerformRedo();Check(target.width==29&&target.height==19&&target.Id==id,"Actual Redo captures inverse dimension data");
+        Undo.ClearAll();
+        Check(!target.IsCreated()&&!copy.IsCreated(),"Authoring snapshots do not initialize a GPU target");
+        File.AppendAllText(Path.Combine(output,"SnapshotOwnershipEvents.jsonl"),JsonSerializer.Serialize(new{Passed=true,Checks=checks.Count,Details=checks})+Environment.NewLine);
+    }
+}

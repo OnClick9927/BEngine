@@ -26,7 +26,33 @@ public sealed class InputActionAsset : ScriptableObject
                     throw new InvalidDataException("Timed interactions require a Button action.");
                 if (action.holdDuration <= 0 || action.tapDuration <= 0 || action.tapInterval <= 0 || action.tapCount is < 2 or > 16)
                     throw new InvalidDataException("Interaction durations must be positive; tap count must be between 2 and 16.");
-                if (action.bindings is null || action.bindings.Count > 256 || action.bindings.Any(binding => binding is null)) throw new InvalidDataException("Invalid input bindings.");
+                if (action.bindings is null || action.bindings.Count > 256 || Matches2279())
+                    throw new InvalidDataException("Invalid input bindings.");
+                [global::BEngine.SkipLoopGuard]
+                bool Matches2279()
+                {
+                    var matchSource2279 = action.bindings;
+                    ArgumentNullException.ThrowIfNull(matchSource2279, "source");
+                    if (matchSource2279.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.InputActions.InputBinding>))
+                    {
+                        foreach (var binding in (global::System.Collections.Generic.IEnumerable<global::BEngine.InputActions.InputBinding>)matchSource2279)
+                        {
+                            if (binding is null)
+                                return true;
+                        }
+                
+                        return false;
+                    }
+                
+                    global::System.ReadOnlySpan<global::BEngine.InputActions.InputBinding> matchValues2279 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource2279);
+                    foreach (var binding in matchValues2279)
+                    {
+                        if (binding is null)
+                            return true;
+                    }
+                
+                    return false;
+                }
                 foreach (var binding in action.bindings)
                 {
                     binding.Validate();
@@ -56,8 +82,8 @@ public sealed class InputActionDefinition
     public InputActionType type { get; set; }
     public InputInteraction interaction { get; set; }
     public Fix64 holdDuration { get; set; } = Fix64.Half;
-    public Fix64 tapDuration { get; set; } = Fix64.FromDecimal(0.25m);
-    public Fix64 tapInterval { get; set; } = Fix64.FromDecimal(0.3m);
+    public Fix64 tapDuration { get; set; } = Fix64.FromRaw(1073741824L) /* FromDecimal(0.25m) */;
+    public Fix64 tapInterval { get; set; } = Fix64.FromRaw(1288490188L) /* FromDecimal(0.3m) */;
     public int tapCount { get; set; } = 2;
     public List<InputBinding> bindings { get; set; } = [];
 }
@@ -73,7 +99,7 @@ public sealed class InputBinding
     public GamepadButton button { get; set; }
     public GamepadAxis axis { get; set; }
     public GamepadAxis axisY { get; set; } = GamepadAxis.LeftStickY;
-    public Fix64 deadZone { get; set; } = Fix64.FromDecimal(0.15m);
+    public Fix64 deadZone { get; set; } = Fix64.FromRaw(644245094L) /* FromDecimal(0.15m) */;
     public Fix64 scale { get; set; } = Fix64.One;
     /// <summary>-1 uses the primary contact, or any completed gesture; otherwise an explicit host finger ID.</summary>
     public int fingerId { get; set; } = -1;

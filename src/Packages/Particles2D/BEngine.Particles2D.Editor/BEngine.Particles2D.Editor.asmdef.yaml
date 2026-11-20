@@ -2,8 +2,14 @@ format: BEngine.AssemblyDefinition
 version: 1
 name: BEngine.Particles2D.Editor
 rootNamespace: BEngine.Editor
-references: 
+references:
+- BEngine.Graphics
+- BEngine.IMGUI.Editor
 - BEngine.Particles2D
+- BEngine.Platform.Contracts
+- BEngine.Core.Editor
+- BEngine.Rendering2D.Editor
+- BEngine.Rendering2D
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

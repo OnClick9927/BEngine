@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup><OutputType>Exe</OutputType><RuntimeIdentifier>browser-wasm</RuntimeIdentifier><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets><AllowUnsafeBlocks>true</AllowUnsafeBlocks><WasmBuildNative>false</WasmBuildNative><PublishTrimmed>false</PublishTrimmed><WasmMainHTMLPath>index.html</WasmMainHTMLPath><WasmMainJSPath>main.js</WasmMainJSPath></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+
+    <Reference Include="$(EngineBinaries)/BEngine.Audio.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" /><Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" /><Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+    <Content Include="index.html;main.js" Link="wwwroot/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

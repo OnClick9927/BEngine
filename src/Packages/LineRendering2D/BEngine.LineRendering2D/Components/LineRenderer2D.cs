@@ -26,8 +26,8 @@ public sealed partial class LineRenderer2D : Renderer2D
 
     public bool loop { get; set { if (field == value) return; field = value; _geometryVersion++; } }
     public bool useWorldSpace { get; set { if (field == value) return; field = value; _geometryVersion++; } }
-    public Fix64 startWidth { get; set { if (field == value) return; field = value; _geometryVersion++; } } = Fix64.Parse("0.1");
-    public Fix64 endWidth { get; set { if (field == value) return; field = value; _geometryVersion++; } } = Fix64.Parse("0.1");
+    public Fix64 startWidth { get; set { if (field == value) return; field = value; _geometryVersion++; } } = Fix64.FromRaw(429496729L) /* Parse("0.1") */;
+    public Fix64 endWidth { get; set { if (field == value) return; field = value; _geometryVersion++; } } = Fix64.FromRaw(429496729L) /* Parse("0.1") */;
     public Color startColor { get; set { if (field.Equals(value)) return; field = value; _geometryVersion++; } } = Color.white;
     public Color endColor { get; set { if (field.Equals(value)) return; field = value; _geometryVersion++; } } = Color.white;
     public Material material

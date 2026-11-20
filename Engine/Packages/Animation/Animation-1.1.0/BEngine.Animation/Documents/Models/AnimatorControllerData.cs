@@ -4,7 +4,7 @@ namespace BEngine;
 internal sealed class AnimatorControllerData
 {
     public string Format { get; set; } = "BEngine.AnimatorController"; public int Version { get; set; } = 2;
-    public ComponentGraphData? Graph { get; set; }
+    public ObjectStateSnapshot? Graph { get; set; }
     public string Name { get; set; } = "New Animator Controller"; public string DefaultState { get; set; } = string.Empty;
     public long EntryX { get; set; } = ((Fix64)40).RawValue; public long EntryY { get; set; } = ((Fix64)140).RawValue;
     public long AnyX { get; set; } = ((Fix64)40).RawValue; public long AnyY { get; set; } = ((Fix64)40).RawValue;

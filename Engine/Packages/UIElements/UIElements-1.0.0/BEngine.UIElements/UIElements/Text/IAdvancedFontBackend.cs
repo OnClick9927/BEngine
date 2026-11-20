@@ -12,6 +12,7 @@ internal interface IAdvancedFontBackend : IDisposable
     bool ContainsGlyphs(int index, string text);
     uint[] GetGlyphs(int index, string text);
     AdvancedGlyphRun Shape(int index, HarfBuzzSharp.Buffer buffer, float size);
+    // Consume runs synchronously; the caller returns its transient list after this call.
     AdvancedTextImage Render(IReadOnlyList<AdvancedGlyphDrawRun> runs, int width, int height,
         float size, UIColor foreground);
 }

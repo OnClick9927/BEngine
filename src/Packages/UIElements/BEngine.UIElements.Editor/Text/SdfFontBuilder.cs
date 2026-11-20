@@ -11,7 +11,7 @@ public static class SdfFontBuilder
     /// <summary>Bakes the selected characters once. Players render the atlas without installed fonts.</summary>
     public static SdfFontAsset Bake(string characters, string family = "", int samplingSize = 64, int distanceRange = 8)
     {
-        var rasterizer = RuntimeServiceAccess.GetService<ITextRasterizer>() ??
+        var rasterizer = RuntimeServices.GetService<ITextRasterizer>() ??
             throw new NotSupportedException("This platform does not provide font rasterization.");
         if (!string.IsNullOrWhiteSpace(family)) rasterizer = rasterizer.ForFontFamily(family) ??
             throw new NotSupportedException("This platform cannot select a font family.");
@@ -28,7 +28,7 @@ public static class SdfFontBuilder
                 !path.EndsWith(".otf", StringComparison.OrdinalIgnoreCase) &&
                 !path.EndsWith(".ttc", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Dynamic fonts must use a .ttf, .otf or .ttc source file.");
-            var bytes = RuntimeServiceAccess.FileSystem.ReadAllBytes(path);
+            var bytes = RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().ReadAllBytes(path);
             return new(Path.GetFileNameWithoutExtension(path), bytes);
         }
         var primary = Read(primaryPath);
@@ -90,8 +90,22 @@ public static class SdfFontBuilder
         foreach (var (glyph, source) in packed)
             for (var row = 0; row < glyph.Height; row++)
                 Array.Copy(source, row * glyph.Width, pixels, (glyph.Y + row) * atlasWidth + glyph.X, glyph.Width);
-        return SdfFontAsset.Create(new SdfFontData { FontFamily = family, SamplingSize = size, DistanceRange = range,
-            LineHeight = lineHeight, Width = atlasWidth, Height = atlasHeight, Pixels = pixels, Glyphs = packed.Select(item => item.Glyph).ToArray() });
+        return SdfFontAsset.Create(new SdfFontData { FontFamily = family, SamplingSize = size, DistanceRange = range, LineHeight = lineHeight, Width = atlasWidth, Height = atlasHeight, Pixels = pixels, Glyphs = ProjectItems6519() });
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.UIElements.SdfGlyph[] ProjectItems6519()
+        {
+            var projectionSource6519 = packed;
+            ArgumentNullException.ThrowIfNull(projectionSource6519, "source");
+            global::System.ReadOnlySpan<(global::BEngine.UIElements.SdfGlyph Glyph, byte[] Pixels)> projectionValues6519 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(projectionSource6519);
+            var projectionOutput6519 = projectionValues6519.Length == 0 ? global::System.Array.Empty<global::BEngine.UIElements.SdfGlyph>() : new global::BEngine.UIElements.SdfGlyph[projectionValues6519.Length];
+            var projectionIndex6519 = 0;
+            foreach (var item in projectionValues6519)
+            {
+                projectionOutput6519[projectionIndex6519++] = item.Glyph;
+            }
+        
+            return projectionOutput6519;
+        }
     }
     private static int PowerOfTwo(int value) { var result = 1; while (result < value) result *= 2; return result; }
 }

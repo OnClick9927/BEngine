@@ -1,9 +1,19 @@
+using BEngine.ProjectSystem;
+
 namespace BEngine.Launcher;
 
 internal sealed class LauncherPackageInfo
 {
     public required string Id { get; init; }
     public string Type { get; init; } = "package";
+    public PackageDistributionKind Distribution { get; init; }
+    public bool IsBundled => Distribution == PackageDistributionKind.Bundled;
+    public string DistributionLabel => Distribution switch
+    {
+        PackageDistributionKind.Bundled => "Engine bundled",
+        PackageDistributionKind.External => "External package",
+        _ => "Distribution unknown"
+    };
     public required string DisplayName { get; init; }
     public required string Version { get; init; }
     public string MinimumEngineVersion { get; init; } = "0.0.0";
@@ -17,12 +27,16 @@ internal sealed class LauncherPackageInfo
     public string Contents => DescribeContents(new HubLocalization("en"));
     public bool HasRuntime { get; init; }
     public bool HasEditor { get; init; }
+    public bool Required { get; init; }
+    public IReadOnlyList<string> RequiredBy { get; init; } = [];
+    public bool IsRequired => Required || RequiredBy.Count != 0;
     public IReadOnlyList<LauncherPackageDependency> Dependencies { get; init; } = [];
     public string SelectionLabel => $"{DisplayName}  {Version}";
 
     internal string DescribeContents(HubLocalization language)
     {
         var lines = new List<string> { language.Text("Type: {0}", language.Text(Type)) };
+        lines.Add(language.Text("Distribution: {0}", language.Text(DistributionLabel)));
         lines.Add(language.Text("Engine compatibility: {0}", $"≥ {MinimumEngineVersion}"));
         if (Type == "project") lines.Add(language.Text("Import destination: {0}", $"Assets/3rd/{ProjectDirectory}"));
         lines.Add(language.Text("Runtime assembly: {0}", RuntimeAssembly ?? language.Text("None")));

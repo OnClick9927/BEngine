@@ -3,7 +3,11 @@ version: 1
 name: BEngine.Video
 rootNamespace: BEngine.Video
 references:
+- BEngine.Graphics
 - BEngine.Audio
+- BEngine.Rendering2D
+- BEngine.Core
+- BEngine.Platform.Contracts
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

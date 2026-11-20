@@ -1,0 +1,122 @@
+{
+  "format": "BEngine.BundledPackages",
+  "version": 1,
+  "engineVersion": "0.1.0",
+  "packages": [
+    {
+      "id": "com.bengine.animation",
+      "version": "1.1.0",
+      "path": "Animation/Animation-1.1.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.application",
+      "version": "1.0.0",
+      "path": "Application/Application-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.asset-bundles",
+      "version": "1.0.0",
+      "path": "AssetBundles/AssetBundles-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.audio",
+      "version": "1.0.0",
+      "path": "Audio/Audio-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.diagnostics",
+      "version": "1.0.0",
+      "path": "Diagnostics/Diagnostics-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.editor-workbench",
+      "version": "1.0.0",
+      "path": "EditorWorkbench/EditorWorkbench-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.graphics",
+      "version": "1.0.0",
+      "path": "Graphics/Graphics-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.ide-integration",
+      "version": "1.0.0",
+      "path": "IDEIntegration/IDEIntegration-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.imgui",
+      "version": "1.0.0",
+      "path": "IMGUI/IMGUI-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.input-actions",
+      "version": "1.0.0",
+      "path": "InputActions/InputActions-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.lighting2d",
+      "version": "1.0.0",
+      "path": "Lighting2D/Lighting2D-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.line-rendering2d",
+      "version": "1.0.0",
+      "path": "LineRendering2D/LineRendering2D-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.navigation2d",
+      "version": "1.0.0",
+      "path": "Navigation2D/Navigation2D-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.networking",
+      "version": "1.0.0",
+      "path": "Networking/Networking-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.node-editor",
+      "version": "1.0.0",
+      "path": "NodeEditor/NodeEditor-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.particles2d",
+      "version": "1.0.0",
+      "path": "Particles2D/Particles2D-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.physics2d",
+      "version": "1.0.0",
+      "path": "Physics2D/Physics2D-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.rendering2d",
+      "version": "1.0.0",
+      "path": "Rendering2D/Rendering2D-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.text-editing",
+      "version": "1.0.0",
+      "path": "TextEditing/TextEditing-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.texture-atlas",
+      "version": "1.0.0",
+      "path": "TextureAtlas/TextureAtlas-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.track-editor",
+      "version": "1.0.0",
+      "path": "TrackEditor/TrackEditor-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.ui-elements",
+      "version": "1.0.0",
+      "path": "UIElements/UIElements-1.0.0/package.yaml"
+    },
+    {
+      "id": "com.bengine.video",
+      "version": "1.0.0",
+      "path": "Video/Video-1.0.0/package.yaml"
+    }
+  ]
+}

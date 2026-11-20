@@ -1,0 +1,10 @@
+{
+  "extension.description": "Attach to BEngine Editor in one click and use the engine's real C# project for IntelliSense.",
+  "trust.description": "Debugging attaches to a local process and project synchronization asks the running editor to generate C# projects.",
+  "command.attach": "Attach to Editor",
+  "command.sync": "Synchronize C# Project",
+  "command.solution": "Open C# Solution",
+  "command.log": "Show Integration Log",
+  "setting.timeout": "Maximum time to wait for the running BEngine Editor to synchronize C# projects.",
+  "setting.justMyCode": "Limit stepping to user code. Disable to step through packages when symbols are available."
+}

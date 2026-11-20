@@ -16,6 +16,11 @@ import tempfile
 from urllib.parse import urlsplit
 import zipfile
 
+SOURCE_PATHS = (
+    "src", "Development", "Directory.Build.props", "Directory.Build.targets",
+    "Directory.Packages.props", "LICENSE",
+)
+
 
 def git(repository: Path, *arguments: str) -> bytes:
     result = subprocess.run(
@@ -29,7 +34,7 @@ def git(repository: Path, *arguments: str) -> bytes:
 
 def source_snapshot(repository: Path) -> tuple[str, list[str]]:
     commit = git(repository, "rev-parse", "--verify", "HEAD^{commit}").decode("ascii").strip()
-    entries = git(repository, "ls-tree", "-r", "--name-only", "-z", commit, "--", "src", "LICENSE")
+    entries = git(repository, "ls-tree", "-r", "--name-only", "-z", commit, "--", *SOURCE_PATHS)
     files = [entry.decode("utf-8") for entry in entries.split(b"\0") if entry]
     if "LICENSE" not in files or not any(name.startswith("src/") for name in files):
         raise ValueError("The source commit must contain src/ and the root LICENSE.")
@@ -42,11 +47,11 @@ def archive_source(repository: Path, download: Path, commit: str, expected_files
     partial = download.with_suffix(".zip.part")
     try:
         git(repository, "-c", "core.autocrlf=false", "-c", "core.eol=lf", "archive",
-            "--format=zip", f"--output={partial}", commit, "--", "src", "LICENSE")
+            "--format=zip", f"--output={partial}", commit, "--", *SOURCE_PATHS)
         with zipfile.ZipFile(partial) as archive:
             actual_files = [entry.filename for entry in archive.infolist() if not entry.is_dir()]
             if sorted(actual_files) != sorted(expected_files):
-                raise ValueError("The source archive does not contain every tracked src file and LICENSE.")
+                raise ValueError("The source archive is missing tracked source or development files.")
             damaged = archive.testzip()
             if damaged is not None:
                 raise ValueError(f"The source archive failed verification: {damaged}")

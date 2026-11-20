@@ -107,7 +107,29 @@ public sealed partial class ParticleSystem2D : Renderer2D, ISpriteReferenceOwner
     {
         if (time < 0 || time > 3600) throw new ArgumentOutOfRangeException(nameof(time), "Particle samples must be between 0 and 3600 seconds.");
         var systems = PreviewSystems();
-        var saved = systems.Select(system => (System: system, Playing: system.isPlaying, Paused: system._paused)).ToArray();
+        var saved = Gather4851(systems);
+        [global::BEngine.SkipLoopGuard]
+        (global::BEngine.ParticleSystem2D System, bool Playing, bool Paused)[] Gather4851(global::System.Collections.Generic.IEnumerable<global::BEngine.ParticleSystem2D> items4851)
+        {
+            ArgumentNullException.ThrowIfNull(items4851, "source");
+            (global::BEngine.ParticleSystem2D System, bool Playing, bool Paused) Evaluate4851(global::BEngine.ParticleSystem2D system) => (System: system, Playing: system.isPlaying, Paused: system._paused);
+            global::System.ReadOnlySpan<global::BEngine.ParticleSystem2D> values;
+            if (items4851.GetType() == typeof(global::BEngine.ParticleSystem2D[]))
+                values = (global::BEngine.ParticleSystem2D[])items4851;
+            else if (items4851.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.ParticleSystem2D>))
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.ParticleSystem2D>)items4851);
+            else
+            {
+                return global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(items4851, Evaluate4851));
+            }
+
+            if (values.IsEmpty)
+                return global::System.Array.Empty<(global::BEngine.ParticleSystem2D System, bool Playing, bool Paused)>();
+            var result = new (global::BEngine.ParticleSystem2D System, bool Playing, bool Paused)[values.Length];
+            for (var index = 0; index < values.Length; index++)
+                result[index] = Evaluate4851(values[index]);
+            return result;
+        }
         foreach (var system in systems)
         {
             if (restart) system.ResetSimulation();
@@ -125,7 +147,7 @@ public sealed partial class ParticleSystem2D : Renderer2D, ISpriteReferenceOwner
                 if (system.collisionEnabled && system.GetComponent<ParticleCollisionProvider2D>()?.BeginPreview() is { } scope) scopes.Add(scope);
                 if (system.isPlaying && !system._startBurstsEmitted && system._elapsed == 0) system.EmitBursts(0, 0);
             }
-            var step = Fix64.Parse("0.0166666667");
+            var step = Fix64.FromRaw(71582788L) /* 0.0166666667 */;
             using var budget = LoopExecutionGuard.AllowIterations(216001);
             while (_elapsed + step < time)
                 foreach (var system in systems) system.Advance(step);
@@ -229,7 +251,7 @@ public sealed partial class ParticleSystem2D : Renderer2D, ISpriteReferenceOwner
         _elapsed = Fix64.Zero;
         _emissionAccumulator = Fix64.Zero;
         _startBurstsEmitted = false;
-        if (clear) { _particles.Clear(); _trails.Clear(); _trailClock = 0; }
+        if (clear) { _particles.Clear(); ClearTrails(); _trailClock = 0; }
     }
 
     public void ResetSimulation()
@@ -238,7 +260,7 @@ public sealed partial class ParticleSystem2D : Renderer2D, ISpriteReferenceOwner
         _qualityFrame = 0; _qualityDelta = 0;
         _randomState = useAutoRandomSeed ? 1UL : (randomSeed == 0 ? 1UL : randomSeed);
         _nextParticleId = 0; _startBurstsEmitted = false; _pendingCollisions.Clear();
-        _trails.Clear(); _trailClock = 0;
+        ClearTrails(); _trailClock = 0;
     }
 
     public void Emit(int count) => EmitCore(count, null);
@@ -307,6 +329,6 @@ public sealed partial class ParticleSystem2D : Renderer2D, ISpriteReferenceOwner
         Mathf.Lerp(start.b, end.b, t), Mathf.Lerp(start.a, end.a, t));
 
     internal SpriteRenderData2D ResolveSpriteUnchecked() => SpriteSourceRegistry.Resolve(sprite);
-    internal RenderBatchKey2D BatchKeyUnchecked => BatchKey(ResolveSpriteUnchecked());
-    internal RenderBatchKey2D BatchKey(SpriteRenderData2D visual) => new(material, visual.BatchIdentity);
+    internal RenderBatchKey BatchKeyUnchecked => BatchKey(ResolveSpriteUnchecked());
+    internal RenderBatchKey BatchKey(SpriteRenderData2D visual) => new(material, visual.BatchIdentity);
 }

@@ -10,11 +10,11 @@ public sealed partial class Rigidbody2D : Component
     public Fix64 mass
     {
         get => useAutoMass ? MassProperties.Mass : field;
-        set => field = Fix64.Max(Fix64.Parse("0.0001"), value);
+        set => field = Fix64.Max(Fix64.FromRaw(429496L) /* 0.0001 */, value);
     } = Fix64.One;
     public Fix64 gravityScale { get; set; } = Fix64.One;
     public Fix64 linearDamping { get; set; }
-    public Fix64 angularDamping { get; set; } = Fix64.Parse("0.05");
+    public Fix64 angularDamping { get; set; } = Fix64.FromRaw(214748364L) /* 0.05 */;
     public RigidbodyType2D bodyType { get; set; } = RigidbodyType2D.Dynamic;
     public bool simulated { get; set; } = true;
     public Vector2 linearVelocity { get; set; }

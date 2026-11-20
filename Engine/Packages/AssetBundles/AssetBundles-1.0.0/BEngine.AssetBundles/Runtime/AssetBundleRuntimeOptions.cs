@@ -17,9 +17,11 @@ public sealed class AssetBundleRuntimeOptions
     public Uri? RemoteBaseUri { get; init; }
     /// <summary>False loads the built-in release in place without cache directories or activation pointers.</summary>
     public bool UsePersistentCache { get; init; } = true;
-    /// <summary>Null installs every bundle. Otherwise installs these roots and their dependencies.
-    /// Managed code and package resources are always required.</summary>
+    /// <summary>Null installs every bundle. Otherwise installs these roots and their dependencies.</summary>
     public IReadOnlyList<string>? RequiredBundleNames { get; init; }
+    /// <summary>Additional required roots selected from the existing catalog when RequiredBundleNames is explicit.
+    /// The predicate only inspects descriptors; their dependency closure is included automatically.</summary>
+    public Func<AssetBundleDescriptor, bool>? RequiredBundlePredicate { get; init; }
     public int MaxRetries { get; init; } = 3;
     /// <summary>Timeout without HTTP response progress; active transfers may take longer.</summary>
     public TimeSpan HttpInactivityTimeout { get; init; } = TimeSpan.FromSeconds(60);
@@ -84,17 +86,17 @@ public sealed class AssetBundleRuntimeOptions
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
         ArgumentNullException.ThrowIfNull(relativeDirectory);
-        AssetDataValidation.ValidateOptionalRelativePath(relativeDirectory, nameof(relativeDirectory));
-        AssetDataValidation.ValidateOptionalRelativePath(packageName, nameof(packageName));
-        var httpRoot = RuntimeServiceAccess.PlatformService.IsBrowser
-            ? RuntimeServiceAccess.PlatformService.GetEnvironmentVariable(StreamingAssetsUrlEnvironmentVariable)
+        RuntimeAssetReferences.ValidateOptionalRelativePath(relativeDirectory, nameof(relativeDirectory));
+        RuntimeAssetReferences.ValidateOptionalRelativePath(packageName, nameof(packageName));
+        var httpRoot = RuntimeServices.GetRequiredService<global::BEngine.Platform.PlatformUtility>().IsBrowser
+            ? RuntimeServices.GetRequiredService<global::BEngine.Platform.PlatformUtility>().GetEnvironmentVariable(StreamingAssetsUrlEnvironmentVariable)
             : null;
         return new AssetBundleRuntimeOptions
         {
             PackageName = packageName,
             BuiltInBaseUri = string.IsNullOrWhiteSpace(httpRoot) ? null
                 : ResolveStreamingAssetsUri(httpRoot, relativeDirectory, packageName),
-            BuiltInDirectory = !string.IsNullOrWhiteSpace(httpRoot) ? null : RuntimeServiceAccess.PathService.Combine(
+            BuiltInDirectory = !string.IsNullOrWhiteSpace(httpRoot) ? null : RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().Combine(
                 Application.streamingAssetsPath, relativeDirectory, packageName),
             UsePersistentCache = false
         };
@@ -104,8 +106,8 @@ public sealed class AssetBundleRuntimeOptions
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(streamingAssetsUrl);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
-        AssetDataValidation.ValidateOptionalRelativePath(relativeDirectory, nameof(relativeDirectory));
-        AssetDataValidation.ValidateOptionalRelativePath(packageName, nameof(packageName));
+        RuntimeAssetReferences.ValidateOptionalRelativePath(relativeDirectory, nameof(relativeDirectory));
+        RuntimeAssetReferences.ValidateOptionalRelativePath(packageName, nameof(packageName));
         var root = new Uri(streamingAssetsUrl, UriKind.Absolute);
         if (root.Scheme is not ("http" or "https") || root.Query.Length != 0 || root.Fragment.Length != 0 ||
             root.UserInfo.Length != 0 || !root.AbsolutePath.EndsWith('/'))

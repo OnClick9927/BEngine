@@ -46,7 +46,7 @@ internal sealed record LauncherUpdatePlan
     public long DownloadBytes => GetChangedBlobGroups().Sum(group => group[0].Size);
 
     // Git blob identity is content based, so equal content at several installation paths
-    // requires one network transfer while every destination remains in the install plan.
+    // requires one staging copy while every destination remains in the install plan.
     internal LauncherUpdateFile[][] GetChangedBlobGroups()
     {
         var changedPaths = Changes.Where(change => change.Kind != LauncherUpdateChangeKind.Deleted)

@@ -3,8 +3,15 @@ version: 1
 name: BEngine.Animation.Editor
 rootNamespace: BEngine.Editor
 references:
-- BEngine.UIElements.Editor
+- BEngine.UIElements
 - BEngine.Animation
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
+- BEngine.Core.Editor
+- BEngine.UIElements.Editor
+- BEngine.NodeEditor.Editor
+- BEngine.TrackEditor.Editor
+- BEngine.Rendering2D.Editor
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

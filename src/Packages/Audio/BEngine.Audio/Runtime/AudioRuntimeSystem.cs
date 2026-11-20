@@ -80,7 +80,7 @@ public sealed class AudioRuntimeSystem : ISceneRuntimeSystem, IRuntimeFrameSyste
         if (_independentFrame) return;
         // Audio uses device time, independent of gameplay pause/slow motion.
         // Direct package callers still supply their own explicit sample clock.
-        if (Time.IsFrameActive) deltaTime = Time.unscaledDeltaTime;
+        if (Time.isFrameActive) deltaTime = Time.unscaledDeltaTime;
         scene.GetComponents(_sources);
         if (!_frameSelection) SelectVoices(_sources);
         _graphs.TryGetValue(scene, out var graph);

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Graphics.Editor</AssemblyName>
+    <RootNamespace>BEngine.Editor</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+    <BEngineEditorAssembly>true</BEngineEditorAssembly>
+    <BEngineCoreInternalAccess>true</BEngineCoreInternalAccess>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../Core/BEngine.Core.Editor/BEngine.Core.Editor.csproj" />
+    <ProjectReference Include="../../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    
+    
+    <ProjectReference Include="../BEngine.Graphics/BEngine.Graphics.csproj" />
+    
+  </ItemGroup>
+  <ItemGroup><PackageReference Include="BCnEncoder.Net" /></ItemGroup>
+</Project>

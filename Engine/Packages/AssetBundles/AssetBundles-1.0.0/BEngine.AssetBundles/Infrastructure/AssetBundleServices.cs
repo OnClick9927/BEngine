@@ -11,6 +11,9 @@ public static class AssetBundleServices
     }
     private static void Configure(IServiceCollection services)
     {
+        // The factory requires networking even before content initialization. Do not
+        // depend on lazy module initialization or a later platform-registration pass.
+        BEngine.Networking.NetworkingServices.Configure(services);
         services.TryAddSingleton<IAssetBundleManagerFactory, AssetBundleManagerFactory>();
     }
 }

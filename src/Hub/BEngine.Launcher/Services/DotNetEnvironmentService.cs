@@ -128,10 +128,79 @@ internal sealed class DotNetEnvironmentService : IDisposable
         }
         // Prefer one complete root. Separate valid roots are also usable by setting DOTNET_ROOT_X64
         // to RuntimeRoot and placing SdkRoot first on the child process PATH.
-        var complete = installations.FirstOrDefault(item => item.IsReady);
+        var complete = Query7781(installations);
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.Launcher.DotNetEnvironmentSnapshot? Query7781(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.DotNetEnvironmentSnapshot> querySource7781)
+        {
+            ArgumentNullException.ThrowIfNull(querySource7781, "source");
+            bool Matches7781(global::BEngine.Launcher.DotNetEnvironmentSnapshot item) => item.IsReady;
+            global::System.ReadOnlySpan<global::BEngine.Launcher.DotNetEnvironmentSnapshot> queryValues7781;
+            if (querySource7781.GetType() == typeof(global::BEngine.Launcher.DotNetEnvironmentSnapshot[]))
+                queryValues7781 = (global::BEngine.Launcher.DotNetEnvironmentSnapshot[])querySource7781;
+            else if (querySource7781.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.DotNetEnvironmentSnapshot>))
+                queryValues7781 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.DotNetEnvironmentSnapshot>)querySource7781);
+            else
+            {
+                foreach (var item in querySource7781)
+                    if (Matches7781(item))
+                        return item;
+                return default!;
+            }
+        
+            foreach (var item in queryValues7781)
+                if (Matches7781(item))
+                    return item;
+            return default!;
+        }
         if (complete is not null) return complete;
-        var runtime = installations.FirstOrDefault(item => item.HasDesktopRuntime);
-        var sdk = installations.FirstOrDefault(item => item.HasSdk);
+        var runtime = Query7906(installations);
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.Launcher.DotNetEnvironmentSnapshot? Query7906(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.DotNetEnvironmentSnapshot> querySource7906)
+        {
+            ArgumentNullException.ThrowIfNull(querySource7906, "source");
+            bool Matches7906(global::BEngine.Launcher.DotNetEnvironmentSnapshot item) => item.HasDesktopRuntime;
+            global::System.ReadOnlySpan<global::BEngine.Launcher.DotNetEnvironmentSnapshot> queryValues7906;
+            if (querySource7906.GetType() == typeof(global::BEngine.Launcher.DotNetEnvironmentSnapshot[]))
+                queryValues7906 = (global::BEngine.Launcher.DotNetEnvironmentSnapshot[])querySource7906;
+            else if (querySource7906.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.DotNetEnvironmentSnapshot>))
+                queryValues7906 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.DotNetEnvironmentSnapshot>)querySource7906);
+            else
+            {
+                foreach (var item in querySource7906)
+                    if (Matches7906(item))
+                        return item;
+                return default!;
+            }
+        
+            foreach (var item in queryValues7906)
+                if (Matches7906(item))
+                    return item;
+            return default!;
+        }
+        var sdk = Query7986(installations);
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.Launcher.DotNetEnvironmentSnapshot? Query7986(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.DotNetEnvironmentSnapshot> querySource7986)
+        {
+            ArgumentNullException.ThrowIfNull(querySource7986, "source");
+            bool Matches7986(global::BEngine.Launcher.DotNetEnvironmentSnapshot item) => item.HasSdk;
+            global::System.ReadOnlySpan<global::BEngine.Launcher.DotNetEnvironmentSnapshot> queryValues7986;
+            if (querySource7986.GetType() == typeof(global::BEngine.Launcher.DotNetEnvironmentSnapshot[]))
+                queryValues7986 = (global::BEngine.Launcher.DotNetEnvironmentSnapshot[])querySource7986;
+            else if (querySource7986.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.DotNetEnvironmentSnapshot>))
+                queryValues7986 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.DotNetEnvironmentSnapshot>)querySource7986);
+            else
+            {
+                foreach (var item in querySource7986)
+                    if (Matches7986(item))
+                        return item;
+                return default!;
+            }
+        
+            foreach (var item in queryValues7986)
+                if (Matches7986(item))
+                    return item;
+            return default!;
+        }
         return new(runtime?.DesktopRuntimeVersion, sdk?.SdkVersion, runtime?.RuntimeRoot, sdk?.SdkRoot);
     }
 
@@ -324,7 +393,21 @@ internal sealed class DotNetEnvironmentService : IDisposable
                 var uri = new Uri(file.GetProperty("url").GetString() ?? string.Empty, UriKind.Absolute);
                 ValidateDownloadUri(uri);
                 var hash = file.GetProperty("hash").GetString() ?? string.Empty;
-                if (hash.Length != 128 || !hash.All(Uri.IsHexDigit)) throw new InvalidDataException("The .NET installer SHA-512 hash is invalid.");
+                if (hash.Length != 128 || !Scan18936(hash, Uri.IsHexDigit))
+                    throw new InvalidDataException("The .NET installer SHA-512 hash is invalid.");
+                [global::BEngine.SkipLoopGuard]
+                bool Scan18936(string scanSource18936, global::System.Func<char, bool> scanPredicate18936)
+                {
+                    ArgumentNullException.ThrowIfNull(scanSource18936, "source");
+                    ArgumentNullException.ThrowIfNull(scanPredicate18936, "predicate");
+                    foreach (var scanItem18936 in scanSource18936)
+                    {
+                        if (!scanPredicate18936(scanItem18936))
+                            return false;
+                    }
+                
+                    return true;
+                }
                 candidates.Add(new(version, uri, hash, sdk));
             }
         }

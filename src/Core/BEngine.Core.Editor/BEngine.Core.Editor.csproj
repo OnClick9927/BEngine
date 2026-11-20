@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>BEngine.Core.Editor</AssemblyName>
+    <RootNamespace>BEngine.ProjectSystem</RootNamespace>
+    <BEngineEditorAssembly>true</BEngineEditorAssembly>
+    <BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <BEngineToolingKind>Editor</BEngineToolingKind>
+    <BEngineCoreInternalAccess>true</BEngineCoreInternalAccess>
+    <BEngineEngineExportOwner>true</BEngineEngineExportOwner>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA2255;IL3000</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../BEngine.Core/BEngine.Core.csproj" />
+    <ProjectReference Include="../BEngine.Player/BEngine.Player.csproj" />
+    <ProjectReference Include="../../Platform/Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../Platform/BEngine.Editor.Host.Contracts/BEngine.Editor.Host.Contracts.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Mono.Cecil" />
+    <PackageReference Include="Microsoft.NET.ILLink.Tasks" GeneratePathProperty="true" PrivateAssets="all" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../Platform/Contracts/BEngine.Platform.Editor.Contracts/**/*.cs;../../../Development/Shared/BEngineToolEnvironment.cs"
+             Exclude="../../Platform/Contracts/BEngine.Platform.Editor.Contracts/obj/**/*.cs;../../Platform/Contracts/BEngine.Platform.Editor.Contracts/bin/**/*.cs" />
+  </ItemGroup>
+</Project>

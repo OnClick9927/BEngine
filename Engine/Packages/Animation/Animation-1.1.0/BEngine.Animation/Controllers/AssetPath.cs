@@ -6,7 +6,7 @@ internal static class AssetPath
 {
     public static string Resolve(string path)
     {
-        var paths = RuntimeServiceAccess.PathService;
+        var paths = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>();
         return paths.IsPathRooted(path)
             ? paths.GetFullPath(path)
             : paths.GetFullPath(paths.Combine(

@@ -7,7 +7,7 @@ namespace BEngine.Launcher;
 // selected release; system assembly versions retain the template's target runtime.
 internal static class LauncherProjectTemplate
 {
-    internal static void Write(LauncherProjectWorkspace workspace)
+    internal static void Write(LauncherProjectWorkspace workspace, IReadOnlyList<LauncherPackageInfo>? packages = null)
     {
         var assemblyVersion = ResolveAssemblyVersion(workspace.Project.EngineVersion);
         foreach (var (relative, template) in Files)
@@ -21,6 +21,7 @@ internal static class LauncherProjectTemplate
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, contents + "\n", new UTF8Encoding(false));
         }
+        if (packages is not null) LauncherPackageProjectTemplates.Copy(workspace, packages);
     }
 
     internal static string ResolveAssemblyVersion(string engineVersion)

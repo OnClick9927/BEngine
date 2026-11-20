@@ -10,10 +10,18 @@ public readonly record struct VideoPlaybackCapabilities(
     bool HttpSources,
     bool HardwareDecoding)
 {
-    public static VideoPlaybackCapabilities Current => BEngine.Platform.PlatformVideoDecoding.OpenVideo is not null || BEngine.Platform.PlatformVideoDecoding.OpenVideoAsync is not null
-        ? new(DetectPlatform(), true, true, true, false)
-        : (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) && FfmpegVideoFrameReader.IsAvailable
-            ? new(DetectPlatform(), true, true, true, false) : ForPlatform(DetectPlatform());
+    public static VideoPlaybackCapabilities Current
+    {
+        get
+        {
+            if (BEngine.Platform.PlatformVideoDecoding.OpenVideo is not null || BEngine.Platform.PlatformVideoDecoding.OpenVideoAsync is not null)
+                return new(DetectPlatform(), true, true, true, false);
+            var capabilities = BEngine.Platform.PlatformRuntime.GetService<BEngine.Platform.IPlatformVideoDecoder>()?.Capabilities;
+            return capabilities is { Available: true } value
+                ? new(DetectPlatform(), true, true, value.HttpSources, value.HardwareDecoding)
+                : new(DetectPlatform(), true, false, false, false);
+        }
+    }
 
     public static VideoPlaybackCapabilities ForPlatform(VideoPlatformFamily platform) => platform switch
     {

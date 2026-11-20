@@ -10,6 +10,8 @@ using MethodDefinition = Mono.Cecil.MethodDefinition;
 using ModuleDefinition = Mono.Cecil.ModuleDefinition;
 using TypeReference = Mono.Cecil.TypeReference;
 
+namespace BEngine.Player.BuildTools;
+
 // Build-only native-code policy. The input/output managed images are read-only.
 // Each exact exclusion is conditional on both signature and current method body.
 // New, changed, ambiguous and unresolved methods retain the baseline selection.
@@ -129,8 +131,16 @@ internal static class WebAotColdMethods
             if (queue.Count == 0) break;
             while (queue.TryDequeue(out var method))
             {
-                foreach (var cctor in method.DeclaringType.Methods.Where(m => m.Name == ".cctor"))
-                    Add(cctor, "Declaring type initializer");
+                {
+                    var filteredSource8208 = method.DeclaringType.Methods;
+                    ArgumentNullException.ThrowIfNull(filteredSource8208, "source");
+                    foreach (var cctor in filteredSource8208)
+                    {
+                        if (!(cctor.Name == ".cctor"))
+                            continue;
+                        Add(cctor, "Declaring type initializer");
+                    }
+                }
                 if (!method.HasBody) continue;
                 foreach (var instruction in method.Body.Instructions)
                 {
@@ -142,7 +152,16 @@ internal static class WebAotColdMethods
                         {
                             var owner = field.Resolve()?.DeclaringType;
                             if (owner is null) unresolved.Add(method.FullName + " -> static field owner " + field.FullName);
-                            else foreach (var cctor in owner.Methods.Where(m => m.Name == ".cctor")) Add(cctor, "Static field owner initializer");
+                            else {
+                                     var filteredSource9099 = owner.Methods;
+                                     ArgumentNullException.ThrowIfNull(filteredSource9099, "source");
+                                     foreach (var cctor in filteredSource9099)
+                                     {
+                                         if (!(cctor.Name == ".cctor"))
+                                             continue;
+                                         Add(cctor, "Static field owner initializer");
+                                     }
+                                 }
                         }
                         catch (Exception exception) when (exception is not OutOfMemoryException)
                         { unresolved.Add(method.FullName + " -> " + field.FullName + " (" + exception.GetType().Name + ")"); }
@@ -195,8 +214,8 @@ internal static class WebAotColdMethods
     private static bool Guard(MethodDefinition method)
     {
         var assembly = method.Module.Assembly.Name.Name; var type = method.DeclaringType;
-        return assembly == "BEngine" && (type.Namespace == "BEngine" || type.Namespace.StartsWith("BEngine.Rendering", StringComparison.Ordinal)) ||
-            assembly == "BEngine.UIElements" && (type.FullName.StartsWith("BEngine.UIElements.WebAdvancedFontBackend", StringComparison.Ordinal) || type.FullName.StartsWith("BEngine.UIElements.WebFontNative", StringComparison.Ordinal)) ||
+        return assembly == "BEngine.Core" && (type.Namespace == "BEngine" || type.Namespace.StartsWith("BEngine.Rendering", StringComparison.Ordinal)) ||
+            type.CustomAttributes.Any(static attribute => attribute.AttributeType.FullName == "BEngine.PreserveNativeCodeAttribute") ||
             assembly is "BEngine.Player.WebHost" or "System.Runtime.InteropServices.JavaScript";
     }
 

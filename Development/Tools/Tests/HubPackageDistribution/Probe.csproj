@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../Shared/PackageCatalogTransport.cs" />
+    <ProjectReference Include="../../../../src/Platform/DotNet/BEngine.Platform.DotNet.Editor/BEngine.Platform.DotNet.Editor.csproj" />
+    <Compile Include="../../../../src/Hub/BEngine.Launcher/Services/LauncherBundledPackages.cs" />
+    <Compile Include="../../../../src/Hub/BEngine.Launcher/Services/LauncherPackageIndex.cs" />
+    <Compile Include="../../../../src/Hub/BEngine.Launcher/Services/LauncherPackageCatalog.cs" />
+    <Compile Include="../../../../src/Hub/BEngine.Launcher/Services/LauncherPackageValidation.cs" />
+    <Compile Include="../../../../src/Hub/BEngine.Launcher/Services/LauncherInstallationPaths.cs" />
+    <Compile Include="../../../../src/Hub/BEngine.Launcher/Models/LauncherPackageInfo.cs" />
+    <Compile Include="../../../../src/Hub/BEngine.Launcher/Models/LauncherPackageDependency.cs" />
+    <Compile Include="../../../../src/Hub/BEngine.Launcher/Localization/HubLocalization.cs" />
+  </ItemGroup>
+</Project>

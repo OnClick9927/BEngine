@@ -128,7 +128,7 @@ public sealed class SpringJoint2D : Joint2D
 {
     public Fix64 distance { get; set; } = Fix64.One;
     public Fix64 frequency { get; set; } = 2;
-    public Fix64 dampingRatio { get; set; } = Fix64.FromDecimal(0.5m);
+    public Fix64 dampingRatio { get; set; } = Fix64.FromRaw(2147483648L) /* FromDecimal(0.5m) */;
     internal override void Prepare(Fix64 deltaTime)
     {
         base.Prepare(deltaTime);

@@ -20,12 +20,22 @@ public sealed class SdfFontAsset : ScriptableObject
     public int glyphCount => _glyphs.Count;
     public bool supportsAdvancedText => _data.Version >= 2 && _data.SourceFonts.Length > 0;
     public int embeddedFontCount => _data.SourceFonts.Length;
-    public IReadOnlyList<string> embeddedFontNames => _data.SourceFonts.Select(source => source.Name).ToArray();
+    public IReadOnlyList<string> embeddedFontNames
+    {
+        get
+        {
+            var sources = _data.SourceFonts;
+            if (sources.Length == 0) return Array.Empty<string>();
+            var names = new string[sources.Length];
+            for (var index = 0; index < sources.Length; index++) names[index] = sources[index].Name;
+            return names;
+        }
+    }
     public string characters => string.Concat(_glyphs.Keys.Order().Select(codepoint => new Rune(codepoint).ToString()));
     public ReadOnlyMemory<byte> distancePixels { get { ThrowIfDestroyed(); return _data.Pixels; } }
 
     public bool TryGetGlyph(int codepoint, out SdfGlyph glyph) => _glyphs.TryGetValue(codepoint, out glyph);
-    internal SdfGlyph Glyph(int codepoint) => _glyphs.GetValueOrDefault(codepoint, _glyphs['?']);
+    internal SdfGlyph Glyph(int codepoint) => _glyphs.TryGetValue(codepoint, out var glyph) ? glyph : _glyphs['?'];
     public float MeasureAdvance(string text, float size)
     {
         ArgumentNullException.ThrowIfNull(text); ThrowIfDestroyed();
@@ -52,7 +62,7 @@ public sealed class SdfFontAsset : ScriptableObject
     public void Save(string path)
     {
         EnsureAssetCanBeSaved(); ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        RuntimeServiceAccess.FileSystem.WriteAllBytes(path, ToBytes());
+        RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().WriteAllBytes(path, ToBytes());
         BindAssetReference(path); Invalidate(path);
     }
     public static SdfFontAsset FromBytes(ReadOnlySpan<byte> bytes, string path = "")
@@ -73,7 +83,40 @@ public sealed class SdfFontAsset : ScriptableObject
     internal static SdfFontAsset Create(SdfFontData data, string path = "")
     {
         data.Validate();
-        var font = new SdfFontAsset { _data = data, _glyphs = data.Glyphs.ToDictionary(glyph => glyph.Codepoint) };
+        var font = new SdfFontAsset
+        {
+            _data = data,
+            _glyphs = BuildIndex4634(data.Glyphs, null)
+        };
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<int, global::BEngine.UIElements.SdfGlyph> BuildIndex4634(global::System.Collections.Generic.IEnumerable<global::BEngine.UIElements.SdfGlyph> indexSource4634, global::System.Collections.Generic.IEqualityComparer<int>? indexComparer4634)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource4634, "source");
+            var knownCount = indexSource4634.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<int, global::BEngine.UIElements.SdfGlyph>(indexComparer4634);
+            global::System.ReadOnlySpan<global::BEngine.UIElements.SdfGlyph> values;
+            if (knownCount && indexSource4634 is global::BEngine.UIElements.SdfGlyph[] array)
+                values = array;
+            else if (knownCount && indexSource4634 is global::System.Collections.Generic.List<global::BEngine.UIElements.SdfGlyph> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<int, global::BEngine.UIElements.SdfGlyph>(capacity, indexComparer4634);
+                foreach (var item in indexSource4634)
+                    result.Add(IndexKey4634(item), item);
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<int, global::BEngine.UIElements.SdfGlyph>(values.Length, indexComparer4634);
+                foreach (var item in values)
+                    result.Add(IndexKey4634(item), item);
+                return result;
+            }
+        
+            int IndexKey4634(global::BEngine.UIElements.SdfGlyph glyph) => glyph.Codepoint;
+        }
         if (path.Length > 0) font.BindAssetReference(path);
         return font;
     }
@@ -100,7 +143,36 @@ public sealed class SdfFontAsset : ScriptableObject
     protected override void RestoreClonePayload(object? payload, Func<BObject, BObject> cloneObject)
     {
         var data = JsonSerializer.Deserialize<SdfFontData>((byte[])payload!) ?? throw new InvalidDataException("SDF clone is empty.");
-        data.Validate(); _data = data; _glyphs = data.Glyphs.ToDictionary(glyph => glyph.Codepoint); _advancedRuntime = null;
+        data.Validate(); _data = data; _glyphs = BuildIndex6188(data.Glyphs, null);
+                                       [global::BEngine.SkipLoopGuard]
+                                       global::System.Collections.Generic.Dictionary<int, global::BEngine.UIElements.SdfGlyph> BuildIndex6188(global::System.Collections.Generic.IEnumerable<global::BEngine.UIElements.SdfGlyph> indexSource6188, global::System.Collections.Generic.IEqualityComparer<int>? indexComparer6188)
+                                       {
+                                           ArgumentNullException.ThrowIfNull(indexSource6188, "source");
+                                           var knownCount = indexSource6188.TryGetNonEnumeratedCount(out var capacity);
+                                           if (knownCount && capacity == 0)
+                                               return new global::System.Collections.Generic.Dictionary<int, global::BEngine.UIElements.SdfGlyph>(indexComparer6188);
+                                           global::System.ReadOnlySpan<global::BEngine.UIElements.SdfGlyph> values;
+                                           if (knownCount && indexSource6188 is global::BEngine.UIElements.SdfGlyph[] array)
+                                               values = array;
+                                           else if (knownCount && indexSource6188 is global::System.Collections.Generic.List<global::BEngine.UIElements.SdfGlyph> list)
+                                               values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+                                           else
+                                           {
+                                               var result = new global::System.Collections.Generic.Dictionary<int, global::BEngine.UIElements.SdfGlyph>(capacity, indexComparer6188);
+                                               foreach (var item in indexSource6188)
+                                                   result.Add(IndexKey6188(item), item);
+                                               return result;
+                                           }
+                                       
+                                           {
+                                               var result = new global::System.Collections.Generic.Dictionary<int, global::BEngine.UIElements.SdfGlyph>(values.Length, indexComparer6188);
+                                               foreach (var item in values)
+                                                   result.Add(IndexKey6188(item), item);
+                                               return result;
+                                           }
+                                       
+                                           int IndexKey6188(global::BEngine.UIElements.SdfGlyph glyph) => glyph.Codepoint;
+                                       } _advancedRuntime = null;
     }
     protected override void ReleaseAssetResources() { _advancedRuntime?.Dispose(); _advancedRuntime = null; _data = new(); _glyphs.Clear(); }
 }

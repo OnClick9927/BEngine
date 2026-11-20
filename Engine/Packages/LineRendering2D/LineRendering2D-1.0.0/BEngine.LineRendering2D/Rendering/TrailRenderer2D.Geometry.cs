@@ -14,7 +14,7 @@ public sealed partial class TrailRenderer2D
         {
             var color = new Color(segment.Color.r, segment.Color.g, segment.Color.b, segment.Color.a * opacity);
             sink.Submit(this, SceneQuad2D.Create(segment.Center, segment.Rotation, segment.Size, color,
-                string.Empty, new Rect(0, 0, 1, 1), false, false, false), new RenderBatchKey2D(material, string.Empty));
+                string.Empty, new Rect(0, 0, 1, 1), false, false, false), new RenderBatchKey(material, string.Empty));
         }
     }
 }

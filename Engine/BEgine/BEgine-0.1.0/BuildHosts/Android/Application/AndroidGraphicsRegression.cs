@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Android.Opengl;
+using BEngine.Platform.AndroidNative;
 using BEngine.Rendering;
 using BEngine.Rendering.Rhi;
 

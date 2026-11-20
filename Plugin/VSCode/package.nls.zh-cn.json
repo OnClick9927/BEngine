@@ -1,0 +1,10 @@
+{
+  "extension.description": "一键附加 BEngine Editor，使用引擎真实的 C# 工程提供代码提示。",
+  "trust.description": "调试会附加本地进程，工程同步会请求运行中的编辑器生成 C# 工程。",
+  "command.attach": "附加到编辑器",
+  "command.sync": "同步 C# 工程",
+  "command.solution": "打开 C# 解决方案",
+  "command.log": "查看集成日志",
+  "setting.timeout": "等待运行中的 BEngine Editor 同步 C# 工程的最长时间。",
+  "setting.justMyCode": "仅单步执行用户代码。关闭后可在具有符号时单步进入包代码。"
+}

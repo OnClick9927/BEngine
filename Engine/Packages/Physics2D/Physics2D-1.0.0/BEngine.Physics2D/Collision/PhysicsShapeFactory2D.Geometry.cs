@@ -110,8 +110,8 @@ internal static partial class PhysicsShapeFactory2D
         var result = shape.Type == PhysicsShapeType2D.Compound
             ? CreateCompound(shape.Parts.Select(part => TransformShape(part, transform)))
             : CreatePolygon(shape.Vertices.Select(transform).ToArray());
-        return shape.Contours.Length == 0 ? result : WithContours(result, shape.Contours.Select(path => new ColliderPath2D
-        { isHole = path.isHole, points = path.points.Select(transform).ToList() }).ToArray());
+        return shape.Contours.Length == 0 ? result : WithContours(result, (shape.Contours is { } projectionSource6365 ? projectionSource6365.Length == 0 ? global::System.Array.Empty<global::BEngine.Physics2D.ColliderPath2D>() : global::System.Array.ConvertAll<global::BEngine.Physics2D.ColliderPath2D, global::BEngine.Physics2D.ColliderPath2D>(projectionSource6365, path => new ColliderPath2D
+        { isHole = path.isHole, points = path.points.Select(transform).ToList() }) : throw new global::System.ArgumentNullException("source")));
     }
 
     // Polygon authoring data is cached in local space. Keep the offset and world

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType>
+    <AssemblyName>AssetAuthoringContractProbe</AssemblyName>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+  </PropertyGroup>
+  <ItemGroup><Reference Include="$(EngineBinaries)/*.dll" /><Compile Remove="Benchmark/**" /></ItemGroup>
+</Project>

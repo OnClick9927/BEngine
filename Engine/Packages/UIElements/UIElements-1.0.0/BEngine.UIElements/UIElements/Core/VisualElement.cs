@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace BEngine.UIElements;
 
@@ -132,6 +133,7 @@ public class VisualElement : IBindable
     public string atlas { get => _atlas; set => Set(ref _atlas, value?.Trim() ?? string.Empty); }
     public VisualElement? parent { get; private set; }
     public IReadOnlyList<VisualElement> Children => _children;
+    internal ReadOnlySpan<VisualElement> ChildrenSpanUnchecked => CollectionsMarshal.AsSpan(_children);
     public IReadOnlyCollection<string> classList => _classList;
     internal void CopyClassesTo(string[] destination) => _classList.CopyTo(destination);
 
@@ -248,16 +250,22 @@ public class VisualElement : IBindable
         ArgumentNullException.ThrowIfNull(callback);
         if (!_callbacks.TryGetValue(typeof(TEvent), out var callbacks))
             _callbacks[typeof(TEvent)] = callbacks = [];
-        if (callbacks.Any(item => item.Callback.Equals(callback) && item.TrickleDown == trickleDown)) return;
-        callbacks.Add(new EventCallbackRegistration(callback, evt => callback((TEvent)evt), trickleDown));
+        foreach (var item in callbacks)
+            if (item.Callback.Equals(callback) && item.TrickleDown == trickleDown) return;
+        callbacks.Add(CreateCallback(callback, trickleDown));
     }
+
+    private static EventCallbackRegistration CreateCallback<TEvent>(Action<TEvent> callback, TrickleDown trickleDown)
+        where TEvent : UIEventBase => new(callback, evt => callback((TEvent)evt), trickleDown);
 
     public void UnregisterCallback<TEvent>(Action<TEvent> callback, TrickleDown trickleDown = TrickleDown.NoTrickleDown)
         where TEvent : UIEventBase
     {
         ArgumentNullException.ThrowIfNull(callback);
         if (!_callbacks.TryGetValue(typeof(TEvent), out var callbacks)) return;
-        callbacks.RemoveAll(item => item.Callback.Equals(callback) && item.TrickleDown == trickleDown);
+        for (var index = callbacks.Count - 1; index >= 0; index--)
+            if (callbacks[index].Callback.Equals(callback) && callbacks[index].TrickleDown == trickleDown)
+                callbacks.RemoveAt(index);
         if (callbacks.Count == 0) _callbacks.Remove(typeof(TEvent));
     }
 

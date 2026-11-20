@@ -75,15 +75,15 @@ public sealed class StyleSheet : ScriptableObject
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         RejectLegacyExtension(path);
-        var fullPath = RuntimeServiceAccess.PathService.GetFullPath(path);
-        var sheet = Parse(RuntimeServiceAccess.FileSystem.ReadAllText(fullPath));
+        var fullPath = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(path);
+        var sheet = Parse(RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().ReadAllText(fullPath));
         sheet.BindAssetReference(fullPath);
         return sheet;
     }
 
     private static void RejectLegacyExtension(string path)
     {
-        var extension = RuntimeServiceAccess.PathService.GetExtension(path);
+        var extension = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetExtension(path);
         if (extension.Equals(".uss", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".ucss", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"Legacy UI style sheet extension '{extension}' is not supported; use .bss or .bcss.");
@@ -495,8 +495,14 @@ public sealed class StyleSheet : ScriptableObject
                     channels.Length == 4 ? RoundChannel(ParseNumber(channels[3]) * 255) : (byte)255);
             }
         }
-        var text = value.Trim().TrimStart('#');
-        if (text.Length is 3 or 4) text = string.Concat(text.Select(c => $"{c}{c}"));
+        scoped ReadOnlySpan<char> text = value.AsSpan().Trim().TrimStart('#');
+        Span<char> expanded = stackalloc char[8];
+        if (text.Length is 3 or 4)
+        {
+            for (var index = 0; index < text.Length; index++)
+                expanded[index * 2] = expanded[index * 2 + 1] = text[index];
+            text = expanded[..(text.Length * 2)];
+        }
         if (text.Length is not (6 or 8) || !uint.TryParse(text, NumberStyles.HexNumber,
                 CultureInfo.InvariantCulture, out var packed)) return null;
         if (text.Length == 6) packed = packed << 8 | 0xFF;
@@ -507,6 +513,7 @@ public sealed class StyleSheet : ScriptableObject
     {
         private readonly SelectorPart[] _parts;
         private readonly PreparedDeclaration[] _prepared, _importantPrepared, _paintPrepared, _importantPaintPrepared;
+        private readonly ViewportCondition? _viewportCondition;
 
         public StyleRule(
             string selector,
@@ -516,11 +523,100 @@ public sealed class StyleSheet : ScriptableObject
             _parts = selector.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Select(SelectorPart.Parse).ToArray();
             Declarations = declarations;
-            ImportantDeclarations = declarations.Where(pair => pair.Value.EndsWith("!important", StringComparison.OrdinalIgnoreCase))
-                .ToDictionary(pair => pair.Key, pair => pair.Value);
+            ImportantDeclarations = BuildIndex26780(declarations.Where(pair => pair.Value.EndsWith("!important", StringComparison.OrdinalIgnoreCase)), null);
+            [global::BEngine.SkipLoopGuard]
+            global::System.Collections.Generic.Dictionary<string, string> BuildIndex26780(global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, string>> indexSource26780, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer26780)
+            {
+                ArgumentNullException.ThrowIfNull(indexSource26780, "source");
+                var knownCount = indexSource26780.TryGetNonEnumeratedCount(out var capacity);
+                if (knownCount && capacity == 0)
+                    return new global::System.Collections.Generic.Dictionary<string, string>(indexComparer26780);
+                global::System.ReadOnlySpan<global::System.Collections.Generic.KeyValuePair<string, string>> values;
+                if (knownCount && indexSource26780 is global::System.Collections.Generic.KeyValuePair<string, string>[] array)
+                    values = array;
+                else if (knownCount && indexSource26780 is global::System.Collections.Generic.List<global::System.Collections.Generic.KeyValuePair<string, string>> list)
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+                else
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, string>(capacity, indexComparer26780);
+                    foreach (var item in indexSource26780)
+                        result.Add(IndexKey26780(item), IndexValue26780(item));
+                    return result;
+                }
+            
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, string>(values.Length, indexComparer26780);
+                    foreach (var item in values)
+                        result.Add(IndexKey26780(item), IndexValue26780(item));
+                    return result;
+                }
+            
+                string IndexKey26780(global::System.Collections.Generic.KeyValuePair<string, string> pair) => pair.Key;
+                string IndexValue26780(global::System.Collections.Generic.KeyValuePair<string, string> pair) => pair.Value;
+            }
             static bool IsPaint(string property) => property.ToLowerInvariant() is "color" or "background-color" or "border-color";
-            PaintDeclarations = declarations.Where(pair => IsPaint(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
-            ImportantPaintDeclarations = ImportantDeclarations.Where(pair => IsPaint(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
+            PaintDeclarations = BuildIndex27111(declarations.Where(pair => IsPaint(pair.Key)), null);
+            [global::BEngine.SkipLoopGuard]
+            global::System.Collections.Generic.Dictionary<string, string> BuildIndex27111(global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, string>> indexSource27111, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer27111)
+            {
+                ArgumentNullException.ThrowIfNull(indexSource27111, "source");
+                var knownCount = indexSource27111.TryGetNonEnumeratedCount(out var capacity);
+                if (knownCount && capacity == 0)
+                    return new global::System.Collections.Generic.Dictionary<string, string>(indexComparer27111);
+                global::System.ReadOnlySpan<global::System.Collections.Generic.KeyValuePair<string, string>> values;
+                if (knownCount && indexSource27111 is global::System.Collections.Generic.KeyValuePair<string, string>[] array)
+                    values = array;
+                else if (knownCount && indexSource27111 is global::System.Collections.Generic.List<global::System.Collections.Generic.KeyValuePair<string, string>> list)
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+                else
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, string>(capacity, indexComparer27111);
+                    foreach (var item in indexSource27111)
+                        result.Add(IndexKey27111(item), IndexValue27111(item));
+                    return result;
+                }
+            
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, string>(values.Length, indexComparer27111);
+                    foreach (var item in values)
+                        result.Add(IndexKey27111(item), IndexValue27111(item));
+                    return result;
+                }
+            
+                string IndexKey27111(global::System.Collections.Generic.KeyValuePair<string, string> pair) => pair.Key;
+                string IndexValue27111(global::System.Collections.Generic.KeyValuePair<string, string> pair) => pair.Value;
+            }
+            ImportantPaintDeclarations = BuildIndex27250(ImportantDeclarations.Where(pair => IsPaint(pair.Key)), null);
+            [global::BEngine.SkipLoopGuard]
+            global::System.Collections.Generic.Dictionary<string, string> BuildIndex27250(global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, string>> indexSource27250, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer27250)
+            {
+                ArgumentNullException.ThrowIfNull(indexSource27250, "source");
+                var knownCount = indexSource27250.TryGetNonEnumeratedCount(out var capacity);
+                if (knownCount && capacity == 0)
+                    return new global::System.Collections.Generic.Dictionary<string, string>(indexComparer27250);
+                global::System.ReadOnlySpan<global::System.Collections.Generic.KeyValuePair<string, string>> values;
+                if (knownCount && indexSource27250 is global::System.Collections.Generic.KeyValuePair<string, string>[] array)
+                    values = array;
+                else if (knownCount && indexSource27250 is global::System.Collections.Generic.List<global::System.Collections.Generic.KeyValuePair<string, string>> list)
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+                else
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, string>(capacity, indexComparer27250);
+                    foreach (var item in indexSource27250)
+                        result.Add(IndexKey27250(item), IndexValue27250(item));
+                    return result;
+                }
+            
+                {
+                    var result = new global::System.Collections.Generic.Dictionary<string, string>(values.Length, indexComparer27250);
+                    foreach (var item in values)
+                        result.Add(IndexKey27250(item), IndexValue27250(item));
+                    return result;
+                }
+            
+                string IndexKey27250(global::System.Collections.Generic.KeyValuePair<string, string> pair) => pair.Key;
+                string IndexValue27250(global::System.Collections.Generic.KeyValuePair<string, string> pair) => pair.Value;
+            }
             // These dictionaries belong solely to the private parsed rule; no
             // mutable caller-owned declaration dictionary enters this cache.
             _prepared = declarations.Select(pair => new PreparedDeclaration(pair.Key, pair.Value)).ToArray();
@@ -529,10 +625,49 @@ public sealed class StyleSheet : ScriptableObject
             _importantPaintPrepared = _importantPrepared.Where(value => IsPaint(value.Property)).ToArray();
             var interactive = selector.Contains(":hover", StringComparison.OrdinalIgnoreCase) ||
                 selector.Contains(":active", StringComparison.OrdinalIgnoreCase) || selector.Contains(":focus", StringComparison.OrdinalIgnoreCase);
-            SupportsLocalInteractionRepaint = !interactive || (_parts.Length == 1 && declarations.Keys.All(IsPaint));
-            Specificity = _parts.Sum(part => part.Specificity);
+            SupportsLocalInteractionRepaint = !interactive || (_parts.Length == 1 && Scan34819(declarations.Keys, IsPaint));
+            [global::BEngine.SkipLoopGuard]
+            bool Scan34819(global::System.Collections.Generic.IEnumerable<string> scanSource34819, global::System.Func<string, bool> scanPredicate34819)
+            {
+                ArgumentNullException.ThrowIfNull(scanSource34819, "source");
+                ArgumentNullException.ThrowIfNull(scanPredicate34819, "predicate");
+                global::System.ReadOnlySpan<string> scanValues34819;
+                if (scanSource34819.GetType() == typeof(string[]))
+                    scanValues34819 = (string[])scanSource34819;
+                else if (scanSource34819.GetType() == typeof(global::System.Collections.Generic.List<string>))
+                    scanValues34819 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<string>)scanSource34819);
+                else
+                {
+                    foreach (var scanItem34819 in scanSource34819)
+                    {
+                        if (!scanPredicate34819(scanItem34819))
+                            return false;
+                    }
+            
+                    return true;
+                }
+            
+                foreach (var scanItem34819 in scanValues34819)
+                {
+                    if (!scanPredicate34819(scanItem34819))
+                        return false;
+                }
+            
+                return true;
+            }
+            Specificity = Scan34878(_parts);
+            [global::BEngine.SkipLoopGuard]
+            int Scan34878(global::System.Collections.Generic.IEnumerable<global::BEngine.UIElements.StyleSheet.SelectorPart> scanSource34878)
+            {
+                ArgumentNullException.ThrowIfNull(scanSource34878, "source");
+                int total = 0;
+                foreach (var scanItem34878 in scanSource34878)
+                    total = checked(total + Match34878(scanItem34878));
+                return total;
+                int Match34878(global::BEngine.UIElements.StyleSheet.SelectorPart part) => part.Specificity;
+            }
             SourceOrder = sourceOrder;
-            Condition = condition;
+            _viewportCondition = condition.Length == 0 ? null : new ViewportCondition(condition);
         }
 
         internal void Apply(Style style, bool important = false, bool paintOnly = false) =>
@@ -547,17 +682,62 @@ public sealed class StyleSheet : ScriptableObject
         public bool SupportsLocalInteractionRepaint { get; }
         public int Specificity { get; }
         public int SourceOrder { get; }
-        private string Condition { get; }
-        public bool MatchesViewport(Fix64 width, Fix64 height)
+        public bool MatchesViewport(Fix64 width, Fix64 height) =>
+            _viewportCondition is null || _viewportCondition.Matches(width, height);
+
+        private sealed class ViewportCondition
         {
-            if (Condition.Length == 0) return true;
-            foreach (Match match in Regex.Matches(Condition, @"\((min|max)-(width|height)\s*:\s*([^)]+)\)", RegexOptions.IgnoreCase))
+            private const string Pattern = @"\((min|max)-(width|height)\s*:\s*([^)]+)\)";
+            private readonly string _condition, _cultureName;
+            private readonly ViewportConstraint[] _constraints;
+            private readonly bool _allowsScreen;
+
+            public ViewportCondition(string condition)
             {
-                var actual = match.Groups[2].Value == "width" ? width : height;
-                var limit = CssLength.Resolve(match.Groups[3].Value, actual, width, height, 16);
-                if (match.Groups[1].Value == "min" ? actual < limit : actual > limit) return false;
+                _condition = condition;
+                _cultureName = CultureInfo.CurrentCulture.Name;
+                _allowsScreen = !condition.Contains("print", StringComparison.OrdinalIgnoreCase);
+                // A parsed rule is immutable. Resolve lengths against the live
+                // viewport on each application, without reparsing its condition.
+                var matches = Regex.Matches(condition, Pattern, RegexOptions.IgnoreCase);
+                _constraints = matches.Count == 0 ? [] : new ViewportConstraint[matches.Count];
+                for (var index = 0; index < _constraints.Length; index++)
+                {
+                    var match = matches[index];
+                    _constraints[index] = new ViewportConstraint(match.Groups[1].Value == "min",
+                        match.Groups[2].Value == "width", match.Groups[3].Value);
+                }
             }
-            return !Condition.Contains("print", StringComparison.OrdinalIgnoreCase);
+
+            public bool Matches(Fix64 width, Fix64 height)
+            {
+                // IgnoreCase matching follows the current culture. Preserve that
+                // behavior if an application changes culture after parsing.
+                if (_cultureName != CultureInfo.CurrentCulture.Name)
+                {
+                    foreach (Match match in Regex.Matches(_condition, Pattern, RegexOptions.IgnoreCase))
+                    {
+                        var actual = match.Groups[2].Value == "width" ? width : height;
+                        var limit = CssLength.Resolve(match.Groups[3].Value, actual, width, height, 16);
+                        if (match.Groups[1].Value == "min" ? actual < limit : actual > limit) return false;
+                    }
+                    return _allowsScreen;
+                }
+                foreach (var constraint in _constraints)
+                {
+                    var actual = constraint.IsWidth ? width : height;
+                    var limit = CssLength.Resolve(constraint.Expression, actual, width, height, 16);
+                    if (constraint.IsMinimum ? actual < limit : actual > limit) return false;
+                }
+                return _allowsScreen;
+            }
+        }
+
+        private readonly struct ViewportConstraint(bool minimum, bool width, string expression)
+        {
+            public readonly bool IsMinimum = minimum;
+            public readonly bool IsWidth = width;
+            public readonly string Expression = expression;
         }
 
         internal bool CanMatchType(string typeName) => _parts.Length > 0 &&

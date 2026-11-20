@@ -21,5 +21,3 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("BEngine.ExampleTests.DependencyInjectionArchitecture")]
 [assembly: InternalsVisibleTo("BEngine.Animation.Editor")]
 [assembly: InternalsVisibleTo("BEngine.Timeline.Editor")]
-[assembly: InternalsVisibleTo("BEngine.UIBuilder.Editor")]
-[assembly: InternalsVisibleTo("BEngine.HtmlUIConverter.Editor")]

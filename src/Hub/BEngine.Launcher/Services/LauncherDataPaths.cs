@@ -53,7 +53,7 @@ internal static class LauncherDataPaths
     internal static string GetProjectLogPath(string projectRoot, string fileName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
-        if (fileName.IndexOfAny(['/', '\\']) >= 0 || !fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase))
+        if (fileName.AsSpan(0, fileName.Length).IndexOfAny('/', '\\') >= 0 || !fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The project log file name must be a simple .log file name.", nameof(fileName));
         return Path.Combine(EnsureDirectory(Path.Combine(NormalizeProjectRoot(projectRoot), "Library", "Editor", "Logs")), fileName);
     }

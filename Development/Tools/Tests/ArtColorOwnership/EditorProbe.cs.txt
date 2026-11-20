@@ -1,0 +1,45 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using ArtOwnershipTests;
+using BEngine;
+using BEngine.Editor;
+using BEngine.Platform;
+
+public static class ArtColorOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");
+        if(string.IsNullOrEmpty(folder))return;
+        var checks=0;
+        void Check(bool pass,string message){if(!pass)throw new Exception(message);checks++;}
+        var host=PlatformRuntime.GetRequiredService<IEditorColorManagementHost>();
+        Check(host.GetType().Assembly.GetName().Name=="BEngine.Platform.DotNet.Editor","Actual Editor must use its platform ICC host");
+        var path="Assets/Color-N56.psd";
+        File.WriteAllBytes(Path.Combine(EditorApplication.projectPath,path),ArtFixtures.Psd(ArtFixtures.Srgb));
+        AssetDatabase.Refresh();
+        var document=AssetDatabase.LoadAssetAtPath<ArtDocument2D>(path);
+        Check(document!=null&&document.Layers.Count==1,"Actual PSD import must publish an art document and layer");
+        Check(document.SourceMetadata.Any(m=>m.Type==1039&&m.GetBytes().SequenceEqual(ArtFixtures.Srgb)),"Import must preserve embedded ICC metadata");
+        var guid=AssetDatabase.AssetPathToGUID(path);var id=document.Layers[0].LocalIdentifier;var reference=document.Layers[0].TextureReference;
+        Check(!string.IsNullOrEmpty(guid)&&id!=0&&!string.IsNullOrEmpty(reference),"Actual generated asset identities must be present");
+        var texture=document.Layers[0].LoadTexture();
+        Check(texture!=null&&texture.width==3&&texture.height==1,"Actual generated texture must be loadable");
+        var expected=ArtFixtures.DecodePixels(ArtFixtures.Psd(ArtFixtures.Srgb));
+        for(var i=0;i<3;i++)
+        {
+            var color=texture.GetPixel(i,0);
+            Check(Math.Abs((double)color.r*255-expected[i*4])<1.01&&Math.Abs((double)color.g*255-expected[i*4+1])<1.01&&Math.Abs((double)color.b*255-expected[i*4+2])<1.01,"Generated texture must preserve corrected native ICC colors "+i);
+        }
+        var importer=(ArtDocumentImporter)AssetImporter.GetAtPath(path);importer.importHiddenLayers=false;importer.SaveAndReimport();
+        document=AssetDatabase.LoadAssetAtPath<ArtDocument2D>(path);
+        Check(AssetDatabase.AssetPathToGUID(path)==guid&&document.Layers[0].LocalIdentifier==id&&document.Layers[0].TextureReference==reference,"Reimport must preserve source and generated identities");
+        Check(!((ArtDocumentImporter)AssetImporter.GetAtPath(path)).importHiddenLayers,"Reimport must retain settings");
+        Check((int)host.GetType().GetProperty("ActiveTransforms").GetValue(null)==0,"Actual Editor must release every native color transform");
+        var record=JsonSerializer.Serialize(new{Passed=true,Checks=checks,NativeOwner=host.GetType().Assembly.GetName().Name,SourceGuid=guid,LocalId=id,TextureReference=reference});
+        File.WriteAllText(Path.Combine(folder,"ArtColorOwnershipResult.json"),record);
+        File.AppendAllText(Path.Combine(folder,"ArtColorOwnershipEvents.jsonl"),record+Environment.NewLine);
+    }
+}

@@ -2,7 +2,9 @@ format: BEngine.AssemblyDefinition
 version: 1
 name: BEngine.InputActions
 rootNamespace: BEngine.InputActions
-references: []
+references:
+- BEngine.Core
+- BEngine.Platform.Contracts
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

@@ -62,8 +62,37 @@ public static class UxmlFactoryRegistry
     internal static VisualElement? Create(XElement node)
     {
         if (!ByName.TryGetValue(node.Name, out var registration)) return null;
-        var attributes = new ReadOnlyDictionary<string, string>(node.Attributes().Where(attribute => !attribute.IsNamespaceDeclaration)
-            .ToDictionary(attribute => attribute.Name.ToString(), attribute => attribute.Value, StringComparer.Ordinal));
+        var attributes = new ReadOnlyDictionary<string, string>(BuildIndex4690(node.Attributes().Where(attribute => !attribute.IsNamespaceDeclaration), StringComparer.Ordinal));
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<string, string> BuildIndex4690(global::System.Collections.Generic.IEnumerable<global::System.Xml.Linq.XAttribute> indexSource4690, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer4690)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource4690, "source");
+            var knownCount = indexSource4690.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<string, string>(indexComparer4690);
+            global::System.ReadOnlySpan<global::System.Xml.Linq.XAttribute> values;
+            if (knownCount && indexSource4690 is global::System.Xml.Linq.XAttribute[] array)
+                values = array;
+            else if (knownCount && indexSource4690 is global::System.Collections.Generic.List<global::System.Xml.Linq.XAttribute> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, string>(capacity, indexComparer4690);
+                foreach (var item in indexSource4690)
+                    result.Add(IndexKey4690(item), IndexValue4690(item));
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, string>(values.Length, indexComparer4690);
+                foreach (var item in values)
+                    result.Add(IndexKey4690(item), IndexValue4690(item));
+                return result;
+            }
+        
+            string IndexKey4690(global::System.Xml.Linq.XAttribute attribute) => attribute.Name.ToString();
+            string IndexValue4690(global::System.Xml.Linq.XAttribute attribute) => attribute.Value;
+        }
         var element = registration.Factory(attributes);
         if (element is null || element.GetType() != registration.Type || element.parent is not null)
             throw new InvalidDataException($"UXML factory '{node.Name}' must return a fresh, unparented '{registration.Type.FullName}'.");

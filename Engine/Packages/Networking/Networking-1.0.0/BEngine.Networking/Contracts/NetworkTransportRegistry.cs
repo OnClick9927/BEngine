@@ -10,11 +10,11 @@ public static class NetworkTransportRegistry
     public static Func<IWebSocketTransport>? WebSocketTransportFactory { get; set; }
     public static ISocketTransportFactory? SocketTransportFactory { get; set; }
     internal static ISocketTransportFactory Sockets => SocketTransportFactory ??
-        RuntimeServiceAccess.GetRequiredService<ISocketTransportFactory>();
+        RuntimeServices.GetRequiredService<ISocketTransportFactory>();
 
     internal static IWebSocketTransport CreateWebSocketTransport() =>
         WebSocketTransportFactory?.Invoke() ??
-        RuntimeServiceAccess.GetService<Func<IWebSocketTransport>>()?.Invoke() ??
+        RuntimeServices.GetService<Func<IWebSocketTransport>>()?.Invoke() ??
         throw new PlatformNotSupportedException(
             "The active player host has not registered a WebSocket transport.");
 }

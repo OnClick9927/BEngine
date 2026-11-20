@@ -1,44 +1,11 @@
-# Platform Adapters
+# Platform hosts and contracts
 
-Core owns platform contracts and application-facing Utility classes for file, path,
-clock, window and input services, together with the graphics abstraction. Hosts install
-a target adapter before calling engine APIs. Business code receives FileUtility,
-PathUtility and the other facades through DI; platform implementations consume the SPI.
-Networking and audio contracts and implementations belong to their own packages.
-See [平台接口与调用入口](PlatformBoundaries.md) for the complete mapping and examples.
-See [Web Player distribution](WebDistribution.md) for the Web output layout and deployment rules.
+此目录包含跨平台接口、各平台 Host 实现、构建目标实现、原生桥接资源及通用编辑器启动契约。
 
-| Assembly | Contents |
-| --- | --- |
-| BEngine.Platform.DotNet | Physical IO, system paths, environment and build-target catalog |
-| BEngine.Platform.Desktop | Vulkan/OpenGL devices and desktop service composition |
-| BEngine.Windows | Windows registration, IME and system font rasterization shared by Editor/Player |
-| BEngine.Platform.DotNet.Editor | Process execution, source watching, editor environment and collectible assembly loading |
-| BEngine.Windows.Editor | Native editor windows, Win32 integration, clipboard, dialogs, screen sampling, image/text decoding and Shaderc |
-| BEngine.Linux, BEngine.macOS | Desktop service composition for the target |
-| BEngine.Android, BEngine.iOS, BEngine.Web | Shared runtime registration for the SDK lifecycle hosts |
-| BEngine.Platform.Build | Common .NET publish, workload inspection and payload validation |
-| BEngine.*.Build | Target build providers loaded through IPlatformBuildModule |
+`Abstractions` 和 `Contracts` 提供宿主接口；`Android`、`iOS`、`Linux`、`macOS`、`Web`、`Windows` 各自包含运行时实现与对应的 `BEngine.*.Build` 编辑器构建模块。共享实现位于 `DotNet`、`Desktop`、`Veldrid` 和 `Build`。这些程序集随引擎宿主发布，不作为功能包导出；功能包通过 `hostReferences` 引用平台契约。
 
-```csharp
-WindowsPlatform.Initialize();
-// A custom host can install its own IServiceProvider with PlatformRuntime.Initialize.
-```
+`BEngine.Editor.Host.Contracts` 只声明通用应用入口。启动器根据安装描述读取入口程序集，不引用编辑器工作台或编译实现。
 
-The Windows example is exported and exercised against Tools/Hfs/hfs.exe. Desktop
-rendering supports Vulkan on Windows and OpenGL on Windows/Linux/macOS. Linux and
-macOS binaries need testing on those systems.
+`Player` 持有各目标平台的 Player Host 模板、运行时分发工程和导出脚本；通用 Player 运行时位于 `Core/BEngine.Player`，编辑器构建管线位于 `Core/BEngine.Core.Editor/Player`。
 
-Android, iOS and Web have build providers, SDK lifecycle templates and runtime-only
-dependency exports. Web publishes an AOT runtime with browser rendering, input and
-audio integration. See the Web distribution guide above for its output contract.
-iOS packaging requires macOS and Xcode; mobile players require validation on their
-target devices.
-
-ExportEngine.ps1 writes BuildHosts and BuildRuntime. Android/iOS/Web subdirectories
-contain the selected platform closure without GLFW, Veldrid, Editor or Launcher.
-Source and exported host projects select the same closure through
-BEnginePlayerPlatform. Build plugins are editor tools and never ship in a game.
-
-All engine metadata uses BEngine.YamlUtility. .NET host metadata, NuGet metadata and
-the external Codex protocol keep the formats required by those integrations.
+`ExportPlatformSources.ps1` 导出 Android/iOS 原生适配源码及通用桥接资源，保留源文件目录隔离和路径检查。

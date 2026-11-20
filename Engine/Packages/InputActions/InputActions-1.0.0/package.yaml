@@ -13,13 +13,20 @@ content:
 runtime:
   assembly: BEngine.InputActions
   rootNamespace: BEngine.InputActions
-  dependencies: []
   packageReferences:
   - id: YamlDotNet
     version: 18.1.0
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
 editor:
   assembly: BEngine.InputActions.Editor
   rootNamespace: BEngine.InputActions.Editor
   dependencies:
+  - packageId: com.bengine.imgui
+    target: editor
   - packageId: com.bengine.input-actions
     target: runtime
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

@@ -1,14 +1,16 @@
+using DrawingColor = System.Drawing.Color;
+
 namespace BEngine.Launcher;
 
 internal sealed class LauncherNavigationButton : Button
 {
-    internal Color DisabledTextColor
+    internal DrawingColor DisabledTextColor
     {
         get
         {
             if (ContrastRatio(ForeColor, BackColor) >= 4.5) return ForeColor;
-            return ContrastRatio(Color.White, BackColor) >= ContrastRatio(Color.Black, BackColor)
-                ? Color.White : Color.Black;
+            return ContrastRatio(DrawingColor.White, BackColor) >= ContrastRatio(DrawingColor.Black, BackColor)
+                ? DrawingColor.White : DrawingColor.Black;
         }
     }
 
@@ -47,9 +49,9 @@ internal sealed class LauncherNavigationButton : Button
         Invalidate();
     }
 
-    private static double ContrastRatio(Color first, Color second)
+    private static double ContrastRatio(DrawingColor first, DrawingColor second)
     {
-        static double Luminance(Color color)
+        static double Luminance(DrawingColor color)
         {
             static double Linear(byte value)
             {

@@ -125,10 +125,20 @@ internal static partial class PhysicsShapeFactory2D
 
     internal static PhysicsShape2D CreateCompound(IEnumerable<PhysicsShape2D> shapes)
     {
-        var parts = shapes.SelectMany(shape => shape.Type == PhysicsShapeType2D.Compound ? shape.Parts : new[] { shape }).ToArray();
+        ArgumentNullException.ThrowIfNull(shapes, "source");
+        var flattened = new List<PhysicsShape2D>();
+        foreach (var shape in shapes)
+            if (shape.Type == PhysicsShapeType2D.Compound) flattened.AddRange(shape.Parts);
+            else flattened.Add(shape);
+        var parts = flattened.ToArray();
         if (parts.Length == 1) return parts[0];
-        var minimum = parts.Length == 0 ? Vector2.zero : parts.Select(part => part.Bounds.Min).Aggregate(Vector2.Min);
-        var maximum = parts.Length == 0 ? Vector2.zero : parts.Select(part => part.Bounds.Max).Aggregate(Vector2.Max);
+        var minimum = parts.Length == 0 ? Vector2.zero : parts[0].Bounds.Min;
+        var maximum = parts.Length == 0 ? Vector2.zero : parts[0].Bounds.Max;
+        for (var index = 1; index < parts.Length; index++)
+        {
+            minimum = Vector2.Min(minimum, parts[index].Bounds.Min);
+            maximum = Vector2.Max(maximum, parts[index].Bounds.Max);
+        }
         return new PhysicsShape2D { Type = PhysicsShapeType2D.Compound, Parts = parts,
             Bounds = new PhysicsBounds2D(minimum, maximum), Center = (minimum + maximum) * Fix64.Half };
     }

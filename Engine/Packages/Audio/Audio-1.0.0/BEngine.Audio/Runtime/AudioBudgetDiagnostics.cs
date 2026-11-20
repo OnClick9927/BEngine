@@ -1,5 +1,5 @@
+using BEngine.Instrumentation;
 using System.Runtime.CompilerServices;
-using BEngine.Diagnostics;
 
 namespace BEngine.Audio;
 

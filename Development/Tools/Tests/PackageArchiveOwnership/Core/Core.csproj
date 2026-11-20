@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>PackageArchiveCoreProbe</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core.Editor.dll" />
+
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.Editor.dll" />
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions*.dll" />
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+  </ItemGroup>
+</Project>

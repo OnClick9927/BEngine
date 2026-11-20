@@ -1,5 +1,6 @@
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
+using DrawingColor = System.Drawing.Color;
 
 namespace BEngine.Launcher;
 
@@ -205,7 +206,7 @@ internal sealed class LauncherUpdateChangesView : UserControl
         var rowBounds = new Rectangle(0, e.Bounds.Y, _tree.ClientSize.Width, e.Bounds.Height);
         var selected = e.Node == _tree.SelectedNode;
         var background = selected ? _palette.Accent : _palette.Field;
-        var foreground = selected ? Color.White : _palette.Primary;
+        var foreground = selected ? DrawingColor.White : _palette.Primary;
         using (var brush = new SolidBrush(background)) graphics.FillRectangle(brush, rowBounds);
         var previousClip = graphics.Save();
         graphics.SetClip(new Rectangle(0, e.Bounds.Y, Math.Max(0, _nameEnd), e.Bounds.Height));
@@ -216,7 +217,7 @@ internal sealed class LauncherUpdateChangesView : UserControl
             var toggleSize = LogicalToDeviceUnits(9);
             var toggle = new Rectangle(iconX - _tree.Indent + (iconSize - toggleSize) / 2,
                 e.Bounds.Y + (e.Bounds.Height - toggleSize) / 2, toggleSize, toggleSize);
-            using var pen = new Pen(selected ? Color.White : _palette.Secondary);
+            using var pen = new Pen(selected ? DrawingColor.White : _palette.Secondary);
             var center = toggle.Left + toggle.Width / 2;
             var centerY = toggle.Top + toggle.Height / 2;
             graphics.DrawRectangle(pen, toggle);
@@ -241,14 +242,14 @@ internal sealed class LauncherUpdateChangesView : UserControl
             LauncherUpdateStatusGlyph.DrawMixed(graphics, glyph, foreground, background);
         DrawText(graphics, StatusText(row), new Rectangle(glyph.Right + LogicalToDeviceUnits(5), e.Bounds.Y,
             Math.Max(0, _tree.ClientSize.Width - glyph.Right - LogicalToDeviceUnits(12) - SystemInformation.VerticalScrollBarWidth), e.Bounds.Height), foreground);
-        using var divider = new Pen(selected ? Color.FromArgb(70, Color.White) : _palette.Border);
+        using var divider = new Pen(selected ? DrawingColor.FromArgb(70, DrawingColor.White) : _palette.Border);
         graphics.DrawLine(divider, _nameEnd, e.Bounds.Top, _nameEnd, e.Bounds.Bottom);
         graphics.DrawLine(divider, _sizeEnd, e.Bounds.Top, _sizeEnd, e.Bounds.Bottom);
         if (selected && _tree.Focused)
             ControlPaint.DrawFocusRectangle(graphics, new Rectangle(1, e.Bounds.Y + 1, _tree.ClientSize.Width - 2, e.Bounds.Height - 2), foreground, background);
     }
 
-    private void DrawText(Graphics graphics, string value, Rectangle bounds, Color foreground, bool alignRight = false)
+    private void DrawText(Graphics graphics, string value, Rectangle bounds, DrawingColor foreground, bool alignRight = false)
     {
         if (bounds.Width <= 0) return;
         TextRenderer.DrawText(graphics, value, Font, bounds, foreground,
@@ -374,8 +375,20 @@ internal sealed class LauncherUpdateChangesView : UserControl
             var info = new ShellFileInfo();
             // A synthetic name and USEFILEATTRIBUTES avoid touching a missing,
             // deleted, executable or network file while still using its association.
-            var safeExtension = extension.Length <= 64 && extension.All(character => char.IsLetterOrDigit(character) || character is '.' or '_' or '-')
-                ? extension : string.Empty;
+            var safeExtension = extension.Length <= 64 && Scan16654(extension) ? extension : string.Empty;
+            [global::BEngine.SkipLoopGuard]
+            bool Scan16654(string scanSource16654)
+            {
+                ArgumentNullException.ThrowIfNull(scanSource16654, "source");
+                foreach (var scanItem16654 in scanSource16654)
+                {
+                    if (!Match16654(scanItem16654))
+                        return false;
+                }
+            
+                return true;
+                bool Match16654(char character) => char.IsLetterOrDigit(character) || character is '.' or '_' or '-';
+            }
             SHGetFileInfo(directory ? "folder" : "file" + safeExtension, directory ? 0x10u : 0x80u,
                 ref info, (uint)Marshal.SizeOf<ShellFileInfo>(), icon | useFileAttributes | (size <= 16 ? smallIcon : 0));
             if (info.Icon == IntPtr.Zero)
@@ -412,14 +425,14 @@ internal sealed class LauncherUpdateChangesView : UserControl
 /// <summary>Small, high contrast change badges shared by the tree and totals.</summary>
 internal static class LauncherUpdateStatusGlyph
 {
-    internal static void DrawMixed(Graphics graphics, Rectangle bounds, Color foreground, Color background)
+    internal static void DrawMixed(Graphics graphics, Rectangle bounds, DrawingColor foreground, DrawingColor background)
     {
         var size = Math.Max(8, bounds.Width * 3 / 4);
         Draw(graphics, new Rectangle(bounds.Left, bounds.Top, size, size), LauncherUpdateChangeKind.Added, foreground, background);
         Draw(graphics, new Rectangle(bounds.Right - size, bounds.Bottom - size, size, size), LauncherUpdateChangeKind.Deleted, foreground, background);
     }
 
-    internal static void Draw(Graphics graphics, Rectangle bounds, LauncherUpdateChangeKind kind, Color foreground, Color background)
+    internal static void Draw(Graphics graphics, Rectangle bounds, LauncherUpdateChangeKind kind, DrawingColor foreground, DrawingColor background)
     {
         var color = GetColor(kind, background);
         var previous = graphics.Save();
@@ -427,7 +440,7 @@ internal static class LauncherUpdateStatusGlyph
         var shape = Rectangle.Inflate(bounds, -1, -1);
         using var brush = new SolidBrush(color);
         graphics.FillEllipse(brush, shape);
-        var ink = color.GetBrightness() > .55f ? Color.FromArgb(25, 29, 32) : Color.White;
+        var ink = color.GetBrightness() > .55f ? DrawingColor.FromArgb(25, 29, 32) : DrawingColor.White;
         using var pen = new Pen(ink, Math.Max(1.5f, bounds.Width / 9f)) { StartCap = LineCap.Round, EndCap = LineCap.Round };
         var centerX = bounds.Left + bounds.Width / 2f;
         var centerY = bounds.Top + bounds.Height / 2f;
@@ -446,14 +459,14 @@ internal static class LauncherUpdateStatusGlyph
         graphics.Restore(previous);
     }
 
-    internal static Color GetColor(LauncherUpdateChangeKind kind, Color background)
+    internal static DrawingColor GetColor(LauncherUpdateChangeKind kind, DrawingColor background)
     {
         var dark = background.GetBrightness() < .55f;
         return kind switch
         {
-            LauncherUpdateChangeKind.Added => dark ? Color.FromArgb(98, 211, 146) : Color.FromArgb(20, 115, 60),
-            LauncherUpdateChangeKind.Deleted => dark ? Color.FromArgb(255, 139, 131) : Color.FromArgb(185, 39, 39),
-            _ => dark ? Color.FromArgb(255, 208, 104) : Color.FromArgb(147, 92, 10)
+            LauncherUpdateChangeKind.Added => dark ? DrawingColor.FromArgb(98, 211, 146) : DrawingColor.FromArgb(20, 115, 60),
+            LauncherUpdateChangeKind.Deleted => dark ? DrawingColor.FromArgb(255, 139, 131) : DrawingColor.FromArgb(185, 39, 39),
+            _ => dark ? DrawingColor.FromArgb(255, 208, 104) : DrawingColor.FromArgb(147, 92, 10)
         };
     }
 }

@@ -2,7 +2,11 @@ format: BEngine.AssemblyDefinition
 version: 1
 name: BEngine.LineRendering2D
 rootNamespace: BEngine
-references: []
+references:
+- BEngine.Graphics
+- BEngine.Rendering2D
+- BEngine.Core
+- BEngine.Platform.Contracts
 includePlatforms: []
 excludePlatforms: []
 defineConstraints: []

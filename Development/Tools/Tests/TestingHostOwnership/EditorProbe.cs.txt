@@ -1,0 +1,44 @@
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using BEngine.Editor;
+using BEngine.Platform;
+
+public static class TestingHostOwnershipProbe
+{
+    [InitializeOnLoadMethod] public static void Verify()
+    {
+        var folder=Environment.GetEnvironmentVariable("BENGINE_SHADER_RESULT");if(string.IsNullOrEmpty(folder))return;
+        var factory=EditorServices.GetRequiredService<IEditorHttpListenerFactory>();
+        var tools=EditorServices.GetRequiredService<IEditorHostTools>();
+        var runner=ProcessUtility.Current;
+        if(factory.GetType().Assembly.GetName().Name!="BEngine.Platform.DotNet.Editor" || tools.GetType().Assembly!=factory.GetType().Assembly)
+            throw new Exception("Editor HTTP/tool capability has the wrong owner");
+        Task.Run(async ()=>
+        {
+            using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+            using(var listener=factory.ListenLoopback())
+            using(var client=new HttpClient())
+            {
+                var accept=listener.AcceptAsync(timeout.Token);
+                var send=client.GetStringAsync(listener.BaseAddress,timeout.Token);
+                using(var context=await accept)
+                {
+                    if(context.Method!="GET" || context.Url.Host!="127.0.0.1")throw new Exception("Editor native request lost endpoint/method");
+                    var bytes=Encoding.UTF8.GetBytes("editor-native-http");context.ResponseContentLength=bytes.Length;
+                    await context.ResponseBody.WriteAsync(bytes,timeout.Token);
+                }
+                if(await send!="editor-native-http")throw new Exception("Editor native response changed");
+                var result=await runner.RunAsync(new ProcessRunRequest(Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe")
+                    { Arguments={"/d","/c","exit","0"} },timeout.Token);
+                if(result.ExitCode!=0)throw new Exception("Editor process host could not complete the owned command");
+            }
+        }).GetAwaiter().GetResult();
+        File.AppendAllText(Path.Combine(folder,"TestingHostOwnershipEvents.jsonl"),JsonSerializer.Serialize(new{Passed=true,Checks=4,
+            NativeOwner=factory.GetType().Assembly.GetName().Name,AfterReloadSafe=true})+Environment.NewLine);
+    }
+}

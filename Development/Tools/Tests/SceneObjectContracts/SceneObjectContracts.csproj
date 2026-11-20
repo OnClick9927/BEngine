@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType>
+    <AssemblyName>SceneObjectContractProbe</AssemblyName>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.Contracts.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    
+    <Reference Include="$(EngineBinaries)/BEngine.Graphics.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Rendering2D.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.UIElements.dll" />
+    
+    <Reference Include="$(EngineBinaries)/BEngine.TextEditing.dll" />
+    
+    <Reference Include="$(EngineBinaries)/YamlDotNet.dll" />
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+    <Compile Include="../GraphicsSceneBoundary/RecordingDevice.cs" Link="RecordingDevice.cs" />
+  </ItemGroup>
+</Project>

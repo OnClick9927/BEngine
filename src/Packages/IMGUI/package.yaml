@@ -1,0 +1,27 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.imgui
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: IMGUI
+description: Editor immediate-mode UI, layout, controls, inspectors and frame presentation.
+enabledByDefault: true
+content:
+  editor: Editor
+editor:
+  assembly: BEngine.IMGUI.Editor
+  rootNamespace: BEngine.Editor
+  dependencies:
+  - packageId: com.bengine.text-editing
+    target: runtime
+  - packageId: com.bengine.graphics
+    target: runtime
+  packageReferences:
+  - id: YamlDotNet
+    version: 18.1.0
+
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

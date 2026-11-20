@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../BEngine.Player.Hosts.props" />
+  <PropertyGroup>
+    <BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <BEngineSolutionRole>Template</BEngineSolutionRole>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BEngine.Player.iOSHost</AssemblyName>
+    <RootNamespace>BEngine.Player.Hosts.iOS</RootNamespace>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifier>ios-arm64</RuntimeIdentifier>
+    <MtouchInterpreter>BEngine.Player.iOSHost</MtouchInterpreter>
+  </PropertyGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="BEngine.Platform.Veldrid" RootMode="All" />
+    <ProjectReference Include="../../../iOS/Editor/Native/BEngine.iOS.Native/BEngine.iOS.Native.csproj"
+                      Condition="Exists('../../../iOS/Editor/Native/BEngine.iOS.Native/BEngine.iOS.Native.csproj')"
+                      AdditionalProperties="BEnginePlatformRuntimeRoot=$(BEngineResolvedRuntimeRoot);BEngineRuntimeShaderCompiler=false" />
+    <ProjectReference Include="../../BuildPlatform/BEngine.iOS.Native/BEngine.iOS.Native.csproj"
+                      Condition="!Exists('../../../iOS/Editor/Native/BEngine.iOS.Native/BEngine.iOS.Native.csproj') and Exists('../../BuildPlatform/BEngine.iOS.Native/BEngine.iOS.Native.csproj')"
+                      AdditionalProperties="BEnginePlatformRuntimeRoot=$(BEngineResolvedRuntimeRoot);BEngineRuntimeShaderCompiler=false" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BEngineContentRoot)' != '' and '$(BEngineDataDirectoryName)' != ''">
+    <BundleResource Include="$(BEngineContentRoot)\$(BEngineDataDirectoryName)\**\*">
+      <LogicalName>BEnginePayload/$(BEngineDataDirectoryName)/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </BundleResource>
+  </ItemGroup>
+</Project>

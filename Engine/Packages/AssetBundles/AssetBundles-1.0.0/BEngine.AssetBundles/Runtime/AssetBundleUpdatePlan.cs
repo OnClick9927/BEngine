@@ -26,14 +26,31 @@ public sealed class AssetBundleUpdatePlan
         _downloads = downloads.Select(CloneDescriptor).ToArray();
         _downloadSize = _downloads.Aggregate(0L, (total, item) => checked(total + item.Size));
         HasUpdates = hasUpdates;
-        _bundleNames = (bundleNames ?? targetCatalog.Bundles.Select(static bundle => bundle.Name).ToArray())
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        _bundleNames = ((((global::System.Collections.Generic.IEnumerable<string>)((bundleNames ?? ProjectItems1281()))), (global::System.Collections.Generic.IEqualityComparer<string>? )(StringComparer.OrdinalIgnoreCase)) switch
+        {
+            (string[] { Length: 0 }, _) => global::System.Array.Empty<string>(),
+            var (distinctItems1265, distinctComparer1265) => distinctItems1265.ToHashSet<string>(distinctComparer1265).ToArray()});
+        [global::BEngine.SkipLoopGuard]
+        string[] ProjectItems1281()
+        {
+            var projectionSource1281 = targetCatalog.Bundles;
+            ArgumentNullException.ThrowIfNull(projectionSource1281, "source");
+            global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundleDescriptor> projectionValues1281 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(projectionSource1281);
+            var projectionOutput1281 = projectionValues1281.Length == 0 ? global::System.Array.Empty<string>() : new string[projectionValues1281.Length];
+            var projectionIndex1281 = 0;
+            foreach (var bundle in projectionValues1281)
+            {
+                projectionOutput1281[projectionIndex1281++] = bundle.Name;
+            }
+        
+            return projectionOutput1281;
+        }
     }
 
     public AssetBundleVersion TargetVersion => CreateTargetVersionSnapshot();
     public AssetBundleCatalog TargetCatalog => CreateTargetCatalogSnapshot();
     public IReadOnlyList<AssetBundleDescriptor> Downloads =>
-        Array.AsReadOnly(_downloads.Select(CloneDescriptor).ToArray());
+        Array.AsReadOnly((_downloads is { } projectionSource1667 ? projectionSource1667.Length == 0 ? global::System.Array.Empty<global::BEngine.AssetBundles.AssetBundleDescriptor>() : global::System.Array.ConvertAll<global::BEngine.AssetBundles.AssetBundleDescriptor, global::BEngine.AssetBundles.AssetBundleDescriptor>(projectionSource1667, CloneDescriptor) : throw new global::System.ArgumentNullException("source")));
     public bool HasUpdates { get; }
     public long DownloadSize => _downloadSize;
     public IReadOnlyList<string> BundleNames => Array.AsReadOnly(_bundleNames);

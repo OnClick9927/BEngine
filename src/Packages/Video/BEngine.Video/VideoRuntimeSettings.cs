@@ -1,12 +1,13 @@
+using BEngine.Instrumentation;
 namespace BEngine.Video;
 
 /// <summary>Admission uses a conservative estimate, not a measurement of codec-owned native allocations.</summary>
 public static class VideoRuntimeSettings
 {
-    static VideoRuntimeSettings() => Diagnostics.RuntimeDiagnosticRegistry.Register("budget.video", "Video admission",
-        new("active", "Active decoders", Diagnostics.RuntimeDiagnosticUnit.Number, () => activeDecoders),
-        new("estimated", "Estimated decoder/frame bytes", Diagnostics.RuntimeDiagnosticUnit.Bytes, () => estimatedMemoryBytes),
-        new("limit", "Effective estimated memory budget", Diagnostics.RuntimeDiagnosticUnit.Bytes, () => effectiveEstimatedMemoryBudgetBytes));
+    static VideoRuntimeSettings() => Instrumentation.RuntimeDiagnosticRegistry.Register("budget.video", "Video admission",
+        new("active", "Active decoders", Instrumentation.RuntimeDiagnosticUnit.Number, () => activeDecoders),
+        new("estimated", "Estimated decoder/frame bytes", Instrumentation.RuntimeDiagnosticUnit.Bytes, () => estimatedMemoryBytes),
+        new("limit", "Effective estimated memory budget", Instrumentation.RuntimeDiagnosticUnit.Bytes, () => effectiveEstimatedMemoryBudgetBytes));
     public static int maximumActiveDecoders { get; set; } = 32;
     public static long maximumEstimatedMemoryBytes { get; set; } = 256L * 1024 * 1024;
     public static int activeDecoders { get; private set; }

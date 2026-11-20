@@ -162,8 +162,16 @@ internal sealed partial class ProjectLauncherForm
         _defaultDirectorySetting.TextChanged += (_, _) => MarkSettingsChanged();
         layout.SizeChanged += (_, _) =>
         {
-            foreach (var label in layout.Controls.OfType<Label>())
-                label.MaximumSize = new Size(Math.Max(100, layout.ClientSize.Width - 16), 0);
+            {
+                var __typedSource7642 = layout.Controls;
+                ArgumentNullException.ThrowIfNull(__typedSource7642, "source");
+                foreach (var __typedItem7642 in __typedSource7642)
+                {
+                    if (__typedItem7642 is not Label label)
+                        continue;
+                    label.MaximumSize = new Size(Math.Max(100, layout.ClientSize.Width - 16), 0);
+                }
+            }
         };
     }
 
@@ -213,9 +221,22 @@ internal sealed partial class ProjectLauncherForm
                     throw new ArgumentException("Choose an absolute folder path, or leave the default project folder blank.");
                 preferences.DefaultProjectDirectory = Path.GetFullPath(preferences.DefaultProjectDirectory);
                 var pathRoot = Path.GetPathRoot(preferences.DefaultProjectDirectory)!;
-                if (preferences.DefaultProjectDirectory[pathRoot.Length..]
-                    .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar])
-                    .Any(part => part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0))
+                bool __queryResult10555;
+                {
+                    var __querySource10555 = preferences.DefaultProjectDirectory[pathRoot.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
+                    ArgumentNullException.ThrowIfNull(__querySource10555, "source");
+                    __queryResult10555 = false;
+                    foreach (var __queryItem10555 in __querySource10555)
+                    {
+                        if ((__queryItem10555.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0))
+                        {
+                            __queryResult10555 = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (__queryResult10555)
                     throw new ArgumentException("The default project folder contains invalid characters.");
                 if (File.Exists(preferences.DefaultProjectDirectory))
                     throw new ArgumentException("The default project folder points to a file. Choose a folder instead.");
@@ -262,12 +283,14 @@ internal sealed partial class ProjectLauncherForm
         }
         SuspendLayout();
         Recolor(this);
+        Recolor(_engineUpdatesWindow);
         ApplyLocalization();
         ApplyUpdateAppearance();
         SetNavigationState(_activeNavigation);
         RefreshProjectList();
         _projectList.Invalidate();
-        _packageList.Invalidate();
+        _packageCatalogView.Invalidate();
+        _packageDiagram.Invalidate();
         _engineSelector.Invalidate();
         ResumeLayout(true);
     }

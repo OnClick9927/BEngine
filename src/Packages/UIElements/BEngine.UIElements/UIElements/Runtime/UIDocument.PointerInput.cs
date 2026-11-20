@@ -42,20 +42,34 @@ public sealed partial class UIDocument
         if (control is not null && IsAvailable(control))
         {
             state.Pressed = control; state.PressInside = true; RefreshPressed(control);
-            if (control is Slider { isReadOnly: false } slider && !_pointers.Values.Any(other => !ReferenceEquals(other, state) && ReferenceEquals(other.Slider, slider)))
+            if (control is Slider { isReadOnly: false } slider && !HasSliderOwner(slider, state))
             { state.Slider = slider; UpdateSlider(slider, position, list); }
         }
         if (pointerType == UIPointerType.Touch && state.Slider is null)
             for (var ancestor = picked; ancestor is not null; ancestor = ancestor.parent)
                 if (ancestor is ScrollView scroll)
                 {
-                    if (!_pointers.Values.Any(other => ReferenceEquals(other.Scroll, scroll))) state.Scroll = scroll;
+                    if (!HasScrollOwner(scroll)) state.Scroll = scroll;
                     break;
                 }
         // Controls capture their drag; custom controls may select another capture target in the callback.
         if (state.Captured is null && control is not null)
         { state.Captured = control; _pointerVersion++; }
         return true;
+    }
+
+    private bool HasSliderOwner(Slider slider, PointerInteraction state)
+    {
+        foreach (var other in _pointers.Values)
+            if (!ReferenceEquals(other, state) && ReferenceEquals(other.Slider, slider)) return true;
+        return false;
+    }
+
+    private bool HasScrollOwner(ScrollView scroll)
+    {
+        foreach (var other in _pointers.Values)
+            if (ReferenceEquals(other.Scroll, scroll)) return true;
+        return false;
     }
 
     public void DispatchPointerMove(Vector2 position, int viewportWidth, int viewportHeight) =>
@@ -109,7 +123,7 @@ public sealed partial class UIDocument
                 if (state.Pressed is { } pressed) { state.Pressed = null; RefreshPressed(pressed); }
                 CapturePointer(pointerId, scroll);
                 if (!IsCurrent(state)) return;
-                ScrollBy(scroll, -(float)((position.y - previous.y) / Fix64.Max(scale, Fix64.FromDecimal(.01m))), list, scale);
+                ScrollBy(scroll, -(float)((position.y - previous.y) / Fix64.Max(scale, Fix64.FromRaw(42949672L) /* .01 */)), list, scale);
             }
         }
         if (state.Pressed is { } element)

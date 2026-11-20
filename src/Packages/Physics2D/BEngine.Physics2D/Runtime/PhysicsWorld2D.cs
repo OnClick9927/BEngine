@@ -1,10 +1,11 @@
+using BEngine.Instrumentation;
 using System.Runtime.CompilerServices;
 
 namespace BEngine.Physics2D;
 
 public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
 {
-    private static readonly Fix64 CollisionSeparationEpsilon = Fix64.Parse("0.001");
+    private static readonly Fix64 CollisionSeparationEpsilon = Fix64.FromRaw(4294967L) /* Parse("0.001") */;
     private static readonly ConditionalWeakTable<Scene, PhysicsWorld2D> Worlds = new();
     private static readonly List<PhysicsWorld2D> RunningWorlds = [];
     private static PhysicsWorld2D? _active;
@@ -31,11 +32,11 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
     public int broadphaseCandidateCount { get; private set; }
     public int narrowphaseTestCount { get; private set; }
     public long possiblePairCount { get; private set; }
-    static PhysicsWorld2D() => Diagnostics.RuntimeDiagnosticRegistry.Register("budget.physics2d", "Physics 2D broadphase",
-        new("possible", "All possible pairs", Diagnostics.RuntimeDiagnosticUnit.Number, () => ActiveWorld?.possiblePairCount ?? 0),
-        new("candidates", "AABB candidate pairs", Diagnostics.RuntimeDiagnosticUnit.Number, () => ActiveWorld?.broadphaseCandidateCount ?? 0),
-        new("narrow", "Narrowphase tests", Diagnostics.RuntimeDiagnosticUnit.Number, () => ActiveWorld?.narrowphaseTestCount ?? 0),
-        new("contacts", "Active contacts", Diagnostics.RuntimeDiagnosticUnit.Number, () => ActiveWorld?._contacts.Count ?? 0));
+    static PhysicsWorld2D() => Instrumentation.RuntimeDiagnosticRegistry.Register("budget.physics2d", "Physics 2D broadphase",
+        new("possible", "All possible pairs", Instrumentation.RuntimeDiagnosticUnit.Number, () => ActiveWorld?.possiblePairCount ?? 0),
+        new("candidates", "AABB candidate pairs", Instrumentation.RuntimeDiagnosticUnit.Number, () => ActiveWorld?.broadphaseCandidateCount ?? 0),
+        new("narrow", "Narrowphase tests", Instrumentation.RuntimeDiagnosticUnit.Number, () => ActiveWorld?.narrowphaseTestCount ?? 0),
+        new("contacts", "Active contacts", Instrumentation.RuntimeDiagnosticUnit.Number, () => ActiveWorld?._contacts.Count ?? 0));
     private Scene? _scene;
 
     private static PhysicsWorld2D? ActiveWorld
@@ -114,6 +115,7 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
         RunningWorlds.Remove(this);
         if (ReferenceEquals(_active, this)) _active = RunningWorlds.LastOrDefault();
         _scene = null;
+        DisposeWorkspaces();
     }
 
     public static PhysicsWorld2D? Get(Scene scene) =>
@@ -241,23 +243,32 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
         _scene.GetComponents(_effectorBatch); FilterActive(_effectorBatch);
         if (_effectorBatch.Count == 0) return;
         var colliders = _colliderBatch; FillActiveColliders(colliders);
-        foreach (var effector in _effectorBatch)
+        ObjectPool<SimulationWorkspace>? pool = null;
+        SimulationWorkspace? workspace = null;
+        try
         {
-            if (effector is PlatformEffector2D) continue;
-            var region = effector.GetComponent<Collider2D>();
-            if (region is not { enabled: true, usedByEffector: true }) continue;
-            var shape = PhysicsShapeFactory2D.Create(region);
-            var affected = new HashSet<Rigidbody2D>(ReferenceEqualityComparer.Instance);
-            foreach (var collider in colliders)
+            foreach (var effector in _effectorBatch)
             {
-                var body = collider.attachedRigidbody;
-                if (body is not { simulated: true, bodyType: RigidbodyType2D.Dynamic } || ReferenceEquals(body, region.attachedRigidbody) ||
-                    !effector.Affects(collider) || !_state.ShouldCollide(region, collider) ||
-                    !CollisionAlgorithms2D.TryCollide(shape, PhysicsShapeFactory2D.Create(collider), out _) || !affected.Add(body)) continue;
-                if (effector is AreaEffector2D area) body.AddForce(area.Force(body));
-                else if (effector is BuoyancyEffector2D buoyancy) body.AddForce(buoyancy.Force(collider, body, _state.Gravity));
+                if (effector is PlatformEffector2D) continue;
+                var region = effector.GetComponent<Collider2D>();
+                if (region is not { enabled: true, usedByEffector: true }) continue;
+                var shape = PhysicsShapeFactory2D.Create(region);
+                pool ??= SimulationWorkspaces;
+                workspace ??= pool.Get();
+                var affected = workspace.Affected;
+                affected.Clear();
+                foreach (var collider in colliders)
+                {
+                    var body = collider.attachedRigidbody;
+                    if (body is not { simulated: true, bodyType: RigidbodyType2D.Dynamic } || ReferenceEquals(body, region.attachedRigidbody) ||
+                        !effector.Affects(collider) || !_state.ShouldCollide(region, collider) ||
+                        !CollisionAlgorithms2D.TryCollide(shape, PhysicsShapeFactory2D.Create(collider), out _) || !affected.Add(body)) continue;
+                    if (effector is AreaEffector2D area) body.AddForce(area.Force(body));
+                    else if (effector is BuoyancyEffector2D buoyancy) body.AddForce(buoyancy.Force(collider, body, _state.Gravity));
+                }
             }
         }
+        finally { if (workspace is not null) pool!.Release(workspace); }
     }
 
     private void Activate()
@@ -311,66 +322,93 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
         Vector2 endPosition, Fix64 endRotation)
     {
         if (_scene is null) return;
-        var own = ActiveColliders(_scene).Where(collider => ReferenceEquals(collider.attachedRigidbody, body) &&
-            !collider.isTrigger).ToArray();
-        if (own.Length == 0) return;
-        var targets = ActiveColliders(_scene).Where(collider => !ReferenceEquals(collider.attachedRigidbody, body) &&
-            !collider.isTrigger && own.Any(source => _state.ShouldCollide(source, collider))).ToArray();
-        if (targets.Length == 0) return;
-        var rotationDelta = endRotation - startRotation;
-        var segments = GetSweepSegmentCount(rotationDelta);
-        var targetShapes = new Dictionary<Collider2D, PhysicsShape2D>(ReferenceEqualityComparer.Instance);
-        foreach (var target in targets) targetShapes[target] = PhysicsShapeFactory2D.Create(target);
-        for (var segment = 0; segment < segments; segment++)
+        var pool = SimulationWorkspaces;
+        var workspace = pool.Get();
+        try
         {
-            var fromTime = (Fix64)segment / segments;
-            var toTime = (Fix64)(segment + 1) / segments;
-            SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, fromTime);
-            var startShapes = new Dictionary<Collider2D, PhysicsShape2D>(ReferenceEqualityComparer.Instance);
-            foreach (var collider in own) startShapes[collider] = PhysicsShapeFactory2D.Create(collider);
-            var from = body.position;
-            SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, toTime);
-            var movement = body.position - from;
-            var length = movement.magnitude;
-            var bestDistance = Fix64.FromRaw(long.MaxValue);
-            var bestNormal = Vector2.zero;
-            if (length > Fix64.Epsilon)
-                foreach (var source in startShapes.Values)
-                    foreach (var target in targetShapes.Values)
-                        if (CollisionAlgorithms2D.SweepShape(source, movement / length, length, target,
-                                out var distance, out var normal) && distance < bestDistance)
-                        {
-                            bestDistance = distance;
-                            bestNormal = normal;
-                        }
-            if (bestDistance != Fix64.FromRaw(long.MaxValue))
+            var own = workspace.Own;
+            var colliders = _scene.QueryComponents<Collider2D>();
+            for (var index = 0; index < colliders.Count; index++)
             {
-                var fraction = Mathf.Clamp01(bestDistance / length);
-                var hitTime = fromTime + (toTime - fromTime) * fraction;
-                SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, hitTime);
-                body.position -= movement.normalized * CollisionSeparationEpsilon;
-                StopIntoSurface(body, bestNormal);
+                var collider = colliders[index];
+                if (IsQueryable(collider) && ReferenceEquals(collider.attachedRigidbody, body) && !collider.isTrigger)
+                    own.Add(collider);
+            }
+            if (own.Count == 0) return;
+            var targets = workspace.Targets;
+            colliders = _scene.QueryComponents<Collider2D>();
+            for (var index = 0; index < colliders.Count; index++)
+            {
+                var collider = colliders[index];
+                if (!IsQueryable(collider) || ReferenceEquals(collider.attachedRigidbody, body) || collider.isTrigger) continue;
+                foreach (var source in own)
+                    if (_state.ShouldCollide(source, collider)) { targets.Add(collider); break; }
+            }
+            if (targets.Count == 0) return;
+            var rotationDelta = endRotation - startRotation;
+            var segments = GetSweepSegmentCount(rotationDelta);
+            var targetShapes = workspace.TargetShapes;
+            foreach (var target in targets) targetShapes[target] = PhysicsShapeFactory2D.Create(target);
+            for (var segment = 0; segment < segments; segment++)
+            {
+                var fromTime = (Fix64)segment / segments;
+                var toTime = (Fix64)(segment + 1) / segments;
+                SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, fromTime);
+                var startShapes = workspace.StartShapes;
+                startShapes.Clear();
+                foreach (var collider in own) startShapes[collider] = PhysicsShapeFactory2D.Create(collider);
+                var from = body.position;
+                SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, toTime);
+                var movement = body.position - from;
+                var length = movement.magnitude;
+                var bestDistance = Fix64.FromRaw(long.MaxValue);
+                var bestNormal = Vector2.zero;
+                if (length > Fix64.Epsilon)
+                    foreach (var source in startShapes.Values)
+                        foreach (var target in targetShapes.Values)
+                            if (CollisionAlgorithms2D.SweepShape(source, movement / length, length, target,
+                                    out var distance, out var normal) && distance < bestDistance)
+                            {
+                                bestDistance = distance;
+                                bestNormal = normal;
+                            }
+                if (bestDistance != Fix64.FromRaw(long.MaxValue))
+                {
+                    var fraction = Mathf.Clamp01(bestDistance / length);
+                    var hitTime = fromTime + (toTime - fromTime) * fraction;
+                    SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, hitTime);
+                    body.position -= movement.normalized * CollisionSeparationEpsilon;
+                    StopIntoSurface(body, bestNormal);
+                    return;
+                }
+
+                if (!OverlapsTargets(own, targetShapes)) continue;
+                var low = fromTime;
+                var high = toTime;
+                for (var iteration = 0; iteration < 14; iteration++)
+                {
+                    var middle = (low + high) * Fix64.Half;
+                    SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, middle);
+                    if (OverlapsTargets(own, targetShapes)) high = middle;
+                    else low = middle;
+                }
+                SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, low);
+                body.angularVelocity = Fix64.Zero;
+                PhysicsShape2D? closest = null;
+                var closestDistance = Fix64.FromRaw(long.MaxValue);
+                foreach (var shape in targetShapes.Values)
+                {
+                    var distance = (shape.Center - body.worldCenterOfMass).sqrMagnitude;
+                    if (closest is not null && distance >= closestDistance) continue;
+                    closest = shape; closestDistance = distance;
+                }
+                StopIntoSurface(body, (closest!.Center - body.worldCenterOfMass).normalized);
                 return;
             }
-
-            if (!OverlapsTargets(own, targetShapes)) continue;
-            var low = fromTime;
-            var high = toTime;
-            for (var iteration = 0; iteration < 14; iteration++)
-            {
-                var middle = (low + high) * Fix64.Half;
-                SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, middle);
-                if (OverlapsTargets(own, targetShapes)) high = middle;
-                else low = middle;
-            }
-            SetBodyPose(body, startPosition, startRotation, endPosition, endRotation, low);
-            body.angularVelocity = Fix64.Zero;
-            var closest = targetShapes.Values.OrderBy(shape => (shape.Center - body.worldCenterOfMass).sqrMagnitude).First();
-            StopIntoSurface(body, (closest.Center - body.worldCenterOfMass).normalized);
-            return;
+            body.position = endPosition;
+            body.rotation = endRotation;
         }
-        body.position = endPosition;
-        body.rotation = endRotation;
+        finally { pool.Release(workspace); }
     }
 
     private static int GetSweepSegmentCount(Fix64 rotationDelta)
@@ -387,8 +425,8 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
         body.rotation = startRotation + (endRotation - startRotation) * time;
     }
 
-    private static bool OverlapsTargets(IEnumerable<Collider2D> own,
-        IReadOnlyDictionary<Collider2D, PhysicsShape2D> targets)
+    private static bool OverlapsTargets(List<Collider2D> own,
+        Dictionary<Collider2D, PhysicsShape2D> targets)
     {
         foreach (var collider in own)
         {
@@ -480,29 +518,35 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
     {
         if (_scene is null || direction.sqrMagnitude <= Fix64.Epsilon) return [];
         direction = direction.normalized;
-        var hits = new List<(RaycastHit2D Hit, int Order)>();
-        var colliders = _scene.QueryComponents<Collider2D>();
-        for (var index = 0; index < colliders.Count; index++)
+        var pool = QueryWorkspaces;
+        var workspace = pool.Get();
+        try
         {
-            var collider = colliders[index];
-            if (!IsQueryable(collider) || !LayerMatches(collider, layerMask) || !TriggerMatches(collider, triggerInteraction) ||
-                !CollisionAlgorithms2D.Raycast(PhysicsShapeFactory2D.Create(collider), origin, direction,
-                    maxDistance, out var distance, out var normal)) continue;
-            hits.Add((new RaycastHit2D
+            var hits = workspace.Hits;
+            var colliders = _scene.QueryComponents<Collider2D>();
+            for (var index = 0; index < colliders.Count; index++)
             {
-                collider = collider, distance = distance,
-                fraction = maxDistance <= Fix64.Epsilon ? Fix64.Zero : distance / maxDistance,
-                point = origin + direction * distance, normal = normal
-            }, index));
+                var collider = colliders[index];
+                if (!IsQueryable(collider) || !LayerMatches(collider, layerMask) || !TriggerMatches(collider, triggerInteraction) ||
+                    !CollisionAlgorithms2D.Raycast(PhysicsShapeFactory2D.Create(collider), origin, direction,
+                        maxDistance, out var distance, out var normal)) continue;
+                hits.Add((new RaycastHit2D
+                {
+                    collider = collider, distance = distance,
+                    fraction = maxDistance <= Fix64.Epsilon ? Fix64.Zero : distance / maxDistance,
+                    point = origin + direction * distance, normal = normal
+                }, index));
+            }
+            hits.Sort(static (left, right) =>
+            {
+                var distance = left.Hit.distance.CompareTo(right.Hit.distance);
+                return distance != 0 ? distance : left.Order.CompareTo(right.Order);
+            });
+            var result = new RaycastHit2D[hits.Count];
+            for (var index = 0; index < hits.Count; index++) result[index] = hits[index].Hit;
+            return result;
         }
-        hits.Sort(static (left, right) =>
-        {
-            var distance = left.Hit.distance.CompareTo(right.Hit.distance);
-            return distance != 0 ? distance : left.Order.CompareTo(right.Order);
-        });
-        var result = new RaycastHit2D[hits.Count];
-        for (var index = 0; index < hits.Count; index++) result[index] = hits[index].Hit;
-        return result;
+        finally { pool.Release(workspace); }
     }
 
     private bool RaycastInWorld(Vector2 origin, Vector2 direction, Fix64 maxDistance,
@@ -596,24 +640,39 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
     {
         var active = ActiveWorld;
         if (active?._scene is null) return null;
-        return ActiveColliders(active._scene).FirstOrDefault(collider =>
-            LayerMatches(collider, layerMask) && active.TriggerMatches(collider, triggerInteraction) &&
-            CollisionAlgorithms2D.Contains(PhysicsShapeFactory2D.Create(collider), point));
+        var pool = active.QueryWorkspaces;
+        var workspace = pool.Get();
+        try
+        {
+            active.FillActiveColliders(workspace.Colliders);
+            foreach (var collider in workspace.Colliders)
+                if (LayerMatches(collider, layerMask) && active.TriggerMatches(collider, triggerInteraction) &&
+                    CollisionAlgorithms2D.Contains(PhysicsShapeFactory2D.Create(collider), point)) return collider;
+            return null;
+        }
+        finally { pool.Release(workspace); }
     }
 
     private Collider2D[] OverlapShapeInWorld(PhysicsShape2D query, ulong layerMask,
         QueryTriggerInteraction triggerInteraction)
     {
         if (_scene is null) return [];
-        var result = new List<Collider2D>();
-        foreach (var collider in ActiveColliders(_scene))
+        var pool = QueryWorkspaces;
+        var workspace = pool.Get();
+        try
         {
-            if (!LayerMatches(collider, layerMask) || !TriggerMatches(collider, triggerInteraction)) continue;
-            var shape = PhysicsShapeFactory2D.Create(collider);
-            if (query.Bounds.Intersects(shape.Bounds) && CollisionAlgorithms2D.TryCollide(query, shape, out _))
-                result.Add(collider);
+            var result = workspace.Results;
+            FillActiveColliders(workspace.Colliders);
+            foreach (var collider in workspace.Colliders)
+            {
+                if (!LayerMatches(collider, layerMask) || !TriggerMatches(collider, triggerInteraction)) continue;
+                var shape = PhysicsShapeFactory2D.Create(collider);
+                if (query.Bounds.Intersects(shape.Bounds) && CollisionAlgorithms2D.TryCollide(query, shape, out _))
+                    result.Add(collider);
+            }
+            return [.. result];
         }
-        return [.. result];
+        finally { pool.Release(workspace); }
     }
 
     internal static void SyncTransforms() { foreach (var world in RunningWorlds) world._scene?.SynchronizeTransforms(); }
@@ -631,9 +690,6 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
             if (IsActive(collider) && collider.attachedRigidbody?.simulated != false && collider.compositeOwner is not { enabled: true }) values[write++] = collider;
         values.RemoveRange(write, values.Count - write);
     }
-
-    private static Collider2D[] ActiveColliders(Scene scene) =>
-        [.. scene.QueryComponents<Collider2D>().Where(IsQueryable)];
 
     private static bool IsQueryable(Collider2D collider) => IsActive(collider) &&
         collider.attachedRigidbody?.simulated != false && collider.compositeOwner is not { enabled: true };
@@ -729,7 +785,7 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
     private static void InvokeCollision(Collider2D own, Collider2D other, ContactState[] states, bool flip, string methodName)
     {
         Collision2D? collision = null;
-        using var components = own.gameObject.GetComponentsEnumeratorUnchecked();
+        using var components = own.gameObject.GetComponentsEnumerator();
         while (components.MoveNext())
         {
             var component = components.Current;
@@ -745,7 +801,7 @@ public sealed partial class PhysicsWorld2D : ISceneRuntimeSystem
 
     private static void Invoke(GameObject target, string methodName, object argument)
     {
-        using var components = target.GetComponentsEnumeratorUnchecked();
+        using var components = target.GetComponentsEnumerator();
         while (components.MoveNext())
         {
             var component = components.Current;

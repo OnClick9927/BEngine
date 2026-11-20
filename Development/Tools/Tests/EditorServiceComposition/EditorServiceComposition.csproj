@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Probe exported binaries; do not run engine export/native patch targets. -->
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+    <EditorAssembly Condition="'$(EditorAssembly)' == ''">$(EngineBinaries)/BEngine.Core.Editor.dll</EditorAssembly>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core.Editor.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Core*.dll" Exclude="$(EngineBinaries)/BEngine.Core.Editor.dll" />
+    <Reference Include="$(EditorAssembly)" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.dll" />
+    <Reference Include="$(EngineBinaries)/BEngine.Platform.DotNet.Editor.dll" />
+    <Reference Include="$(EngineBinaries)/Microsoft.Extensions.DependencyInjection*.dll" />
+  </ItemGroup>
+</Project>

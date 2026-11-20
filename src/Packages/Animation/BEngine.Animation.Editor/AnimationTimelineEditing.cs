@@ -51,11 +51,11 @@ public static class AnimationTimelineEditing
                 if (component.isDestroyed) continue;
                 var properties = component is Transform
                     ? new[] { "localPosition.x", "localPosition.y", "localRotation", "localScale.x", "localScale.y" }
-                    : RuntimeTypeCache.GetSerializableMembers(component.GetType(), inspectorOnly: true)
+                    : BEngine.Serialization.ComponentFieldSerializer.GetInspectorMembers(component.GetType())
                         .Where(member => !member.IsDefined(typeof(HideInInspectorAttribute), true))
-                        .SelectMany(member => RuntimeTypeCache.GetMemberAccessor(member).ValueType == typeof(Color)
+                        .SelectMany(member => BEngine.Serialization.ComponentFieldSerializer.GetMemberType(member) == typeof(Color)
                             ? new[] { member.Name + ".r", member.Name + ".g", member.Name + ".b", member.Name + ".a" }
-                            : RuntimeTypeCache.GetMemberAccessor(member).ValueType == typeof(Vector2)
+                            : BEngine.Serialization.ComponentFieldSerializer.GetMemberType(member) == typeof(Vector2)
                                 ? new[] { member.Name + ".x", member.Name + ".y" } : new[] { member.Name });
                 foreach (var property in properties)
                     if (AnimationAccessor.Create(component, property) is { } accessor) result.Add(new(path, accessor));
@@ -175,7 +175,7 @@ internal sealed class AnimationPreviewSession : IEditorPreview
         foreach (var session in active)
         {
             if (session._beforeStop is not null &&
-                EditorFeatureGuard.Invoke("Animation Inspector recording", session._beforeStop))
+                EditorCallbacks.Invoke("Animation Inspector recording", session._beforeStop))
                 recordedSessions.Add(session);
             else
                 // Failed recording remains an ordinary Inspector edit with normal Undo.
@@ -198,7 +198,7 @@ internal sealed class AnimationPreviewSession : IEditorPreview
     internal static void StopAll()
     {
         foreach (var session in Sessions.ToArray())
-            EditorFeatureGuard.Invoke("Animation preview stop", session.Dispose);
+            EditorCallbacks.Invoke("Animation preview stop", session.Dispose);
     }
     public void Dispose()
     {
@@ -206,15 +206,15 @@ internal sealed class AnimationPreviewSession : IEditorPreview
         _disposing = true;
         try
         {
-            if (_beforeStop is not null) EditorFeatureGuard.Invoke("Animation preview finish recording", _beforeStop);
+            if (_beforeStop is not null) EditorCallbacks.Invoke("Animation preview finish recording", _beforeStop);
             foreach (var value in _values.Values)
-                EditorFeatureGuard.Invoke($"Animation preview restore {value.Property.Component.GetType().FullName}.{value.Property.PropertyName}",
+                EditorCallbacks.Invoke($"Animation preview restore {value.Property.Component.GetType().FullName}.{value.Property.PropertyName}",
                     () => value.Restore(preserveEdit: !_recording));
         }
         finally
         {
             _values.Clear(); _recording = false; Sessions.Remove(this); EditorPreviewRegistry.Unregister(this); _disposing = false;
-            if (_stopped is not null) EditorFeatureGuard.Invoke("Animation preview transport stopped", _stopped);
+            if (_stopped is not null) EditorCallbacks.Invoke("Animation preview transport stopped", _stopped);
         }
     }
     private sealed class PreviewValue(AnimationProperty property)

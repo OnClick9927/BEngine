@@ -8,8 +8,8 @@ internal static class AnimationPackageRegistration
     internal static void RegisterCodecs()
     {
         RuntimeAssetCodecRegistry.Register<AnimationClip>((bytes, _) =>
-            AnimationClipSerialization.Restore(YamlUtility.Deserialize<AnimationClipData>(TextAsset.Decode(bytes.ToArray()))));
+            AnimationClipSerialization.Restore(YamlUtility.Deserialize<AnimationClipData>(RuntimeAssetDecoding.DecodeText(bytes.Span))));
         RuntimeAssetCodecRegistry.Register<AnimatorController>((bytes, _) =>
-            AnimatorControllerSerialization.Restore(YamlUtility.Deserialize<AnimatorControllerData>(TextAsset.Decode(bytes.ToArray()))));
+            AnimatorControllerSerialization.Restore(YamlUtility.Deserialize<AnimatorControllerData>(RuntimeAssetDecoding.DecodeText(bytes.Span))));
     }
 }

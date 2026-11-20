@@ -1,0 +1,72 @@
+<Project>
+  <PropertyGroup>
+    <BEngineGlfwSafetyImported>true</BEngineGlfwSafetyImported>
+    <_BEngineGlfwSafetyRoot>$(MSBuildThisFileDirectory)runtimes</_BEngineGlfwSafetyRoot>
+  </PropertyGroup>
+  <!-- Substitute copy inputs as well as final outputs. Otherwise every Build
+       would first restore the differently-sized NuGet DLL and then overwrite
+       it, defeating incremental copies and failing when a live host maps it. -->
+  <Target Name="ResolveBEngineSafeGlfwBuildAssets" AfterTargets="ResolveLockFileCopyLocalFiles"
+          BeforeTargets="_CopyFilesMarkedCopyLocal">
+    <ItemGroup>
+      <_BEngineGlfwBuildInput Include="@(ReferenceCopyLocalPaths)"
+          Condition="'%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'glfw3.dll'">
+        <BEngineGlfwRid>$([System.Text.RegularExpressions.Regex]::Match('%(FullPath)', '[/\\]runtimes[/\\](win-(?:x64|x86|arm64))[/\\]native[/\\]').Groups[1].Value)</BEngineGlfwRid>
+      </_BEngineGlfwBuildInput>
+      <_BEngineGlfwBuildInput Update="@(_BEngineGlfwBuildInput)" Condition="'%(_BEngineGlfwBuildInput.BEngineGlfwRid)' == '' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">
+        <BEngineGlfwRid>$(RuntimeIdentifier)</BEngineGlfwRid>
+      </_BEngineGlfwBuildInput>
+      <_BEngineGlfwBuildInput Update="@(_BEngineGlfwBuildInput)" Condition="'%(_BEngineGlfwBuildInput.BEngineGlfwRid)' == '' and $([System.String]::Copy('$(PublishRuntimeIdentifier)').StartsWith('win-'))">
+        <BEngineGlfwRid>$(PublishRuntimeIdentifier)</BEngineGlfwRid>
+      </_BEngineGlfwBuildInput>
+      <_BEngineGlfwBuildInput Remove="@(_BEngineGlfwBuildInput)"
+          Condition="!Exists('$(_BEngineGlfwSafetyRoot)/%(_BEngineGlfwBuildInput.BEngineGlfwRid)/native/glfw3.dll')" />
+      <ReferenceCopyLocalPaths Remove="@(_BEngineGlfwBuildInput)" />
+      <ReferenceCopyLocalPaths Include="@(_BEngineGlfwBuildInput->'$(_BEngineGlfwSafetyRoot)/%(BEngineGlfwRid)/native/glfw3.dll')" />
+    </ItemGroup>
+  </Target>
+  <!-- Replace only build outputs, never the shared NuGet cache. A portable
+       build can contain several Windows architectures alongside other OSes.
+       Unpatched architectures keep their original resolved dependency. -->
+  <Target Name="CopyBEngineSafeGlfw" AfterTargets="CopyFilesToOutputDirectory">
+    <ItemGroup>
+      <_BEngineGlfwBuildFile Include="$(TargetDir)**/glfw3.dll" />
+      <_BEngineGlfwBuildFile Update="@(_BEngineGlfwBuildFile)">
+        <BEngineGlfwRid>$([System.Text.RegularExpressions.Regex]::Match('%(FullPath)', '[/\\]runtimes[/\\](win-(?:x64|x86|arm64))[/\\]native[/\\]').Groups[1].Value)</BEngineGlfwRid>
+      </_BEngineGlfwBuildFile>
+      <_BEngineGlfwBuildFile Update="@(_BEngineGlfwBuildFile)" Condition="'%(_BEngineGlfwBuildFile.BEngineGlfwRid)' == '' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">
+        <BEngineGlfwRid>$(RuntimeIdentifier)</BEngineGlfwRid>
+      </_BEngineGlfwBuildFile>
+      <_BEngineGlfwBuildFile Update="@(_BEngineGlfwBuildFile)" Condition="'%(_BEngineGlfwBuildFile.BEngineGlfwRid)' == '' and $([System.String]::Copy('$(PublishRuntimeIdentifier)').StartsWith('win-'))">
+        <BEngineGlfwRid>$(PublishRuntimeIdentifier)</BEngineGlfwRid>
+      </_BEngineGlfwBuildFile>
+      <_BEngineGlfwBuildFile Remove="@(_BEngineGlfwBuildFile)"
+          Condition="!Exists('$(_BEngineGlfwSafetyRoot)/%(_BEngineGlfwBuildFile.BEngineGlfwRid)/native/glfw3.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_BEngineGlfwBuildFile->'$(_BEngineGlfwSafetyRoot)/%(BEngineGlfwRid)/native/glfw3.dll')"
+          DestinationFiles="@(_BEngineGlfwBuildFile)" SkipUnchangedFiles="true" />
+  </Target>
+  <!-- Publish may select original NuGet assets instead of TargetDir. Substitute
+       those items before single-file bundling, retaining their SDK metadata. -->
+  <Target Name="PublishBEngineSafeGlfw" AfterTargets="ComputeResolvedFilesToPublishList"
+          BeforeTargets="GenerateSingleFileBundle">
+    <ItemGroup>
+      <_BEngineGlfwPublishFile Include="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'glfw3.dll'">
+        <BEngineGlfwRid>$([System.Text.RegularExpressions.Regex]::Match('%(FullPath)', '[/\\]runtimes[/\\](win-(?:x64|x86|arm64))[/\\]native[/\\]').Groups[1].Value)</BEngineGlfwRid>
+      </_BEngineGlfwPublishFile>
+      <_BEngineGlfwPublishFile Update="@(_BEngineGlfwPublishFile)" Condition="'%(_BEngineGlfwPublishFile.BEngineGlfwRid)' == '' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">
+        <BEngineGlfwRid>$(RuntimeIdentifier)</BEngineGlfwRid>
+      </_BEngineGlfwPublishFile>
+      <_BEngineGlfwPublishFile Update="@(_BEngineGlfwPublishFile)" Condition="'%(_BEngineGlfwPublishFile.BEngineGlfwRid)' == '' and $([System.String]::Copy('$(PublishRuntimeIdentifier)').StartsWith('win-'))">
+        <BEngineGlfwRid>$(PublishRuntimeIdentifier)</BEngineGlfwRid>
+      </_BEngineGlfwPublishFile>
+      <_BEngineGlfwPublishFile Remove="@(_BEngineGlfwPublishFile)"
+          Condition="!Exists('$(_BEngineGlfwSafetyRoot)/%(_BEngineGlfwPublishFile.BEngineGlfwRid)/native/glfw3.dll')" />
+    </ItemGroup>
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(_BEngineGlfwPublishFile)" />
+      <ResolvedFileToPublish Include="@(_BEngineGlfwPublishFile->'$(_BEngineGlfwSafetyRoot)/%(BEngineGlfwRid)/native/glfw3.dll')" />
+    </ItemGroup>
+  </Target>
+</Project>

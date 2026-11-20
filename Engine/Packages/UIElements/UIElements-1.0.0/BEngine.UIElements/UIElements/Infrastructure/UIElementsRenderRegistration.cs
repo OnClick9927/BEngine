@@ -15,6 +15,6 @@ internal static class UIElementsRenderRegistration
         RuntimeHelpers.GetHashCode(typeof(UIDocument).Assembly).ToString("X");
 
     [ModuleInitializer]
-    internal static void Register() => SceneRenderContributor2DRegistry.Register(
-        RegistrationId, device => new UIElementsRenderContributor2D(device));
+    internal static void Register() => RenderContributorRegistry.Register(
+        RegistrationId, device => new UIElementsDrawContributor(device));
 }

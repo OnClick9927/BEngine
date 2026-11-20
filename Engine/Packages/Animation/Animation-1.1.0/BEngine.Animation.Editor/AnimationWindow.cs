@@ -16,7 +16,32 @@ public sealed partial class AnimationWindow : UIElementsEditorWindow<AnimationWi
         else if (Selection.activeGameObject is { } target)
         {
             // Selecting an animated child keeps the root clip open while recording.
-            if (model.Recording && model.Target is { } root && AnimationTimelineEditing.GetProperties(root).Any(p => p.Component.gameObject == target)) return;
+            if (model.Recording && model.Target is { } root && Query1305())
+                return;
+            bool Query1305()
+            {
+                var querySource1305 = AnimationTimelineEditing.GetProperties(root);
+                ArgumentNullException.ThrowIfNull(querySource1305, "source");
+                if (querySource1305.GetType() == typeof(global::BEngine.Editor.AnimationProperty[]) || querySource1305.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Editor.AnimationProperty>))
+                {
+                    global::System.ReadOnlySpan<global::BEngine.Editor.AnimationProperty> queryValues1305 = querySource1305.GetType() == typeof(global::BEngine.Editor.AnimationProperty[]) ? (global::BEngine.Editor.AnimationProperty[])(object)querySource1305 : global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Editor.AnimationProperty>)(object)querySource1305);
+                    foreach (var p in queryValues1305)
+                    {
+                        if (p.Component.gameObject == target)
+                            return true;
+                    }
+                }
+                else
+                {
+                    foreach (var p in querySource1305)
+                    {
+                        if (p.Component.gameObject == target)
+                            return true;
+                    }
+                }
+            
+                return false;
+            }
             if (target == model.Target) return;
             controller.StopPreview(); model.Target = target;
             var selected = target.GetComponent<Animation>()?.clip ??
@@ -55,7 +80,7 @@ public sealed partial class AnimationWindow : UIElementsEditorWindow<AnimationWi
 
     private void DrawToolbar(Fix64 width)
     {
-        GUI.DrawRect(new Rect(0, 0, width, 81), new Color((Fix64).16, (Fix64).17, (Fix64).18));
+        GUI.DrawRect(new Rect(0, 0, width, 81), new Color(Fix64.FromRaw(687194767L) /* (Fix64).16 */, Fix64.FromRaw(730144440L) /* (Fix64).17 */, Fix64.FromRaw(773094113L) /* (Fix64).18 */));
         var clip = EditorGUI.ObjectField(new Rect(5, 4, Fix64.Max(80, width - 253), 23), model.Clip, false);
         if (!ReferenceEquals(clip, model.Clip)) controller.Select(clip);
         if (GUI.Button(new Rect(width - 242, 4, 43, 23), "New")) controller.Select(new AnimationClip { name = "New Animation" });
@@ -68,7 +93,7 @@ public sealed partial class AnimationWindow : UIElementsEditorWindow<AnimationWi
         {
             if (GUI.Toggle(new Rect(5, 31, 67, 23), model.Previewing, "Preview", EditorStyles.toolbarButton) != model.Previewing) controller.SetPreview(!model.Previewing);
             var old = GUI.backgroundColor;
-            if (model.Recording) GUI.backgroundColor = new Color((Fix64).8, (Fix64).2, (Fix64).2);
+            if (model.Recording) GUI.backgroundColor = new Color(Fix64.FromRaw(3435973836L) /* (Fix64).8 */, Fix64.FromRaw(858993459L) /* (Fix64).2 */, Fix64.FromRaw(858993459L) /* (Fix64).2 */);
             if (GUI.Toggle(new Rect(76, 31, 62, 23), model.Recording, "Record", EditorStyles.toolbarButton) != model.Recording) controller.SetRecording(!model.Recording);
             GUI.backgroundColor = old;
             if (GUI.Button(new Rect(142, 31, 28, 23), new GUIContent("|<", "Go to first frame"))) controller.SetTime(0);
@@ -163,7 +188,31 @@ public sealed partial class AnimationWindow : UIElementsEditorWindow<AnimationWi
             if (area.height > 70 && model.Selection.Count == 1)
             {
                 var selected = model.Selection.First();
-                if ((uint)selected.Binding < (uint)clip.bindings.Count && clip.bindings[selected.Binding].curve.keys.FirstOrDefault(k => k.time == selected.Time) is var key)
+                [global::BEngine.SkipLoopGuard]
+                global::BEngine.Keyframe Query13758(global::System.Collections.Generic.IEnumerable<global::BEngine.Keyframe> querySource13758)
+                {
+                    ArgumentNullException.ThrowIfNull(querySource13758, "source");
+                    bool Matches13758(global::BEngine.Keyframe k) => k.time == selected.Time;
+                    global::System.ReadOnlySpan<global::BEngine.Keyframe> queryValues13758;
+                    if (querySource13758.GetType() == typeof(global::BEngine.Keyframe[]))
+                        queryValues13758 = (global::BEngine.Keyframe[])querySource13758;
+                    else if (querySource13758.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Keyframe>))
+                        queryValues13758 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Keyframe>)querySource13758);
+                    else
+                    {
+                        foreach (var k in querySource13758)
+                            if (Matches13758(k))
+                                return k;
+                        return default!;
+                    }
+                
+                    foreach (var k in queryValues13758)
+                        if (Matches13758(k))
+                            return k;
+                    return default!;
+                }
+                
+                if ((uint)selected.Binding < (uint)clip.bindings.Count && Query13758(clip.bindings[selected.Binding].curve.keys)is var key)
                 {
                     DrawKeyDetails(new Rect(area.x, area.y + 26, area.width, area.height - 26), clip, selected, key);
                 }
@@ -226,7 +275,36 @@ public sealed class AnimationWindowController : EditorWindowController<Animation
         if (Model.Clip is not { } clip) return;
         if (Model.Target is { } target)
         {
-            var property = AnimationTimelineEditing.GetProperties(target).FirstOrDefault(p => p.RelativePath == Model.Path && p.ComponentType == Model.Component && p.PropertyName == Model.Property);
+            var property = Matches17178();
+            [global::BEngine.SkipLoopGuard]
+            global::BEngine.Editor.AnimationProperty? Matches17178()
+            {
+                var matchSource17178 = AnimationTimelineEditing.GetProperties(target);
+                ArgumentNullException.ThrowIfNull(matchSource17178, "source");
+                global::System.ReadOnlySpan<global::BEngine.Editor.AnimationProperty> matchValues17178;
+                if (matchSource17178.GetType() == typeof(global::BEngine.Editor.AnimationProperty[]))
+                    matchValues17178 = (global::BEngine.Editor.AnimationProperty[])(object)matchSource17178;
+                else if (matchSource17178.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Editor.AnimationProperty>))
+                    matchValues17178 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Editor.AnimationProperty>)(object)matchSource17178);
+                else
+                {
+                    foreach (var p in (global::System.Collections.Generic.IEnumerable<global::BEngine.Editor.AnimationProperty>)matchSource17178)
+                    {
+                        if (p.RelativePath == Model.Path && p.ComponentType == Model.Component && p.PropertyName == Model.Property)
+                            return p;
+                    }
+            
+                    return default!;
+                }
+            
+                foreach (var p in matchValues17178)
+                {
+                    if (p.RelativePath == Model.Path && p.ComponentType == Model.Component && p.PropertyName == Model.Property)
+                        return p;
+                }
+            
+                return default!;
+            }
             if (property is not null) { AddProperty(property); return; }
         }
         Model.Message = "Use Add Property to choose a supported property on the target object.";
@@ -343,7 +421,36 @@ public sealed class AnimationWindowController : EditorWindowController<Animation
             foreach (var index in selected)
             {
                 var binding = clip.bindings[index];
-                var property = properties.FirstOrDefault(item => item.Matches(binding));
+                var property = Matches23299();
+                [global::BEngine.SkipLoopGuard]
+                global::BEngine.Editor.AnimationProperty? Matches23299()
+                {
+                    var matchSource23299 = properties;
+                    ArgumentNullException.ThrowIfNull(matchSource23299, "source");
+                    global::System.ReadOnlySpan<global::BEngine.Editor.AnimationProperty> matchValues23299;
+                    if (matchSource23299.GetType() == typeof(global::BEngine.Editor.AnimationProperty[]))
+                        matchValues23299 = (global::BEngine.Editor.AnimationProperty[])(object)matchSource23299;
+                    else if (matchSource23299.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Editor.AnimationProperty>))
+                        matchValues23299 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Editor.AnimationProperty>)(object)matchSource23299);
+                    else
+                    {
+                        foreach (var item in (global::System.Collections.Generic.IEnumerable<global::BEngine.Editor.AnimationProperty>)matchSource23299)
+                        {
+                            if (item.Matches(binding))
+                                return item;
+                        }
+                
+                        return default!;
+                    }
+                
+                    foreach (var item in matchValues23299)
+                    {
+                        if (item.Matches(binding))
+                            return item;
+                    }
+                
+                    return default!;
+                }
                 binding.SetValue(time, property?.Read() ?? binding.Evaluate(time));
             }
         });
@@ -376,7 +483,31 @@ public sealed class AnimationWindowController : EditorWindowController<Animation
         var selected = Model.Selection.First();
         if ((uint)selected.Binding >= (uint)clip.bindings.Count || clip.bindings[selected.Binding].kind != AnimationBindingKind.Numeric) return;
         var curve = clip.bindings[selected.Binding].curve;
-        var key = curve.keys.FirstOrDefault(key => key.time == selected.Time);
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.Keyframe Query28705(global::System.Collections.Generic.IEnumerable<global::BEngine.Keyframe> querySource28705)
+        {
+            ArgumentNullException.ThrowIfNull(querySource28705, "source");
+            bool Matches28705(global::BEngine.Keyframe key) => key.time == selected.Time;
+            global::System.ReadOnlySpan<global::BEngine.Keyframe> queryValues28705;
+            if (querySource28705.GetType() == typeof(global::BEngine.Keyframe[]))
+                queryValues28705 = (global::BEngine.Keyframe[])querySource28705;
+            else if (querySource28705.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Keyframe>))
+                queryValues28705 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Keyframe>)querySource28705);
+            else
+            {
+                foreach (var key in querySource28705)
+                    if (Matches28705(key))
+                        return key;
+                return default!;
+            }
+        
+            foreach (var key in queryValues28705)
+                if (Matches28705(key))
+                    return key;
+            return default!;
+        }
+        
+        var key = Query28705(curve.keys);
         AnimationEditing.Edit(clip, "Edit Animation Tangent Modes", () => curve.AddKey(key with
         { inMode = input, outMode = output, weightedMode = weights, inWeight = inWeight, outWeight = outWeight }));
         Sample(); Repaint();
@@ -391,7 +522,31 @@ public sealed class AnimationWindowController : EditorWindowController<Animation
         if (Model.Clip is not { } clip || Model.Selection.Count != 1) return;
         var selected = Model.Selection.First(); if ((uint)selected.Binding >= (uint)clip.bindings.Count) return;
         var curve = clip.bindings[selected.Binding].curve; time = AnimationTimelineEditing.SnapTime(clip, time);
-        var original = curve.keys.FirstOrDefault(key => key.time == selected.Time);
+        [global::BEngine.SkipLoopGuard]
+        global::BEngine.Keyframe Query29656(global::System.Collections.Generic.IEnumerable<global::BEngine.Keyframe> querySource29656)
+        {
+            ArgumentNullException.ThrowIfNull(querySource29656, "source");
+            bool Matches29656(global::BEngine.Keyframe key) => key.time == selected.Time;
+            global::System.ReadOnlySpan<global::BEngine.Keyframe> queryValues29656;
+            if (querySource29656.GetType() == typeof(global::BEngine.Keyframe[]))
+                queryValues29656 = (global::BEngine.Keyframe[])querySource29656;
+            else if (querySource29656.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Keyframe>))
+                queryValues29656 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Keyframe>)querySource29656);
+            else
+            {
+                foreach (var key in querySource29656)
+                    if (Matches29656(key))
+                        return key;
+                return default!;
+            }
+        
+            foreach (var key in queryValues29656)
+                if (Matches29656(key))
+                    return key;
+            return default!;
+        }
+        
+        var original = Query29656(curve.keys);
         var binding = clip.bindings[selected.Binding];
         if (binding.kind == AnimationBindingKind.ObjectReference) value = original.value;
         else if (binding.kind == AnimationBindingKind.Boolean) value = value == 0 ? 0 : 1;
@@ -490,9 +645,16 @@ public sealed class AnimationWindowController : EditorWindowController<Animation
         {
             if ((uint)selected.Binding >= (uint)clip.bindings.Count) continue;
             var binding = clip.bindings[selected.Binding];
-            foreach (var key in binding.curve.keys.Where(key => key.time == selected.Time))
-                Clipboard.Add((binding.relativePath, binding.componentType, binding.propertyName, binding.kind, binding.objectType,
-                    binding.kind == AnimationBindingKind.ObjectReference ? binding.ObjectAt(key.value) : null, key with { time = key.time - origin }));
+            {
+                var __filteredSource30840 = binding.curve.keys;
+                ArgumentNullException.ThrowIfNull(__filteredSource30840, "source");
+                foreach (var key in __filteredSource30840)
+                {
+                    if (!(key.time == selected.Time))
+                        continue;
+                    Clipboard.Add((binding.relativePath, binding.componentType, binding.propertyName, binding.kind, binding.objectType, binding.kind == AnimationBindingKind.ObjectReference ? binding.ObjectAt(key.value) : null, key with { time = key.time - origin }));
+                }
+            }
         }
         Model.Message = $"Copied {Clipboard.Count} keyframes. Paste at the current frame.";
     }
@@ -504,7 +666,31 @@ public sealed class AnimationWindowController : EditorWindowController<Animation
         {
             foreach (var copied in Clipboard)
             {
-                var binding = clip.bindings.FirstOrDefault(b => b.relativePath == copied.Path && b.componentType == copied.Component && b.propertyName == copied.Property);
+                [global::BEngine.SkipLoopGuard]
+                global::BEngine.AnimationBinding? Query36486(global::System.Collections.Generic.IEnumerable<global::BEngine.AnimationBinding> querySource36486)
+                {
+                    ArgumentNullException.ThrowIfNull(querySource36486, "source");
+                    bool Matches36486(global::BEngine.AnimationBinding b) => b.relativePath == copied.Path && b.componentType == copied.Component && b.propertyName == copied.Property;
+                    global::System.ReadOnlySpan<global::BEngine.AnimationBinding> queryValues36486;
+                    if (querySource36486.GetType() == typeof(global::BEngine.AnimationBinding[]))
+                        queryValues36486 = (global::BEngine.AnimationBinding[])querySource36486;
+                    else if (querySource36486.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AnimationBinding>))
+                        queryValues36486 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AnimationBinding>)querySource36486);
+                    else
+                    {
+                        foreach (var b in querySource36486)
+                            if (Matches36486(b))
+                                return b;
+                        return default!;
+                    }
+                
+                    foreach (var b in queryValues36486)
+                        if (Matches36486(b))
+                            return b;
+                    return default!;
+                }
+                
+                var binding = Query36486(clip.bindings);
                 if (binding is null) { binding = new AnimationBinding { relativePath = copied.Path, componentType = copied.Component, propertyName = copied.Property, kind = copied.Kind, objectType = copied.ObjectType }; clip.bindings.Add(binding); }
                 var time = AnimationTimelineEditing.SnapTime(clip, Model.Time + copied.Key.time);
                 if (binding.kind != copied.Kind) continue;

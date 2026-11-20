@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../../PlatformNative.props" Condition="Exists('../../../../PlatformNative.props')" />
+  <Import Project="../PlatformNative.props" Condition="!Exists('../../../../PlatformNative.props')" />
+  <PropertyGroup>
+    <BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <BEngineNativeSourceProject>../../../BEngine.Android/BEngine.Android.csproj</BEngineNativeSourceProject>
+    <BEngineSolutionRole>Template</BEngineSolutionRole>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <RootNamespace>BEngine.Platform.AndroidNative</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('../../../BEngine.Android/BEngine.Android.csproj')">
+    <ProjectReference Include="../../../BEngine.Android/BEngine.Android.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('../../../BEngine.Android/BEngine.Android.csproj')">
+    <Reference Include="BEngine.Core" HintPath="$(BEnginePlatformRuntimeRoot)/BEngine.Core.dll" />
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <Reference Include="BEngine.Android" HintPath="$(BEnginePlatformRuntimeRoot)/BEngine.Android.dll" />
+    <Reference Include="BEngine.Platform.DotNet" HintPath="$(BEnginePlatformRuntimeRoot)/BEngine.Platform.DotNet.dll" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('../../../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj')">
+    <ProjectReference Include="../../../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('../../../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj')">
+    <Reference Include="BEngine.Platform.Contracts" HintPath="$(BEnginePlatformRuntimeRoot)/BEngine.Platform.Contracts.dll" />
+  </ItemGroup>
+</Project>

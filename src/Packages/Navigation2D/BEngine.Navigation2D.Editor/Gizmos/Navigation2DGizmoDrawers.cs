@@ -7,13 +7,13 @@ internal static class Navigation2DGizmoDrawers
 {
     private const GizmoType DrawModes = GizmoType.Selected;
     private static readonly Color SelectedColor = new(
-        Fix64.Parse("0.25"), Fix64.Parse("0.85"), Fix64.One, Fix64.One);
+        Fix64.FromRaw(1073741824L) /* Parse("0.25") */, Fix64.FromRaw(3650722201L) /* Parse("0.85") */, Fix64.One, Fix64.One);
     private static readonly Color NormalColor = new(
-        Fix64.Parse("0.15"), Fix64.Parse("0.65"), Fix64.Parse("0.9"), Fix64.Parse("0.7"));
+        Fix64.FromRaw(644245094L) /* Parse("0.15") */, Fix64.FromRaw(2791728742L) /* Parse("0.65") */, Fix64.FromRaw(3865470566L) /* Parse("0.9") */, Fix64.FromRaw(3006477107L) /* Parse("0.7") */);
     private static readonly Color LinkSelectedColor = new(
-        Fix64.One, Fix64.Parse("0.78"), Fix64.Parse("0.2"), Fix64.One);
+        Fix64.One, Fix64.FromRaw(3350074490L) /* Parse("0.78") */, Fix64.FromRaw(858993459L) /* Parse("0.2") */, Fix64.One);
     private static readonly Color LinkNormalColor = new(
-        Fix64.Parse("0.9"), Fix64.Parse("0.62"), Fix64.Parse("0.15"), Fix64.Parse("0.7"));
+        Fix64.FromRaw(3865470566L) /* Parse("0.9") */, Fix64.FromRaw(2662879723L) /* Parse("0.62") */, Fix64.FromRaw(644245094L) /* Parse("0.15") */, Fix64.FromRaw(3006477107L) /* Parse("0.7") */);
 
     [DrawGizmo(DrawModes)]
     private static void DrawSurface(NavigationSurface2D surface, GizmoType gizmoType)

@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using DrawingColor = System.Drawing.Color;
 
 namespace BEngine.Launcher;
 
@@ -54,8 +55,17 @@ internal sealed class LauncherUpdateStatistics : Control
         {
             var count = _counts[(int)kind];
             if (total == 0 || count == 0) continue;
-            var edge = (int)Math.Round(ClientSize.Width *
-                Kinds.TakeWhile(value => value != kind).Append(kind).Sum(value => _counts[(int)value]) / (double)total);
+            var edge = (int)Math.Round(ClientSize.Width * Scan2221(Kinds.TakeWhile(value => value != kind).Append(kind)) / (double)total);
+            [global::BEngine.SkipLoopGuard]
+            int Scan2221(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherUpdateChangeKind> scanSource2221)
+            {
+                ArgumentNullException.ThrowIfNull(scanSource2221, "source");
+                int total = 0;
+                foreach (var scanItem2221 in scanSource2221)
+                    total = checked(total + Match2221(scanItem2221));
+                return total;
+                int Match2221(global::BEngine.Launcher.LauncherUpdateChangeKind value) => _counts[(int)value];
+            }
             using var brush = new SolidBrush(StatusColor(kind));
             graphics.FillRectangle(brush, offset, bar.Y, Math.Max(0, edge - offset), bar.Height);
             offset = edge;
@@ -77,7 +87,7 @@ internal sealed class LauncherUpdateStatistics : Control
         }
     }
 
-    private Color StatusColor(LauncherUpdateChangeKind kind) => LauncherUpdateStatusGlyph.GetColor(kind, _palette.Panel);
+    private DrawingColor StatusColor(LauncherUpdateChangeKind kind) => LauncherUpdateStatusGlyph.GetColor(kind, _palette.Panel);
 
     private int Scale(int value) => (int)Math.Ceiling(value * DeviceDpi / 96d);
 }

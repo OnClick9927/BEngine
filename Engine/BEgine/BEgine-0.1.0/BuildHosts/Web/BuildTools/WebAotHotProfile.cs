@@ -3,6 +3,8 @@ using System.Reflection.Metadata;
 using System.Security.Cryptography;
 using System.Text.Json;
 
+namespace BEngine.Player.BuildTools;
+
 // Optional project policy, evaluated against the linked metadata rather than
 // runtime method tokens. It only narrows methods already eligible for AOT.
 internal sealed class WebAotHotProfile

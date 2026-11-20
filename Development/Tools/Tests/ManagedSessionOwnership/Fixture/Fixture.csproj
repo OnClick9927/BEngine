@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><AssemblyName>ManagedSessionFixture</AssemblyName><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(EngineBinaries)/BEngine.Core.dll" /><Reference Include="$(EngineBinaries)/BEngine.Core.dll;$(EngineBinaries)/BEngine.Player.dll" />
+    </ItemGroup>
+</Project>

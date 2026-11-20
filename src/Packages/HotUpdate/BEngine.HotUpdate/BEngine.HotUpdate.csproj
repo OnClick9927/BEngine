@@ -1,4 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><AssemblyName>BEngine.HotUpdate</AssemblyName><RootNamespace>BEngine</RootNamespace><BEnginePackageExportOwner>true</BEnginePackageExportOwner><NoWarn>$(NoWarn);CA2255</NoWarn></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../../Core/BEngine/BEngine.csproj" /><PackageReference Include="YamlDotNet" /><PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" /></ItemGroup>
-</Project>

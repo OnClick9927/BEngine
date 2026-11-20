@@ -70,6 +70,7 @@ internal sealed partial class ProjectLauncherForm
         }
         finally { _populatingSettings = populating; }
         RefreshPackageList();
+        if (_packageDetailsSplit is { } packageSplit) ConfigureCatalogSplitter(packageSplit);
         UpdateEngineDetails();
         UpdateCreateActions();
         ApplyUpdateAppearance();

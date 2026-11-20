@@ -3,8 +3,8 @@ namespace BEngine;
 [AddComponentMenu("Rendering/2D Light")]
 public sealed partial class Light2D : MonoBehaviour, ISpriteReferenceOwner
 {
-    private static readonly Fix64 MinimumRadius = Fix64.Parse("0.001");
-    private static readonly Fix64 MinimumOuterAngle = Fix64.Parse("0.1");
+    private static readonly Fix64 MinimumRadius = Fix64.FromRaw(4294967L) /* Parse("0.001") */;
+    private static readonly Fix64 MinimumOuterAngle = Fix64.FromRaw(429496729L) /* Parse("0.1") */;
 
     public Light2DType lightType { get; set; } = Light2DType.Point;
     public Color color { get; set; } = Color.white;
@@ -62,7 +62,7 @@ public sealed partial class Light2D : MonoBehaviour, ISpriteReferenceOwner
         if (lightType != Light2DType.Spot || distance <= Fix64.Epsilon)
             return intensity * radial;
 
-        var direction = Transform.RotateVector(Vector2.right, transform.rotation);
+        var direction = Vector2.Rotate(Vector2.right, transform.rotation);
         var alignment = Vector2.Dot(direction, toPoint / distance);
         var outer = Fix64.Cos(Fix64.Min(outerAngle, 360) * Fix64.Half * Fix64.Deg2Rad);
         if (alignment <= outer) return Fix64.Zero;

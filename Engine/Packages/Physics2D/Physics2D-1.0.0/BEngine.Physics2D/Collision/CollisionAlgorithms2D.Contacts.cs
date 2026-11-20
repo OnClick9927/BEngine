@@ -5,7 +5,7 @@ internal static partial class CollisionAlgorithms2D
     private static PhysicsManifold2D ClipContactEdges(PhysicsShape2D left, PhysicsShape2D right, Vector2 normal, Fix64 penetration)
     {
         var leftEdge = FacingEdge(left, normal); var rightEdge = FacingEdge(right, -normal);
-        var flip = Vector2.Dot(Outward(right, rightEdge), -normal) > Vector2.Dot(Outward(left, leftEdge), normal) + (Fix64).001;
+        var flip = Vector2.Dot(Outward(right, rightEdge), -normal) > Vector2.Dot(Outward(left, leftEdge), normal) + Fix64.FromRaw(4294967L) /* (Fix64).001 */;
         var reference = flip ? right : left; var incident = flip ? left : right;
         var edgeIndex = flip ? rightEdge : leftEdge;
         var faceNormal = Outward(reference, edgeIndex);
@@ -23,12 +23,12 @@ internal static partial class CollisionAlgorithms2D
         foreach (var point in points[..count])
         {
             var separation = Vector2.Dot(faceNormal, point - from);
-            if (separation <= (Fix64).00001) contacts[contactCount++] = point - faceNormal * separation / 2;
+            if (separation <= Fix64.FromRaw(42949L) /* (Fix64).00001 */) contacts[contactCount++] = point - faceNormal * separation / 2;
         }
         if (contactCount == 0)
             return new((Support(left, normal) + Support(right, -normal)) / 2, normal, penetration);
         return new(contacts[0], normal, penetration) { Point2 = contactCount > 1 ? contacts[1] : contacts[0],
-            HasSecondPoint = contactCount > 1 && (contacts[0] - contacts[1]).sqrMagnitude > (Fix64).000001 };
+            HasSecondPoint = contactCount > 1 && (contacts[0] - contacts[1]).sqrMagnitude > Fix64.FromRaw(4294L) /* (Fix64).000001 */ };
     }
     private static int ClipSegment(ReadOnlySpan<Vector2> points, Vector2 normal, Fix64 limit, Span<Vector2> result)
     {

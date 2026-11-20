@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><BEnginePackageExportOwner>false</BEnginePackageExportOwner><BEngineBootstrapAssembly>true</BEngineBootstrapAssembly>
+    <RootNamespace>BEngine.Platform</RootNamespace>
+    <AssemblyName>BEngine.Platform.Veldrid</AssemblyName>
+    <BEngineRuntimeAssembly>false</BEngineRuntimeAssembly>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BEngineRuntimeShaderCompiler Condition="'$(BEngineRuntimeShaderCompiler)' == ''">true</BEngineRuntimeShaderCompiler>
+    <DefineConstants Condition="'$(BEngineRuntimeShaderCompiler)' == 'true'">$(DefineConstants);BENGINE_RUNTIME_SHADER_COMPILER</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Contracts/BEngine.Platform.Contracts/BEngine.Platform.Contracts.csproj" />
+    <ProjectReference Include="../../../Core/BEngine.Core/BEngine.Core.csproj" />
+    <ProjectReference Include="../../../../Development/Tools/BEngine.VeldridSafety/BEngine.VeldridSafety.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="OutputType;RuntimeIdentifier;SelfContained;PublishSingleFile;PublishAot;PublishTrimmed" />
+    <PackageReference Include="Veldrid" />
+    <PackageReference Include="Veldrid.SPIRV" Condition="'$(BEngineRuntimeShaderCompiler)' == 'true'" />
+    <!-- Overrides NativeLibraryLoader's obsolete Newtonsoft.Json dependency. -->
+    <PackageReference Include="Newtonsoft.Json" />
+  </ItemGroup>
+</Project>

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
 using BEngine.Serialization;
@@ -110,7 +111,7 @@ public static partial class AssetBundleCatalogSerializer
     public static string ComputeSha256(ReadOnlySpan<byte> data)
     {
         using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.ShaBuffer, data.Length);
-        return Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
+        return Convert.ToHexStringLower(SHA256.HashData(data));
     }
 
     public static string ComputeSha256(Stream stream)
@@ -118,7 +119,7 @@ public static partial class AssetBundleCatalogSerializer
         ArgumentNullException.ThrowIfNull(stream);
         using var measurement = AssetBundlePerformanceDiagnostics.Measure(AssetBundlePerformanceDiagnostics.Phase.ShaStream,
             AssetBundlePerformanceDiagnostics.RemainingBytes(stream));
-        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+        return Convert.ToHexStringLower(SHA256.HashData(stream));
     }
 
     public static async BValueTask<string> ComputeSha256Async(
@@ -155,42 +156,58 @@ public static partial class AssetBundleCatalogSerializer
             return result;
         }
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = new byte[Math.Min(64 * 1024, bytesPerFrame)];
-        var processed = 0;
-        long total = 0;
-        while (true)
+        var readSize = Math.Min(64 * 1024, bytesPerFrame);
+        var buffer = ArrayPool<byte>.Shared.Rent(readSize);
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var read = stream.Read(buffer, 0, Math.Min(buffer.Length, bytesPerFrame - processed));
-            if (read == 0) break;
-            hash.AppendData(buffer, 0, read);
-            processed += read;
-            total += read;
-            progress?.Invoke(total);
-            if (processed >= bytesPerFrame)
+            var processed = 0;
+            long total = 0;
+            while (true)
             {
-                await BValueTask.Yield();
-                processed = 0;
+                cancellationToken.ThrowIfCancellationRequested();
+                var read = stream.Read(buffer, 0, Math.Min(readSize, bytesPerFrame - processed));
+                if (read == 0) break;
+                hash.AppendData(buffer, 0, read);
+                processed += read;
+                total += read;
+                progress?.Invoke(total);
+                if (processed >= bytesPerFrame)
+                {
+                    await BValueTask.Yield();
+                    processed = 0;
+                }
             }
+            return Convert.ToHexStringLower(hash.GetHashAndReset());
         }
-        return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+        }
     }
 
     private static string ComputeSha256OnWorker(Stream stream, int chunkSize, CancellationToken cancellationToken, Action<long>? progress = null)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = new byte[Math.Min(64 * 1024, chunkSize)];
-        long processed = 0;
-        while (true)
+        var readSize = Math.Min(64 * 1024, chunkSize);
+        var buffer = ArrayPool<byte>.Shared.Rent(readSize);
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var read = stream.Read(buffer, 0, buffer.Length);
-            if (read == 0) break;
-            hash.AppendData(buffer, 0, read);
-            processed += read;
-            progress?.Invoke(processed);
+            long processed = 0;
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var read = stream.Read(buffer, 0, readSize);
+                if (read == 0) break;
+                hash.AppendData(buffer, 0, read);
+                processed += read;
+                progress?.Invoke(processed);
+            }
+            return Convert.ToHexStringLower(hash.GetHashAndReset());
         }
-        return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+        }
     }
 
     // Only the private RuntimeState may select this path, after its validated

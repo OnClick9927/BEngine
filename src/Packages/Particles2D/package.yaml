@@ -5,23 +5,47 @@ id: com.bengine.particles2d
 packageVersion: 1.0.0
 minimumEngineVersion: 0.1.0
 displayName: Particles2D
-description: 2D particle simulation, rendering and edit-mode previews.
+description: 2D particle simulation, rendering, swept Physics2D collisions and edit-mode previews.
 enabledByDefault: true
+replaces:
+- com.bengine.particle-physics2d
 content:
   runtime: Resources
   editor: Editor
 runtime:
   dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  - packageId: com.bengine.graphics
+    target: runtime
   - packageId: com.bengine.animation
     target: runtime
+  - packageId: com.bengine.physics2d
+    target: runtime
   assembly: BEngine.Particles2D
+  aliases:
+  - BEngine.ParticlePhysics2D
   rootNamespace: BEngine
   packageReferences:
   - id: YamlDotNet
     version: 18.1.0
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
 editor:
   assembly: BEngine.Particles2D.Editor
   rootNamespace: BEngine.Editor
   dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  - packageId: com.bengine.imgui
+    target: editor
+  - packageId: com.bengine.rendering2d
+    target: editor
   - packageId: com.bengine.particles2d
     target: runtime
+  - packageId: com.bengine.graphics
+    target: runtime
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

@@ -19,9 +19,8 @@ public sealed class VisualTreeAsset : ScriptableObject
     public StyleSheet inlineStyleSheet => _inlineStyleSheet;
     public override IReadOnlyList<BAsset> GetImportedRepresentations()
     {
-        _inlineStyleSheet.Id = Id;
         _inlineStyleSheet.name = "inlineStyle";
-        _inlineStyleSheet.BindSubAssetReference(assetPath, Id, 919748196331920512, Id);
+        RuntimeAssetReferences.BindSubAsset(_inlineStyleSheet, assetPath, Id, 919748196331920512, Id);
         return [_inlineStyleSheet];
     }
 
@@ -50,15 +49,15 @@ public sealed class VisualTreeAsset : ScriptableObject
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         RejectLegacyExtension(path);
-        if (RuntimeServiceAccess.FileSystem.FileExists(path))
+        if (RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>().FileExists(path))
             return Document<VisualTreeAsset>.Read(path, LoadAsset).ToAsset();
-        if (!RuntimeServiceAccess.PathService.GetExtension(path)
+        if (!RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetExtension(path)
                 .Equals(".bxml", StringComparison.OrdinalIgnoreCase))
             throw new FileNotFoundException("UI document was not found.", path);
         return new VisualTreeAsset
         {
             _uxml = true,
-            name = RuntimeServiceAccess.PathService.GetFileNameWithoutExtension(path),
+            name = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFileNameWithoutExtension(path),
             _sourcePath = path.Replace('\\', '/'),
             _uxmlTemplate = UxmlSerializer.LoadTemplate(path)
         };
@@ -68,10 +67,10 @@ public sealed class VisualTreeAsset : ScriptableObject
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         RejectLegacyExtension(path);
-        if (RuntimeServiceAccess.PathService.GetExtension(path)
+        if (RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetExtension(path)
             .Equals(".bxml", StringComparison.OrdinalIgnoreCase))
         {
-            var fullPath = RuntimeServiceAccess.PathService.GetFullPath(path);
+            var fullPath = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(path);
             var uxmlAsset = new VisualTreeAsset
             {
                 _uxml = true,
@@ -81,7 +80,7 @@ public sealed class VisualTreeAsset : ScriptableObject
             uxmlAsset.BindAssetReference(fullPath);
             return uxmlAsset;
         }
-        var sourcePath = RuntimeServiceAccess.PathService.GetFullPath(path);
+        var sourcePath = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(path);
         var document = BEngine.YamlUtility.Load<UIAssetDocument>(sourcePath);
         UIAssetSerializer.Validate(document);
         return FromDocument(document, sourcePath);
@@ -89,7 +88,7 @@ public sealed class VisualTreeAsset : ScriptableObject
 
     private static void RejectLegacyExtension(string path)
     {
-        var extension = RuntimeServiceAccess.PathService.GetExtension(path);
+        var extension = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetExtension(path);
         if (extension.Equals(".uxml", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Legacy UI document extension '.uxml' is not supported; use .bxml.");
     }
@@ -144,10 +143,10 @@ public sealed class VisualTreeAsset : ScriptableObject
         base.ReleaseAssetResources();
     }
 
-    internal override void MarkOwnedAssetsRuntimeOnly()
+    protected override void VisitOwnedAssets(Action<BAsset> visitor)
     {
-        _inlineStyleSheet.IsRuntimeOnly = true;
-        foreach (var sheet in _ownedStyles) sheet.IsRuntimeOnly = true;
+        visitor(_inlineStyleSheet);
+        foreach (var sheet in _ownedStyles) visitor(sheet);
     }
 
     public void Save(string path)
@@ -159,10 +158,10 @@ public sealed class VisualTreeAsset : ScriptableObject
     private void SaveAsset(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (RuntimeServiceAccess.PathService.GetExtension(path)
+        if (RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetExtension(path)
             .Equals(".bxml", StringComparison.OrdinalIgnoreCase))
         {
-            var fullPath = RuntimeServiceAccess.PathService.GetFullPath(path);
+            var fullPath = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(path);
             var root = _sourceRoot ?? (_uxml && _uxmlTemplate is not null
                 ? _uxmlTemplate.Instantiate()
                 : UIAssetSerializer.CreateElement(_document.Root));
@@ -175,7 +174,7 @@ public sealed class VisualTreeAsset : ScriptableObject
         }
         var document = CreateDocument();
         UIAssetSerializer.Validate(document);
-        _sourcePath = RuntimeServiceAccess.PathService.GetFullPath(path);
+        _sourcePath = RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(path);
         BEngine.YamlUtility.Save(document, _sourcePath);
         _document = document;
         BindAssetReference(_sourcePath);
@@ -186,7 +185,7 @@ public sealed class VisualTreeAsset : ScriptableObject
         UIAssetSerializer.Validate(document);
         var fullPath = string.IsNullOrWhiteSpace(path)
             ? string.Empty
-            : RuntimeServiceAccess.PathService.GetFullPath(path);
+            : RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>().GetFullPath(path);
         var asset = new VisualTreeAsset { _sourcePath = fullPath, _document = document };
         asset.BindAssetReference(fullPath);
         return asset;

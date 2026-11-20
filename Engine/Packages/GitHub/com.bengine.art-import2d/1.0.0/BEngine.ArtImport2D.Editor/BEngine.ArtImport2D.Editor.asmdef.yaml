@@ -1,0 +1,19 @@
+format: BEngine.AssemblyDefinition
+version: 1
+name: BEngine.ArtImport2D.Editor
+rootNamespace: BEngine.Editor
+references:
+- BEngine.Graphics
+- BEngine.Graphics.Editor
+- BEngine.IMGUI.Editor
+- BEngine.Platform.Contracts
+- BEngine.ArtImport2D
+- BEngine.Core.Editor
+- BEngine.Rendering2D
+includePlatforms:
+- Editor
+excludePlatforms: []
+defineConstraints: []
+autoReferenced: true
+editorOnly: true
+allowUnsafeCode: false

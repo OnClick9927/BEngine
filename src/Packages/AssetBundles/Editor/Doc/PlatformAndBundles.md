@@ -11,13 +11,20 @@ progress and completion through INetworkOperation.Poll on the owning thread.
 | FileUtility (IFileSystem SPI) | File contents, streams, enumeration, flush, rename and replacement | PhysicalFileSystem |
 | PathUtility (IPathService SPI) | Platform path normalization and composition | SystemPathService |
 | PlatformUtility (IPlatformService SPI) | Clock, environment, platform identity and host operations | SystemPlatformService |
-| IHttpTransport | HTTP status, headers and streamed response bytes | DotNetHttpTransport; nonblocking SocketHttpTransport fallback |
-| IWebSocketTransport | Connect, frames and close handshake | DotNetWebSocketTransport |
-| ITcpTransport / IUdpTransport | Stream/datagram network operations | SocketTransportFactory via ISocketTransportFactory |
-| IAudioOutput | Interleaved PCM delivery | Audio package OpenAL or silent output |
+| IHttpTransport | HTTP status, headers and streamed response bytes | PlatformHttpTransport adapts IPlatformHttpTransport; SocketHttpTransport parses HTTP over neutral TCP |
+| IWebSocketTransport | Connect, frames and close handshake | PlatformWebSocketTransport adapts IPlatformWebSocketTransport |
+| ITcpTransport / IUdpTransport | Stream/datagram network operations | SocketTransportFactory adapts IPlatformSocketTransportFactory |
+| IAudioOutput | Interleaved PCM delivery | Audio adapter delegates device output to Platform or falls back to silence |
 | IGraphicsDevice | Texture, buffer, shader, render target and draw operations | RHI platform backend |
 
-Player and Editor register AddBEngineDotNetNetworking. HTTPS certificate validation,
+Player and Editor register neutral capabilities through AddBEngineDotNetPlatform;
+Web supplies its browser HTTP adapter. Networking registers domain adapters only.
+Deployment manifests, managed-code runtime strategies and the prepared/active
+session lifetime belong to Core Player. AssetBundles supplies release content,
+AOT/hot-update policy and diagnostic hooks; neither its Runtime nor Editor
+assembly directly references the concrete DotNet backend. The host supplies the
+neutral assembly-domain capability used by Core's strategies.
+The old AddBEngineDotNetNetworking entry point has been removed. HTTPS certificate validation,
 HTTP DNS resolution and WebSocket TLS use the .NET platform implementation. The
 Networking package TCP/UDP transport accepts IP addresses and localhost; applications needing
 other socket name-resolution behavior can register ISocketTransportFactory.
@@ -25,8 +32,9 @@ Browser platforms must supply supported transport capabilities; raw sockets must
 not be assumed available. Mobile hardware and browser deployment require their own
 target validation beyond the Windows checks in this repository.
 
-The Networking package's platform transports isolate Task and cancellation machinery from
-the single-thread runtime assemblies. Its continuations release OS resources only.
+Platform transports isolate Task and system cancellation machinery from the
+single-thread domain workflow. Platform does not depend on the Networking package.
+Its continuations release OS resources only.
 Callbacks that mutate engine state, stream handlers and BTask completion are invoked
 from Poll. Cancellation must be checked before and after Poll because a callback
 can abort or dispose the request. Dispose must observe and release pending OS work.
@@ -61,7 +69,10 @@ assets in the map; references between assigned bundles produce catalog dependenc
 Duplicate ownership, unknown dependencies and cycles are rejected.
 
 The Example/Project folders demonstrate shared-art, scenes and live-content.
-Code and package-resource bundles retain the engine's reserved identities.
+The AssetBundles resource menus build imported assets only. Full Player builds
+use the Core build pipeline and its AssetBundles content provider to collect
+generated code and package resources through `AssetBundleBuildOptions.AdditionalBundles`.
+The low-level AB builder remains independent of managed-code manifest formats.
 Compare generated catalog names and dependency edges instead of inferring a split
 from the number of output files alone.
 
@@ -124,7 +135,7 @@ metadata. It retains installation, repair, package updates and rollback.
 
 Set AssetBundleRuntimeOptions.RequiredBundleNames to required root names before
 creating the manager. Null preserves full installation. Explicit roots include
-transitive dependencies and mandatory engine code/package bundles. The option is
+transitive dependencies and any roots selected by RequiredBundlePredicate. The name list is
 snapshotted by the manager. Previously installed optional bundles remain eligible
 for updates when they exist in the next catalog.
 
@@ -145,6 +156,13 @@ verified when opened without hashing it twice on the same load path. Cancellatio
 of one caller must not discard a healthy shared load result. Failed verification
 must leave the previous active catalog usable. Restart, offline cache and rollback
 are covered by AssetBundleHotUpdate regression tests.
+
+`AssetBundleRuntimeOptions.RequiredBundleNames == null` selects every bundle.
+An explicit list selects those roots and their dependency closures. A caller may
+add a `RequiredBundlePredicate` to select extra roots from descriptors already in
+the catalog; inspect descriptors without mutating them. AssetBundles does not
+implicitly require bundles by application-specific names. A host can supply its
+own selection policy through this generic predicate.
 
 ## Pixel Artwork
 

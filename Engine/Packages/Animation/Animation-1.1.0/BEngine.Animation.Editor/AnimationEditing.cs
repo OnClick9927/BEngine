@@ -44,7 +44,31 @@ public static partial class AnimationEditing
     public static void RenameParameter(AnimatorController asset, AnimatorControllerParameter parameter, string name)
     {
         name = name.Trim();
-        if (name.Length == 0 || asset.parameters.Any(item => item != parameter && item.name == name))
+        [global::BEngine.SkipLoopGuard]
+        bool Query2228(global::System.Collections.Generic.IEnumerable<global::BEngine.AnimatorControllerParameter> querySource2228)
+        {
+            ArgumentNullException.ThrowIfNull(querySource2228, "source");
+            bool Matches2228(global::BEngine.AnimatorControllerParameter item) => item != parameter && item.name == name;
+            global::System.ReadOnlySpan<global::BEngine.AnimatorControllerParameter> queryValues2228;
+            if (querySource2228.GetType() == typeof(global::BEngine.AnimatorControllerParameter[]))
+                queryValues2228 = (global::BEngine.AnimatorControllerParameter[])querySource2228;
+            else if (querySource2228.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.AnimatorControllerParameter>))
+                queryValues2228 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.AnimatorControllerParameter>)querySource2228);
+            else
+            {
+                foreach (var item in querySource2228)
+                    if (Matches2228(item))
+                        return true;
+                return false;
+            }
+        
+            foreach (var item in queryValues2228)
+                if (Matches2228(item))
+                    return true;
+            return false;
+        }
+        
+        if (name.Length == 0 || Query2228(asset.parameters))
             throw new ArgumentException("Parameter names must be nonempty and unique.");
         Edit(asset, "Rename Animator Parameter", () =>
         {

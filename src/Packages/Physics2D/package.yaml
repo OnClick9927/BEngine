@@ -15,13 +15,26 @@ content:
 runtime:
   assembly: BEngine.Physics2D
   rootNamespace: BEngine.Physics2D
-  dependencies: []
   packageReferences:
   - id: Clipper2
     version: 2.0.0
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
 editor:
   assembly: BEngine.Physics2D.Editor
   rootNamespace: BEngine.Physics2D.Editor
   dependencies:
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  - packageId: com.bengine.imgui
+    target: editor
+  - packageId: com.bengine.graphics
+    target: runtime
+  - packageId: com.bengine.rendering2d
+    target: editor
   - packageId: com.bengine.physics2d
     target: runtime
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

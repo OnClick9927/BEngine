@@ -1,0 +1,20 @@
+format: BEngine.Package
+version: 2
+type: package
+id: com.bengine.ide-integration
+packageVersion: 1.0.0
+minimumEngineVersion: 0.1.0
+displayName: IDE Integration
+description: Project-aware code editing, IntelliSense solutions and local debugger attachment for Visual Studio and VS Code.
+enabledByDefault: true
+content:
+  editor: Editor
+editor:
+  assembly: BEngine.IDEIntegration.Editor
+  rootNamespace: BEngine.IDE.Editor
+  dependencies:
+  - packageId: com.bengine.imgui
+    target: editor
+  hostReferences:
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

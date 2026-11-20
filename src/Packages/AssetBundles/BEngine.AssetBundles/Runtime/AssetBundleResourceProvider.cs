@@ -1,15 +1,51 @@
 namespace BEngine.AssetBundles;
 
 /// <summary>Exposes an active asset bundle catalog through the Resources API.</summary>
-public sealed class AssetBundleResourceProvider : IAsyncResourceProvider, IResourceAssetProvider, IResourceObjectProvider
+public sealed class AssetBundleResourceProvider : IAsyncResourceProvider, IAsyncResourceReferenceProvider, IResourceAssetProvider, IResourceObjectProvider
 {
     internal const string VirtualPathPrefix = "@bundle/";
     private readonly IAssetBundleManager _manager;
     private readonly Dictionary<ProviderObjectCacheKey, WeakReference<BObject>> _objectCache = [];
     private AssetBundleResourceRevision _cacheRevision;
+    private const int MaximumAddressCacheEntries = 256;
+    private readonly Dictionary<AddressCacheKey, string?> _addressCache = new(AddressCacheKeyComparer.Instance);
+    private readonly Queue<AddressCacheKey> _addressCacheOrder = new();
+    private AssetBundleResourceRevision _addressCacheRevision;
 
     public AssetBundleResourceProvider(IAssetBundleManager manager) =>
         _manager = manager ?? throw new ArgumentNullException(nameof(manager));
+
+    public bool ContainsReference(string path, string folderName) =>
+        _manager.IsInitialized && ResolveReferencePayloadAddress(path, folderName) is not null;
+
+    public async BTask<bool> PrepareReferenceAsync(string path, string folderName, AsyncLoadContext context)
+    {
+        context.cancellationToken.ThrowIfCancellationRequested();
+        if (!_manager.IsInitialized) return false;
+        var address = ResolveReferencePayloadAddress(path, folderName);
+        if (address is null) return false;
+        using var payload = await _manager.LoadBytesAsync(address, context.cancellationToken);
+        context.ReportProgress(1);
+        return true;
+    }
+
+    private string? ResolveReferencePayloadAddress(string path, string folderName)
+    {
+        var requested = Normalize(path);
+        if (requested.StartsWith(VirtualPathPrefix, StringComparison.OrdinalIgnoreCase)) requested = requested[VirtualPathPrefix.Length..];
+        var address = AssetBundleValidation.TryParseSubAssetAddress(requested, out _, out _)
+            ? requested : ResolveAddress(path, folderName);
+        return address is null ? null : AssetBundleAssetLoader.ResolveReferencePayloadAddress(_manager, address);
+    }
+
+    private string? ResolveObjectAddress(string path, string folderName, Type objectType)
+    {
+        var requested = Normalize(path);
+        if (requested.StartsWith(VirtualPathPrefix, StringComparison.OrdinalIgnoreCase)) requested = requested[VirtualPathPrefix.Length..];
+        var address = AssetBundleValidation.TryParseSubAssetAddress(requested, out _, out _)
+            ? requested : ResolveAddress(path, folderName);
+        return address is null ? null : AssetBundleAssetLoader.ResolveObjectAddress(_manager, address, objectType);
+    }
 
     public bool TryLoad(string path, string folderName, out ResourceContent content)
     {
@@ -37,30 +73,33 @@ public sealed class AssetBundleResourceProvider : IAsyncResourceProvider, IResou
     {
         context.cancellationToken.ThrowIfCancellationRequested();
         if (!_manager.IsInitialized || (type != typeof(byte[]) && type != typeof(string) &&
-            !typeof(BAsset).IsAssignableFrom(type))) return default;
-        var address = ResolveAddress(path, folderName);
+            !typeof(BObject).IsAssignableFrom(type))) return default;
+        var address = typeof(BObject).IsAssignableFrom(type) ? ResolveObjectAddress(path, folderName, type) : ResolveAddress(path, folderName);
         if (address is null) return default;
         var revision = CurrentRevision();
         EnsureRevision(revision);
         var key = new ProviderObjectCacheKey(AssetBundleValidation.NormalizeAddress(address).ToUpperInvariant(), type);
         if (_objectCache.TryGetValue(key, out var reference) && reference.TryGetTarget(out var existing) && !existing.isDestroyed)
             return new(true, existing);
-        if (!typeof(BAsset).IsAssignableFrom(type))
+        if (!typeof(BObject).IsAssignableFrom(type))
         {
             using var payload = await _manager.LoadBytesAsync(address, context.cancellationToken);
             object? content = null;
             await context.RunSteps(() =>
-            { content = type == typeof(byte[]) ? payload.Asset : TextAsset.Decode(payload.Asset); return CooperativeWorkStatus.Complete; });
+            { content = type == typeof(byte[]) ? payload.Asset : RuntimeAssetDecoding.DecodeText(payload.Asset); return CooperativeWorkStatus.Complete; });
             return new(true, content);
         }
-        var loaded = await AssetBundleAssetLoader.LoadAssetAsync(_manager, address, type, context);
+        var loaded = await AssetBundleAssetLoader.LoadObjectAsync(_manager, address, type, context);
         var current = CurrentRevision();
         EnsureRevision(current);
         if (loaded is not null && current.Equals(revision))
         {
             // Two async requests may finish in either order. Share one object identity.
             if (_objectCache.TryGetValue(key, out reference) && reference.TryGetTarget(out existing) && !existing.isDestroyed)
+            {
+                if (!ReferenceEquals(loaded, existing)) BObject.DestroyImmediate(loaded);
                 return new(true, existing);
+            }
             _objectCache[key] = new(loaded);
         }
         return new(true, loaded);
@@ -70,16 +109,11 @@ public sealed class AssetBundleResourceProvider : IAsyncResourceProvider, IResou
     {
         ArgumentNullException.ThrowIfNull(objectType);
         value = null!;
-        if (!_manager.IsInitialized || objectType != typeof(Sprite)) return false;
-        var requested = Normalize(path);
-        if (requested.StartsWith(VirtualPathPrefix, StringComparison.OrdinalIgnoreCase))
-            requested = requested[VirtualPathPrefix.Length..];
-        var address = AssetBundleValidation.TryParseSubAssetAddress(requested, out _, out _)
-            ? requested
-            : ResolveAddress(path, folderName);
+        if (!_manager.IsInitialized || !typeof(BObject).IsAssignableFrom(objectType) || objectType.IsAbstract) return false;
+        var address = ResolveObjectAddress(path, folderName, objectType);
         if (address is null) return false;
         value = LoadCached(address, objectType,
-            static (manager, address, _) => AssetBundleAssetLoader.LoadSprite(manager, address))!;
+            static (manager, address, type) => AssetBundleAssetLoader.LoadObject(manager, address, type))!;
         return value is not null;
     }
 
@@ -99,7 +133,11 @@ public sealed class AssetBundleResourceProvider : IAsyncResourceProvider, IResou
         EnsureRevision(currentRevision);
         if (!currentRevision.Equals(revision)) return loaded;
         if (_objectCache.TryGetValue(key, out reference) &&
-            reference.TryGetTarget(out cached) && cached is T typedAfterLoad && !cached.isDestroyed) return typedAfterLoad;
+            reference.TryGetTarget(out cached) && cached is T typedAfterLoad && !cached.isDestroyed)
+        {
+            if (!ReferenceEquals(loaded, typedAfterLoad)) BObject.DestroyImmediate(loaded);
+            return typedAfterLoad;
+        }
         _objectCache[key] = new WeakReference<BObject>(loaded);
         return loaded;
     }
@@ -195,6 +233,39 @@ public sealed class AssetBundleResourceProvider : IAsyncResourceProvider, IResou
             else if (_manager.EnumerateAddresses(direct).Any(address =>
                          address.Equals(direct, StringComparison.OrdinalIgnoreCase))) return direct;
         }
+        // Built-in managers own immutable catalogs and publish a new revision on
+        // install/update/rollback. Custom managers may mutate their catalog or
+        // address list without changing a version, so keep their original scan.
+        var stableCatalog = _manager is AssetBundleManager or VirtualAssetBundleManager;
+        var folder = stableCatalog ? NormalizeFolder(folderName) : folderName;
+        var cacheable = stableCatalog && requested.Length <= 1024 && folder.Length <= 128;
+        var key = new AddressCacheKey(requested, folder);
+        if (cacheable)
+        {
+            var revision = CurrentRevision();
+            if (!_addressCacheRevision.Equals(revision))
+            {
+                _addressCache.Clear();
+                _addressCacheOrder.Clear();
+                _addressCacheRevision = revision;
+            }
+            if (_addressCache.TryGetValue(key, out var cachedAddress)) return cachedAddress;
+        }
+        var resolved = ScanResourceAddress(path, requested, folderName);
+        if (cacheable)
+        {
+            // Evict one entry at a time; never clear all hot paths on capacity.
+            // Request and folder lengths are bounded as well as the entry count.
+            if (_addressCache.Count == MaximumAddressCacheEntries)
+                _addressCache.Remove(_addressCacheOrder.Dequeue());
+            _addressCache.Add(key, resolved);
+            _addressCacheOrder.Enqueue(key);
+        }
+        return resolved;
+    }
+
+    private string? ScanResourceAddress(string path, string requested, string folderName)
+    {
         var candidates = ResourceEntries(folderName).Where(item =>
                 item.ResourcePath.Equals(requested, StringComparison.OrdinalIgnoreCase) ||
                 MatchesWithoutExtension(item.ResourcePath, requested))
@@ -251,4 +322,17 @@ public sealed class AssetBundleResourceProvider : IAsyncResourceProvider, IResou
     }
 
     private readonly record struct ProviderObjectCacheKey(string Address, Type ObjectType);
+
+    private readonly record struct AddressCacheKey(string Requested, string Folder);
+
+    private sealed class AddressCacheKeyComparer : IEqualityComparer<AddressCacheKey>
+    {
+        internal static readonly AddressCacheKeyComparer Instance = new();
+        public bool Equals(AddressCacheKey left, AddressCacheKey right) =>
+            StringComparer.OrdinalIgnoreCase.Equals(left.Requested, right.Requested) &&
+            StringComparer.OrdinalIgnoreCase.Equals(left.Folder, right.Folder);
+        public int GetHashCode(AddressCacheKey key) => HashCode.Combine(
+            StringComparer.OrdinalIgnoreCase.GetHashCode(key.Requested),
+            StringComparer.OrdinalIgnoreCase.GetHashCode(key.Folder));
+    }
 }

@@ -5,24 +5,36 @@ id: com.bengine.diagnostics
 packageVersion: 1.0.0
 minimumEngineVersion: 0.1.0
 displayName: Diagnostics
-description: CPU/GPU profiling, frame debugging, object heap snapshots and authenticated remote Player diagnostics.
+description: Optional performance, memory and remote diagnostics with editor analysis tools.
 enabledByDefault: true
-required: true
 content:
   runtime: Resources
   editor: Editor
 runtime:
   assembly: BEngine.Diagnostics
   rootNamespace: BEngine
-  dependencies:
-  - packageId: com.bengine.hot-update
-    target: runtime
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Platform.Contracts
 editor:
-  packageReferences:
-  - id: Microsoft.Diagnostics.Runtime
-    version: 3.1.512801
+  assembly: BEngine.Diagnostics.Editor
+  rootNamespace: BEngine.Editor
   dependencies:
   - packageId: com.bengine.diagnostics
     target: runtime
-  assembly: BEngine.Diagnostics.Editor
-  rootNamespace: BEngine.Editor
+  - packageId: com.bengine.graphics
+    target: runtime
+  - packageId: com.bengine.imgui
+    target: editor
+  - packageId: com.bengine.rendering2d
+    target: runtime
+  packageReferences:
+  - id: Microsoft.Diagnostics.Runtime
+    version: 3.1.512801
+  - id: Microsoft.Extensions.DependencyInjection
+    version: 10.0.11
+
+  hostReferences:
+  - BEngine.Core
+  - BEngine.Core.Editor
+  - BEngine.Platform.Contracts

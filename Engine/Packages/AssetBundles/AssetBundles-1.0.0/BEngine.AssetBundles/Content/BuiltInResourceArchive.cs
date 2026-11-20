@@ -64,8 +64,36 @@ internal sealed class BuiltInResourceArchive
         _payloadStart = payloadStart;
         _orderedEntries = Array.AsReadOnly(entries.OrderBy(
             static entry => entry.Address, StringComparer.Ordinal).ToArray());
-        _entries = _orderedEntries.ToDictionary(
-            static entry => entry.Address, StringComparer.OrdinalIgnoreCase);
+        _entries = BuildIndex2634(_orderedEntries, StringComparer.OrdinalIgnoreCase);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<string, global::BEngine.Content.BuiltInResourceArchiveEntry> BuildIndex2634(global::System.Collections.Generic.IEnumerable<global::BEngine.Content.BuiltInResourceArchiveEntry> indexSource2634, global::System.Collections.Generic.IEqualityComparer<string>? indexComparer2634)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource2634, "source");
+            var knownCount = indexSource2634.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<string, global::BEngine.Content.BuiltInResourceArchiveEntry>(indexComparer2634);
+            global::System.ReadOnlySpan<global::BEngine.Content.BuiltInResourceArchiveEntry> values;
+            if (knownCount && indexSource2634 is global::BEngine.Content.BuiltInResourceArchiveEntry[] array)
+                values = array;
+            else if (knownCount && indexSource2634 is global::System.Collections.Generic.List<global::BEngine.Content.BuiltInResourceArchiveEntry> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.Content.BuiltInResourceArchiveEntry>(capacity, indexComparer2634);
+                foreach (var item in indexSource2634)
+                    result.Add(IndexKey2634(item), item);
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<string, global::BEngine.Content.BuiltInResourceArchiveEntry>(values.Length, indexComparer2634);
+                foreach (var item in values)
+                    result.Add(IndexKey2634(item), item);
+                return result;
+            }
+        
+            string IndexKey2634(global::BEngine.Content.BuiltInResourceArchiveEntry entry) => entry.Address;
+        }
     }
 
     internal IReadOnlyList<BuiltInResourceArchiveEntry> Entries => _orderedEntries;
@@ -113,8 +141,8 @@ internal sealed class BuiltInResourceArchive
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(entries);
-        fileSystem ??= RuntimeServiceAccess.FileSystem;
-        pathService ??= RuntimeServiceAccess.PathService;
+        fileSystem ??= RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>();
+        pathService ??= RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>();
         var destination = pathService.GetFullPath(path);
         var ordered = entries.OrderBy(static entry => entry.Address, StringComparer.Ordinal).ToArray();
         ValidateWriteEntries(ordered, fileSystem, cancellationToken);
@@ -153,8 +181,7 @@ internal sealed class BuiltInResourceArchive
                 var payloadLength = output.Position - payloadStart;
                 // The v3 index adds nine bytes per address. Fall back for the whole archive
                 // when compression cannot recover that cost, including already compressed assets.
-                if (version == CurrentVersion &&
-                    plans.Payloads.Sum(static payload => payload.Source.Size - payload.StoredSize) <= ordered.LongLength * 9)
+                if (version == CurrentVersion && Scan9176(plans.Payloads) <= ordered.LongLength * 9)
                 {
                     version = ObfuscatedVersion;
                     indexBytes = BuildIndex(ordered, plans.ByAddress, version);
@@ -167,7 +194,19 @@ internal sealed class BuiltInResourceArchive
                         payload.Compressed = false;
                         WritePayload(payload, output, fileSystem, compress: false, cancellationToken);
                     }
+                
                     payloadLength = output.Position - payloadStart;
+                }
+                
+                [global::BEngine.SkipLoopGuard]
+                long Scan9176(global::System.Collections.Generic.IEnumerable<global::BEngine.Content.BuiltInResourceArchive.PayloadPlan> scanSource9176)
+                {
+                    ArgumentNullException.ThrowIfNull(scanSource9176, "source");
+                    long total = 0;
+                    foreach (var scanItem9176 in scanSource9176)
+                        total = checked(total + Match9176(scanItem9176));
+                    return total;
+                    long Match9176(global::BEngine.Content.BuiltInResourceArchive.PayloadPlan payload) => payload.Source.Size - payload.StoredSize;
                 }
                 output.SetLength(output.Position);
                 indexBytes = BuildIndex(ordered, plans.ByAddress, version);
@@ -224,8 +263,8 @@ internal sealed class BuiltInResourceArchive
         ContentEncryptionKey? encryptionKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        fileSystem ??= RuntimeServiceAccess.FileSystem;
-        pathService ??= RuntimeServiceAccess.PathService;
+        fileSystem ??= RuntimeServices.GetRequiredService<global::BEngine.Platform.FileUtility>();
+        pathService ??= RuntimeServices.GetRequiredService<global::BEngine.Platform.PathUtility>();
         var archivePath = pathService.GetFullPath(path);
         var sourceLength = fileSystem.GetFileLength(archivePath);
         var sourceLastWriteTime = fileSystem.GetLastWriteTimeUtc(archivePath);
@@ -521,8 +560,7 @@ internal sealed class BuiltInResourceArchive
             var size = reader.ReadInt64();
             var storedSize = version >= CurrentVersion ? reader.ReadInt64() : size;
             var compression = version >= CurrentVersion ? reader.ReadByte() : 0;
-            var sha256 = Convert.ToHexString(ReadExactBytes(reader, HashSize, "payload hash"))
-                .ToLowerInvariant();
+            var sha256 = Convert.ToHexStringLower(ReadExactBytes(reader, HashSize, "payload hash"));
             var canonical = AssetBundleValidation.NormalizeAddress(address);
             if (!canonical.Equals(address, StringComparison.Ordinal) || !addresses.Add(address))
                 throw new InvalidDataException($"Built-in resource address '{address}' is invalid or duplicated.");
@@ -576,20 +614,55 @@ internal sealed class BuiltInResourceArchive
         long size,
         string sha256)
     {
-        if (Encoding.UTF8.GetByteCount(address) > MaximumAddressBytes ||
-            string.IsNullOrWhiteSpace(assetType) || Encoding.UTF8.GetByteCount(assetType) > MaximumStringBytes ||
-            Encoding.UTF8.GetByteCount(importer) > MaximumStringBytes ||
-            guid == Guid.Empty || ownerGuid == Guid.Empty || localIdentifier < 0 ||
-            size is < 0 or > MaximumEntryBytes ||
-            sha256.Length != HashSize * 2 || sha256.Any(static character => !char.IsAsciiHexDigit(character)))
+        if (Encoding.UTF8.GetByteCount(address) > MaximumAddressBytes || string.IsNullOrWhiteSpace(assetType) || Encoding.UTF8.GetByteCount(assetType) > MaximumStringBytes || Encoding.UTF8.GetByteCount(importer) > MaximumStringBytes || guid == Guid.Empty || ownerGuid == Guid.Empty || localIdentifier < 0 || size is < 0 or > MaximumEntryBytes || sha256.Length != HashSize * 2 || Matches28385())
             throw new InvalidDataException($"Built-in resource metadata is invalid for '{address}'.");
+        [global::BEngine.SkipLoopGuard]
+        bool Matches28385()
+        {
+            var matchSource28385 = sha256;
+            ArgumentNullException.ThrowIfNull(matchSource28385, "source");
+            global::System.ReadOnlySpan<char> matchValues28385 = matchSource28385.AsSpan();
+            foreach (var character in matchValues28385)
+            {
+                if (!char.IsAsciiHexDigit(character))
+                    return true;
+            }
+        
+            return false;
+        }
         if (localIdentifier == 0 && ownerGuid != guid)
             throw new InvalidDataException($"Main built-in resource '{address}' must own its payload identity.");
-        if (settings.Count > MaximumSettingsPerEntry || settings.Any(static setting =>
-                string.IsNullOrWhiteSpace(setting.Key) ||
-                Encoding.UTF8.GetByteCount(setting.Key) > MaximumStringBytes ||
-                Encoding.UTF8.GetByteCount(setting.Value) > MaximumStringBytes))
+        if (settings.Count > MaximumSettingsPerEntry || Matches28779())
             throw new InvalidDataException($"Built-in resource importer settings are invalid for '{address}'.");
+        [global::BEngine.SkipLoopGuard]
+        bool Matches28779()
+        {
+            var matchSource28779 = settings;
+            ArgumentNullException.ThrowIfNull(matchSource28779, "source");
+            global::System.ReadOnlySpan<global::System.Collections.Generic.KeyValuePair<string, string>> matchValues28779;
+            if (matchSource28779.GetType() == typeof(global::System.Collections.Generic.KeyValuePair<string, string>[]))
+                matchValues28779 = (global::System.Collections.Generic.KeyValuePair<string, string>[])(object)matchSource28779;
+            else if (matchSource28779.GetType() == typeof(global::System.Collections.Generic.List<global::System.Collections.Generic.KeyValuePair<string, string>>))
+                matchValues28779 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::System.Collections.Generic.KeyValuePair<string, string>>)(object)matchSource28779);
+            else
+            {
+                foreach (var setting in (global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, string>>)matchSource28779)
+                {
+                    if (string.IsNullOrWhiteSpace(setting.Key) || Encoding.UTF8.GetByteCount(setting.Key) > MaximumStringBytes || Encoding.UTF8.GetByteCount(setting.Value) > MaximumStringBytes)
+                        return true;
+                }
+        
+                return false;
+            }
+        
+            foreach (var setting in matchValues28779)
+            {
+                if (string.IsNullOrWhiteSpace(setting.Key) || Encoding.UTF8.GetByteCount(setting.Key) > MaximumStringBytes || Encoding.UTF8.GetByteCount(setting.Value) > MaximumStringBytes)
+                    return true;
+            }
+        
+            return false;
+        }
     }
 
     private static void CopyAndVerify(
@@ -621,7 +694,7 @@ internal sealed class BuiltInResourceArchive
             }
         }
         finally { ArrayPool<byte>.Shared.Return(buffer); }
-        VerifySnapshot(entry, total, Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant());
+        VerifySnapshot(entry, total, Convert.ToHexStringLower(hash.GetHashAndReset()));
     }
 
     private static void WritePayload(
@@ -741,7 +814,7 @@ internal sealed class BuiltInResourceArchive
             }
         }
         finally { ArrayPool<byte>.Shared.Return(buffer); }
-        VerifySnapshot(entry, total, Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant());
+        VerifySnapshot(entry, total, Convert.ToHexStringLower(hash.GetHashAndReset()));
     }
 
     private static void VerifySnapshot(

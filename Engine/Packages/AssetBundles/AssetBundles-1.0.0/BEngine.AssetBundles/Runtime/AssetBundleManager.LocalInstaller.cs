@@ -35,7 +35,7 @@ public sealed partial class AssetBundleManager
             _localInstallInProgress = true;
             try
             {
-                _localInstallUsesAsyncIo = !RuntimeServiceAccess.PlatformService.IsBrowser;
+                _localInstallUsesAsyncIo = !RuntimeServices.GetRequiredService<global::BEngine.Platform.PlatformUtility>().IsBrowser;
                 _localInstallSliceStarted = Stopwatch.GetTimestamp();
                 return await InstallLocalReleaseCoreAsync(releaseDirectory, progress, cancellationToken);
             }
@@ -136,8 +136,22 @@ public sealed partial class AssetBundleManager
             }
             if (_localInstallUsesAsyncIo)
             {
-                await CopyLocalNativeBatchAsync(root, copies.Select(static copy => copy.Descriptor).ToArray(),
-                    sourceObjects, cancellationToken);
+                await CopyLocalNativeBatchAsync(root, ProjectItems7180(), sourceObjects, cancellationToken);
+                [global::BEngine.SkipLoopGuard]
+                global::BEngine.AssetBundles.AssetBundleDescriptor[] ProjectItems7180()
+                {
+                    var projectionSource7180 = copies;
+                    ArgumentNullException.ThrowIfNull(projectionSource7180, "source");
+                    global::System.ReadOnlySpan<(global::BEngine.AssetBundles.AssetBundleDescriptor Descriptor, bool Repair)> projectionValues7180 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(projectionSource7180);
+                    var projectionOutput7180 = projectionValues7180.Length == 0 ? global::System.Array.Empty<global::BEngine.AssetBundles.AssetBundleDescriptor>() : new global::BEngine.AssetBundles.AssetBundleDescriptor[projectionValues7180.Length];
+                    var projectionIndex7180 = 0;
+                    foreach (var copy in projectionValues7180)
+                    {
+                        projectionOutput7180[projectionIndex7180++] = copy.Descriptor;
+                    }
+                
+                    return projectionOutput7180;
+                }
             }
             else
             {
@@ -190,7 +204,7 @@ public sealed partial class AssetBundleManager
         _active = selected;
         _initialized = true;
         _hasPendingActivation = keepPending;
-        if (refreshResources) BAssetReferenceLoader.Clear();
+        if (refreshResources) BAsset.ClearLoadedAssets();
         progress?.Report(new AssetBundleInstallProgress(AssetBundleInstallPhase.Completed,
             completed, selectedBundles.Count, completedBytes, totalBytes));
         return new AssetBundleInstallResult(!sameInstalledRelease, previousVersion, selected.Version.Version,
@@ -208,7 +222,7 @@ public sealed partial class AssetBundleManager
             ResolveInside(root, version.CatalogFile), _options.MaximumCatalogSize, cancellationToken);
         VerifyPayload(catalogBytes, version.CatalogSize, version.CatalogSha256, "bundled install catalog");
         var catalog = DeserializeCatalogPair(version, catalogBytes, out var indexSeeds);
-        return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
+        return CreateRuntimeState(version, catalog, catalogBytes, indexSeeds);
     }
 
     private async BValueTask<RuntimeState?> TryReadInstalledMetadataAsync(
@@ -224,7 +238,7 @@ public sealed partial class AssetBundleManager
                 GetCatalogCachePath(version.CatalogSha256), _options.MaximumCatalogSize, cancellationToken);
             VerifyPayload(catalogBytes, version.CatalogSize, version.CatalogSha256, "installed catalog");
             var catalog = DeserializeCatalogPair(version, catalogBytes, out var indexSeeds);
-            return new RuntimeState(version, catalog, catalogBytes, indexSeeds);
+            return CreateRuntimeState(version, catalog, catalogBytes, indexSeeds);
         }
         catch (Exception error) when (IsRecoverableContentFailure(error) || error is YamlException)
         {
@@ -328,8 +342,33 @@ public sealed partial class AssetBundleManager
                 }
                 // Continue with the next bounded batch directly, without routing each
                 // batch or individual file through another frame's BTask continuation.
-                while (operations.Any(static operation => operation.Io is { IsCompleted: false }))
+                while (Matches17413())
                     await BValueTask.Yield();
+                [global::BEngine.SkipLoopGuard]
+                bool Matches17413()
+                {
+                    var matchSource17413 = operations;
+                    ArgumentNullException.ThrowIfNull(matchSource17413, "source");
+                    if (matchSource17413.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundleManager.LocalInstallNativeIo>))
+                    {
+                        foreach (var operation in (global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.AssetBundleManager.LocalInstallNativeIo>)matchSource17413)
+                        {
+                            if (operation.Io is { IsCompleted: false })
+                                return true;
+                        }
+                
+                        return false;
+                    }
+                
+                    global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundleManager.LocalInstallNativeIo> matchValues17413 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource17413);
+                    foreach (var operation in matchValues17413)
+                    {
+                        if (operation.Io is { IsCompleted: false })
+                            return true;
+                    }
+                
+                    return false;
+                }
                 foreach (var operation in operations)
                 {
                     if (operation.Io is null) continue;
@@ -381,8 +420,33 @@ public sealed partial class AssetBundleManager
                 }
                 catch (Exception error) { failure = ExceptionDispatchInfo.Capture(error); break; }
             }
-            while (operations.Any(static operation => operation.Io is { IsCompleted: false }))
+            while (Matches20134())
                 await BValueTask.Yield();
+            [global::BEngine.SkipLoopGuard]
+            bool Matches20134()
+            {
+                var matchSource20134 = operations;
+                ArgumentNullException.ThrowIfNull(matchSource20134, "source");
+                if (matchSource20134.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundleManager.LocalInstallNativeIo>))
+                {
+                    foreach (var operation in (global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.AssetBundleManager.LocalInstallNativeIo>)matchSource20134)
+                    {
+                        if (operation.Io is { IsCompleted: false })
+                            return true;
+                    }
+            
+                    return false;
+                }
+            
+                global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundleManager.LocalInstallNativeIo> matchValues20134 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource20134);
+                foreach (var operation in matchValues20134)
+                {
+                    if (operation.Io is { IsCompleted: false })
+                        return true;
+                }
+            
+                return false;
+            }
             var copyFailure = ObserveLocalNativeIo(operations);
             failure ??= copyFailure;
             cancellationToken.ThrowIfCancellationRequested();
@@ -400,8 +464,33 @@ public sealed partial class AssetBundleManager
                 }
                 catch (Exception error) { failure = ExceptionDispatchInfo.Capture(error); break; }
             }
-            while (operations.Any(static operation => operation.Io is { IsCompleted: false }))
+            while (Matches21184())
                 await BValueTask.Yield();
+            [global::BEngine.SkipLoopGuard]
+            bool Matches21184()
+            {
+                var matchSource21184 = operations;
+                ArgumentNullException.ThrowIfNull(matchSource21184, "source");
+                if (matchSource21184.GetType() != typeof(global::System.Collections.Generic.List<global::BEngine.AssetBundles.AssetBundleManager.LocalInstallNativeIo>))
+                {
+                    foreach (var operation in (global::System.Collections.Generic.IEnumerable<global::BEngine.AssetBundles.AssetBundleManager.LocalInstallNativeIo>)matchSource21184)
+                    {
+                        if (operation.Io is { IsCompleted: false })
+                            return true;
+                    }
+            
+                    return false;
+                }
+            
+                global::System.ReadOnlySpan<global::BEngine.AssetBundles.AssetBundleManager.LocalInstallNativeIo> matchValues21184 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(matchSource21184);
+                foreach (var operation in matchValues21184)
+                {
+                    if (operation.Io is { IsCompleted: false })
+                        return true;
+                }
+            
+                return false;
+            }
             var verificationFailure = ObserveLocalNativeIo(operations);
             failure ??= verificationFailure;
             cancellationToken.ThrowIfCancellationRequested();

@@ -1,3 +1,5 @@
+using BEngine.Platform;
+
 namespace BEngine.Audio;
 
 public sealed partial class AudioClip
@@ -69,7 +71,7 @@ public sealed partial class AudioClip
         private readonly int _count;
         private AudioLoadingSettings.PcmReservation? _reservation;
         private AudioSampleReader? _reader;
-        private WebAudioDecoder? _platformDecoder;
+        private IPlatformAudioDecodeOperation? _platformDecoder;
         private readonly byte[]? _encoded;
         private readonly bool _mono;
         private readonly float _gain;
@@ -95,16 +97,16 @@ public sealed partial class AudioClip
                 if (!AudioLoadingSettings.TryOpenDecoder()) return CooperativeWorkStatus.Blocked;
                 _slot = true;
             }
-            if (OperatingSystem.IsBrowser() && !_platformAttempted)
+            if (!_platformAttempted)
             {
                 _platformAttempted = true;
-                _platformDecoder = WebAudioDecoder.TryCreate(_encoded, _frames, _channels, _frequency, _mono, _gain);
+                _platformDecoder = PlatformAudioDecoder.TryCreate(_encoded, _frames, _channels, _frequency, _mono, _gain);
             }
-            if (OperatingSystem.IsBrowser() && _platformDecoder is { } decoder)
+            if (_platformDecoder is { } decoder)
             {
-                var state = decoder.status;
-                if (state == 0) return CooperativeWorkStatus.Blocked;
-                if (state < 0)
+                var state = decoder.Status;
+                if (state == PlatformAudioDecodeStatus.Pending) return CooperativeWorkStatus.Blocked;
+                if (state == PlatformAudioDecodeStatus.Failed)
                 {
                     decoder.Dispose(); _platformDecoder = null;
                     // Native format/duration differences must never change the
@@ -182,7 +184,7 @@ public sealed partial class AudioClip
             try
             {
                 _reader?.Dispose();
-                if (OperatingSystem.IsBrowser()) _platformDecoder?.Dispose();
+                _platformDecoder?.Dispose();
             }
             finally
             {

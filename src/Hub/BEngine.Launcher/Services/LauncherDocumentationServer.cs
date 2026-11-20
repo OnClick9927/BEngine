@@ -19,7 +19,7 @@ internal sealed class LauncherDocumentationServer : IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _connections = new(8);
     private readonly ConcurrentDictionary<int, TcpClient> _clients = new();
-    private readonly string _prefix = "/" + Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant() + "/";
+    private readonly string _prefix = "/" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(24)) + "/";
     private readonly Uri _origin;
     private readonly Task _acceptLoop;
     private int _clientId;
@@ -132,19 +132,61 @@ internal sealed class LauncherDocumentationServer : IDisposable
         {
             var installed = ReadCatalog(() => _engines.Discover());
             query.TryGetValue("engine", out var requested);
-            var engine = requested is null ? installed.FirstOrDefault() :
-                installed.FirstOrDefault(item => item.Version.Equals(requested, StringComparison.OrdinalIgnoreCase));
+            [global::BEngine.SkipLoopGuard]
+            global::BEngine.Launcher.LauncherEngineInfo? Query6737(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherEngineInfo> querySource6737)
+            {
+                ArgumentNullException.ThrowIfNull(querySource6737, "source");
+                bool Matches6737(global::BEngine.Launcher.LauncherEngineInfo item) => item.Version.Equals(requested, StringComparison.OrdinalIgnoreCase);
+                global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherEngineInfo> queryValues6737;
+                if (querySource6737.GetType() == typeof(global::BEngine.Launcher.LauncherEngineInfo[]))
+                    queryValues6737 = (global::BEngine.Launcher.LauncherEngineInfo[])querySource6737;
+                else if (querySource6737.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>))
+                    queryValues6737 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>)querySource6737);
+                else
+                {
+                    foreach (var item in querySource6737)
+                        if (Matches6737(item))
+                            return item;
+                    return default!;
+                }
+            
+                foreach (var item in queryValues6737)
+                    if (Matches6737(item))
+                        return item;
+                return default!;
+            }
+            
+            var engine = requested is null ? installed.FirstOrDefault() : Query6737(installed);
             if (engine is null) { await ErrorAsync(stream, 404, "The selected engine is no longer installed.", head, token); return; }
             var packages = ReadCatalog(() => _packages.Discover(engineVersion: engine.Version));
             var result = new
             {
-                engine = Describe("engine", engine.DisplayName, engine.Version, engine.Description,
-                    Path.Combine(engine.DirectoryPath, "Editor", "Doc"), ContentPath("engine", engine.Version)),
+                engine = Describe("engine", engine.DisplayName, engine.Version, engine.Description, Path.Combine(engine.DirectoryPath, "Editor", "Doc"), ContentPath("engine", engine.Version)),
                 engines = installed.Select(item => new { item.Version, name = item.DisplayName }),
-                packages = packages.Select(package => Describe(package.Id, package.DisplayName, package.Version,
-                    package.Description, Path.Combine(package.DirectoryPath, "Editor", "Doc"),
-                    ContentPath("package", engine.Version, package.Id, package.Version), package.MinimumEngineVersion)).ToArray()
+                packages = Gather8937(packages)
             };
+            [global::BEngine.SkipLoopGuard]
+            object[] Gather8937(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherPackageInfo> items8937)
+            {
+                ArgumentNullException.ThrowIfNull(items8937, "source");
+                object Evaluate8937(global::BEngine.Launcher.LauncherPackageInfo package) => Describe(package.Id, package.DisplayName, package.Version, package.Description, Path.Combine(package.DirectoryPath, "Editor", "Doc"), ContentPath("package", engine.Version, package.Id, package.Version), package.MinimumEngineVersion);
+                global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherPackageInfo> values;
+                if (items8937.GetType() == typeof(global::BEngine.Launcher.LauncherPackageInfo[]))
+                    values = (global::BEngine.Launcher.LauncherPackageInfo[])items8937;
+                else if (items8937.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherPackageInfo>))
+                    values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherPackageInfo>)items8937);
+                else
+                {
+                    return global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(items8937, Evaluate8937));
+                }
+
+                if (values.IsEmpty)
+                    return global::System.Array.Empty<object>();
+                var result = new object[values.Length];
+                for (var index = 0; index < values.Length; index++)
+                    result[index] = Evaluate8937(values[index]);
+                return result;
+            }
             await SendAsync(stream, 200, "application/json; charset=utf-8", JsonSerializer.SerializeToUtf8Bytes(result, JsonOptions), head, token);
             return;
         }
@@ -154,15 +196,86 @@ internal sealed class LauncherDocumentationServer : IDisposable
             string[] relative = [];
             if (parts.Length >= 4 && parts[1] == "engine")
             {
-                var engine = ReadCatalog(() => _engines.Discover()).FirstOrDefault(item => item.Version.Equals(parts[2], StringComparison.OrdinalIgnoreCase));
+                [global::BEngine.SkipLoopGuard]
+                global::BEngine.Launcher.LauncherEngineInfo? Query8193(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherEngineInfo> querySource8193)
+                {
+                    ArgumentNullException.ThrowIfNull(querySource8193, "source");
+                    bool Matches8193(global::BEngine.Launcher.LauncherEngineInfo item) => item.Version.Equals(parts[2], StringComparison.OrdinalIgnoreCase);
+                    global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherEngineInfo> queryValues8193;
+                    if (querySource8193.GetType() == typeof(global::BEngine.Launcher.LauncherEngineInfo[]))
+                        queryValues8193 = (global::BEngine.Launcher.LauncherEngineInfo[])querySource8193;
+                    else if (querySource8193.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>))
+                        queryValues8193 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>)querySource8193);
+                    else
+                    {
+                        foreach (var item in querySource8193)
+                            if (Matches8193(item))
+                                return item;
+                        return default!;
+                    }
+                
+                    foreach (var item in queryValues8193)
+                        if (Matches8193(item))
+                            return item;
+                    return default!;
+                }
+                
+                var engine = Query8193(ReadCatalog(() => _engines.Discover()));
                 if (engine is not null) root = Path.Combine(engine.DirectoryPath, "Editor", "Doc");
                 relative = parts[3..];
             }
             else if (parts.Length >= 6 && parts[1] == "package")
             {
-                var engine = ReadCatalog(() => _engines.Discover()).FirstOrDefault(item => item.Version.Equals(parts[2], StringComparison.OrdinalIgnoreCase));
-                var package = engine is null ? null : ReadCatalog(() => _packages.Discover(engineVersion: engine.Version)).FirstOrDefault(item =>
-                    item.Id.Equals(parts[3], StringComparison.OrdinalIgnoreCase) && item.Version.Equals(parts[4], StringComparison.OrdinalIgnoreCase));
+                [global::BEngine.SkipLoopGuard]
+                global::BEngine.Launcher.LauncherEngineInfo? Query8584(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherEngineInfo> querySource8584)
+                {
+                    ArgumentNullException.ThrowIfNull(querySource8584, "source");
+                    bool Matches8584(global::BEngine.Launcher.LauncherEngineInfo item) => item.Version.Equals(parts[2], StringComparison.OrdinalIgnoreCase);
+                    global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherEngineInfo> queryValues8584;
+                    if (querySource8584.GetType() == typeof(global::BEngine.Launcher.LauncherEngineInfo[]))
+                        queryValues8584 = (global::BEngine.Launcher.LauncherEngineInfo[])querySource8584;
+                    else if (querySource8584.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>))
+                        queryValues8584 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherEngineInfo>)querySource8584);
+                    else
+                    {
+                        foreach (var item in querySource8584)
+                            if (Matches8584(item))
+                                return item;
+                        return default!;
+                    }
+                
+                    foreach (var item in queryValues8584)
+                        if (Matches8584(item))
+                            return item;
+                    return default!;
+                }
+                
+                var engine = Query8584(ReadCatalog(() => _engines.Discover()));
+                [global::BEngine.SkipLoopGuard]
+                global::BEngine.Launcher.LauncherPackageInfo? Query8768(global::System.Collections.Generic.IEnumerable<global::BEngine.Launcher.LauncherPackageInfo> querySource8768)
+                {
+                    ArgumentNullException.ThrowIfNull(querySource8768, "source");
+                    bool Matches8768(global::BEngine.Launcher.LauncherPackageInfo item) => item.Id.Equals(parts[3], StringComparison.OrdinalIgnoreCase) && item.Version.Equals(parts[4], StringComparison.OrdinalIgnoreCase);
+                    global::System.ReadOnlySpan<global::BEngine.Launcher.LauncherPackageInfo> queryValues8768;
+                    if (querySource8768.GetType() == typeof(global::BEngine.Launcher.LauncherPackageInfo[]))
+                        queryValues8768 = (global::BEngine.Launcher.LauncherPackageInfo[])querySource8768;
+                    else if (querySource8768.GetType() == typeof(global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherPackageInfo>))
+                        queryValues8768 = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan((global::System.Collections.Generic.List<global::BEngine.Launcher.LauncherPackageInfo>)querySource8768);
+                    else
+                    {
+                        foreach (var item in querySource8768)
+                            if (Matches8768(item))
+                                return item;
+                        return default!;
+                    }
+                
+                    foreach (var item in queryValues8768)
+                        if (Matches8768(item))
+                            return item;
+                    return default!;
+                }
+                
+                var package = engine is null ? null : Query8768(ReadCatalog(() => _packages.Discover(engineVersion: engine.Version)));
                 if (package is not null) root = Path.Combine(package.DirectoryPath, "Editor", "Doc");
                 relative = parts[5..];
             }
@@ -246,8 +359,22 @@ internal sealed class LauncherDocumentationServer : IDisposable
     private static bool TrySegments(string value, out string[] parts)
     {
         parts = value.Length == 0 ? [] : value.Split('/').Select(Uri.UnescapeDataString).ToArray();
-        return parts.All(part => part.Length > 0 && part is not ("." or "..") &&
-            part.IndexOfAny(['/', '\\', ':', '\0', '\r', '\n', '?', '#']) < 0 && !part.Any(char.IsControl));
+        bool __queryResult13593;
+        {
+            var __querySource13593 = parts;
+            ArgumentNullException.ThrowIfNull(__querySource13593, "source");
+            __queryResult13593 = true;
+            foreach (var __queryItem13593 in __querySource13593)
+            {
+                if (!(__queryItem13593.Length > 0 && __queryItem13593 is not ("." or "..") && __queryItem13593.AsSpan(0, __queryItem13593.Length).IndexOfAny("/\\:\0\r\n?#".AsSpan()) < 0 && !__queryItem13593.Any(char.IsControl)))
+                {
+                    __queryResult13593 = false;
+                    break;
+                }
+            }
+        }
+        
+        return __queryResult13593;
     }
 
     private static Dictionary<string, string> ParseQuery(string query)

@@ -42,7 +42,37 @@ public sealed class AudioMixerController : MonoBehaviour
         ArgumentNullException.ThrowIfNull(snapshot);
         if (duration < Fix64.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
         snapshot.Validate();
-        var requested = snapshot.groups.ToDictionary(entry => entry.group!, entry => entry.mute ? Fix64.Zero : Mathf.Clamp01(entry.volume));
+        var requested = BuildIndex2107(snapshot.groups, null);
+        [global::BEngine.SkipLoopGuard]
+        global::System.Collections.Generic.Dictionary<global::BEngine.Audio.AudioMixerGroup, global::BEngine.Fix64> BuildIndex2107(global::System.Collections.Generic.IEnumerable<global::BEngine.Audio.AudioMixerSnapshotEntry> indexSource2107, global::System.Collections.Generic.IEqualityComparer<global::BEngine.Audio.AudioMixerGroup>? indexComparer2107)
+        {
+            ArgumentNullException.ThrowIfNull(indexSource2107, "source");
+            var knownCount = indexSource2107.TryGetNonEnumeratedCount(out var capacity);
+            if (knownCount && capacity == 0)
+                return new global::System.Collections.Generic.Dictionary<global::BEngine.Audio.AudioMixerGroup, global::BEngine.Fix64>(indexComparer2107);
+            global::System.ReadOnlySpan<global::BEngine.Audio.AudioMixerSnapshotEntry> values;
+            if (knownCount && indexSource2107 is global::BEngine.Audio.AudioMixerSnapshotEntry[] array)
+                values = array;
+            else if (knownCount && indexSource2107 is global::System.Collections.Generic.List<global::BEngine.Audio.AudioMixerSnapshotEntry> list)
+                values = global::System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list);
+            else
+            {
+                var result = new global::System.Collections.Generic.Dictionary<global::BEngine.Audio.AudioMixerGroup, global::BEngine.Fix64>(capacity, indexComparer2107);
+                foreach (var item in indexSource2107)
+                    result.Add(IndexKey2107(item), IndexValue2107(item));
+                return result;
+            }
+        
+            {
+                var result = new global::System.Collections.Generic.Dictionary<global::BEngine.Audio.AudioMixerGroup, global::BEngine.Fix64>(values.Length, indexComparer2107);
+                foreach (var item in values)
+                    result.Add(IndexKey2107(item), IndexValue2107(item));
+                return result;
+            }
+        
+            global::BEngine.Audio.AudioMixerGroup IndexKey2107(global::BEngine.Audio.AudioMixerSnapshotEntry entry) => entry.group!;
+            global::BEngine.Fix64 IndexValue2107(global::BEngine.Audio.AudioMixerSnapshotEntry entry) => entry.mute ? Fix64.Zero : Mathf.Clamp01(entry.volume);
+        }
         var pending = new List<Transition>();
         using var budget = LoopExecutionGuard.AllowIterations(_volumes.Count + requested.Count + 1);
         // A group absent from the new snapshot returns to its authored volume.

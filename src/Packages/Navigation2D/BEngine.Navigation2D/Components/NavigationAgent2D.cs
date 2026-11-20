@@ -4,7 +4,7 @@ namespace BEngine.Navigation2D;
 [AddComponentMenu("Navigation 2D/Navigation Agent 2D")]
 public sealed class NavigationAgent2D : Behaviour
 {
-    private static readonly Fix64 CornerReachEpsilon = Fix64.Parse("0.01");
+    private static readonly Fix64 CornerReachEpsilon = Fix64.FromRaw(42949672L) /* Parse("0.01") */;
     private NavigationPath2D _path = new();
     private int _cornerIndex;
     private Vector2 _destination;
@@ -20,10 +20,10 @@ public sealed class NavigationAgent2D : Behaviour
     internal Vector2 PeekAvoidancePosition() => _positionInitialized ? _position : transform.position;
 
     public Fix64 radius { get; set; } = Fix64.Half;
-    public Fix64 speed { get; set; } = Fix64.Parse("3.5");
+    public Fix64 speed { get; set; } = Fix64.FromRaw(15032385536L) /* Parse("3.5") */;
     public Fix64 acceleration { get; set; } = 8;
     public Fix64 angularSpeed { get; set; } = 360;
-    public Fix64 stoppingDistance { get; set; } = Fix64.Parse("0.1");
+    public Fix64 stoppingDistance { get; set; } = Fix64.FromRaw(429496729L) /* Parse("0.1") */;
     public bool autoBraking { get; set; } = true;
     public bool autoRepath { get; set; } = true;
     public bool updatePosition { get; set; } = true;

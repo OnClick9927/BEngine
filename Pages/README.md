@@ -62,7 +62,7 @@ Open `http://127.0.0.1:4173/`. Stop with Ctrl+C. Keep verification files, screen
 
 GitHub Actions 工作流位于 `.github/workflows/pages.yml`。它运行 `tools/build-site.py`，复制官网和两个 Web 成品至临时发布目录，并将当前 `Engine/BEngine.Hub.exe` 放入 `downloads/BEngine.Hub.exe`。网页不保存 Hub 副本，发布时始终使用当前提交中的发行文件。
 
-同一次构建生成 `downloads/BEngine-main-src.zip`，包含该 main 提交中受 Git 跟踪的 `src/` 与根 `LICENSE`，不包含完整发行目录、Git 历史或本机生成文件。`src/**` 变化也会触发官网部署，因此源码下载会随 main 更新。ZIP 在构建时生成，不把副本提交到 `Pages`。
+同一次构建生成 `downloads/BEngine-main-src.zip`，包含该 main 提交中受 Git 跟踪的 `src/`、`Development/`、根目录的三个 MSBuild 入口文件与 `LICENSE`，不包含完整发行目录、Git 历史或本机生成文件。源码和开发配置变化都会触发官网部署，因此源码下载会随 main 更新。ZIP 在构建时生成，不把副本提交到 `Pages`。
 
 The GitHub Actions workflow in `.github/workflows/pages.yml` stages the website and both Web players, then copies the current exported `Engine/BEngine.Hub.exe` to `downloads/BEngine.Hub.exe`. The website source does not contain a duplicate Hub binary.
 
@@ -70,7 +70,7 @@ The GitHub Actions workflow in `.github/workflows/pages.yml` stages the website 
 
 The builder checks the Hub executable, both Web players' layout and integrity metadata, resource references, and direct HTTP StreamingAssets mode. Incomplete players, temporary data, and obsolete detailed-manual mirrors are rejected. Maintenance tools and README files are excluded from deployment. Test the Hub download against staged output; directly serving `Pages` does not provide the generated download file.
 
-仓库 Settings → Pages → Source 应为 GitHub Actions。`main` 上的 `Pages/**`、`src/**`、根 `LICENSE`、`Engine/BEngine.Hub.exe` 或工作流变更会触发部署；也可手动运行。公开地址预计为 `https://onclick9927.github.io/BEngine/`，是否上线以远端工作流成功结果为准。本地修改不会自动发布。
+仓库 Settings → Pages → Source 应为 GitHub Actions。`main` 上的 `Pages/**`、`src/**`、`Development/**`、根 MSBuild 入口文件、`LICENSE`、`Engine/BEngine.Hub.exe` 或工作流变更会触发部署；也可手动运行。公开地址预计为 `https://onclick9927.github.io/BEngine/`，是否上线以远端工作流成功结果为准。本地修改不会自动发布。
 
 Set repository Settings → Pages → Source to GitHub Actions. Changes to `Pages/**`, the exported Hub, or the workflow on `main` trigger deployment; manual dispatch is also available. The expected URL is `https://onclick9927.github.io/BEngine/`. Publishing is confirmed by a successful remote workflow, not by local edits.
 
