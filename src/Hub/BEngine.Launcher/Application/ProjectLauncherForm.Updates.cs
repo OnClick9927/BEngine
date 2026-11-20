@@ -287,7 +287,7 @@ internal sealed partial class ProjectLauncherForm
         _updateDetail.Visible = !HasFixedUpdateStatusRows;
         _updateFile.Visible = HasFixedUpdateStatusRows;
         if (!HasFixedUpdateStatusRows) _updateFile.Text = string.Empty;
-        _updateSplit.Visible = mode != UpdatePageMode.Idle;
+        _updateSplit.Visible = mode == UpdatePageMode.Checking || _pendingUpdate is not null;
         _updateCommit.Visible = true;
         _updateChanges.Visible = true;
         ResizeUpdateLayout();
@@ -427,7 +427,7 @@ internal sealed partial class ProjectLauncherForm
                 0
             ];
             var headerHeight = (int)heights.Sum();
-            heights[5] = _updatePageMode == UpdatePageMode.Idle ? 0
+            heights[5] = _updatePageMode != UpdatePageMode.Checking && _pendingUpdate is null ? 0
                 : Math.Max(Scale(220), _updatesPage.ClientSize.Height - headerHeight - Scale(1));
             for (var row = 0; row < heights.Length; row++) _updateLayout.RowStyles[row].Height = heights[row];
             _updateLayout.Height = (int)heights.Sum();
@@ -715,7 +715,10 @@ internal sealed partial class ProjectLauncherForm
         var messages = new List<string>();
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
-            var message = LocalizeUpdateMessage(current.Message);
+            var message = current is GitCommandException git
+                ? git.TimedOut ? T("Git {0} timed out after {1:F0} s. Check the network and retry.", T(git.Phase), git.Timeout.TotalSeconds)
+                    : T("Git {0} failed: {1}", T(git.Phase), git.Detail)
+                : LocalizeUpdateMessage(current.Message);
             if (!messages.Contains(message, StringComparer.Ordinal)) messages.Add(message);
         }
         try

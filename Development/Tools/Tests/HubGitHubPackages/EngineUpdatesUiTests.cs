@@ -34,8 +34,10 @@ internal static class EngineUpdatesUiTests
         var settings = Path.Combine(root, "UpdateWindowSettings.yaml");
         File.WriteAllText(settings, "format: BEngine.LauncherSettings\nversion: 2\npersonalization:\n  language: zh-CN\n  theme: Dark\n  startupPage: Engines\n");
         using var catalog = new LauncherPackageCatalog(root, Path.Combine(root, "Packages"));
+        var unavailable = false;
         ProjectLauncherForm Create(string baseRoot) => new(new LauncherOptions(editor), new LauncherHistoryStore(settings), catalog,
-            new LauncherEngineCatalog(baseRoot), new LauncherProjectService(catalog), new LauncherUpdateService("https://github.com/vendor/engine.git", new GitRepositoryClient(_ => remote.Url)));
+            new LauncherEngineCatalog(baseRoot), new LauncherProjectService(catalog), new LauncherUpdateService("https://github.com/vendor/engine.git",
+                new GitRepositoryClient(_ => unavailable ? new Uri(Path.Combine(root, "missing-remote")).AbsoluteUri : remote.Url)));
         using var hub = Create(root);
         hub.StartPosition = FormStartPosition.Manual; hub.Location = new Point(-20000, -20000); hub.Show(); Application.DoEvents();
         Pump(() => !(bool)Field(hub, "_environmentBusy"));
@@ -93,6 +95,16 @@ internal static class EngineUpdatesUiTests
         });
         Pump(() => cancelled!.IsCompleted); cancelled!.GetAwaiter().GetResult();
         check(!window.Visible && hub.Enabled, "Closing during a Git check cancels the operation before dismissing the modal window"); Probe.Clean(root);
+        unavailable = true;
+        Modal(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
+            var failed = (Task)Call(hub, "CheckForUpdatesAsync")!; Pump(() => failed.IsCompleted); failed.GetAwaiter().GetResult();
+            check(!((Control)Field(hub, "_updateSplit")).Visible && ((Label)Field(hub, "_updateDetail")).Text.Contains("读取", StringComparison.Ordinal),
+                "A failed check identifies the Git phase and hides empty commit and change panels");
+            Save(window, "EngineUpdateFailure.png"); window.Close();
+        });
+        unavailable = false;
         var preferences = ((LauncherSettingsData)Field(hub, "_settings")).Personalization;
         preferences.Theme = "Light"; Call(hub, "ApplyPersonalization");
         Modal(() => { check(window.BackColor == LauncherPalette.From(preferences).Panel, "The update window follows a changed Hub theme"); Save(window, "EngineUpdateLight.png"); window.Close(); });

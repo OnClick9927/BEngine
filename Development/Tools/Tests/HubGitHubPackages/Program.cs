@@ -18,6 +18,11 @@ internal static class Probe
     private static async Task RunAsync(string[] args)
     {
         if (args[0] == "--cleanup") { new GitRepositorySnapshot(args[1], new GitHubProgressSink<string>(_ => { })).Dispose(); return; }
+        if (args[0] == "--git-network")
+        {
+            await GitNetworkTests.RunAsync(Path.GetFullPath(args[1]), Check);
+            Console.WriteLine("HUB_GIT_NETWORK_OK|checks=" + _checks); return;
+        }
         if (args[0] == "--window-ui")
         {
             var windowRoot = Path.GetFullPath(args[1]); Directory.CreateDirectory(windowRoot);
@@ -110,6 +115,7 @@ internal static class Probe
         EngineUpdatesUiTests.Run(root, Check);
         manager.Remove(manager.Installed(), "0.1.0"); Clean(root);
         await GitHubDependencyTests.RunAsync(Path.Combine(root, "Dependencies"), Check, Reject); Clean(root);
+        await GitNetworkTests.RunAsync(Path.Combine(root, "GitNetwork"), Check);
         var unsafeRemote = new GitTestRepository(Path.Combine(GitTestRepository.RemotesRoot, "symlink"));
         unsafeRemote.Publish(new() { ["package.yaml"] = GitTestRepository.Definition("com.vendor.unsafe", "1.0.0") });
         var linkSha = unsafeRemote.Command("../../outside", "hash-object", "-w", "--stdin");

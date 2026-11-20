@@ -368,6 +368,9 @@ internal sealed class GitHubPackagesForm : Form
 
     private string DescribeError(Exception error)
     {
+        if (error is GitCommandException git)
+            return git.TimedOut ? T("Git {0} timed out after {1:F0} s. Check the network and retry.", T(git.Phase), git.Timeout.TotalSeconds) :
+                T("Git {0} failed: {1}", T(git.Phase), git.Detail);
         return T(error.Message);
     }
 
@@ -418,7 +421,7 @@ internal sealed class GitHubPackagesForm : Form
         var value = Volatile.Read(ref _lastProgress);
         _progress.Percent = value?.Percent; _progress.Animation = (int)(_elapsed.ElapsedMilliseconds / 14 % 160);
         var message = Volatile.Read(ref _lastText);
-        _status.Text = T(message.StartsWith("Retrying", StringComparison.Ordinal) ? message : value?.Stage ?? message);
+        _status.Text = string.Join(" · ", (message.StartsWith("Retrying", StringComparison.Ordinal) ? message : value?.Stage ?? message).Split(" · ").Select(part => T(part)));
         _file.Text = value?.Detail ?? "";
         if (_page == GitHubPackagePage.Remove && value?.Percent is { } removalPercent)
         {

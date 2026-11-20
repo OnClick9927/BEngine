@@ -7,20 +7,25 @@ namespace BEngine.Launcher;
 
 internal sealed record GitRepositoryFile(string Path, string Sha, long Size);
 internal sealed class GitRepositoryException(string message) : IOException(message);
+internal sealed record GitCommandPolicy(TimeSpan MetadataTimeout, TimeSpan TransferTimeout, TimeSpan RetryDelay)
+{
+    internal static GitCommandPolicy Default { get; } = new(TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(3), TimeSpan.FromSeconds(1));
+}
 
 /// <summary>Owns a shallow, sparse Git snapshot under the Hub's Temp directory.</summary>
-internal sealed class GitRepositoryClient(Func<string, string>? remoteResolver = null)
+internal sealed class GitRepositoryClient(Func<string, string>? remoteResolver = null, GitCommandPolicy? policy = null)
 {
     internal async Task<GitRepositorySnapshot> OpenAsync(string repositoryUrl, string reference, string directory,
         IProgress<string> progress, CancellationToken token, string? installationRoot = null, string treePath = "")
     {
         var parent = Path.Combine(installationRoot ?? LauncherInstallationPaths.ResolveRoot(), "Temp", "HubGit");
         LauncherUpdateService.EnsureNoReparsePoints(parent, "");
-        var snapshot = new GitRepositorySnapshot(Path.Combine(parent, Guid.NewGuid().ToString("N")), progress);
+        var snapshot = new GitRepositorySnapshot(Path.Combine(parent, Guid.NewGuid().ToString("N")), progress, policy);
         Directory.CreateDirectory(snapshot.Root);
         try
         {
             var remote = remoteResolver?.Invoke(repositoryUrl) ?? repositoryUrl;
+            snapshot.Remote = Uri.TryCreate(remote, UriKind.Absolute, out var remoteUri) ? remoteUri : null;
             await snapshot.RunAsync(["init", "--quiet", "--object-format=sha1"], token);
             var info = Path.Combine(snapshot.Root, ".git", "info");
             Directory.CreateDirectory(info);
@@ -88,13 +93,19 @@ internal sealed class GitRepositoryClient(Func<string, string>? remoteResolver =
                 entries.Add((path, metadata[2]));
             }
             if (entries.Count == 0) throw new GitRepositoryException("The selected Git directory is empty or was not found.");
+            // Explicitly prefetch the selected blobs with progress. Checkout's implicit
+            // promisor fetch can otherwise stay silent while large engine files download.
+            progress.Report("Fetching Git file contents");
+            var blobs = entries.Select(entry => entry.Sha).Distinct().ToArray();
+            await snapshot.RunAsync(["fetch", "--no-tags", "--no-write-fetch-head", "--recurse-submodules=no", "--filter=blob:none", "--progress", "origin", "--stdin"],
+                token, string.Join('\n', blobs) + "\n");
             if (directory.Length > 0)
             {
                 await snapshot.RunAsync(["sparse-checkout", "init", "--cone"], token);
                 await snapshot.RunAsync(["sparse-checkout", "set", "--", directory], token);
             }
             progress.Report("Checking out Git files");
-            await snapshot.RunAsync(["checkout", "--detach", "--force", snapshot.Commit], token);
+            await snapshot.RunAsync(["checkout", "--progress", "--detach", "--force", snapshot.Commit], token);
             snapshot.Files = entries.Select(entry =>
             {
                 LauncherUpdateService.EnsureNoReparsePoints(snapshot.Root, entry.Path);
@@ -109,7 +120,7 @@ internal sealed class GitRepositoryClient(Func<string, string>? remoteResolver =
     private static bool Sha(string value) => value.Length == 40 && value.All(Uri.IsHexDigit);
 }
 
-internal sealed class GitRepositorySnapshot(string root, IProgress<string> progress) : IDisposable
+internal sealed class GitRepositorySnapshot(string root, IProgress<string> progress, GitCommandPolicy? policy = null) : IDisposable
 {
     internal string Root { get; } = Path.GetFullPath(root);
     internal string Commit { get; set; } = "";
@@ -118,53 +129,123 @@ internal sealed class GitRepositorySnapshot(string root, IProgress<string> progr
     internal string Directory { get; set; } = "";
     internal string Message { get; set; } = "";
     internal IReadOnlyList<GitRepositoryFile> Files { get; set; } = [];
+    internal Uri? Remote { get; set; }
+    private string? _resolvedHost;
+    private string? _sslBackend = OperatingSystem.IsWindows() ? "schannel" : null;
 
-    internal async Task<string> RunAsync(string[] arguments, CancellationToken token)
+    internal async Task<string> RunAsync(string[] arguments, CancellationToken token, string? input = null)
     {
-        token.ThrowIfCancellationRequested();
-        var start = new ProcessStartInfo { FileName = GitExecutable(), WorkingDirectory = Root, UseShellExecute = false,
-            CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
-        foreach (var value in new[] { "-c", "core.hooksPath=" + Path.Combine(Root, "disabled-hooks"), "-c", "core.autocrlf=false", "-c", "core.symlinks=false", "-c", "core.longpaths=true", "-c", "protocol.file.allow=always" }) start.ArgumentList.Add(value);
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
-        foreach (var key in start.Environment.Keys.Where(key => key.StartsWith("GIT_", StringComparison.OrdinalIgnoreCase)).ToArray()) start.Environment.Remove(key);
-        start.Environment["GIT_TERMINAL_PROMPT"] = "0"; start.Environment["GCM_INTERACTIVE"] = "never";
-        start.Environment["GIT_LFS_SKIP_SMUDGE"] = "1";
-        using var process = new Process { StartInfo = start };
-        try { process.Start(); }
-        catch (Win32Exception) { throw new GitRepositoryException("Git is not installed. Install Git for Windows and retry."); }
-        using var idle = CancellationTokenSource.CreateLinkedTokenSource(token);
-        idle.CancelAfter(TimeSpan.FromMinutes(2));
-        using var cancel = idle.Token.Register(() => { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } });
-        var errors = new StringBuilder();
-        var stderr = Task.Run(async () =>
+        var network = arguments[0] is "ls-remote" or "fetch" or "checkout";
+        var phase = arguments[0] switch
         {
-            var buffer = new char[1024]; var pending = new StringBuilder(); int count;
-            while ((count = await process.StandardError.ReadAsync(buffer)) != 0)
+            "ls-remote" => "Reading Git references",
+            "fetch" => input is null ? "Fetching Git repository" : "Fetching Git file contents",
+            "checkout" => "Checking out Git files",
+            _ => arguments[0]
+        };
+        var settings = policy ?? GitCommandPolicy.Default;
+        var timeout = arguments[0] == "ls-remote" ? settings.MetadataTimeout : settings.TransferTimeout;
+        for (var attempt = 1; ; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+            var elapsed = Stopwatch.StartNew();
+            var initialTimeout = network ? settings.MetadataTimeout : timeout;
+            GitRepositoryDiagnostics.Write(Root, $"Starting {phase}; attempt {attempt}; response timeout {initialTimeout.TotalSeconds:F0} s; idle timeout {timeout.TotalSeconds:F0} s; TLS {_sslBackend ?? "default"}");
+            var start = new ProcessStartInfo { FileName = GitExecutable(), WorkingDirectory = Root, UseShellExecute = false,
+                CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = input is not null,
+                StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
+            foreach (var value in new[] { "-c", "core.hooksPath=" + Path.Combine(Root, "disabled-hooks"), "-c", "core.autocrlf=false", "-c", "core.symlinks=false", "-c", "core.longpaths=true", "-c", "protocol.file.allow=always",
+                "-c", "http.version=HTTP/1.1", "-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=45", "-c", "http.sslVerify=true", "-c", "credential.interactive=never" }) start.ArgumentList.Add(value);
+            if (_sslBackend is not null) { start.ArgumentList.Add("-c"); start.ArgumentList.Add("http.sslBackend=" + _sslBackend); }
+            if (_resolvedHost is not null) { start.ArgumentList.Add("-c"); start.ArgumentList.Add("http.curloptResolve=" + _resolvedHost); }
+            foreach (var argument in arguments) start.ArgumentList.Add(argument);
+            foreach (var key in start.Environment.Keys.Where(key => key.StartsWith("GIT_", StringComparison.OrdinalIgnoreCase)).ToArray()) start.Environment.Remove(key);
+            start.Environment["GIT_TERMINAL_PROMPT"] = "0"; start.Environment["GCM_INTERACTIVE"] = "never";
+            start.Environment["GIT_LFS_SKIP_SMUDGE"] = "1"; start.Environment["GIT_PROGRESS_DELAY"] = "0";
+            using var process = new Process { StartInfo = start };
+            try { process.Start(); }
+            catch (Win32Exception) { throw new GitRepositoryException("Git is not installed. Install Git for Windows and retry."); }
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(token);
+            using var heartbeatStop = new CancellationTokenSource();
+            var idleTicks = initialTimeout.Ticks;
+            idle.CancelAfter(initialTimeout);
+            void ReceivedData() { Interlocked.Exchange(ref idleTicks, timeout.Ticks); idle.CancelAfter(timeout); }
+            using var cancel = idle.Token.Register(() =>
             {
-                idle.CancelAfter(TimeSpan.FromMinutes(2));
-                foreach (var character in buffer.AsSpan(0, count))
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+                catch (Exception error) when (error is InvalidOperationException or Win32Exception) { }
+            });
+            var errors = new StringBuilder();
+            var heartbeat = Task.Run(async () =>
+            {
+                try
                 {
-                    if (character is '\r' or '\n')
+                    while (true)
                     {
-                        if (pending.Length == 0) continue;
-                        var line = pending.ToString(); pending.Clear(); progress.Report("Git · " + line);
-                        errors.AppendLine(line); if (errors.Length > 8000) errors.Remove(0, errors.Length - 4000);
+                        await Task.Delay(1000, heartbeatStop.Token).ConfigureAwait(false);
+                        progress.Report("Git · " + phase + " · " + elapsed.Elapsed.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) + " s");
                     }
-                    else if (pending.Length < 4000) pending.Append(character);
                 }
+                catch (OperationCanceledException) when (heartbeatStop.IsCancellationRequested) { }
+            });
+            var stderr = Task.Run(async () =>
+            {
+                var buffer = new char[1024]; var pending = new StringBuilder(); int count;
+                void Line()
+                {
+                    if (pending.Length == 0) return;
+                    var line = GitRepositoryDiagnostics.Redact(pending.ToString()); pending.Clear();
+                    progress.Report("Git · " + line); errors.AppendLine(line);
+                    if (errors.Length > 8000) errors.Remove(0, errors.Length - 4000);
+                }
+                while ((count = await process.StandardError.ReadAsync(buffer)) != 0)
+                {
+                    ReceivedData();
+                    foreach (var character in buffer.AsSpan(0, count))
+                        if (character is '\r' or '\n') Line(); else if (pending.Length < 4000) pending.Append(character);
+                }
+                Line();
+            });
+            async Task<string> ReadOutput()
+            {
+                var output = new StringBuilder(); var buffer = new char[8192]; int count;
+                while ((count = await process.StandardOutput.ReadAsync(buffer)) != 0)
+                { ReceivedData(); output.Append(buffer, 0, count); }
+                return output.ToString();
             }
-            errors.Append(pending);
-        });
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-        await stderr.ConfigureAwait(false); var output = await stdout.ConfigureAwait(false);
-        token.ThrowIfCancellationRequested();
-        if (idle.IsCancellationRequested) throw new GitRepositoryException("Git transfer timed out. Retry the operation.");
-        if (process.ExitCode != 0) throw new GitRepositoryException("Git request failed: " + errors.ToString().Trim());
-        return output;
+            async Task WriteInput()
+            {
+                if (input is null) return;
+                try { await process.StandardInput.WriteAsync(input.AsMemory(), idle.Token).ConfigureAwait(false); }
+                catch (Exception error) when (error is IOException or OperationCanceledException) { }
+                finally { process.StandardInput.Close(); }
+            }
+            var stdout = ReadOutput(); var stdin = WriteInput();
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            await heartbeatStop.CancelAsync().ConfigureAwait(false); await heartbeat.ConfigureAwait(false);
+            await Task.WhenAll(stderr, stdin).ConfigureAwait(false); var output = await stdout.ConfigureAwait(false);
+            var detail = errors.ToString().Trim();
+            GitRepositoryDiagnostics.Write(Root, $"Finished {phase}; attempt {attempt}; exit {process.ExitCode}; {elapsed.Elapsed.TotalSeconds:F1} s\n{detail}");
+            token.ThrowIfCancellationRequested();
+            if (!idle.IsCancellationRequested && process.ExitCode == 0) return output;
+            var transient = idle.IsCancellationRequested || IsTransient(detail);
+            if (network && transient && attempt < 2)
+            {
+                progress.Report("Retrying Git transfer");
+                if (_sslBackend == "schannel" && detail.Contains("Unsupported SSL backend", StringComparison.OrdinalIgnoreCase)) _sslBackend = "openssl";
+                else if (Remote is { Scheme: "https", Host: "github.com", Port: 443 } && _resolvedHost is null)
+                {
+                    _resolvedHost = await GitHostResolution.TryResolveAsync(token).ConfigureAwait(false);
+                    GitRepositoryDiagnostics.Write(Root, _resolvedHost is null ? "Git DNS fallback unavailable" : "Retrying with a fresh GitHub DNS response: " + _resolvedHost);
+                }
+                await Task.Delay(settings.RetryDelay, token).ConfigureAwait(false); continue;
+            }
+            throw new GitCommandException(phase, idle.IsCancellationRequested, TimeSpan.FromTicks(Volatile.Read(ref idleTicks)), detail);
+        }
     }
 
+    private static bool IsTransient(string detail) => new[] { "timed out", "Timeout", "Connection was reset", "connection reset", "Could not resolve host", "Failed to connect", "SSL", "TLS", "early EOF", "RPC failed", "HTTP 408", "HTTP 429", "error: 500", "error: 502", "error: 503", "error: 504" }
+        .Any(value => detail.Contains(value, StringComparison.OrdinalIgnoreCase));
     private static string GitExecutable()
     {
         foreach (var folder in new[] { Path.Combine(LauncherInstallationPaths.ResolveRoot(), "Tools", "Git"),
