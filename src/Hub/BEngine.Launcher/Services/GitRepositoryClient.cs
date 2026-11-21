@@ -16,7 +16,7 @@ internal sealed record GitCommandPolicy(TimeSpan MetadataTimeout, TimeSpan Trans
 internal sealed class GitRepositoryClient(Func<string, string>? remoteResolver = null, GitCommandPolicy? policy = null)
 {
     internal async Task<GitRepositorySnapshot> OpenAsync(string repositoryUrl, string reference, string directory,
-        IProgress<string> progress, CancellationToken token, string? installationRoot = null, string treePath = "")
+        IProgress<string> progress, CancellationToken token, string? installationRoot = null, string treePath = "", bool metadataOnly = false)
     {
         var parent = Path.Combine(installationRoot ?? LauncherInstallationPaths.ResolveRoot(), "Temp", "HubGit");
         LauncherUpdateService.EnsureNoReparsePoints(parent, "");
@@ -93,25 +93,11 @@ internal sealed class GitRepositoryClient(Func<string, string>? remoteResolver =
                 entries.Add((path, metadata[2]));
             }
             if (entries.Count == 0) throw new GitRepositoryException("The selected Git directory is empty or was not found.");
-            // Explicitly prefetch the selected blobs with progress. Checkout's implicit
-            // promisor fetch can otherwise stay silent while large engine files download.
-            progress.Report("Fetching Git file contents");
-            var blobs = entries.Select(entry => entry.Sha).Distinct().ToArray();
-            await snapshot.RunAsync(["fetch", "--no-tags", "--no-write-fetch-head", "--recurse-submodules=no", "--filter=blob:none", "--progress", "origin", "--stdin"],
-                token, string.Join('\n', blobs) + "\n");
-            if (directory.Length > 0)
-            {
-                await snapshot.RunAsync(["sparse-checkout", "init", "--cone"], token);
-                await snapshot.RunAsync(["sparse-checkout", "set", "--", directory], token);
-            }
-            progress.Report("Checking out Git files");
-            await snapshot.RunAsync(["checkout", "--progress", "--detach", "--force", snapshot.Commit], token);
-            snapshot.Files = entries.Select(entry =>
-            {
-                LauncherUpdateService.EnsureNoReparsePoints(snapshot.Root, entry.Path);
-                return new GitRepositoryFile(entry.Path, entry.Sha, new FileInfo(LauncherUpdateService.ResolvePath(snapshot.Root, entry.Path)).Length);
-            }).ToArray();
+            // A tree contains blob identities, but not their sizes. Asking Git for sizes
+            // here would lazily download every blob, defeating a metadata-only preview.
+            snapshot.Files = entries.Select(entry => new GitRepositoryFile(entry.Path, entry.Sha, -1)).ToArray();
             snapshot.Message = (await snapshot.RunAsync(["log", "-1", "--format=%B", snapshot.Commit], token)).Trim();
+            if (!metadataOnly) await snapshot.FetchFilesAsync(snapshot.Files.Select(file => file.Path), token);
             return snapshot;
         }
         catch { snapshot.Dispose(); throw; }
@@ -133,6 +119,27 @@ internal sealed class GitRepositorySnapshot(string root, IProgress<string> progr
     private string? _resolvedHost;
     private string? _sslBackend = OperatingSystem.IsWindows() ? "schannel" : null;
 
+    internal async Task FetchFilesAsync(IEnumerable<string> paths, CancellationToken token)
+    {
+        var requested = paths.ToHashSet(StringComparer.Ordinal);
+        var selected = Files.Where(file => requested.Contains(file.Path)).ToArray();
+        if (selected.Length != requested.Count) throw new InvalidDataException("A requested file is outside the Git snapshot.");
+        if (selected.Length == 0) return;
+        foreach (var file in selected) LauncherUpdateService.EnsureNoReparsePoints(Root, file.Path);
+        progress.Report("Fetching Git file contents");
+        await RunAsync(["fetch", "--no-tags", "--no-write-fetch-head", "--recurse-submodules=no", "--filter=blob:none", "--progress", "origin", "--stdin"],
+            token, string.Join('\n', selected.Select(file => file.Sha).Distinct()) + "\n");
+        // Populate an index with only the requested paths. A commit checkout (even a
+        // sparse cone checkout) can implicitly fetch unchanged files and root files.
+        await RunAsync(["read-tree", "--empty"], token);
+        await RunAsync(["update-index", "-z", "--index-info"], token,
+            string.Concat(selected.Select(file => "100644 " + file.Sha + "\t" + file.Path + "\0")));
+        progress.Report("Checking out Git files");
+        await RunAsync(["checkout-index", "--all", "--force"], token);
+        Files = Files.Select(file => requested.Contains(file.Path)
+            ? file with { Size = new FileInfo(LauncherUpdateService.ResolvePath(Root, file.Path)).Length } : file).ToArray();
+    }
+
     internal async Task<string> RunAsync(string[] arguments, CancellationToken token, string? input = null)
     {
         var network = arguments[0] is "ls-remote" or "fetch" or "checkout";
@@ -140,7 +147,7 @@ internal sealed class GitRepositorySnapshot(string root, IProgress<string> progr
         {
             "ls-remote" => "Reading Git references",
             "fetch" => input is null ? "Fetching Git repository" : "Fetching Git file contents",
-            "checkout" => "Checking out Git files",
+            "checkout" or "checkout-index" => "Checking out Git files",
             _ => arguments[0]
         };
         var settings = policy ?? GitCommandPolicy.Default;

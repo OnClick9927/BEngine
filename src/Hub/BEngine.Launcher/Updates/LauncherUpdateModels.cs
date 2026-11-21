@@ -9,6 +9,8 @@ internal sealed record LauncherUpdateProgress(
     string? FilePath = null,
     string? Status = null);
 
+// Size -1 is permitted only in a preview: Git trees identify content without
+// downloading it. Installation plans always contain verified, nonnegative sizes.
 internal sealed record LauncherUpdateFile(string Path, string Sha, long Size);
 
 internal enum LauncherUpdateChangeKind { Added, Modified, Deleted }
@@ -43,7 +45,8 @@ internal sealed record LauncherUpdatePlan
     public string StagingRoot => System.IO.Path.Combine(WorkspaceRoot, "staging");
     public string PlanPath => System.IO.Path.Combine(WorkspaceRoot, "update-plan.json");
     public bool HasUpdates => Changes.Count != 0;
-    public long DownloadBytes => GetChangedBlobGroups().Sum(group => group[0].Size);
+    public bool HasUnknownDownloadSize => GetChangedBlobGroups().Any(group => group[0].Size < 0);
+    public long DownloadBytes => GetChangedBlobGroups().Sum(group => Math.Max(0, group[0].Size));
 
     // Git blob identity is content based, so equal content at several installation paths
     // requires one staging copy while every destination remains in the install plan.

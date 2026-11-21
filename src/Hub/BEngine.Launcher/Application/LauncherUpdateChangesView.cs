@@ -231,7 +231,7 @@ internal sealed class LauncherUpdateChangesView : UserControl
         graphics.Restore(previousClip);
 
         var cellPadding = LogicalToDeviceUnits(6);
-        DrawText(graphics, FormatBytes(row.Bytes), new Rectangle(_nameEnd + cellPadding, e.Bounds.Y,
+        DrawText(graphics, SizeText(row), new Rectangle(_nameEnd + cellPadding, e.Bounds.Y,
             Math.Max(0, _sizeEnd - _nameEnd - cellPadding * 2), e.Bounds.Height), foreground, true);
         var statusLeft = _sizeEnd + cellPadding;
         var glyphSize = Math.Min(LogicalToDeviceUnits(16), e.Bounds.Height - 4);
@@ -266,12 +266,14 @@ internal sealed class LauncherUpdateChangesView : UserControl
         _ => "Mixed"
     });
 
+    private string SizeText(ChangeRow row) => row.HasUnknownSize ? _localize("Size pending") : FormatBytes(row.Bytes);
+
     private void RefreshNodeDescriptions(TreeNodeCollection nodes)
     {
         foreach (var node in EnumerateNodes(nodes))
         {
             var row = (ChangeRow)node.Tag!;
-            node.ToolTipText = $"{row.Path}\n{FormatBytes(row.Bytes)} · {StatusText(row)}";
+            node.ToolTipText = $"{row.Path}\n{SizeText(row)} · {StatusText(row)}";
             if (row.Directory)
                 node.ToolTipText += $"\n{_localize("Added")} {row.Added} · {_localize("Modified")} {row.Modified} · {_localize("Deleted")} {row.Deleted}";
         }
@@ -320,6 +322,7 @@ internal sealed class LauncherUpdateChangesView : UserControl
         internal string Path { get; } = path;
         internal bool Directory { get; } = directory;
         internal long Bytes { get; private set; }
+        internal bool HasUnknownSize { get; private set; }
         internal int Added { get; private set; }
         internal int Modified { get; private set; }
         internal int Deleted { get; private set; }
@@ -329,6 +332,7 @@ internal sealed class LauncherUpdateChangesView : UserControl
         internal void Add(LauncherUpdateChange change)
         {
             Bytes += Math.Max(0, change.Size);
+            HasUnknownSize |= change.Size < 0;
             if (change.Kind == LauncherUpdateChangeKind.Added) Added++;
             else if (change.Kind == LauncherUpdateChangeKind.Deleted) Deleted++;
             else Modified++;

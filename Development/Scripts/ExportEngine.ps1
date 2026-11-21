@@ -504,10 +504,12 @@ $editorApplicationDescriptor | ConvertTo-Json |
 & (Join-Path $sourceRoot 'Platform/ExportPlatformSources.ps1') -StageOutput $stageOutput
 
 # Symbols are useful while building the engine but are not required by the
-# published hosts. Keep BuildRuntime symbols for platform build
-# diagnostics and remove only symbols beside the application hosts and Hub.
+# published hosts. Keep managed BuildRuntime symbols for player diagnostics,
+# but exclude third-party native runtime PDBs (SkiaSharp/HarfBuzzSharp, etc.).
 foreach ($symbol in @(Get-ChildItem -LiteralPath $stageOutput -File -Recurse -Filter '*.pdb' |
-        Where-Object { $_.FullName -notmatch '[\\/]BuildRuntime[\\/]' })) {
+        Where-Object { $_.FullName -notmatch '[\\/]BuildRuntime[\\/]' -or
+            $_.FullName -match '[\\/]runtimes[\\/][^\\/]+[\\/]native[\\/]' })) {
+    Assert-ExportPath $symbol.FullName
     Remove-Item -LiteralPath $symbol.FullName -Force
 }
 foreach ($symbol in @(Get-ChildItem -LiteralPath $hubStageOutput -File -Recurse -Filter '*.pdb')) {

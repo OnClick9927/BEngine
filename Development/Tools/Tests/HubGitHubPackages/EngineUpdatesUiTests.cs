@@ -81,6 +81,10 @@ internal static class EngineUpdatesUiTests
             check(Field(hub, "_pendingUpdate") is LauncherUpdatePlan { HasUpdates: true } && ((Control)Field(hub, "_installUpdateButton")).Visible,
                 "The new window checks real Git content and offers installation after a verified preview: " +
                 ((Label)Field(hub, "_updateStage")).Text + " · " + ((Label)Field(hub, "_updateDetail")).Text);
+            var changeTree = (TreeView)Field(Field(hub, "_updateChanges"), "_tree");
+            check(((Label)Field(hub, "_updateSummary")).Text.Contains("下载后确定", StringComparison.Ordinal) &&
+                changeTree.Nodes.Cast<TreeNode>().Any(node => node.ToolTipText.Contains("下载后确定", StringComparison.Ordinal)),
+                "Metadata-only previews show pending sizes in the summary and file tree instead of zero-byte downloads");
             window.Close();
         });
         check(!window.Visible && !window.IsDisposed && hub.Enabled && Field(hub, "_pendingUpdate") is null,

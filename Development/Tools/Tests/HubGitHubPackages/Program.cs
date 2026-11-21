@@ -18,6 +18,11 @@ internal static class Probe
     private static async Task RunAsync(string[] args)
     {
         if (args[0] == "--cleanup") { new GitRepositorySnapshot(args[1], new GitHubProgressSink<string>(_ => { })).Dispose(); return; }
+        if (args[0] == "--incremental-engine")
+        {
+            await EngineIncrementalTests.RunAsync(Path.GetFullPath(args[1]), Check);
+            Console.WriteLine("HUB_INCREMENTAL_ENGINE_OK|checks=" + _checks); return;
+        }
         if (args[0] == "--git-network")
         {
             await GitNetworkTests.RunAsync(Path.GetFullPath(args[1]), Check);
@@ -111,6 +116,7 @@ internal static class Probe
         }
         Clean(root);
         await VerifyEngine(root, git, progress);
+        await EngineIncrementalTests.RunAsync(Path.Combine(root, "IncrementalEngine"), Check);
         GitHubPackagesUiTests.Run(manager, repository, remote, root, Check);
         EngineUpdatesUiTests.Run(root, Check);
         manager.Remove(manager.Installed(), "0.1.0"); Clean(root);

@@ -30,7 +30,7 @@ internal sealed class LauncherUpdateService(string? repositoryUrl = null, GitRep
         EnsureNoReparsePoints(root, "");
         Interlocked.Exchange(ref _previewSnapshot, null)?.Dispose();
         var snapshot = await _git.OpenAsync(_repositoryUrl, "main", "Engine",
-            new GitHubProgressSink<string>(message => progress.Report(new("Connecting", message))), cancellationToken, root).ConfigureAwait(false);
+            new GitHubProgressSink<string>(message => progress.Report(new("Connecting", message))), cancellationToken, root, metadataOnly: true).ConfigureAwait(false);
         try
         {
             var plan = await CompareSnapshotAsync(root, snapshot, progress, cancellationToken).ConfigureAwait(false);
@@ -60,7 +60,10 @@ internal sealed class LauncherUpdateService(string? repositoryUrl = null, GitRep
             cancellationToken.ThrowIfCancellationRequested();
             if (!entry.Path.StartsWith("Engine/", StringComparison.Ordinal)) throw new InvalidDataException("File is outside the Engine distribution.");
             var path = entry.Path[7..]; ValidateRelativePath(path);
-            if (IsProtected(path) || !seen.Add(path)) throw new InvalidDataException("Invalid or protected path in the Engine distribution: " + path);
+            // A source checkout may contain locally installed Git packages or Hub
+            // state. Such files never belong to the managed engine distribution.
+            if (IsProtected(path)) continue;
+            if (!seen.Add(path)) throw new InvalidDataException("Duplicate path in the Engine distribution: " + path);
             files.Add(new(path, entry.Sha, entry.Size));
         }
         if (!files.Any(file => file.Path.Equals("BEngine.Hub.exe", StringComparison.OrdinalIgnoreCase)))
@@ -99,8 +102,9 @@ internal sealed class LauncherUpdateService(string? repositoryUrl = null, GitRep
                 var localLength = new FileInfo(localPath).Length;
                 var localSha = await HashFileAsync(localPath, cancellationToken).ConfigureAwait(false);
                 originals.Add(new(file.Path, true, localSha, localLength));
-                if (localLength != file.Size || !string.Equals(localSha, file.Sha, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(localSha, file.Sha, StringComparison.OrdinalIgnoreCase))
                     changes.Add(new(file.Path, LauncherUpdateChangeKind.Modified, file.Size));
+                else files[index] = file with { Size = localLength };
             }
         }
         foreach (var oldPath in managed.Order(StringComparer.OrdinalIgnoreCase))
@@ -128,17 +132,17 @@ internal sealed class LauncherUpdateService(string? repositoryUrl = null, GitRep
         return plan;
     }
 
-    internal Task DownloadAsync(LauncherUpdatePlan plan, IProgress<LauncherUpdateProgress> progress, CancellationToken cancellationToken) =>
+    internal Task<LauncherUpdatePlan> DownloadAsync(LauncherUpdatePlan plan, IProgress<LauncherUpdateProgress> progress, CancellationToken cancellationToken) =>
         Task.Run(() => DownloadCoreAsync(plan, progress, cancellationToken), CancellationToken.None);
 
-    private async Task DownloadCoreAsync(LauncherUpdatePlan plan, IProgress<LauncherUpdateProgress> progress, CancellationToken cancellationToken)
+    private async Task<LauncherUpdatePlan> DownloadCoreAsync(LauncherUpdatePlan plan, IProgress<LauncherUpdateProgress> progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(plan); ArgumentNullException.ThrowIfNull(progress);
         var snapshot = Interlocked.Exchange(ref _previewSnapshot, null);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!plan.HasUpdates) return;
+            if (!plan.HasUpdates) return plan;
             ValidatePlan(plan);
             LauncherUpdateWorkspace.ThrowIfInstallationBusy(plan.InstallationRoot);
             using var downloadLock = LauncherUpdateWorkspace.AcquireDownloadLock(plan.InstallationRoot, plan.WorkspaceRoot);
@@ -157,10 +161,11 @@ internal sealed class LauncherUpdateService(string? repositoryUrl = null, GitRep
             Directory.CreateDirectory(plan.StagingRoot);
             if (File.Exists(plan.PlanPath)) File.Delete(plan.PlanPath);
             if (snapshot is not null && snapshot.Commit != plan.CommitSha) { snapshot.Dispose(); snapshot = null; }
-            long completed = 0; var total = plan.DownloadBytes;
-            void Report(string path) => progress.Report(new("Downloading", "Copying Git files", completed, total,
-                total == 0 ? 100 : 100d * completed / total, FilePath: path));
-            foreach (var group in plan.GetChangedBlobGroups())
+            var groups = plan.GetChangedBlobGroups();
+            var sources = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var missing = new List<LauncherUpdateFile>();
+            var localBlobs = plan.OriginalFiles.Where(file => file.Exists).ToLookup(file => file.Sha, StringComparer.OrdinalIgnoreCase);
+            foreach (var group in groups)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var file = group[0]; string? retained = null;
@@ -168,37 +173,69 @@ internal sealed class LauncherUpdateService(string? repositoryUrl = null, GitRep
                 {
                     EnsureNoReparsePoints(plan.WorkspaceRoot, "staging/" + destination.Path);
                     var candidate = ResolvePath(plan.StagingRoot, destination.Path);
-                    if (File.Exists(candidate) && new FileInfo(candidate).Length == file.Size &&
+                    if (File.Exists(candidate) && (file.Size < 0 || new FileInfo(candidate).Length == file.Size) &&
                         string.Equals(await HashFileAsync(candidate, cancellationToken).ConfigureAwait(false), file.Sha, StringComparison.OrdinalIgnoreCase))
                     { retained = candidate; break; }
                 }
-                if (retained is null)
-                {
-                    snapshot ??= await _git.OpenAsync(_repositoryUrl, plan.CommitSha, "Engine",
-                        new GitHubProgressSink<string>(message => progress.Report(new("Downloading", message))), cancellationToken, plan.InstallationRoot).ConfigureAwait(false);
-                    var sourcePath = "Engine/" + file.Path;
-                    if (!snapshot.Files.Any(entry => entry.Path == sourcePath && entry.Sha == file.Sha && entry.Size == file.Size))
+                // A renamed file or a duplicate at a new destination can reuse an
+                // already verified local blob without a network request.
+                retained ??= localBlobs[file.Sha].Select(value => ResolvePath(plan.InstallationRoot, value.Path)).FirstOrDefault();
+                if (retained is not null) sources.Add(file.Sha, retained);
+                else missing.Add(file);
+            }
+            if (missing.Count > 0)
+            {
+                snapshot ??= await _git.OpenAsync(_repositoryUrl, plan.CommitSha, "Engine",
+                    new GitHubProgressSink<string>(message => progress.Report(new("Downloading", message))), cancellationToken,
+                    plan.InstallationRoot, metadataOnly: true).ConfigureAwait(false);
+                if (snapshot.Tree != plan.EngineTreeSha) throw new InvalidDataException("The Git snapshot does not match the update preview.");
+                var remoteFiles = snapshot.Files.ToDictionary(file => file.Path, StringComparer.Ordinal);
+                foreach (var file in missing)
+                    if (!remoteFiles.TryGetValue("Engine/" + file.Path, out var remote) || remote.Sha != file.Sha)
                         throw new InvalidDataException("The Git snapshot does not match the update preview: " + file.Path);
-                    EnsureNoReparsePoints(snapshot.Root, sourcePath);
-                    var target = ResolvePath(plan.StagingRoot, file.Path); Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                    await using (var input = File.OpenRead(ResolvePath(snapshot.Root, sourcePath)))
-                    await using (var output = File.Create(target))
-                    {
-                        var buffer = new byte[81920]; int count;
-                        while ((count = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) != 0)
-                        { await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false); completed += count; Report(file.Path); }
-                    }
-                    if (new FileInfo(target).Length != file.Size || !string.Equals(await HashFileAsync(target, cancellationToken).ConfigureAwait(false), file.Sha, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidDataException("Git file verification failed: " + file.Path);
-                    retained = target;
-                }
-                else { completed += file.Size; Report(file.Path); }
-                await StageBlobCopiesAsync(plan, group, retained, _ => { }, cancellationToken).ConfigureAwait(false);
+                await snapshot.FetchFilesAsync(missing.Select(file => "Engine/" + file.Path), cancellationToken).ConfigureAwait(false);
+                foreach (var file in missing) sources.Add(file.Sha, ResolvePath(snapshot.Root, "Engine/" + file.Path));
+            }
+            var sizes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            foreach (var group in groups)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var file = group[0]; var source = sources[file.Sha];
+                var size = new FileInfo(source).Length;
+                if (file.Size >= 0 && file.Size != size ||
+                    !string.Equals(await HashFileAsync(source, cancellationToken).ConfigureAwait(false), file.Sha, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Git file verification failed: " + file.Path);
+                sizes.Add(file.Sha, size);
+            }
+            // Only a complete, verified plan may reach the installer. Keep the
+            // preview immutable so a cancelled download can retry against its baseline.
+            var fileShas = plan.Files.ToDictionary(file => file.Path, file => file.Sha, StringComparer.OrdinalIgnoreCase);
+            plan = plan with
+            {
+                Files = plan.Files.Select(file => sizes.TryGetValue(file.Sha, out var size) ? file with { Size = size } : file).ToArray(),
+                Changes = plan.Changes.Select(change => change.Kind == LauncherUpdateChangeKind.Deleted ? change :
+                    change with { Size = sizes[fileShas[change.Path]] }).ToArray()
+            };
+            if (plan.Files.Any(file => file.Size < 0)) throw new InvalidDataException("The installation plan has unresolved file sizes.");
+            long completed = 0; var total = plan.DownloadBytes;
+            foreach (var group in plan.GetChangedBlobGroups())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var file = group[0]; var source = sources[file.Sha];
+                // Retained staging is already in place; other sources are copied via
+                // a partial file so cancellation never publishes an incomplete blob.
+                var destinations = group.Where(destination => !string.Equals(ResolvePath(plan.StagingRoot, destination.Path), source,
+                    StringComparison.OrdinalIgnoreCase)).ToArray();
+                await StageBlobCopiesAsync(plan, destinations, source, _ => { }, cancellationToken).ConfigureAwait(false);
+                completed += file.Size;
+                progress.Report(new("Downloading", "Copying Git files", completed, total,
+                    total == 0 ? 100 : 100d * completed / total, FilePath: file.Path));
             }
             cancellationToken.ThrowIfCancellationRequested();
             await File.WriteAllTextAsync(plan.PlanPath + ".part", JsonSerializer.Serialize(plan, JsonOptions), cancellationToken).ConfigureAwait(false);
             File.Move(plan.PlanPath + ".part", plan.PlanPath, true);
             progress.Report(new("Ready", "Download verified; ready to install", total, total, 100));
+            return plan;
         }
         finally { snapshot?.Dispose(); }
     }
@@ -215,6 +252,8 @@ internal sealed class LauncherUpdateService(string? repositoryUrl = null, GitRep
             reportCopy(file);
             cancellationToken.ThrowIfCancellationRequested();
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            EnsureNoReparsePoints(plan.WorkspaceRoot, "partial");
+            Directory.CreateDirectory(Path.Combine(plan.WorkspaceRoot, "partial"));
             var partial = Path.Combine(plan.WorkspaceRoot, "partial", Guid.NewGuid().ToString("N") + ".part");
             try
             {
@@ -301,7 +340,7 @@ internal sealed class LauncherUpdateService(string? repositoryUrl = null, GitRep
         foreach (var file in plan.Files)
         {
             ValidateRelativePath(file.Path);
-            if (IsProtected(file.Path) || file.Size < 0 || file.Sha.Length != 40 || !Scan70442(file.Sha, Uri.IsHexDigit) || !files.TryAdd(file.Path, file))
+            if (IsProtected(file.Path) || file.Size < -1 || file.Sha.Length != 40 || !Scan70442(file.Sha, Uri.IsHexDigit) || !files.TryAdd(file.Path, file))
                 throw new InvalidDataException($"Invalid file in the update plan: {file.Path}");
             [global::BEngine.SkipLoopGuard]
             bool Scan70442(string scanSource70442, global::System.Func<char, bool> scanPredicate70442)
@@ -327,6 +366,8 @@ internal sealed class LauncherUpdateService(string? repositoryUrl = null, GitRep
                 (!files.TryGetValue(change.Path, out var file) || file.Size != change.Size))
                 throw new InvalidDataException($"Missing file in the update plan: {change.Path}");
         }
+        if (files.Values.Any(file => file.Size < 0 && !changes.Contains(file.Path)))
+            throw new InvalidDataException("An unchanged file has an unresolved size in the update plan.");
         var originals = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in plan.OriginalFiles)
         {

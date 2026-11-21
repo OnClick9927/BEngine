@@ -316,7 +316,9 @@ internal sealed partial class ProjectLauncherForm
     private void UpdateChangeSummary()
     {
         var changes = _pendingUpdate?.Changes ?? [];
-        SetLocalizedText(_updateSummary, "{0} changes · download {1}", changes.Count, FormatUpdateBytes(_pendingUpdate?.DownloadBytes ?? 0));
+        if (_pendingUpdate?.HasUnknownDownloadSize == true)
+            SetLocalizedText(_updateSummary, "{0} changes · sizes available after download", changes.Count);
+        else SetLocalizedText(_updateSummary, "{0} changes · download {1}", changes.Count, FormatUpdateBytes(_pendingUpdate?.DownloadBytes ?? 0));
         _updateStatistics.SetChanges(changes);
     }
 
@@ -616,13 +618,14 @@ internal sealed partial class ProjectLauncherForm
         _updateDetail.ForeColor = SecondaryText;
         SetUpdateBusy(true);
         ReportUpdateProgress(new("Downloading", "Downloading changed files", 0, plan.DownloadBytes,
-            plan.DownloadBytes == 0 ? 100 : 0,
+            plan.HasUnknownDownloadSize ? null : plan.DownloadBytes == 0 ? 100 : 0,
             Status: _updateHasRetainedDownload ? "Verifying saved download data" : "Waiting for response"));
         try
         {
-            await _updateService.DownloadAsync(plan, _updateProgressBuffer, cancellation.Token);
+            plan = await _updateService.DownloadAsync(plan, _updateProgressBuffer, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             if (IsDisposed || Disposing) return;
+            _pendingUpdate = plan;
             _cancelUpdateButton.Enabled = false;
             ApplyUpdatePageMode(UpdatePageMode.Installing);
             _updateProgress.Style = ProgressBarStyle.Continuous;

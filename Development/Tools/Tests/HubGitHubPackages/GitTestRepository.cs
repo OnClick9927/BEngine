@@ -7,13 +7,20 @@ internal sealed class GitTestRepository
     internal string Root { get; }
     internal string Url => new Uri(Root + Path.DirectorySeparatorChar).AbsoluteUri;
     private HashSet<string> _paths = [];
-    internal GitTestRepository(string root) { Root = Path.GetFullPath(root); Directory.CreateDirectory(Root); Run("init", "--initial-branch=main", "--quiet"); }
+    internal GitTestRepository(string root)
+    {
+        Root = Path.GetFullPath(root); Directory.CreateDirectory(Root); Run("init", "--initial-branch=main", "--quiet");
+        Run("config", "uploadpack.allowFilter", "true");
+        Run("config", "uploadpack.allowAnySHA1InWant", "true");
+    }
     internal string Run(params string[] arguments) => Command(null, arguments);
     internal string Command(string? input, params string[] arguments)
+        => CommandAt(Root, input, arguments);
+    internal static string CommandAt(string root, string? input, params string[] arguments)
     {
-        var start = new ProcessStartInfo("git") { WorkingDirectory = Root, UseShellExecute = false, CreateNoWindow = true,
+        var start = new ProcessStartInfo("git") { WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true };
-        foreach (var value in new[] { "-c", "user.name=Hub Tests", "-c", "user.email=hub@example.invalid", "-c", "core.autocrlf=false", "-c", "core.hooksPath=" + Root + "/disabled-hooks" }) start.ArgumentList.Add(value);
+        foreach (var value in new[] { "-c", "user.name=Hub Tests", "-c", "user.email=hub@example.invalid", "-c", "core.autocrlf=false", "-c", "core.longpaths=true", "-c", "core.hooksPath=" + root + "/disabled-hooks" }) start.ArgumentList.Add(value);
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start)!;
         if (input is not null) process.StandardInput.Write(input);

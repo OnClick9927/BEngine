@@ -29,6 +29,8 @@ internal sealed class HubLocalization
     {
         ["GitHub packages"] = "GitHub 包管理",
         ["Engine updates"] = "引擎更新",
+        ["Size pending"] = "下载后确定",
+        ["{0} changes · sizes available after download"] = "更新 {0} 项 · 大小在下载后确定",
         ["Install"] = "安装",
         ["Update"] = "更新",
         ["Remove"] = "删除",
